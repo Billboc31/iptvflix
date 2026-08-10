@@ -8,16 +8,23 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.0",
-    "fastify": "^4.28.0"
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^4.28.0",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
     "@iptvflix/api-contracts": "workspace:*",
     "@types/node": "^20.0.0",
     "@vitest/coverage-v8": "^2.0.0",
+    "drizzle-kit": "^0.31.10",
     "tsx": "^4.0.0",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"
