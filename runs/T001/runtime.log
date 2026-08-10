@@ -10,3 +10,24 @@
 [2026-08-10T21:05:07Z] compose: task (canonical prompt)
 [2026-08-10T21:05:07Z] snapshot: runtime-prompt=runs/T001/prompts/planner-attempt-2.md
 [2026-08-10T21:06:46Z] auto-run: step=planner done rc=0
+[2026-08-10T21:15:38Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-10T21:15:38Z] auto-run: running step=tester
+[2026-08-10T21:15:38Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-10T21:15:38Z] prompt: generic fallback — injecting runs/T001/ticket.md
+[2026-08-10T21:15:38Z] compose: global-context=docs/ai/global-context.md
+[2026-08-10T21:15:38Z] compose: role=ai/roles/tester.md
+[2026-08-10T21:15:38Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-10T21:15:38Z] compose: skill=ai/skills/testing.md
+[2026-08-10T21:15:38Z] compose: skill=ai/skills/debugging.md
+[2026-08-10T21:15:38Z] compose: task (canonical prompt)
+[2026-08-10T21:15:38Z] snapshot: runtime-prompt=runs/T001/prompts/tester-attempt-1.md
+[2026-08-10T21:17:55Z] auto-run: step=tester done rc=0
+[2026-08-10T21:17:55Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-10T21:17:55Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-10T21:17:55Z] commit-checkpoint: unstaged runtime garbage: ['runs/T001/daemon.lock', 'runs/T001/runtime.log', 'runs/T001/workflow-status.md']
+[2026-08-10T21:17:55Z] commit-checkpoint: sha=f3663c8 files=3 title='test(T001/workflow): tester — update 3 file(s)'
+[2026-08-10T21:17:55Z] auto-run: auto-push triggered
+[2026-08-10T21:17:55Z] push: tolerating runtime dirty files (not blocking): ['runs/T001/daemon.lock', 'runs/T001/runtime.log', 'runs/T001/workflow-status.md']
+[2026-08-10T21:17:55Z] push: pushing branch=ticket/T001-initialize-iptvflix-monorepo-foundation
+[2026-08-10T21:17:57Z] push: done branch=ticket/T001-initialize-iptvflix-monorepo-foundation
+[2026-08-10T21:17:57Z] auto-run: TEST_COMPLETE — running PR lifecycle
