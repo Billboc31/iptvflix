@@ -11,3 +11,24 @@
 [2026-08-10T21:36:46Z] snapshot: runtime-prompt=runs/T002/prompts/planner-attempt-2.md
 [2026-08-10T21:40:16Z] compose: preferring on-disk runs/T002/plan.md over chatty stdout (agent Write beat meta-report)
 [2026-08-10T21:40:16Z] auto-run: step=planner done rc=0
+[2026-08-10T21:55:11Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-10T21:55:11Z] auto-run: running step=tester
+[2026-08-10T21:55:11Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-10T21:55:11Z] prompt: generic fallback — injecting runs/T002/ticket.md
+[2026-08-10T21:55:11Z] compose: global-context=docs/ai/global-context.md
+[2026-08-10T21:55:11Z] compose: role=ai/roles/tester.md
+[2026-08-10T21:55:11Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-10T21:55:11Z] compose: skill=ai/skills/testing.md
+[2026-08-10T21:55:11Z] compose: skill=ai/skills/debugging.md
+[2026-08-10T21:55:11Z] compose: task (canonical prompt)
+[2026-08-10T21:55:11Z] snapshot: runtime-prompt=runs/T002/prompts/tester-attempt-1.md
+[2026-08-10T21:57:55Z] auto-run: step=tester done rc=0
+[2026-08-10T21:57:55Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-10T21:57:55Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-10T21:57:55Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T002/daemon.lock', 'runs/T002/runtime.log', 'runs/T002/workflow-status.md']
+[2026-08-10T21:57:55Z] commit-checkpoint: sha=12bdb45 files=3 title='test(T002/workflow): tester — update 3 file(s)'
+[2026-08-10T21:57:55Z] auto-run: auto-push triggered
+[2026-08-10T21:57:55Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T002/daemon.lock', 'runs/T002/runtime.log', 'runs/T002/workflow-status.md']
+[2026-08-10T21:57:55Z] push: pushing branch=ticket/T002-set-up-postgresql-persistence-with-drizzle
+[2026-08-10T21:57:57Z] push: done branch=ticket/T002-set-up-postgresql-persistence-with-drizzle
+[2026-08-10T21:57:57Z] auto-run: TEST_COMPLETE — running PR lifecycle
