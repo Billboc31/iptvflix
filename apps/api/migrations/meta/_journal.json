@@ -15,6 +15,13 @@
       "when": 1786399759427,
       "tag": "0001_sweet_stingray",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786402263449,
+      "tag": "0002_real_leper_queen",
+      "breakpoints": true
     }
   ]
 }
