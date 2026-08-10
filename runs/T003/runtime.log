@@ -32,3 +32,7 @@
 [2026-08-10T22:15:55Z] push: pushing branch=ticket/T003-define-canonical-media-catalog-domain
 [2026-08-10T22:15:57Z] push: done branch=ticket/T003-define-canonical-media-catalog-domain
 [2026-08-10T22:15:57Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-10T22:36:47Z] conflict-resolver: rebase clean — no conflicts
+[2026-08-10T22:36:47Z] conflict-resolver: running tests
+[2026-08-10T22:36:47Z] conflict-resolver: test-report written: runs/T003/conflict/test-report.md
+[2026-08-10T22:36:47Z] conflict-resolver: staging and committing resolution artifacts
