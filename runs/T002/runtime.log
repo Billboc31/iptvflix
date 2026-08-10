@@ -36,3 +36,10 @@
 [2026-08-10T21:58:09Z] conflict-resolver: running tests
 [2026-08-10T21:58:09Z] conflict-resolver: test-report written: runs/T002/conflict/test-report.md
 [2026-08-10T21:58:09Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-10T21:58:09Z] conflict-resolver: commit: sha=c4817cf
+[2026-08-10T21:58:09Z] conflict-resolver: git push --force-with-lease origin ticket/T002-set-up-postgresql-persistence-with-drizzle
+[2026-08-10T21:58:11Z] conflict-resolver: push succeeded
+[2026-08-10T21:58:11Z] conflict-resolver: state → CONFLICT_RESOLVED_REVIEW_NEEDED
+[2026-08-10T21:58:11Z] auto-finalize-conflict: gate disabled for project='iptvflix'
+[2026-08-10T21:58:11Z] conflict-resolver: transition CONFLICT_RESOLVED_REVIEW_NEEDED → CONFLICT_RESOLUTION_NEEDED (auto, PROJECT_SETTING)
+[2026-08-10T21:58:11Z] conflict-resolver: done → CONFLICT_RESOLUTION_NEEDED (auto-finalize)

@@ -3,5 +3,10 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T002-set-up-postgresql-persistence-with-drizzle",
   "issue_number": 3,
-  "updated_at": "2026-08-10T21:57:55Z"
+  "updated_at": "2026-08-10T21:58:19Z",
+  "pr_number": 11,
+  "pr_synced": true,
+  "pre_conflict_state": "CONFLICT_RESOLUTION_NEEDED",
+  "conflict_cleared_at": "2026-08-10T21:58:19Z",
+  "conflict_clear_reason": "PR #11 mergeable='UNKNOWN'"
 }
