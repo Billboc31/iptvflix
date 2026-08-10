@@ -11,3 +11,22 @@
 [2026-08-10T21:58:45Z] snapshot: runtime-prompt=runs/T003/prompts/planner-attempt-2.md
 [2026-08-10T22:02:58Z] compose: preferring on-disk runs/T003/plan.md over chatty stdout (agent Write beat meta-report)
 [2026-08-10T22:02:58Z] auto-run: step=planner done rc=0
+[2026-08-10T22:14:08Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-10T22:14:09Z] auto-run: running step=tester
+[2026-08-10T22:14:09Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-10T22:14:09Z] prompt: generic fallback — injecting runs/T003/ticket.md
+[2026-08-10T22:14:09Z] compose: global-context=docs/ai/global-context.md
+[2026-08-10T22:14:09Z] compose: role=ai/roles/tester.md
+[2026-08-10T22:14:09Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-10T22:14:09Z] compose: skill=ai/skills/testing.md
+[2026-08-10T22:14:09Z] compose: skill=ai/skills/debugging.md
+[2026-08-10T22:14:09Z] compose: task (canonical prompt)
+[2026-08-10T22:14:09Z] snapshot: runtime-prompt=runs/T003/prompts/tester-attempt-1.md
+[2026-08-10T22:15:55Z] auto-run: step=tester done rc=0
+[2026-08-10T22:15:55Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-10T22:15:55Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-10T22:15:55Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T003/daemon.lock', 'runs/T003/runtime.log', 'runs/T003/workflow-status.md']
+[2026-08-10T22:15:55Z] commit-checkpoint: sha=f442753 files=3 title='test(T003/workflow): tester — update 3 file(s)'
+[2026-08-10T22:15:55Z] auto-run: auto-push triggered
+[2026-08-10T22:15:55Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T003/daemon.lock', 'runs/T003/runtime.log', 'runs/T003/workflow-status.md']
+[2026-08-10T22:15:55Z] push: pushing branch=ticket/T003-define-canonical-media-catalog-domain
