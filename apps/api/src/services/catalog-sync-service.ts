@@ -2,7 +2,11 @@ import { and, eq, inArray, lt } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { movies } from '../db/schema/movies.js'
 import { series } from '../db/schema/series.js'
-import { movieAvailabilities, seriesAvailabilities } from '../db/schema/availabilities.js'
+import {
+  movieAvailabilities,
+  seriesAvailabilities,
+  episodeAvailabilities,
+} from '../db/schema/availabilities.js'
 import { syncRuns } from '../db/schema/sync-runs.js'
 import type { XtreamCatalogSnapshot } from '../providers/xtream/types.js'
 
@@ -294,6 +298,39 @@ export const CatalogSyncService = {
               ),
             )
           counts.unavailableCount += missingSeriesIds.length
+        }
+
+        // Mark stale episode_availabilities as UNAVAILABLE.
+        // The snapshot does not yet carry episode-level stream data, so
+        // seenEpisodeProviderItemIds is always empty and this marks any
+        // episode availability rows recorded in a prior pass as gone.
+        const prevEpisodeRows = await tx
+          .select({ providerItemId: episodeAvailabilities.providerItemId })
+          .from(episodeAvailabilities)
+          .where(
+            and(
+              eq(episodeAvailabilities.providerId, sourceId),
+              eq(episodeAvailabilities.status, 'AVAILABLE'),
+            ),
+          )
+        const previouslyAvailableEpisodeIds = new Set(
+          prevEpisodeRows.map((r) => r.providerItemId),
+        )
+
+        // No episode-level data in snapshot → seenEpisodeProviderItemIds is empty
+        const missingEpisodeIds = [...previouslyAvailableEpisodeIds]
+        if (missingEpisodeIds.length > 0) {
+          await tx
+            .update(episodeAvailabilities)
+            .set({ status: 'UNAVAILABLE', unavailableAt: snapshot.fetchedAt })
+            .where(
+              and(
+                eq(episodeAvailabilities.providerId, sourceId),
+                eq(episodeAvailabilities.status, 'AVAILABLE'),
+                inArray(episodeAvailabilities.providerItemId, missingEpisodeIds),
+              ),
+            )
+          counts.unavailableCount += missingEpisodeIds.length
         }
       })
     } catch (err) {

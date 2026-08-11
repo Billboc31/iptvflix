@@ -98,11 +98,7 @@ const EPISODE_ROW = {
   updatedAt: new Date(),
 }
 
-const AVAIL_ROW = {
-  id: '00000000-0000-0000-0000-000000000030',
-  movieId: MOVIE_ROW.id,
-  status: 'AVAILABLE',
-}
+const AVAIL_COUNT_ONE = { cnt: 1 }
 
 // ---------------------------------------------------------------------------
 // GET /movies/:id
@@ -111,9 +107,9 @@ const AVAIL_ROW = {
 describe('GET /movies/:id', () => {
   it('returns canonical MovieDetailResponse without provider-specific fields', async () => {
     mockDb.select
-      .mockReturnValueOnce(selectChain([MOVIE_ROW]))     // movie query
+      .mockReturnValueOnce(selectChain([MOVIE_ROW]))           // movie query
       .mockReturnValueOnce(selectChain([{ name: 'Action' }])) // genres
-      .mockReturnValueOnce(selectChain([AVAIL_ROW]))     // availability
+      .mockReturnValueOnce(selectChain([AVAIL_COUNT_ONE]))     // availability count
 
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
     expect(res.statusCode).toBe(200)
@@ -125,6 +121,7 @@ describe('GET /movies/:id', () => {
     expect(body.originalTitle).toBe('Original Test Movie')
     expect(body.genres).toEqual(['Action'])
     expect(body.enrichmentStatus).toBe('matched') // tmdbId=12345 + synopsis → matched
+    expect(body.availabilityCount).toBe(1)
     expect(body.availabilityStatus).toBe('AVAILABLE')
 
     // no Xtream-specific keys
@@ -137,7 +134,7 @@ describe('GET /movies/:id', () => {
     mockDb.select
       .mockReturnValueOnce(selectChain([MOVIE_ROW]))
       .mockReturnValueOnce(selectChain([]))
-      .mockReturnValueOnce(selectChain([AVAIL_ROW]))
+      .mockReturnValueOnce(selectChain([AVAIL_COUNT_ONE]))
 
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
     expect(res.statusCode).toBe(200)
@@ -163,7 +160,7 @@ describe('GET /movies/:id', () => {
     expect(res.statusCode).toBe(404)
   })
 
-  it('reflects UNAVAILABLE when no availability rows exist', async () => {
+  it('reflects UNAVAILABLE and availabilityCount 0 when no availability rows exist', async () => {
     mockDb.select
       .mockReturnValueOnce(selectChain([MOVIE_ROW]))
       .mockReturnValueOnce(selectChain([]))
@@ -172,6 +169,7 @@ describe('GET /movies/:id', () => {
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
     expect(res.statusCode).toBe(200)
     expect(res.json().availabilityStatus).toBe('UNAVAILABLE')
+    expect(res.json().availabilityCount).toBe(0)
   })
 })
 
@@ -182,10 +180,10 @@ describe('GET /movies/:id', () => {
 describe('GET /series/:id', () => {
   it('returns SeriesDetailResponse with seasons array', async () => {
     mockDb.select
-      .mockReturnValueOnce(selectChain([SERIES_ROW]))   // series query
+      .mockReturnValueOnce(selectChain([SERIES_ROW]))        // series query
       .mockReturnValueOnce(selectChain([{ name: 'Drama' }])) // genres
-      .mockReturnValueOnce(selectChain([]))              // availability
-      .mockReturnValueOnce(selectChain([SEASON_ROW]))   // seasons
+      .mockReturnValueOnce(selectChain([]))                  // availability count (0)
+      .mockReturnValueOnce(selectChain([SEASON_ROW]))        // seasons
 
     const res = await app.inject({ method: 'GET', url: `/series/${SERIES_ROW.id}` })
     expect(res.statusCode).toBe(200)
@@ -196,6 +194,7 @@ describe('GET /series/:id', () => {
     expect(body.seasons[0].seasonNumber).toBe(1)
     expect(body.seasons[0].episodeCount).toBe(5)
     expect(body.seasonCount).toBe(1)
+    expect(body.availabilityCount).toBe(0)
     expect(body.availabilityStatus).toBe('UNAVAILABLE')
   })
 
@@ -218,9 +217,9 @@ describe('GET /series/:id/seasons/:seasonNumber/episodes', () => {
 
   it('returns episode list for a valid season', async () => {
     mockDb.select
-      .mockReturnValueOnce(selectChain([SEASON_DB_ROW]))  // find season
-      .mockReturnValueOnce(selectChain([EPISODE_ROW]))    // episodes
-      .mockReturnValueOnce(selectChain([{ episodeId: EPISODE_ROW.id }])) // availability
+      .mockReturnValueOnce(selectChain([SEASON_DB_ROW]))                              // find season
+      .mockReturnValueOnce(selectChain([EPISODE_ROW]))                               // episodes
+      .mockReturnValueOnce(selectChain([{ episodeId: EPISODE_ROW.id, cnt: 1 }]))     // availability count
 
     const res = await app.inject({
       method: 'GET',
@@ -233,6 +232,7 @@ describe('GET /series/:id/seasons/:seasonNumber/episodes', () => {
     expect(body[0].id).toBe(EPISODE_ROW.id)
     expect(body[0].episodeNumber).toBe(1)
     expect(body[0].title).toBe('Pilot')
+    expect(body[0].availabilityCount).toBe(1)
     expect(body[0].availabilityStatus).toBe('AVAILABLE')
   })
 

@@ -212,4 +212,49 @@ describe('catalog domain constraints', () => {
       }),
     ).rejects.toThrow()
   })
+
+  it('canonical movie exists and is retrievable with zero availability rows', async () => {
+    const rows = await db
+      .select()
+      .from(movieAvailabilities)
+      .where(eq(movieAvailabilities.movieId, movieId))
+
+    // The test movie created in beforeAll has no availability rows — it exists independently
+    expect(rows.length).toBe(0)
+
+    const [movie] = await db.select().from(movies).where(eq(movies.id, movieId))
+    expect(movie).toBeDefined()
+    expect(movie.id).toBe(movieId)
+  })
+
+  it('episode availability status defaults to AVAILABLE and accepts UNAVAILABLE', async () => {
+    const now = new Date()
+    const [inserted] = await db
+      .insert(episodeAvailabilities)
+      .values({
+        episodeId,
+        providerId: 'xtream:status-test',
+        providerItemId: 'ep-status-1',
+        firstSeenAt: now,
+        lastSeenAt: now,
+      })
+      .returning()
+    testRowIds.push({ table: 'episode_availabilities', id: inserted.id })
+
+    expect(inserted.status).toBe('AVAILABLE')
+    expect(inserted.unavailableAt).toBeNull()
+
+    await db
+      .update(episodeAvailabilities)
+      .set({ status: 'UNAVAILABLE', unavailableAt: now })
+      .where(eq(episodeAvailabilities.id, inserted.id))
+
+    const [updated] = await db
+      .select()
+      .from(episodeAvailabilities)
+      .where(eq(episodeAvailabilities.id, inserted.id))
+
+    expect(updated.status).toBe('UNAVAILABLE')
+    expect(updated.unavailableAt).not.toBeNull()
+  })
 })
