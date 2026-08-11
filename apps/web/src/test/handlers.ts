@@ -3,6 +3,7 @@ import { setupServer } from 'msw/node'
 import type {
   MovieResponse,
   SeriesResponse,
+  GenreResponse,
   SourceResponse,
   SyncRunResponse,
   PaginatedList,
@@ -44,6 +45,11 @@ export const MOCK_SOURCE: SourceResponse = {
   updatedAt: new Date('2024-01-01'),
 }
 
+export const MOCK_GENRES: GenreResponse[] = [
+  { id: 'genre-1', name: 'Action' },
+  { id: 'genre-2', name: 'Drama' },
+]
+
 export const MOCK_SYNC_RUN: SyncRunResponse = {
   id: 'run-1',
   sourceId: 'source-1',
@@ -76,6 +82,7 @@ export const handlers = [
   http.get('/api/search', () =>
     HttpResponse.json({ movies: [MOCK_MOVIE], series: [MOCK_SERIES] }),
   ),
+  http.get('/api/genres', () => HttpResponse.json(MOCK_GENRES)),
   http.get('/api/sources', () => HttpResponse.json([MOCK_SOURCE])),
   http.post('/api/sources', () => HttpResponse.json(MOCK_SOURCE, { status: 201 })),
   http.patch('/api/sources/:id', () => HttpResponse.json(MOCK_SOURCE)),

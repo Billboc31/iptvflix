@@ -5,6 +5,7 @@ import { searchContent } from '../lib/api.js'
 import PosterCard from '../components/content/PosterCard.js'
 import Spinner from '../components/ui/Spinner.js'
 import EmptyState from '../components/ui/EmptyState.js'
+import ErrorState from '../components/ui/ErrorState.js'
 import { useDebounce } from '../hooks/useDebounce.js'
 
 export default function SearchPage() {
@@ -18,22 +19,30 @@ export default function SearchPage() {
   const [movies, setMovies] = useState<MovieResponse[]>([])
   const [series, setSeries] = useState<SeriesResponse[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
 
   useEffect(() => {
     if (!debouncedQuery.trim()) {
       setMovies([])
       setSeries([])
+      setError(null)
       return
     }
     setLoading(true)
+    setError(null)
     searchContent(debouncedQuery)
       .then(({ movies: m, series: s }) => {
         setMovies(m)
         setSeries(s)
       })
-      .catch(() => {})
+      .catch((err: Error) => {
+        setError(err)
+        setMovies([])
+        setSeries([])
+      })
       .finally(() => setLoading(false))
-  }, [debouncedQuery])
+  }, [debouncedQuery, retryCount])
 
   // Sync query into URL
   useEffect(() => {
@@ -61,7 +70,17 @@ export default function SearchPage() {
 
       {loading && <Spinner />}
 
-      {!loading && query.trim() && total === 0 && (
+      {!loading && error && (
+        <ErrorState
+          message="Une erreur est survenue lors de la recherche."
+          onRetry={() => {
+            setError(null)
+            setRetryCount((c) => c + 1)
+          }}
+        />
+      )}
+
+      {!loading && !error && query.trim() && total === 0 && (
         <EmptyState
           icon="🔎"
           heading="Aucun résultat"
@@ -69,7 +88,7 @@ export default function SearchPage() {
         />
       )}
 
-      {!loading && movies.length > 0 && (
+      {!loading && !error && movies.length > 0 && (
         <section className="mb-8">
           <h2 className="text-lg font-semibold text-white mb-4">
             Films <span className="text-gray-500 text-sm">({movies.length})</span>
@@ -89,7 +108,7 @@ export default function SearchPage() {
         </section>
       )}
 
-      {!loading && series.length > 0 && (
+      {!loading && !error && series.length > 0 && (
         <section>
           <h2 className="text-lg font-semibold text-white mb-4">
             Séries <span className="text-gray-500 text-sm">({series.length})</span>
