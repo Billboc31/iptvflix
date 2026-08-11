@@ -1,0 +1,143 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T013/reviews/implementation-review.md
+- generated at: 2026-08-11T11:33:41Z
+
+---
+
+---
+
+# PR Review — T013: Add canonical catalog search and discovery filters
+
+## Résumé
+
+L'implémentation couvre correctement le périmètre du ticket : backend de requêtes sur le catalogue canonique, validation des inputs, nouveaux endpoints REST, UI de recherche/filtrage et couverture de tests. La qualité générale est bonne — architecture claire, pas de N+1, TypeScript strict, bons tests unitaires.
+
+Deux problèmes bloquants identifiés ; plusieurs observations mineures.
+
+---
+
+## Vérifications effectuées
+
+- Contrats API (`packages/api-contracts/src/catalog.ts`)
+- Service catalog (`apps/api/src/services/catalog-service.ts`) — logique de filtrage, tri, pagination, dérivation de disponibilité
+- Routes backend : `movies.ts`, `series.ts`, `search.ts`, `genres.ts` — validation des query params
+- Entry point `apps/api/src/index.ts` — enregistrement des routes, gestion d'erreurs globale
+- Tests backend : `movies.test.ts` (17), `series.test.ts` (14), `search.test.ts` (7), `genres.test.ts` (3)
+- Frontend : `FilterBar.tsx`, `MoviesPage.tsx`, `SeriesPage.tsx`, `SearchPage.tsx`, `useGenres.ts`
+- Critères d'acceptance du ticket
+
+---
+
+## Points validés
+
+- **Recherche titre** : ILIKE sur `title` et `originalTitle` → items partiellement enrichis restent cherchables. ✓
+- **Filtres** : genre (UUID validé), année (bornes 1888–2100), disponibilité (enum strict), sortBy (enum strict), pagination (1–100). ✓
+- **Indépendance Xtream** : aucun champ DTO Xtream dans les réponses (testé explicitement dans `search.test.ts`). ✓
+- **Tri recentAvailability** : `MAX(last_seen_at) DESC NULLS LAST` — items sans disponibilité tombent en bas, jamais exclus. ✓
+- **Items partiellement enrichis** : `quality: null`, `year: null`, `synopsis: null` tous acceptés dans les types contrat. ✓
+- **Injections SQL** : `q` via `ilike()` ORM (paramétré), `genreId` via `sql\`...\`` template Drizzle (paramétré), `sortBy` statique validé en amont — aucune injection possible. ✓
+- **États UI** : loading (skeleton), empty state, error state présents sur MoviesPage, SeriesPage, SearchPage. ✓
+- **Filtres URL SearchPage** : `useSearchParams` synchronise la query dans l'URL. ✓
+- **Qualité no-op** : accepté par le plan, documenté dans le contrat (`quality?: string` en input, `quality: null` toujours en output). ✓
+- **Tests** : 41 tests backend (happy paths, boundary values, invalid inputs, no-results). ✓
+
+---
+
+## Problèmes détectés
+
+### [BLOQUANT 1] — Path params `:id` non validés → 500 au lieu de 404
+
+**Fichiers** : `apps/api/src/routes/movies.ts:84`, `apps/api/src/routes/series.ts:84`
+
+`/movies/:id` et `/series/:id` passent l'`id` brut (non validé) directement à `getMovie()` / `getSeries()`. Si l'appelant envoie un id non-UUID (ex. `/movies/not-a-uuid`), PostgreSQL lève une exception de cast (`invalid input syntax for type uuid`) qui remonte comme exception non gérée. Fastify retourne un 500 avec le message d'erreur DB dans la réponse — fuite d'information interne.
+
+Le ticket exige : *"Ensure query inputs are validated server-side."*
+
+**Correction attendue** : valider le format UUID sur le path param avant d'appeler le service, et retourner 404 si invalide.
+
+```typescript
+// movies.ts
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-...-[0-9a-f]{12}$/i  // déjà défini dans ce fichier
+app.get<{ Params: { id: string } }>('/movies/:id', async (request, reply) => {
+  if (!UUID_RE.test(request.params.id)) {
+    return reply.status(404).send({ error: `Movie ${request.params.id} not found` })
+  }
+  const movie = await getMovie(request.params.id)
+  ...
+})
+```
+
+---
+
+### [BLOQUANT 2] — Bouton "Réessayer" de `SearchPage` non fonctionnel
+
+**Fichier** : `apps/web/src/pages/SearchPage.tsx:74-80`
+
+```tsx
+onRetry={() => {
+  setError(null)
+  setQuery((q) => q)   // ← ne change pas la valeur
+}}
+```
+
+`setQuery((q) => q)` retourne la même chaîne : React 18 bail out, aucune re-render sur `query`. Le `useEffect` sur `debouncedQuery` ne se re-déclenche pas. Résultat : l'erreur disparaît mais la recherche ne se relance pas — l'utilisateur voit l'état vide au lieu des résultats. Le critère *"API-error states are handled clearly in the UI"* n'est pas satisfait.
+
+**Correction attendue** : utiliser un compteur de forçage ou vider puis remettre la query.
+
+```tsx
+const [retryCount, setRetryCount] = useState(0)
+
+// Dans useEffect, ajouter retryCount comme dépendance
+useEffect(() => {
+  if (!debouncedQuery.trim()) { ... return }
+  setLoading(true)
+  setError(null)
+  searchContent(debouncedQuery)
+    ...
+}, [debouncedQuery, retryCount])  // ← ajouter retryCount
+
+onRetry={() => {
+  setError(null)
+  setRetryCount((c) => c + 1)   // ← force le re-run
+}}
+```
+
+---
+
+## Risques éventuels
+
+### [MINEUR] — Pas de gestionnaire d'erreurs global Fastify
+
+**Fichier** : `apps/api/src/index.ts`
+
+Aucun `app.setErrorHandler()`. Toute exception inattendue dans les routes (ex. perte de connexion DB pendant un `listMovies`) renvoie un 500 avec le message d'erreur brut Fastify. Pour les deux bugs bloquants ci-dessus, le problème est amplifié. Un handler global loggant l'erreur et retournant `{ error: 'Internal Server Error' }` générique améliorerait la sécurité et la cohérence.
+
+### [MINEUR] — Filtre qualité rendu mais toujours inactif
+
+**Fichier** : `apps/web/src/components/content/FilterBar.tsx:88-102`
+
+Le sélecteur qualité est affiché (quand `showQuality=true`) et envoie la valeur au backend, qui l'ignore silencieusement. Comportement documenté dans le plan comme temporaire, mais un utilisateur qui sélectionne "HD" sans observer de différence risque de penser que le filtre est cassé. Acceptable si la roadmap d'enrichissement est proche, à monitorer via feedback.
+
+### [MINEUR] — Option par défaut "Tri : titre" redondante avec l'option "Titre"
+
+**Fichier** : `apps/web/src/components/content/FilterBar.tsx:82-84`
+
+L'option vide `""` mappe sur `undefined` → tri par titre (défaut service). L'option explicite `"title"` envoie `sortBy=title`. Les deux produisent le même résultat. Pas de bug fonctionnel mais crée une confusion dans l'UI.
+
+---
+
+## Décision
+
+REQUEST_CHANGES — deux bugs bloquants à corriger :
+1. Validation UUID sur les path params `:id` des routes movies et series
+2. Logique de retry sur `SearchPage` (déclenchement effectif de la recherche)
+
+## Actions demandées
+
+1. `apps/api/src/routes/movies.ts` et `apps/api/src/routes/series.ts` : ajouter validation UUID sur `request.params.id`, retourner 404 si invalide.
+2. `apps/web/src/pages/SearchPage.tsx` : corriger le handler `onRetry` pour forcer le re-déclenchement de l'effet de recherche.
+3. (Optionnel, non bloquant) Ajouter un `app.setErrorHandler()` global dans `apps/api/src/index.ts` pour masquer les messages d'erreur DB en production.
+
+IMPLEMENTATION_FIX_REQUIRED
