@@ -3,8 +3,12 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T017-normalize-media-availability-variants-by-language",
   "issue_number": 34,
-  "updated_at": "2026-08-11T20:54:51Z",
+  "updated_at": "2026-08-11T20:55:04Z",
   "pre_conflict_state": "IMPLEMENTATION_APPROVED",
   "conflict_detected_at": "2026-08-11T20:51:45Z",
-  "conflicted_files": []
+  "conflicted_files": [],
+  "pr_number": 44,
+  "pr_synced": true,
+  "pr_merged": true,
+  "daemon_archived": true
 }
