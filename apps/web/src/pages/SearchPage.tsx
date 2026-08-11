@@ -20,6 +20,7 @@ export default function SearchPage() {
   const [series, setSeries] = useState<SeriesResponse[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
 
   useEffect(() => {
     if (!debouncedQuery.trim()) {
@@ -41,7 +42,7 @@ export default function SearchPage() {
         setSeries([])
       })
       .finally(() => setLoading(false))
-  }, [debouncedQuery])
+  }, [debouncedQuery, retryCount])
 
   // Sync query into URL
   useEffect(() => {
@@ -74,7 +75,7 @@ export default function SearchPage() {
           message="Une erreur est survenue lors de la recherche."
           onRetry={() => {
             setError(null)
-            setQuery((q) => q)
+            setRetryCount((c) => c + 1)
           }}
         />
       )}

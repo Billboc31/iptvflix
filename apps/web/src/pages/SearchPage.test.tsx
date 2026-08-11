@@ -82,4 +82,28 @@ describe('SearchPage', () => {
       { timeout: 2000 },
     )
   })
+
+  it('retry button re-triggers the search', async () => {
+    const { server } = await import('../test/handlers.js')
+    const { http, HttpResponse } = await import('msw')
+    let callCount = 0
+    server.use(
+      http.get('/api/search', () => {
+        callCount++
+        if (callCount === 1) {
+          return HttpResponse.json({ error: 'Server error' }, { status: 500 })
+        }
+        return HttpResponse.json({ movies: [], series: [] })
+      }),
+    )
+    renderPage()
+    await userEvent.type(screen.getByPlaceholderText('Rechercher films, séries…'), 'retry')
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument(), { timeout: 2000 })
+
+    await userEvent.click(screen.getByText('Réessayer'))
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument(), {
+      timeout: 2000,
+    })
+    expect(callCount).toBeGreaterThanOrEqual(2)
+  })
 })

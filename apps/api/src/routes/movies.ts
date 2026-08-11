@@ -82,6 +82,9 @@ export async function moviesRoutes(app: FastifyInstance): Promise<void> {
   })
 
   app.get<{ Params: { id: string } }>('/movies/:id', async (request, reply) => {
+    if (!UUID_RE.test(request.params.id)) {
+      return reply.status(404).send({ error: `Movie ${request.params.id} not found` })
+    }
     const movie = await getMovie(request.params.id)
     if (!movie) {
       return reply.status(404).send({ error: `Movie ${request.params.id} not found` })

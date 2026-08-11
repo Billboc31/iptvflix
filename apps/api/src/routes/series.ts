@@ -82,6 +82,9 @@ export async function seriesRoutes(app: FastifyInstance): Promise<void> {
   })
 
   app.get<{ Params: { id: string } }>('/series/:id', async (request, reply) => {
+    if (!UUID_RE.test(request.params.id)) {
+      return reply.status(404).send({ error: `Series ${request.params.id} not found` })
+    }
     const s = await getSeries(request.params.id)
     if (!s) {
       return reply.status(404).send({ error: `Series ${request.params.id} not found` })

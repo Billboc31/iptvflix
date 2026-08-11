@@ -160,9 +160,15 @@ describe('GET /movies/:id', () => {
     expect(res.json()).toEqual(MOCK_MOVIE)
   })
 
-  it('returns 404 when not found', async () => {
+  it('returns 404 when service returns null', async () => {
     mockGetMovie.mockResolvedValue(null)
-    const res = await app.inject({ method: 'GET', url: '/movies/unknown-id' })
+    const res = await app.inject({ method: 'GET', url: '/movies/a1b2c3d4-0000-0000-0000-000000000099' })
     expect(res.statusCode).toBe(404)
+  })
+
+  it('returns 404 for non-UUID id without calling service', async () => {
+    const res = await app.inject({ method: 'GET', url: '/movies/not-a-uuid' })
+    expect(res.statusCode).toBe(404)
+    expect(mockGetMovie).not.toHaveBeenCalled()
   })
 })
