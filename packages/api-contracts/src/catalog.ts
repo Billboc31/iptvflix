@@ -85,6 +85,33 @@ export type PaginatedList<T> = {
   pageSize: number
 }
 
+export type ExternalMovieCandidate = {
+  tmdbId: string
+  title: string
+  year: number | null
+  synopsis: string | null
+  posterUrl: string | null
+  releaseStatus: string | null
+  releaseDate: string | null
+}
+
+export type ExternalSeriesCandidate = {
+  tmdbId: string
+  title: string
+  year: number | null
+  synopsis: string | null
+  posterUrl: string | null
+  releaseStatus: string | null
+  firstAirDate: string | null
+}
+
+export type SearchResponse = {
+  movies: MovieResponse[]
+  series: SeriesResponse[]
+  externalMovies: ExternalMovieCandidate[]
+  externalSeries: ExternalSeriesCandidate[]
+}
+
 export type MovieFilters = {
   genreId?: string
   year?: number
