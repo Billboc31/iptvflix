@@ -1,0 +1,15 @@
+{
+  "id": 1396,
+  "name": "Breaking Bad",
+  "original_name": "Breaking Bad",
+  "first_air_date": "2008-01-20",
+  "overview": "A high school chemistry teacher diagnosed with inoperable lung cancer turns to manufacturing and selling methamphetamine.",
+  "poster_path": "/ggFHVNu6YYI5L9pCfOacjizRGt.jpg",
+  "backdrop_path": "/9faGSFi5jam6pDWGNd0p8JcJgXQ.jpg",
+  "genres": [
+    { "id": 18, "name": "Drama" },
+    { "id": 80, "name": "Crime" }
+  ],
+  "popularity": 93.2,
+  "vote_average": 9.5
+}

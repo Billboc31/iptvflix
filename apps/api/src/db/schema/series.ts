@@ -11,6 +11,8 @@ export const series = pgTable('series', {
   backdropPath: text('backdrop_path'),
   tmdbId: integer('tmdb_id').unique(),
   imdbId: text('imdb_id').unique(),
+  metadataProvider: text('metadata_provider'),
+  metadataEnrichedAt: timestamp('metadata_enriched_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
