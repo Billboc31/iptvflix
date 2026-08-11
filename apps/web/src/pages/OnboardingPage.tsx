@@ -4,8 +4,7 @@ import type { CreateSourceBody } from '@iptvflix/api-contracts'
 import SourceForm from '../components/sources/SourceForm.js'
 import Spinner from '../components/ui/Spinner.js'
 import Button from '../components/ui/Button.js'
-import { createSource } from '../lib/api.js'
-import { triggerSync } from '../lib/api.js'
+import { createSource, triggerSync, listSyncRuns } from '../lib/api.js'
 
 type Step = 1 | 2 | 3
 
@@ -29,8 +28,24 @@ export default function OnboardingPage() {
     setSyncError(null)
     try {
       const run = await triggerSync({ sourceId })
-      if (run.status === 'FAILED') {
-        setSyncError(run.error ?? 'Erreur inconnue')
+      const completed = await new Promise<(typeof run)>((resolve, reject) => {
+        const poll = async () => {
+          try {
+            const runs = await listSyncRuns()
+            const latest = runs.find((r) => r.id === run.id)
+            if (!latest || latest.status === 'PENDING' || latest.status === 'RUNNING') {
+              setTimeout(poll, 2000)
+            } else {
+              resolve(latest)
+            }
+          } catch (e) {
+            reject(e)
+          }
+        }
+        poll()
+      })
+      if (completed.status === 'FAILED') {
+        setSyncError(completed.error ?? 'Erreur inconnue')
       } else {
         setSyncDone(true)
         setTimeout(() => setStep(3), 1500)
