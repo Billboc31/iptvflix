@@ -74,6 +74,8 @@ function makeProvider(overrides: Partial<MetadataProvider> = {}): MetadataProvid
   return {
     getMovieMetadata: vi.fn().mockResolvedValue(movieMetadata),
     getSeriesMetadata: vi.fn().mockResolvedValue(seriesMetadata),
+    searchMovies: vi.fn().mockResolvedValue([]),
+    searchSeries: vi.fn().mockResolvedValue([]),
     ...overrides,
   }
 }

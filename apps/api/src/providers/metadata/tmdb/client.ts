@@ -1,5 +1,10 @@
-import type { MetadataProvider, ExternalMovieMetadata, ExternalSeriesMetadata } from '../types.js'
-import type { TmdbMovieDetail, TmdbSeriesDetail } from './types.js'
+import type {
+  MetadataProvider,
+  ExternalMovieMetadata,
+  ExternalSeriesMetadata,
+  MetadataCandidate,
+} from '../types.js'
+import type { TmdbMovieDetail, TmdbSeriesDetail, TmdbSearchResponse } from './types.js'
 import { TmdbRateLimitError, TmdbNetworkError } from './errors.js'
 
 const BASE_URL = 'https://api.themoviedb.org/3'
@@ -104,4 +109,43 @@ export class TmdbClient implements MetadataProvider {
       throw new TmdbNetworkError('Could not parse TMDB series response')
     }
   }
+
+  async searchMovies(query: string, year?: number | null): Promise<MetadataCandidate[]> {
+    const params = new URLSearchParams({ query })
+    if (year != null) params.set('year', String(year))
+    const response = await this.fetchWithRetry(`${BASE_URL}/search/movie?${params}`)
+    if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
+    try {
+      const raw = (await response.json()) as TmdbSearchResponse
+      return (raw.results ?? []).map((item) => ({
+        externalId: String(item.id),
+        title: item.title ?? item.name ?? '',
+        year: parseYear(item.release_date ?? item.first_air_date),
+        mediaType: 'MOVIE' as const,
+      }))
+    } catch (err) {
+      if (err instanceof TmdbNetworkError) throw err
+      throw new TmdbNetworkError('Could not parse TMDB movie search response')
+    }
+  }
+
+  async searchSeries(query: string, year?: number | null): Promise<MetadataCandidate[]> {
+    const params = new URLSearchParams({ query })
+    if (year != null) params.set('first_air_date_year', String(year))
+    const response = await this.fetchWithRetry(`${BASE_URL}/search/tv?${params}`)
+    if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
+    try {
+      const raw = (await response.json()) as TmdbSearchResponse
+      return (raw.results ?? []).map((item) => ({
+        externalId: String(item.id),
+        title: item.name ?? item.title ?? '',
+        year: parseYear(item.first_air_date ?? item.release_date),
+        mediaType: 'SERIES' as const,
+      }))
+    } catch (err) {
+      if (err instanceof TmdbNetworkError) throw err
+      throw new TmdbNetworkError('Could not parse TMDB series search response')
+    }
+  }
+
 }
