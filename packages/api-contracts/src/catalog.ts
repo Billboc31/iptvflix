@@ -2,6 +2,14 @@ export type AvailabilityStatus = 'AVAILABLE' | 'UNAVAILABLE'
 
 export type EnrichmentStatus = 'matched' | 'partial' | 'unmatched'
 
+export type AvailabilityVariantResponse = {
+  id: string
+  audioLanguage: string | null
+  subtitleLanguage: string | null
+  videoQuality: string | null
+  rawTitle: string | null
+}
+
 export type MovieResponse = {
   id: string
   title: string
@@ -21,6 +29,7 @@ export type MovieDetailResponse = MovieResponse & {
   imdbId: string | null
   tmdbId: number | null
   enrichmentStatus: EnrichmentStatus
+  variants: AvailabilityVariantResponse[]
 }
 
 export type SeriesResponse = {
@@ -49,6 +58,7 @@ export type SeriesDetailResponse = SeriesResponse & {
   tmdbId: number | null
   enrichmentStatus: EnrichmentStatus
   seasons: SeasonSummary[]
+  variants: AvailabilityVariantResponse[]
 }
 
 export type EpisodeResponse = {
@@ -60,6 +70,7 @@ export type EpisodeResponse = {
   airDate: string | null
   availabilityCount: number
   availabilityStatus: AvailabilityStatus
+  variants: AvailabilityVariantResponse[]
 }
 
 export type GenreResponse = {

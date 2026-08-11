@@ -9,6 +9,7 @@ import {
 } from '../db/schema/availabilities.js'
 import { syncRuns } from '../db/schema/sync-runs.js'
 import type { XtreamCatalogSnapshot } from '../providers/xtream/types.js'
+import { normalizeTitle } from '../matching/title-normalizer.js'
 
 export interface CatalogSyncResult {
   runId: string
@@ -191,6 +192,7 @@ export const CatalogSyncService = {
               ),
             )
 
+          const { variantAttributes } = normalizeTitle(stream.name)
           if (!existing) {
             const movieId = await resolveMovieId(tx, stream)
             await tx.insert(movieAvailabilities).values({
@@ -200,12 +202,24 @@ export const CatalogSyncService = {
               firstSeenAt: snapshot.fetchedAt,
               lastSeenAt: snapshot.fetchedAt,
               status: 'AVAILABLE',
+              rawTitle: stream.name,
+              audioLanguage: variantAttributes.audioLanguage,
+              subtitleLanguage: variantAttributes.subtitleLanguage,
+              videoQuality: variantAttributes.videoQuality,
             })
             counts.moviesCreated++
           } else {
             await tx
               .update(movieAvailabilities)
-              .set({ lastSeenAt: snapshot.fetchedAt, status: 'AVAILABLE', unavailableAt: null })
+              .set({
+                lastSeenAt: snapshot.fetchedAt,
+                status: 'AVAILABLE',
+                unavailableAt: null,
+                rawTitle: stream.name,
+                audioLanguage: variantAttributes.audioLanguage,
+                subtitleLanguage: variantAttributes.subtitleLanguage,
+                videoQuality: variantAttributes.videoQuality,
+              })
               .where(
                 and(
                   eq(movieAvailabilities.providerId, sourceId),
@@ -231,6 +245,7 @@ export const CatalogSyncService = {
               ),
             )
 
+          const { variantAttributes: seriesVariantAttrs } = normalizeTitle(s.name)
           if (!existing) {
             const [seriesRow] = await tx
               .insert(series)
@@ -248,12 +263,24 @@ export const CatalogSyncService = {
               firstSeenAt: snapshot.fetchedAt,
               lastSeenAt: snapshot.fetchedAt,
               status: 'AVAILABLE',
+              rawTitle: s.name,
+              audioLanguage: seriesVariantAttrs.audioLanguage,
+              subtitleLanguage: seriesVariantAttrs.subtitleLanguage,
+              videoQuality: seriesVariantAttrs.videoQuality,
             })
             counts.seriesCreated++
           } else {
             await tx
               .update(seriesAvailabilities)
-              .set({ lastSeenAt: snapshot.fetchedAt, status: 'AVAILABLE', unavailableAt: null })
+              .set({
+                lastSeenAt: snapshot.fetchedAt,
+                status: 'AVAILABLE',
+                unavailableAt: null,
+                rawTitle: s.name,
+                audioLanguage: seriesVariantAttrs.audioLanguage,
+                subtitleLanguage: seriesVariantAttrs.subtitleLanguage,
+                videoQuality: seriesVariantAttrs.videoQuality,
+              })
               .where(
                 and(
                   eq(seriesAvailabilities.providerId, sourceId),
