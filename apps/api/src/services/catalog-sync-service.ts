@@ -29,10 +29,19 @@ export class SyncAlreadyRunningError extends Error {
 
 const STALE_LOCK_MS = 10 * 60 * 1000
 
+/** Postgres `integer` / Drizzle `integer()` range (signed int4). */
+const PG_INT4_MAX = 2_147_483_647
+
+/**
+ * Parse a provider "tmdb" field into a storable id.
+ * Xtream often sends garbage (stream ids, etc.) larger than int4 — reject those
+ * so sync does not die with `integer out of range` on `movies.tmdb_id`.
+ */
 function parseTmdbId(tmdb: string | undefined): number | null {
   if (!tmdb) return null
   const n = parseInt(tmdb, 10)
-  return isNaN(n) || n === 0 ? null : n
+  if (Number.isNaN(n) || n <= 0 || n > PG_INT4_MAX) return null
+  return n
 }
 
 function parseYear(dateStr: string | undefined): number | null {

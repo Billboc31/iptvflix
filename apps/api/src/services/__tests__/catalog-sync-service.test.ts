@@ -310,6 +310,34 @@ describe('CatalogSyncService', () => {
       const movieRows = await db.select().from(movies).where(eq(movies.tmdbId, 99001))
       expect(movieRows).toHaveLength(1)
     })
+
+    it('ignores oversized tmdb ids that overflow postgres integer', async () => {
+      // Real failure: Xtream sent 2447627521 (> int4 max 2147483647)
+      const oversized = '2447627521'
+      const fetchedAt = new Date('2026-01-01T10:00:00Z')
+      const result = await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot(
+          [makeVodStream({ stream_id: 73, name: 'Overflow Movie', tmdb: oversized })],
+          [],
+          fetchedAt,
+        ),
+      )
+
+      expect(result.status).toBe('completed')
+      expect(result.error).toBeUndefined()
+      expect(result.counts.moviesCreated).toBe(1)
+
+      const avRows = await db
+        .select()
+        .from(movieAvailabilities)
+        .where(eq(movieAvailabilities.providerId, testSourceId))
+      expect(avRows).toHaveLength(1)
+
+      const [movie] = await db.select().from(movies).where(eq(movies.id, avRows[0].movieId))
+      expect(movie.title).toBe('Overflow Movie')
+      expect(movie.tmdbId).toBeNull()
+    })
   })
 
   describe('concurrency', () => {
