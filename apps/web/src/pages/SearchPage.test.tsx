@@ -48,4 +48,38 @@ describe('SearchPage', () => {
       { timeout: 1000 },
     )
   })
+
+  it('shows empty state when no results found', async () => {
+    const { server } = await import('../test/handlers.js')
+    const { http, HttpResponse } = await import('msw')
+    server.use(
+      http.get('/api/search', () => HttpResponse.json({ movies: [], series: [] })),
+    )
+    renderPage()
+    await userEvent.type(screen.getByPlaceholderText('Rechercher films, séries…'), 'xyz')
+    await waitFor(
+      () => {
+        expect(screen.getByText('Aucun résultat')).toBeInTheDocument()
+      },
+      { timeout: 2000 },
+    )
+  })
+
+  it('shows error state when API call fails', async () => {
+    const { server } = await import('../test/handlers.js')
+    const { http, HttpResponse } = await import('msw')
+    server.use(
+      http.get('/api/search', () =>
+        HttpResponse.json({ error: 'Server error' }, { status: 500 }),
+      ),
+    )
+    renderPage()
+    await userEvent.type(screen.getByPlaceholderText('Rechercher films, séries…'), 'fail')
+    await waitFor(
+      () => {
+        expect(screen.getByRole('alert')).toBeInTheDocument()
+      },
+      { timeout: 2000 },
+    )
+  })
 })

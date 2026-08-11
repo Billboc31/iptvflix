@@ -59,6 +59,31 @@ export default function FilterBar({
         ))}
       </select>
 
+      {/* Availability */}
+      <select
+        value={value.availability ?? ''}
+        onChange={(e) => handleChange('availability', e.target.value)}
+        className="bg-[#1a1a24] border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-[#e50914]/50"
+        aria-label="Filtrer par disponibilité"
+      >
+        <option value="">Toutes disponibilités</option>
+        <option value="AVAILABLE">Disponibles</option>
+        <option value="UNAVAILABLE">Non disponibles</option>
+      </select>
+
+      {/* Sort */}
+      <select
+        value={value.sortBy ?? ''}
+        onChange={(e) => handleChange('sortBy', e.target.value)}
+        className="bg-[#1a1a24] border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-[#e50914]/50"
+        aria-label="Trier par"
+      >
+        <option value="">Tri : titre</option>
+        <option value="title">Titre</option>
+        <option value="year">Année</option>
+        <option value="recentAvailability">Récemment disponible</option>
+      </select>
+
       {/* Quality (movies only) */}
       {showQuality && (
         <select

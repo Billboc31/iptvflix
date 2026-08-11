@@ -1,6 +1,7 @@
 import type {
   MovieResponse,
   SeriesResponse,
+  GenreResponse,
   PaginatedList,
   MovieFilters,
   SeriesFilters,
@@ -66,6 +67,10 @@ export function searchContent(
   q: string,
 ): Promise<{ movies: MovieResponse[]; series: SeriesResponse[] }> {
   return request(`/search${toQuery({ q })}`)
+}
+
+export function listGenres(): Promise<GenreResponse[]> {
+  return request('/genres')
 }
 
 export function listSources(): Promise<SourceResponse[]> {

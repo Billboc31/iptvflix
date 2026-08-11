@@ -15,7 +15,6 @@ function renderPage() {
 describe('MoviesPage', () => {
   it('shows skeleton placeholders while loading', () => {
     renderPage()
-    // Skeletons are aria-hidden, but the grid container is present
     expect(screen.getByText('Films')).toBeInTheDocument()
   })
 
@@ -47,5 +46,49 @@ describe('MoviesPage', () => {
     })
     expect(screen.getByLabelText('Filtrer par genre')).toBeInTheDocument()
     expect(screen.getByLabelText('Filtrer par année')).toBeInTheDocument()
+  })
+
+  it('populates genre dropdown from /genres endpoint', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('Action')).toBeInTheDocument()
+      expect(screen.getByText('Drama')).toBeInTheDocument()
+    })
+  })
+
+  it('has availability and sort filter dropdowns', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByLabelText('Filtrer par disponibilité')).toBeInTheDocument()
+      expect(screen.getByLabelText('Trier par')).toBeInTheDocument()
+    })
+  })
+
+  it('shows error state when API call fails', async () => {
+    const { server } = await import('../test/handlers.js')
+    const { http, HttpResponse } = await import('msw')
+    server.use(
+      http.get('/api/movies', () => HttpResponse.json({ error: 'Server error' }, { status: 500 })),
+    )
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+    })
+  })
+
+  it('shows pagination controls when multiple pages exist', async () => {
+    const { server } = await import('../test/handlers.js')
+    const { http, HttpResponse } = await import('msw')
+    const { MOCK_MOVIE } = await import('../test/handlers.js')
+    server.use(
+      http.get('/api/movies', () =>
+        HttpResponse.json({ items: [MOCK_MOVIE], total: 40, page: 1, pageSize: 20 }),
+      ),
+    )
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('Suivant')).toBeInTheDocument()
+      expect(screen.getByText('Précédent')).toBeInTheDocument()
+    })
   })
 })

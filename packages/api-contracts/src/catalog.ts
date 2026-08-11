@@ -41,6 +41,9 @@ export type MovieFilters = {
   genreId?: string
   year?: number
   quality?: string
+  q?: string
+  availability?: AvailabilityStatus
+  sortBy?: 'title' | 'year' | 'recentAvailability'
   page?: number
   pageSize?: number
 }
@@ -48,6 +51,9 @@ export type MovieFilters = {
 export type SeriesFilters = {
   genreId?: string
   year?: number
+  q?: string
+  availability?: AvailabilityStatus
+  sortBy?: 'title' | 'year' | 'recentAvailability'
   page?: number
   pageSize?: number
 }
