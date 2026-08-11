@@ -22,6 +22,13 @@
       "when": 1786402263449,
       "tag": "0002_real_leper_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786434664886,
+      "tag": "0003_gifted_johnny_blaze",
+      "breakpoints": true
     }
   ]
 }
