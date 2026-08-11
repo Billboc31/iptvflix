@@ -11,6 +11,7 @@ import { genresRoutes } from './routes/genres.js'
 import { syncRunsRoutes } from './routes/sync-runs.js'
 import { watchlistRoutes } from './routes/watchlist.js'
 import { viewingProgressRoutes } from './routes/viewing-progress.js'
+import { testHelpersRoutes } from './routes/test-helpers.js'
 import { PORT, CORS_ORIGIN, TMDB_API_KEY } from './config/env.js'
 import { db } from './db/client.js'
 import { TmdbClient } from './providers/metadata/tmdb/client.js'
@@ -39,6 +40,10 @@ const enrichmentService = TMDB_API_KEY
   ? new MetadataEnrichmentService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
   : null
 await app.register(enrichmentRoutes, { enrichmentService })
+
+if (process.env.NODE_ENV !== 'production') {
+  await app.register(testHelpersRoutes)
+}
 
 try {
   await app.listen({ port: PORT, host: '0.0.0.0' })

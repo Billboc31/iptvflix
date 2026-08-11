@@ -8,7 +8,8 @@
     "build": "pnpm --filter './packages/*' build && pnpm --filter './apps/*' build",
     "lint": "pnpm --filter './packages/*' --filter './apps/api' --filter './apps/web' lint",
     "typecheck": "pnpm --filter './packages/*' --filter './apps/api' --filter './apps/web' typecheck",
-    "test": "pnpm --filter './apps/api' test"
+    "test": "pnpm --filter './apps/api' test",
+    "test:e2e": "pnpm --filter @iptvflix/e2e test"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.0.0",
