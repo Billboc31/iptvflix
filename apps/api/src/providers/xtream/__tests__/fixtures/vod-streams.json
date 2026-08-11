@@ -1,0 +1,41 @@
+[
+  {
+    "num": 1,
+    "name": "The Matrix",
+    "stream_id": 1001,
+    "stream_icon": "http://img.example.com/matrix.jpg",
+    "rating": "8.7",
+    "added": "1600000000",
+    "category_id": "4",
+    "container_extension": "mkv",
+    "tmdb": "603",
+    "director": "Wachowski Sisters",
+    "plot": "A computer programmer discovers the world is a simulation."
+  },
+  {
+    "num": 2,
+    "name": "Inception",
+    "stream_id": 1002,
+    "stream_icon": "http://img.example.com/inception.jpg",
+    "rating": "8.8",
+    "added": "1600100000",
+    "category_id": "4",
+    "container_extension": "mp4",
+    "tmdb": "27205",
+    "director": "Christopher Nolan",
+    "plot": "A thief enters dreams to plant an idea."
+  },
+  {
+    "num": 3,
+    "name": "The Dark Knight",
+    "stream_id": 1003,
+    "stream_icon": "http://img.example.com/tdk.jpg",
+    "rating": "9.0",
+    "added": "1600200000",
+    "category_id": "1",
+    "container_extension": "mkv",
+    "tmdb": "155",
+    "director": "Christopher Nolan",
+    "plot": "Batman faces the Joker in Gotham City."
+  }
+]

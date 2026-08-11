@@ -1,0 +1,34 @@
+[2026-08-11T07:28:14Z] auto-run start: state=INIT
+[2026-08-11T07:28:14Z] auto-run: running step=planner
+[2026-08-11T07:28:14Z] prompt: resolved=prompts/generic/planner.md source=generic
+[2026-08-11T07:28:14Z] prompt: generic fallback — injecting runs/T006/ticket.md
+[2026-08-11T07:28:14Z] compose: global-context=docs/ai/global-context.md
+[2026-08-11T07:28:14Z] compose: role=ai/roles/planner.md
+[2026-08-11T07:28:14Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-11T07:28:14Z] compose: skill=ai/skills/architecture-discipline.md
+[2026-08-11T07:28:14Z] compose: skill=ai/skills/documentation.md
+[2026-08-11T07:28:14Z] compose: task (canonical prompt)
+[2026-08-11T07:28:14Z] snapshot: runtime-prompt=runs/T006/prompts/planner-attempt-1.md
+[2026-08-11T07:37:32Z] compose: preferring on-disk runs/T006/plan.md over chatty stdout (agent Write beat meta-report)
+[2026-08-11T07:37:32Z] auto-run: step=planner done rc=0
+[2026-08-11T09:04:19Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-11T09:04:19Z] auto-run: running step=tester
+[2026-08-11T09:04:19Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-11T09:04:19Z] prompt: generic fallback — injecting runs/T006/ticket.md
+[2026-08-11T09:04:19Z] compose: global-context=docs/ai/global-context.md
+[2026-08-11T09:04:19Z] compose: role=ai/roles/tester.md
+[2026-08-11T09:04:19Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-11T09:04:19Z] compose: skill=ai/skills/testing.md
+[2026-08-11T09:04:19Z] compose: skill=ai/skills/debugging.md
+[2026-08-11T09:04:19Z] compose: task (canonical prompt)
+[2026-08-11T09:04:19Z] snapshot: runtime-prompt=runs/T006/prompts/tester-attempt-1.md
+[2026-08-11T09:08:37Z] auto-run: step=tester done rc=0
+[2026-08-11T09:08:37Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-11T09:08:37Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-11T09:08:37Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T006/daemon.lock', 'runs/T006/runtime.log', 'runs/T006/workflow-status.md']
+[2026-08-11T09:08:37Z] commit-checkpoint: sha=28fd0ef files=3 title='test(T006/workflow): tester — update 3 file(s)'
+[2026-08-11T09:08:37Z] auto-run: auto-push triggered
+[2026-08-11T09:08:37Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T006/daemon.lock', 'runs/T006/runtime.log', 'runs/T006/workflow-status.md']
+[2026-08-11T09:08:37Z] push: pushing branch=ticket/T006-synchronize-iptv-catalog-and-track-availability-li
+[2026-08-11T09:08:39Z] push: done branch=ticket/T006-synchronize-iptv-catalog-and-track-availability-li
+[2026-08-11T09:08:39Z] auto-run: TEST_COMPLETE — running PR lifecycle
