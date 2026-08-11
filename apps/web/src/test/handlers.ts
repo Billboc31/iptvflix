@@ -7,6 +7,8 @@ import type {
   SourceResponse,
   SyncRunResponse,
   PaginatedList,
+  WatchlistEntry,
+  ContinueWatchingItem,
 } from '@iptvflix/api-contracts'
 
 export const MOCK_MOVIE: MovieResponse = {
@@ -50,6 +52,28 @@ export const MOCK_GENRES: GenreResponse[] = [
   { id: 'genre-2', name: 'Drama' },
 ]
 
+export const MOCK_WATCHLIST_ENTRY: WatchlistEntry = {
+  id: 'wl-1',
+  profileId: '00000000-0000-0000-0000-000000000001',
+  mediaType: 'MOVIE',
+  mediaId: 'movie-1',
+  title: 'The Test Movie',
+  posterUrl: null,
+  addedAt: '2024-01-01T10:00:00Z',
+}
+
+export const MOCK_CONTINUE_WATCHING: ContinueWatchingItem = {
+  id: 'cw-1',
+  profileId: '00000000-0000-0000-0000-000000000001',
+  mediaType: 'MOVIE',
+  mediaId: 'movie-1',
+  progressSeconds: 60,
+  durationSeconds: 120,
+  lastWatchedAt: '2024-01-01T10:00:00Z',
+  title: 'The Test Movie',
+  posterUrl: null,
+}
+
 export const MOCK_SYNC_RUN: SyncRunResponse = {
   id: 'run-1',
   sourceId: 'source-1',
@@ -92,6 +116,11 @@ export const handlers = [
   ),
   http.get('/api/sync-runs', () => HttpResponse.json([MOCK_SYNC_RUN])),
   http.post('/api/sync-runs', () => HttpResponse.json(MOCK_SYNC_RUN, { status: 201 })),
+  http.get('/api/watchlist', () => HttpResponse.json([MOCK_WATCHLIST_ENTRY])),
+  http.post('/api/watchlist', () => HttpResponse.json(MOCK_WATCHLIST_ENTRY, { status: 201 })),
+  http.delete('/api/watchlist/:mediaType/:mediaId', () => new HttpResponse(null, { status: 204 })),
+  http.put('/api/progress/:mediaType/:mediaId', () => HttpResponse.json(MOCK_CONTINUE_WATCHING)),
+  http.get('/api/continue-watching', () => HttpResponse.json([MOCK_CONTINUE_WATCHING])),
 ]
 
 export const server = setupServer(...handlers)

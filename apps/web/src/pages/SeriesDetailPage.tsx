@@ -6,6 +6,7 @@ import Badge from '../components/ui/Badge.js'
 import Button from '../components/ui/Button.js'
 import Spinner from '../components/ui/Spinner.js'
 import ErrorState from '../components/ui/ErrorState.js'
+import WatchlistButton from '../components/content/WatchlistButton.js'
 
 export default function SeriesDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -107,6 +108,7 @@ export default function SeriesDetailPage() {
               <Button variant="ghost" onClick={() => navigate(-1)}>
                 ← Retour
               </Button>
+              <WatchlistButton mediaType="SERIES" mediaId={series.id} />
             </div>
           </div>
         </div>

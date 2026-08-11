@@ -9,6 +9,8 @@ import { seriesRoutes } from './routes/series.js'
 import { searchRoutes } from './routes/search.js'
 import { genresRoutes } from './routes/genres.js'
 import { syncRunsRoutes } from './routes/sync-runs.js'
+import { watchlistRoutes } from './routes/watchlist.js'
+import { viewingProgressRoutes } from './routes/viewing-progress.js'
 import { PORT, CORS_ORIGIN, TMDB_API_KEY } from './config/env.js'
 import { db } from './db/client.js'
 import { TmdbClient } from './providers/metadata/tmdb/client.js'
@@ -30,6 +32,8 @@ await app.register(moviesRoutes)
 await app.register(seriesRoutes)
 await app.register(searchRoutes)
 await app.register(genresRoutes)
+await app.register(watchlistRoutes)
+await app.register(viewingProgressRoutes)
 
 const enrichmentService = TMDB_API_KEY
   ? new MetadataEnrichmentService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))

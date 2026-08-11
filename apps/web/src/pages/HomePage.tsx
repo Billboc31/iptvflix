@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import HeroSection from '../components/content/HeroSection.js'
 import HorizontalRow from '../components/content/HorizontalRow.js'
 import PosterCard from '../components/content/PosterCard.js'
+import ContinueWatchingRow from '../components/content/ContinueWatchingRow.js'
 import EmptyState from '../components/ui/EmptyState.js'
 import Spinner from '../components/ui/Spinner.js'
 import Button from '../components/ui/Button.js'
@@ -45,6 +46,9 @@ export default function HomePage() {
       )}
 
       {isLoading && <Spinner />}
+
+      {/* Continue Watching row */}
+      <ContinueWatchingRow />
 
       {/* Films row */}
       {!moviesLoading && movies && movies.items.length > 0 && (
