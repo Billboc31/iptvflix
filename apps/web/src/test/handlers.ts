@@ -1,6 +1,9 @@
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import type {
+  MovieDetailResponse,
+  SeriesDetailResponse,
+  EpisodeResponse,
   MovieResponse,
   SeriesResponse,
   GenreResponse,
@@ -11,7 +14,7 @@ import type {
   ContinueWatchingItem,
 } from '@iptvflix/api-contracts'
 
-export const MOCK_MOVIE: MovieResponse = {
+export const MOCK_MOVIE: MovieDetailResponse = {
   id: 'movie-1',
   title: 'The Test Movie',
   year: 2024,
@@ -22,9 +25,30 @@ export const MOCK_MOVIE: MovieResponse = {
   genres: ['Action'],
   quality: 'HD',
   availabilityStatus: 'AVAILABLE',
+  originalTitle: 'The Original Test Movie',
+  imdbId: null,
+  tmdbId: 99999,
+  enrichmentStatus: 'matched',
 }
 
-export const MOCK_SERIES: SeriesResponse = {
+export const MOCK_UNMATCHED_MOVIE: MovieDetailResponse = {
+  id: 'movie-2',
+  title: 'Unmatched Movie',
+  year: null,
+  synopsis: null,
+  posterUrl: null,
+  backdropUrl: null,
+  runtime: null,
+  genres: [],
+  quality: null,
+  availabilityStatus: 'UNAVAILABLE',
+  originalTitle: null,
+  imdbId: null,
+  tmdbId: null,
+  enrichmentStatus: 'unmatched',
+}
+
+export const MOCK_SERIES: SeriesDetailResponse = {
   id: 'series-1',
   title: 'The Test Series',
   year: 2023,
@@ -34,7 +58,45 @@ export const MOCK_SERIES: SeriesResponse = {
   genres: ['Drama'],
   seasonCount: 2,
   availabilityStatus: 'AVAILABLE',
+  originalTitle: null,
+  imdbId: null,
+  tmdbId: 12345,
+  enrichmentStatus: 'partial',
+  seasons: [
+    { seasonNumber: 1, title: 'Saison 1', episodeCount: 3, airYear: 2023 },
+    { seasonNumber: 2, title: null, episodeCount: 2, airYear: 2024 },
+  ],
 }
+
+export const MOCK_EPISODES: EpisodeResponse[] = [
+  {
+    id: 'ep-1',
+    episodeNumber: 1,
+    title: 'Pilot',
+    synopsis: 'The first episode.',
+    durationMinutes: 45,
+    airDate: '2023-01-01',
+    availabilityStatus: 'AVAILABLE',
+  },
+  {
+    id: 'ep-2',
+    episodeNumber: 2,
+    title: 'Second Episode',
+    synopsis: null,
+    durationMinutes: 42,
+    airDate: '2023-01-08',
+    availabilityStatus: 'AVAILABLE',
+  },
+  {
+    id: 'ep-3',
+    episodeNumber: 3,
+    title: null,
+    synopsis: null,
+    durationMinutes: null,
+    airDate: null,
+    availabilityStatus: 'UNAVAILABLE',
+  },
+]
 
 export const MOCK_SOURCE: SourceResponse = {
   id: 'source-1',
@@ -103,6 +165,9 @@ export const handlers = [
   http.get('/api/movies/:id', () => HttpResponse.json(MOCK_MOVIE)),
   http.get('/api/series', () => HttpResponse.json(seriesList)),
   http.get('/api/series/:id', () => HttpResponse.json(MOCK_SERIES)),
+  http.get('/api/series/:id/seasons/:seasonNumber/episodes', () =>
+    HttpResponse.json(MOCK_EPISODES),
+  ),
   http.get('/api/search', () =>
     HttpResponse.json({ movies: [MOCK_MOVIE], series: [MOCK_SERIES] }),
   ),

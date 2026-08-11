@@ -1,7 +1,10 @@
 import type {
   MovieResponse,
+  MovieDetailResponse,
   SeriesResponse,
   GenreResponse,
+  SeriesDetailResponse,
+  EpisodeResponse,
   PaginatedList,
   MovieFilters,
   SeriesFilters,
@@ -68,7 +71,7 @@ export function listMovies(filters: MovieFilters = {}): Promise<PaginatedList<Mo
   return request(`/movies${toQuery(filters)}`)
 }
 
-export function getMovie(id: string): Promise<MovieResponse> {
+export function getMovie(id: string): Promise<MovieDetailResponse> {
   return request(`/movies/${id}`)
 }
 
@@ -76,8 +79,15 @@ export function listSeries(filters: SeriesFilters = {}): Promise<PaginatedList<S
   return request(`/series${toQuery(filters)}`)
 }
 
-export function getSeries(id: string): Promise<SeriesResponse> {
+export function getSeries(id: string): Promise<SeriesDetailResponse> {
   return request(`/series/${id}`)
+}
+
+export function getSeriesSeasonEpisodes(
+  seriesId: string,
+  seasonNumber: number,
+): Promise<EpisodeResponse[]> {
+  return request(`/series/${seriesId}/seasons/${seasonNumber}/episodes`)
 }
 
 export function searchContent(
