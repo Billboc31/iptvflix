@@ -41,7 +41,7 @@ export default function SearchPage() {
     setLoading(true)
     setError(null)
     searchContent(debouncedQuery)
-      .then(({ movies: m, series: s, externalMovies: em, externalSeries: es }) => {
+      .then(({ movies: m, series: s, externalMovies: em = [], externalSeries: es = [] }) => {
         setMovies(m)
         setSeries(s)
         setExternalMovies(em)

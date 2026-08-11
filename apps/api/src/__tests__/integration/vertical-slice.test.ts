@@ -527,13 +527,10 @@ describe('Vertical slice — external discovery flow', () => {
     await discoveryApp.register(discoveryRoutes, { discoveryService })
     await discoveryApp.register(moviesRoutes)
     await discoveryApp.ready()
-
-    mswServer.listen({ onUnhandledRequest: 'bypass' })
   })
 
   afterAll(async () => {
     await discoveryApp.close()
-    mswServer.close()
   })
 
   afterEach(async () => {
@@ -657,9 +654,10 @@ describe('Vertical slice — external discovery flow', () => {
       http.get(`${FAKE_TMDB_BASE}/search/tv`, () => new HttpResponse(null, { status: 500 })),
     )
 
+    // Use a distinct query so the 60s in-memory cache from earlier tests doesn't interfere
     const res = await discoveryApp.inject({
       method: 'GET',
-      url: '/search?q=External+Only',
+      url: '/search?q=TmdbDown',
     })
     expect(res.statusCode).toBe(200)
     const body = res.json<any>()
