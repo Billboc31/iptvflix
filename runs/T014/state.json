@@ -1,0 +1,12 @@
+{
+  "ticket_id": "T014",
+  "state": "TEST_COMPLETE",
+  "branch": "ticket/T014-add-viewing-history-watchlist-and-continue-watchin",
+  "issue_number": 23,
+  "updated_at": "2026-08-11T12:24:35Z",
+  "pr_number": 28,
+  "pr_synced": true,
+  "pre_conflict_state": "TEST_COMPLETE",
+  "conflict_cleared_at": "2026-08-11T12:24:35Z",
+  "conflict_clear_reason": "PR #28 mergeable=True mergeable_state='clean' (manual rebuild: migration renumbered 0004\u21920005)"
+}
