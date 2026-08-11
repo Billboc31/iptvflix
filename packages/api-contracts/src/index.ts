@@ -4,3 +4,5 @@ export type HealthResponse = {
 }
 
 export * from './sources.js'
+export * from './catalog.js'
+export * from './sync.js'
