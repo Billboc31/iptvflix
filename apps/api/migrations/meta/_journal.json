@@ -50,6 +50,13 @@
       "when": 1786455692487,
       "tag": "0006_open_shatterstar",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786550000000,
+      "tag": "0007_episode_availability_status",
+      "breakpoints": true
     }
   ]
 }

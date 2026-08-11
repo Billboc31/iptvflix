@@ -29,6 +29,7 @@ const MOCK_MOVIE = {
   runtime: 148,
   genres: ['Action', 'Sci-Fi'],
   quality: null,
+  availabilityCount: 1,
   availabilityStatus: 'AVAILABLE' as const,
 }
 
@@ -149,6 +150,26 @@ describe('GET /movies', () => {
   it('returns 400 for pageSize > 100', async () => {
     const res = await app.inject({ method: 'GET', url: '/movies?pageSize=101' })
     expect(res.statusCode).toBe(400)
+  })
+
+  it('returns availabilityCount: 0 for a movie with no available source', async () => {
+    const zeroAvailMovie = { ...MOCK_MOVIE, availabilityCount: 0, availabilityStatus: 'UNAVAILABLE' as const }
+    mockListMovies.mockResolvedValue({ items: [zeroAvailMovie], total: 1, page: 1, pageSize: 20 })
+    const res = await app.inject({ method: 'GET', url: '/movies' })
+    expect(res.statusCode).toBe(200)
+    const data = res.json<{ items: any[] }>()
+    expect(data.items[0].availabilityCount).toBe(0)
+    expect(data.items[0].availabilityStatus).toBe('UNAVAILABLE')
+  })
+
+  it('returns availabilityCount: 2 for a movie available from two sources', async () => {
+    const multiAvailMovie = { ...MOCK_MOVIE, availabilityCount: 2, availabilityStatus: 'AVAILABLE' as const }
+    mockListMovies.mockResolvedValue({ items: [multiAvailMovie], total: 1, page: 1, pageSize: 20 })
+    const res = await app.inject({ method: 'GET', url: '/movies' })
+    expect(res.statusCode).toBe(200)
+    const data = res.json<{ items: any[] }>()
+    expect(data.items[0].availabilityCount).toBe(2)
+    expect(data.items[0].availabilityStatus).toBe('AVAILABLE')
   })
 })
 

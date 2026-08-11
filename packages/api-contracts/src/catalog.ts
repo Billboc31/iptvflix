@@ -12,6 +12,7 @@ export type MovieResponse = {
   runtime: number | null
   genres: string[]
   quality: string | null
+  availabilityCount: number
   availabilityStatus: AvailabilityStatus
 }
 
@@ -31,6 +32,7 @@ export type SeriesResponse = {
   backdropUrl: string | null
   genres: string[]
   seasonCount: number
+  availabilityCount: number
   availabilityStatus: AvailabilityStatus
 }
 
@@ -56,6 +58,7 @@ export type EpisodeResponse = {
   synopsis: string | null
   durationMinutes: number | null
   airDate: string | null
+  availabilityCount: number
   availabilityStatus: AvailabilityStatus
 }
 

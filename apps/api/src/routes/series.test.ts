@@ -28,6 +28,7 @@ const MOCK_SERIES = {
   backdropUrl: null,
   genres: ['Drama', 'Crime'],
   seasonCount: 5,
+  availabilityCount: 1,
   availabilityStatus: 'AVAILABLE' as const,
 }
 
@@ -131,6 +132,26 @@ describe('GET /series', () => {
   it('returns 400 for pageSize > 100', async () => {
     const res = await app.inject({ method: 'GET', url: '/series?pageSize=200' })
     expect(res.statusCode).toBe(400)
+  })
+
+  it('returns availabilityCount: 0 for a series with no available source', async () => {
+    const zeroAvailSeries = { ...MOCK_SERIES, availabilityCount: 0, availabilityStatus: 'UNAVAILABLE' as const }
+    mockListSeries.mockResolvedValue({ items: [zeroAvailSeries], total: 1, page: 1, pageSize: 20 })
+    const res = await app.inject({ method: 'GET', url: '/series' })
+    expect(res.statusCode).toBe(200)
+    const data = res.json<{ items: any[] }>()
+    expect(data.items[0].availabilityCount).toBe(0)
+    expect(data.items[0].availabilityStatus).toBe('UNAVAILABLE')
+  })
+
+  it('returns availabilityCount: 2 for a series available from two sources', async () => {
+    const multiAvailSeries = { ...MOCK_SERIES, availabilityCount: 2, availabilityStatus: 'AVAILABLE' as const }
+    mockListSeries.mockResolvedValue({ items: [multiAvailSeries], total: 1, page: 1, pageSize: 20 })
+    const res = await app.inject({ method: 'GET', url: '/series' })
+    expect(res.statusCode).toBe(200)
+    const data = res.json<{ items: any[] }>()
+    expect(data.items[0].availabilityCount).toBe(2)
+    expect(data.items[0].availabilityStatus).toBe('AVAILABLE')
   })
 })
 

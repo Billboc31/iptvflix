@@ -84,16 +84,22 @@ export async function listMovies(filters: MovieFilters): Promise<PaginatedList<M
 
   const ids = rows.map((r) => r.id)
 
-  const [genreRows, availRows] = await Promise.all([
+  const [genreRows, availCountRows] = await Promise.all([
     db
       .select({ movieId: movieGenres.movieId, name: genres.name })
       .from(movieGenres)
       .innerJoin(genres, eq(movieGenres.genreId, genres.id))
       .where(inArray(movieGenres.movieId, ids)),
     db
-      .select({ movieId: movieAvailabilities.movieId, status: movieAvailabilities.status })
+      .select({ movieId: movieAvailabilities.movieId, cnt: count() })
       .from(movieAvailabilities)
-      .where(inArray(movieAvailabilities.movieId, ids)),
+      .where(
+        and(
+          inArray(movieAvailabilities.movieId, ids),
+          eq(movieAvailabilities.status, 'AVAILABLE'),
+        ),
+      )
+      .groupBy(movieAvailabilities.movieId),
   ])
 
   const genreMap = new Map<string, string[]>()
@@ -103,24 +109,27 @@ export async function listMovies(filters: MovieFilters): Promise<PaginatedList<M
     genreMap.set(movieId, arr)
   }
 
-  const availMap = new Map<string, boolean>()
-  for (const { movieId, status } of availRows) {
-    if (status === 'AVAILABLE') availMap.set(movieId, true)
-    else if (!availMap.has(movieId)) availMap.set(movieId, false)
+  const availCountMap = new Map<string, number>()
+  for (const { movieId, cnt } of availCountRows) {
+    availCountMap.set(movieId, Number(cnt))
   }
 
-  const items: MovieResponse[] = rows.map((m) => ({
-    id: m.id,
-    title: m.title,
-    year: m.year,
-    synopsis: m.synopsis,
-    posterUrl: m.posterPath,
-    backdropUrl: m.backdropPath,
-    runtime: m.durationMinutes,
-    genres: genreMap.get(m.id) ?? [],
-    quality: null,
-    availabilityStatus: availMap.get(m.id) ? 'AVAILABLE' : 'UNAVAILABLE',
-  }))
+  const items: MovieResponse[] = rows.map((m) => {
+    const availabilityCount = availCountMap.get(m.id) ?? 0
+    return {
+      id: m.id,
+      title: m.title,
+      year: m.year,
+      synopsis: m.synopsis,
+      posterUrl: m.posterPath,
+      backdropUrl: m.backdropPath,
+      runtime: m.durationMinutes,
+      genres: genreMap.get(m.id) ?? [],
+      quality: null,
+      availabilityCount,
+      availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
+    }
+  })
 
   return { items, total, page, pageSize }
 }
@@ -129,19 +138,19 @@ export async function getMovie(id: string): Promise<MovieResponse | null> {
   const [row] = await db.select().from(movies).where(eq(movies.id, id))
   if (!row) return null
 
-  const [genreRows, availRows] = await Promise.all([
+  const [genreRows, availCountRows] = await Promise.all([
     db
       .select({ name: genres.name })
       .from(movieGenres)
       .innerJoin(genres, eq(movieGenres.genreId, genres.id))
       .where(eq(movieGenres.movieId, id)),
     db
-      .select({ status: movieAvailabilities.status })
+      .select({ cnt: count() })
       .from(movieAvailabilities)
-      .where(eq(movieAvailabilities.movieId, id)),
+      .where(and(eq(movieAvailabilities.movieId, id), eq(movieAvailabilities.status, 'AVAILABLE'))),
   ])
 
-  const isAvailable = availRows.some((a) => a.status === 'AVAILABLE')
+  const availabilityCount = Number(availCountRows[0]?.cnt ?? 0)
 
   return {
     id: row.id,
@@ -153,7 +162,8 @@ export async function getMovie(id: string): Promise<MovieResponse | null> {
     runtime: row.durationMinutes,
     genres: genreRows.map((g) => g.name),
     quality: null,
-    availabilityStatus: isAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
+    availabilityCount,
+    availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
   }
 }
 
@@ -215,16 +225,22 @@ export async function listSeries(filters: SeriesFilters): Promise<PaginatedList<
 
   const ids = rows.map((r) => r.id)
 
-  const [genreRows, availRows, seasonCounts] = await Promise.all([
+  const [genreRows, availCountRows, seasonCountRows] = await Promise.all([
     db
       .select({ seriesId: seriesGenres.seriesId, name: genres.name })
       .from(seriesGenres)
       .innerJoin(genres, eq(seriesGenres.genreId, genres.id))
       .where(inArray(seriesGenres.seriesId, ids)),
     db
-      .select({ seriesId: seriesAvailabilities.seriesId, status: seriesAvailabilities.status })
+      .select({ seriesId: seriesAvailabilities.seriesId, cnt: count() })
       .from(seriesAvailabilities)
-      .where(inArray(seriesAvailabilities.seriesId, ids)),
+      .where(
+        and(
+          inArray(seriesAvailabilities.seriesId, ids),
+          eq(seriesAvailabilities.status, 'AVAILABLE'),
+        ),
+      )
+      .groupBy(seriesAvailabilities.seriesId),
     db
       .select({ seriesId: seasons.seriesId, cnt: count() })
       .from(seasons)
@@ -239,28 +255,31 @@ export async function listSeries(filters: SeriesFilters): Promise<PaginatedList<
     genreMap.set(seriesId, arr)
   }
 
-  const availMap = new Map<string, boolean>()
-  for (const { seriesId, status } of availRows) {
-    if (status === 'AVAILABLE') availMap.set(seriesId, true)
-    else if (!availMap.has(seriesId)) availMap.set(seriesId, false)
+  const availCountMap = new Map<string, number>()
+  for (const { seriesId, cnt } of availCountRows) {
+    availCountMap.set(seriesId, Number(cnt))
   }
 
   const seasonMap = new Map<string, number>()
-  for (const { seriesId, cnt } of seasonCounts) {
+  for (const { seriesId, cnt } of seasonCountRows) {
     seasonMap.set(seriesId, Number(cnt))
   }
 
-  const items: SeriesResponse[] = rows.map((s) => ({
-    id: s.id,
-    title: s.title,
-    year: s.firstAirYear,
-    synopsis: s.synopsis,
-    posterUrl: s.posterPath,
-    backdropUrl: s.backdropPath,
-    genres: genreMap.get(s.id) ?? [],
-    seasonCount: seasonMap.get(s.id) ?? 0,
-    availabilityStatus: availMap.get(s.id) ? 'AVAILABLE' : 'UNAVAILABLE',
-  }))
+  const items: SeriesResponse[] = rows.map((s) => {
+    const availabilityCount = availCountMap.get(s.id) ?? 0
+    return {
+      id: s.id,
+      title: s.title,
+      year: s.firstAirYear,
+      synopsis: s.synopsis,
+      posterUrl: s.posterPath,
+      backdropUrl: s.backdropPath,
+      genres: genreMap.get(s.id) ?? [],
+      seasonCount: seasonMap.get(s.id) ?? 0,
+      availabilityCount,
+      availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
+    }
+  })
 
   return { items, total, page, pageSize }
 }
@@ -269,20 +288,22 @@ export async function getSeries(id: string): Promise<SeriesResponse | null> {
   const [row] = await db.select().from(series).where(eq(series.id, id))
   if (!row) return null
 
-  const [genreRows, availRows, [seasonCountRow]] = await Promise.all([
+  const [genreRows, availCountRows, seasonCountRows] = await Promise.all([
     db
       .select({ name: genres.name })
       .from(seriesGenres)
       .innerJoin(genres, eq(seriesGenres.genreId, genres.id))
       .where(eq(seriesGenres.seriesId, id)),
     db
-      .select({ status: seriesAvailabilities.status })
+      .select({ cnt: count() })
       .from(seriesAvailabilities)
-      .where(eq(seriesAvailabilities.seriesId, id)),
+      .where(
+        and(eq(seriesAvailabilities.seriesId, id), eq(seriesAvailabilities.status, 'AVAILABLE')),
+      ),
     db.select({ cnt: count() }).from(seasons).where(eq(seasons.seriesId, id)),
   ])
 
-  const isAvailable = availRows.some((a) => a.status === 'AVAILABLE')
+  const availabilityCount = Number(availCountRows[0]?.cnt ?? 0)
 
   return {
     id: row.id,
@@ -292,8 +313,9 @@ export async function getSeries(id: string): Promise<SeriesResponse | null> {
     posterUrl: row.posterPath,
     backdropUrl: row.backdropPath,
     genres: genreRows.map((g) => g.name),
-    seasonCount: Number(seasonCountRow?.cnt ?? 0),
-    availabilityStatus: isAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
+    seasonCount: Number(seasonCountRows[0]?.cnt ?? 0),
+    availabilityCount,
+    availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
   }
 }
 
@@ -320,41 +342,54 @@ export async function searchContent(
   const movieIds = movieRows.map((m) => m.id)
   const seriesIds = seriesRows.map((s) => s.id)
 
-  const [mGenreRows, mAvailRows, sGenreRows, sAvailRows, sSeasonCounts] = await Promise.all([
-    movieIds.length > 0
-      ? db
-          .select({ movieId: movieGenres.movieId, name: genres.name })
-          .from(movieGenres)
-          .innerJoin(genres, eq(movieGenres.genreId, genres.id))
-          .where(inArray(movieGenres.movieId, movieIds))
-      : Promise.resolve([]),
-    movieIds.length > 0
-      ? db
-          .select({ movieId: movieAvailabilities.movieId, status: movieAvailabilities.status })
-          .from(movieAvailabilities)
-          .where(inArray(movieAvailabilities.movieId, movieIds))
-      : Promise.resolve([]),
-    seriesIds.length > 0
-      ? db
-          .select({ seriesId: seriesGenres.seriesId, name: genres.name })
-          .from(seriesGenres)
-          .innerJoin(genres, eq(seriesGenres.genreId, genres.id))
-          .where(inArray(seriesGenres.seriesId, seriesIds))
-      : Promise.resolve([]),
-    seriesIds.length > 0
-      ? db
-          .select({ seriesId: seriesAvailabilities.seriesId, status: seriesAvailabilities.status })
-          .from(seriesAvailabilities)
-          .where(inArray(seriesAvailabilities.seriesId, seriesIds))
-      : Promise.resolve([]),
-    seriesIds.length > 0
-      ? db
-          .select({ seriesId: seasons.seriesId, cnt: count() })
-          .from(seasons)
-          .where(inArray(seasons.seriesId, seriesIds))
-          .groupBy(seasons.seriesId)
-      : Promise.resolve([]),
-  ])
+  const [mGenreRows, mAvailCountRows, sGenreRows, sAvailCountRows, sSeasonCounts] =
+    await Promise.all([
+      movieIds.length > 0
+        ? db
+            .select({ movieId: movieGenres.movieId, name: genres.name })
+            .from(movieGenres)
+            .innerJoin(genres, eq(movieGenres.genreId, genres.id))
+            .where(inArray(movieGenres.movieId, movieIds))
+        : Promise.resolve([]),
+      movieIds.length > 0
+        ? db
+            .select({ movieId: movieAvailabilities.movieId, cnt: count() })
+            .from(movieAvailabilities)
+            .where(
+              and(
+                inArray(movieAvailabilities.movieId, movieIds),
+                eq(movieAvailabilities.status, 'AVAILABLE'),
+              ),
+            )
+            .groupBy(movieAvailabilities.movieId)
+        : Promise.resolve([]),
+      seriesIds.length > 0
+        ? db
+            .select({ seriesId: seriesGenres.seriesId, name: genres.name })
+            .from(seriesGenres)
+            .innerJoin(genres, eq(seriesGenres.genreId, genres.id))
+            .where(inArray(seriesGenres.seriesId, seriesIds))
+        : Promise.resolve([]),
+      seriesIds.length > 0
+        ? db
+            .select({ seriesId: seriesAvailabilities.seriesId, cnt: count() })
+            .from(seriesAvailabilities)
+            .where(
+              and(
+                inArray(seriesAvailabilities.seriesId, seriesIds),
+                eq(seriesAvailabilities.status, 'AVAILABLE'),
+              ),
+            )
+            .groupBy(seriesAvailabilities.seriesId)
+        : Promise.resolve([]),
+      seriesIds.length > 0
+        ? db
+            .select({ seriesId: seasons.seriesId, cnt: count() })
+            .from(seasons)
+            .where(inArray(seasons.seriesId, seriesIds))
+            .groupBy(seasons.seriesId)
+        : Promise.resolve([]),
+    ])
 
   const mGenreMap = new Map<string, string[]>()
   for (const { movieId, name } of mGenreRows) {
@@ -363,10 +398,9 @@ export async function searchContent(
     mGenreMap.set(movieId, arr)
   }
 
-  const mAvailMap = new Map<string, boolean>()
-  for (const { movieId, status } of mAvailRows) {
-    if (status === 'AVAILABLE') mAvailMap.set(movieId, true)
-    else if (!mAvailMap.has(movieId)) mAvailMap.set(movieId, false)
+  const mAvailCountMap = new Map<string, number>()
+  for (const { movieId, cnt } of mAvailCountRows) {
+    mAvailCountMap.set(movieId, Number(cnt))
   }
 
   const sGenreMap = new Map<string, string[]>()
@@ -376,10 +410,9 @@ export async function searchContent(
     sGenreMap.set(seriesId, arr)
   }
 
-  const sAvailMap = new Map<string, boolean>()
-  for (const { seriesId, status } of sAvailRows) {
-    if (status === 'AVAILABLE') sAvailMap.set(seriesId, true)
-    else if (!sAvailMap.has(seriesId)) sAvailMap.set(seriesId, false)
+  const sAvailCountMap = new Map<string, number>()
+  for (const { seriesId, cnt } of sAvailCountRows) {
+    sAvailCountMap.set(seriesId, Number(cnt))
   }
 
   const sSeasonMap = new Map<string, number>()
@@ -388,29 +421,37 @@ export async function searchContent(
   }
 
   return {
-    movies: movieRows.map((m) => ({
-      id: m.id,
-      title: m.title,
-      year: m.year,
-      synopsis: m.synopsis,
-      posterUrl: m.posterPath,
-      backdropUrl: m.backdropPath,
-      runtime: m.durationMinutes,
-      genres: mGenreMap.get(m.id) ?? [],
-      quality: null,
-      availabilityStatus: mAvailMap.get(m.id) ? 'AVAILABLE' : 'UNAVAILABLE',
-    })),
-    series: seriesRows.map((s) => ({
-      id: s.id,
-      title: s.title,
-      year: s.firstAirYear,
-      synopsis: s.synopsis,
-      posterUrl: s.posterPath,
-      backdropUrl: s.backdropPath,
-      genres: sGenreMap.get(s.id) ?? [],
-      seasonCount: sSeasonMap.get(s.id) ?? 0,
-      availabilityStatus: sAvailMap.get(s.id) ? 'AVAILABLE' : 'UNAVAILABLE',
-    })),
+    movies: movieRows.map((m) => {
+      const availabilityCount = mAvailCountMap.get(m.id) ?? 0
+      return {
+        id: m.id,
+        title: m.title,
+        year: m.year,
+        synopsis: m.synopsis,
+        posterUrl: m.posterPath,
+        backdropUrl: m.backdropPath,
+        runtime: m.durationMinutes,
+        genres: mGenreMap.get(m.id) ?? [],
+        quality: null,
+        availabilityCount,
+        availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
+      }
+    }),
+    series: seriesRows.map((s) => {
+      const availabilityCount = sAvailCountMap.get(s.id) ?? 0
+      return {
+        id: s.id,
+        title: s.title,
+        year: s.firstAirYear,
+        synopsis: s.synopsis,
+        posterUrl: s.posterPath,
+        backdropUrl: s.backdropPath,
+        genres: sGenreMap.get(s.id) ?? [],
+        seasonCount: sSeasonMap.get(s.id) ?? 0,
+        availabilityCount,
+        availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
+      }
+    }),
   }
 }
 
