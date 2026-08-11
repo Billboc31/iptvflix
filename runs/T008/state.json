@@ -1,0 +1,10 @@
+{
+  "ticket_id": "T008",
+  "state": "IMPLEMENTATION_APPROVED",
+  "branch": "ticket/T008-add-deterministic-end-to-end-smoke-coverage-for-th",
+  "issue_number": 17,
+  "updated_at": "2026-08-11T14:59:59Z",
+  "conflict_cleared_at": "2026-08-11T14:59:59Z",
+  "conflict_clear_reason": "manual rebuild onto main without LLM (credits exhausted)",
+  "pr_number": null
+}
