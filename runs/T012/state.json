@@ -1,7 +1,12 @@
 {
   "ticket_id": "T012",
-  "state": "PLAN_APPROVED",
+  "state": "TEST_COMPLETE",
   "branch": "ticket/T012-build-rich-movie-and-series-detail-experiences-fro",
   "issue_number": 21,
-  "updated_at": "2026-08-11T13:49:14Z"
+  "updated_at": "2026-08-11T14:14:44Z",
+  "pr_number": 30,
+  "pr_synced": true,
+  "pre_conflict_state": "CONFLICT_RESOLUTION_NEEDED",
+  "conflict_cleared_at": "2026-08-11T14:14:44Z",
+  "conflict_clear_reason": "PR #30 mergeable=True mergeable_state='clean'"
 }
