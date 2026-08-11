@@ -1,21 +1,37 @@
 import { useNavigate } from 'react-router-dom'
 import HeroSection from '../components/content/HeroSection.js'
-import HorizontalRow from '../components/content/HorizontalRow.js'
-import PosterCard from '../components/content/PosterCard.js'
-import ContinueWatchingRow from '../components/content/ContinueWatchingRow.js'
+import ShelfRow from '../components/content/ShelfRow.js'
 import EmptyState from '../components/ui/EmptyState.js'
 import Spinner from '../components/ui/Spinner.js'
 import Button from '../components/ui/Button.js'
 import { useMovies } from '../hooks/useMovies.js'
-import { useSeries } from '../hooks/useSeries.js'
+import { useShelves } from '../hooks/useShelves.js'
+import { useShelf } from '../hooks/useShelf.js'
+import type { ShelfSummaryResponse } from '@iptvflix/api-contracts'
+
+function ShelfRowLoader({ summary }: { summary: ShelfSummaryResponse }) {
+  const { shelf } = useShelf(summary.id)
+  if (!shelf) return null
+  return <ShelfRow shelf={shelf} />
+}
+
+function ShelfRows({ shelves }: { shelves: ShelfSummaryResponse[] }) {
+  return (
+    <>
+      {shelves.map((summary) => (
+        <ShelfRowLoader key={summary.id} summary={summary} />
+      ))}
+    </>
+  )
+}
 
 export default function HomePage() {
   const navigate = useNavigate()
-  const { data: movies, loading: moviesLoading } = useMovies({ pageSize: 20 })
-  const { data: series, loading: seriesLoading } = useSeries({ pageSize: 20 })
+  const { data: movies, loading: moviesLoading } = useMovies({ pageSize: 1 })
+  const { shelves, loading: shelvesLoading } = useShelves()
 
-  const isLoading = moviesLoading || seriesLoading
-  const hasContent = (movies?.items.length ?? 0) > 0 || (series?.items.length ?? 0) > 0
+  const isLoading = moviesLoading || shelvesLoading
+  const hasContent = (movies?.items.length ?? 0) > 0 || shelves.length > 0
 
   if (!isLoading && !hasContent) {
     return (
@@ -47,43 +63,8 @@ export default function HomePage() {
 
       {isLoading && <Spinner />}
 
-      {/* Continue Watching row */}
-      <ContinueWatchingRow />
-
-      {/* Films row */}
-      {!moviesLoading && movies && movies.items.length > 0 && (
-        <div className="px-8 mt-8">
-          <HorizontalRow title="Récemment ajoutés — Films">
-            {movies.items.slice(0, 12).map((m) => (
-              <PosterCard
-                key={m.id}
-                title={m.title}
-                year={m.year}
-                posterUrl={m.posterUrl}
-                quality={m.quality}
-                onClick={() => navigate(`/movies/${m.id}`)}
-              />
-            ))}
-          </HorizontalRow>
-        </div>
-      )}
-
-      {/* Series row */}
-      {!seriesLoading && series && series.items.length > 0 && (
-        <div className="px-8 mt-2 pb-10">
-          <HorizontalRow title="Récemment ajoutées — Séries">
-            {series.items.slice(0, 12).map((s) => (
-              <PosterCard
-                key={s.id}
-                title={s.title}
-                year={s.year}
-                posterUrl={s.posterUrl}
-                onClick={() => navigate(`/series/${s.id}`)}
-              />
-            ))}
-          </HorizontalRow>
-        </div>
-      )}
+      {/* Shelf rows */}
+      {!shelvesLoading && <ShelfRows shelves={shelves} />}
     </div>
   )
 }

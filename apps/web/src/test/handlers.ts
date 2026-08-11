@@ -12,6 +12,8 @@ import type {
   PaginatedList,
   WatchlistEntry,
   ContinueWatchingItem,
+  ShelfSummaryResponse,
+  ShelfResponse,
 } from '@iptvflix/api-contracts'
 
 export const MOCK_MOVIE: MovieDetailResponse = {
@@ -136,6 +138,29 @@ export const MOCK_CONTINUE_WATCHING: ContinueWatchingItem = {
   posterUrl: null,
 }
 
+export const MOCK_SHELF_SUMMARY: ShelfSummaryResponse = {
+  id: 'sys_recently_added_movies',
+  title: 'Récemment ajoutés — Films',
+  type: 'SYSTEM',
+  layoutHint: 'ROW',
+  position: 1,
+}
+
+export const MOCK_SHELF: ShelfResponse = {
+  id: 'sys_recently_added_movies',
+  title: 'Récemment ajoutés — Films',
+  type: 'SYSTEM',
+  layoutHint: 'ROW',
+  items: [
+    {
+      mediaType: 'MOVIE',
+      mediaId: 'movie-1',
+      title: 'The Test Movie',
+      posterUrl: null,
+    },
+  ],
+}
+
 export const MOCK_SYNC_RUN: SyncRunResponse = {
   id: 'run-1',
   sourceId: 'source-1',
@@ -186,6 +211,14 @@ export const handlers = [
   http.delete('/api/watchlist/:mediaType/:mediaId', () => new HttpResponse(null, { status: 204 })),
   http.put('/api/progress/:mediaType/:mediaId', () => HttpResponse.json(MOCK_CONTINUE_WATCHING)),
   http.get('/api/continue-watching', () => HttpResponse.json([MOCK_CONTINUE_WATCHING])),
+  http.get('/api/shelves', () => HttpResponse.json([MOCK_SHELF_SUMMARY])),
+  http.get('/api/shelves/:id', () => HttpResponse.json(MOCK_SHELF)),
+  http.post('/api/shelves', () => HttpResponse.json(MOCK_SHELF_SUMMARY, { status: 201 })),
+  http.patch('/api/shelves/:id', () => HttpResponse.json(MOCK_SHELF_SUMMARY)),
+  http.delete('/api/shelves/:id', () => new HttpResponse(null, { status: 204 })),
+  http.post('/api/shelves/:id/members', () => new HttpResponse(null, { status: 204 })),
+  http.delete('/api/shelves/:id/members/:mediaType/:mediaId', () => new HttpResponse(null, { status: 204 })),
+  http.put('/api/shelves/:id/members/order', () => new HttpResponse(null, { status: 204 })),
 ]
 
 export const server = setupServer(...handlers)
