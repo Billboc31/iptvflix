@@ -2,11 +2,11 @@
 
 ## Value Proposition
 
-IPTVFlix is a **personalised discovery layer** over the user's own IPTV subscriptions. Where ordinary IPTV clients expose a raw provider catalog, IPTVFlix enriches, deduplicates, and ranks that content around the user's tastes — surfacing what they actually want to watch, not just what their provider happens to list.
+IPTVFlix is a **universal personal media library** — a canonical catalog of films and series that exists independently of where or how the user can currently watch them. Where ordinary media clients are tied to a single provider, IPTVFlix unifies content from IPTV subscriptions, local libraries (Plex, future adapters), and metadata sources into one identity per work, then builds personalised discovery, tracking, and recommendations on top of that foundation.
 
 ## Primary Users
 
-Self-hosted personal use: a single person or small household who controls their IPTV provider credentials and wants a smarter, cleaner interface over the content they already pay for. The user manages their own deployment.
+Self-hosted personal use: a single person or small household who controls their own media sources and wants a smarter, cleaner interface over the content they already have access to. The user manages their own deployment.
 
 ## Core Product Principles
 
@@ -18,7 +18,7 @@ Self-hosted personal use: a single person or small household who controls their 
 
 **Transparent recommendations.** When IPTVFlix suggests content, the user can understand why — by genre affinity, watched history, or explicit taste signals. No black-box ranking.
 
-**Provider independence.** The product experience is independent of which IPTV provider the user subscribes to. Swapping or adding providers should not change how the UI or domain model works.
+**Provider independence.** The product experience is independent of which source the user subscribes to. Adding, swapping, or removing a source (IPTV, Plex, or future adapters) must not change how the UI or canonical domain model works.
 
 ## MVP Scope
 
@@ -26,10 +26,10 @@ Self-hosted personal use: a single person or small household who controls their 
 
 **Planned next:** taste profiling, a recommendation engine driven by viewing history, and Android TV playback.
 
-**Later:** multi-user households, additional provider adapters, social features.
+**Later:** multi-user households, additional source adapters (including Plex), social features.
 
 ## What IPTVFlix Is Not
 
-- Not a streaming provider — it only consumes IPTV sources the user already has.
-- Not a universal IPTV client — its purpose is personalised discovery, not raw catalog access.
-- Not a Plex or Jellyfin replacement — it does not manage local media libraries.
+- Not a streaming provider — it only consumes sources the user already has access to.
+- Not a universal IPTV client — its purpose is personalised discovery across all configured sources, not raw catalog access.
+- Not a Plex or Jellyfin replacement — it does not manage local media files. Plex (and similar) is a future Source adapter that feeds canonical Media, not a competing model.

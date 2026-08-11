@@ -25,7 +25,7 @@ Workspace manager: **pnpm** (`pnpm-workspace.yaml`).
 
 **Modular monolith.** All backend modules live in `apps/api`. No separate micro-services are introduced without an explicit architecture decision.
 
-**Provider adapter isolation.** Xtream Codes DTOs (`apps/api/src/providers/xtream/types.ts`) must never become canonical domain models or be exposed to the Web layer. The canonical schema lives exclusively in `apps/api/src/db/schema/`. Provider-specific shapes are translated at the adapter boundary before touching any service or route.
+**Source adapter isolation.** Provider-specific DTOs (e.g. `apps/api/src/providers/xtream/types.ts`) must never become canonical domain models or be exposed to the Web layer. The canonical schema lives exclusively in `apps/api/src/db/schema/`. Source-specific shapes are translated at the adapter boundary before touching any service or route. See the [domain model](./domain-model.md) for the Source invariant.
 
 **Single API contract boundary.** `packages/api-contracts` is the only place for types shared between the API and any client. Direct imports from `apps/api/src/` into client code are not allowed.
 
@@ -41,7 +41,7 @@ Workspace manager: **pnpm** (`pnpm-workspace.yaml`).
 
 | Concern | Location |
 |---------|----------|
-| New IPTV provider adapters | `apps/api/src/providers/<name>/` |
+| New source adapters (IPTV, Plex, future) | `apps/api/src/providers/<name>/` |
 | Canonical domain entities (movies, series, episodes, genres) | `apps/api/src/db/schema/` |
 | New API routes | `apps/api/src/routes/` |
 | Business logic / orchestration | `apps/api/src/services/` |
@@ -52,5 +52,6 @@ Workspace manager: **pnpm** (`pnpm-workspace.yaml`).
 
 ## Related Docs
 
+- **Domain model (canonical reference)** → `docs/architecture/domain-model.md`
 - **Local development setup** → `docs/local-dev.md`
 - **UI/UX conventions and design reference** → `docs/design/README.md`
