@@ -1,7 +1,7 @@
 {
   "ticket_id": "T021",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T021-introduce-reusable-manual-and-dynamic-shelves-as-t",
   "issue_number": 38,
-  "updated_at": "2026-08-11T15:16:32Z"
+  "updated_at": "2026-08-11T17:30:56Z"
 }
