@@ -29,6 +29,13 @@
       "when": 1786434664886,
       "tag": "0003_gifted_johnny_blaze",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786435264886,
+      "tag": "0004_wild_legion",
+      "breakpoints": true
     }
   ]
 }
