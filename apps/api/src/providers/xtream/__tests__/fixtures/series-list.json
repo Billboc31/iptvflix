@@ -1,0 +1,36 @@
+[
+  {
+    "series_id": 201,
+    "name": "Breaking Bad",
+    "cover": "http://img.example.com/bb.jpg",
+    "category_id": "10",
+    "rating": "9.5",
+    "plot": "A chemistry teacher turns drug lord.",
+    "cast": "Bryan Cranston, Aaron Paul",
+    "director": "Vince Gilligan",
+    "genre": "Drama, Crime",
+    "releaseDate": "2008-01-20",
+    "last_modified": "1700000000",
+    "rating_5based": 4.75,
+    "backdrop_path": ["http://img.example.com/bb-bg.jpg"],
+    "youtube_trailer": "dQw4w9WgXcQ",
+    "episode_run_time": "47"
+  },
+  {
+    "series_id": 202,
+    "name": "Dark",
+    "cover": "http://img.example.com/dark.jpg",
+    "category_id": "11",
+    "rating": "8.8",
+    "plot": "A small German town uncovers a time travel conspiracy.",
+    "cast": "Louis Hofmann, Lisa Vicari",
+    "director": "Baran bo Odar",
+    "genre": "Sci-Fi, Thriller",
+    "releaseDate": "2017-12-01",
+    "last_modified": "1700010000",
+    "rating_5based": 4.4,
+    "backdrop_path": ["http://img.example.com/dark-bg.jpg"],
+    "youtube_trailer": "abc123",
+    "episode_run_time": "60"
+  }
+]

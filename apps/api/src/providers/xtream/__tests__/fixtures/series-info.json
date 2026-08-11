@@ -1,0 +1,74 @@
+{
+  "info": {
+    "name": "Breaking Bad",
+    "cover": "http://img.example.com/bb.jpg",
+    "plot": "A chemistry teacher turns drug lord.",
+    "cast": "Bryan Cranston, Aaron Paul",
+    "director": "Vince Gilligan",
+    "genre": "Drama, Crime",
+    "releaseDate": "2008-01-20",
+    "last_modified": "1700000000",
+    "rating": "9.5",
+    "rating_5based": 4.75,
+    "backdrop_path": ["http://img.example.com/bb-bg.jpg"],
+    "youtube_trailer": "dQw4w9WgXcQ",
+    "episode_run_time": "47",
+    "category_id": "10",
+    "category_name": "Drama Series"
+  },
+  "episodes": {
+    "1": [
+      {
+        "id": "10001",
+        "episode_num": 1,
+        "title": "Pilot",
+        "container_extension": "mkv",
+        "info": {
+          "duration_secs": 2820,
+          "duration": "00:47:00",
+          "bitrate": 3000,
+          "rating": 9.0,
+          "season": 1,
+          "releasedate": "2008-01-20",
+          "plot": "Walter White begins his transformation."
+        },
+        "added": "1600000000",
+        "season": 1
+      },
+      {
+        "id": "10002",
+        "episode_num": 2,
+        "title": "Cat's in the Bag",
+        "container_extension": "mkv",
+        "info": {
+          "duration_secs": 2760,
+          "duration": "00:46:00",
+          "bitrate": 3000,
+          "rating": 8.8,
+          "season": 1,
+          "releasedate": "2008-01-27"
+        },
+        "added": "1600100000",
+        "season": 1
+      }
+    ],
+    "2": [
+      {
+        "id": "10020",
+        "episode_num": 1,
+        "title": "Seven Thirty-Seven",
+        "container_extension": "mkv",
+        "info": {
+          "duration_secs": 2760,
+          "duration": "00:46:00",
+          "bitrate": 3000,
+          "rating": 8.9,
+          "season": 2,
+          "releasedate": "2009-03-08"
+        },
+        "added": "1600200000",
+        "season": 2
+      }
+    ]
+  }
+}
