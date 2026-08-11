@@ -21,6 +21,12 @@ import type {
   UpsertProgressBody,
   ProgressMediaType,
   ContinueWatchingItem,
+  ShelfSummaryResponse,
+  ShelfResponse,
+  CreateShelfBody,
+  UpdateShelfBody,
+  AddShelfMemberBody,
+  ReorderShelfMembersBody,
 } from '@iptvflix/api-contracts'
 
 const BASE = import.meta.env.VITE_API_BASE ?? '/api'
@@ -150,4 +156,36 @@ export function upsertProgress(
 
 export function fetchContinueWatching(): Promise<ContinueWatchingItem[]> {
   return request('/continue-watching')
+}
+
+export function fetchShelves(): Promise<ShelfSummaryResponse[]> {
+  return request('/shelves')
+}
+
+export function fetchShelf(id: string): Promise<ShelfResponse> {
+  return request(`/shelves/${id}`)
+}
+
+export function createShelf(body: CreateShelfBody): Promise<ShelfSummaryResponse> {
+  return request('/shelves', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function updateShelf(id: string, body: UpdateShelfBody): Promise<ShelfSummaryResponse> {
+  return request(`/shelves/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+}
+
+export function deleteShelf(id: string): Promise<void> {
+  return request(`/shelves/${id}`, { method: 'DELETE' })
+}
+
+export function addShelfMember(id: string, body: AddShelfMemberBody): Promise<void> {
+  return request(`/shelves/${id}/members`, { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function removeShelfMember(id: string, mediaType: 'MOVIE' | 'SERIES', mediaId: string): Promise<void> {
+  return request(`/shelves/${id}/members/${mediaType}/${mediaId}`, { method: 'DELETE' })
+}
+
+export function reorderShelfMembers(id: string, body: ReorderShelfMembersBody): Promise<void> {
+  return request(`/shelves/${id}/members/order`, { method: 'PUT', body: JSON.stringify(body) })
 }
