@@ -1,7 +1,12 @@
 {
   "ticket_id": "T013",
-  "state": "PLAN_APPROVED",
+  "state": "TEST_COMPLETE",
   "branch": "ticket/T013-add-canonical-catalog-search-and-discovery-filters",
   "issue_number": 22,
-  "updated_at": "2026-08-11T11:13:59Z"
+  "updated_at": "2026-08-11T11:44:07Z",
+  "pr_number": 27,
+  "pr_synced": true,
+  "pre_conflict_state": "CONFLICT_RESOLUTION_NEEDED",
+  "conflict_cleared_at": "2026-08-11T11:44:07Z",
+  "conflict_clear_reason": "PR #27 mergeable='UNKNOWN'"
 }
