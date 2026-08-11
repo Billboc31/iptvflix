@@ -7,6 +7,21 @@ import type {
   SeriesFilters,
   SeriesResponse,
 } from '@iptvflix/api-contracts'
+
+const QUALITY_ORDER: Record<string, number> = { '4K': 3, '1080p': 2, '720p': 1, '480p': 0 }
+
+function bestQuality(qualities: (string | null)[]): string | null {
+  let best: string | null = null
+  let bestRank = -1
+  for (const q of qualities) {
+    const rank = q !== null ? (QUALITY_ORDER[q] ?? -1) : -1
+    if (rank > bestRank) {
+      best = q
+      bestRank = rank
+    }
+  }
+  return best
+}
 import { db } from '../db/client.js'
 import {
   genres,
@@ -84,7 +99,7 @@ export async function listMovies(filters: MovieFilters): Promise<PaginatedList<M
 
   const ids = rows.map((r) => r.id)
 
-  const [genreRows, availCountRows] = await Promise.all([
+  const [genreRows, availCountRows, qualityRows] = await Promise.all([
     db
       .select({ movieId: movieGenres.movieId, name: genres.name })
       .from(movieGenres)
@@ -100,6 +115,15 @@ export async function listMovies(filters: MovieFilters): Promise<PaginatedList<M
         ),
       )
       .groupBy(movieAvailabilities.movieId),
+    db
+      .select({ movieId: movieAvailabilities.movieId, videoQuality: movieAvailabilities.videoQuality })
+      .from(movieAvailabilities)
+      .where(
+        and(
+          inArray(movieAvailabilities.movieId, ids),
+          eq(movieAvailabilities.status, 'AVAILABLE'),
+        ),
+      ),
   ])
 
   const genreMap = new Map<string, string[]>()
@@ -114,6 +138,13 @@ export async function listMovies(filters: MovieFilters): Promise<PaginatedList<M
     availCountMap.set(movieId, Number(cnt))
   }
 
+  const qualityBuckets = new Map<string, (string | null)[]>()
+  for (const { movieId, videoQuality } of qualityRows) {
+    const bucket = qualityBuckets.get(movieId) ?? []
+    bucket.push(videoQuality)
+    qualityBuckets.set(movieId, bucket)
+  }
+
   const items: MovieResponse[] = rows.map((m) => {
     const availabilityCount = availCountMap.get(m.id) ?? 0
     return {
@@ -125,7 +156,7 @@ export async function listMovies(filters: MovieFilters): Promise<PaginatedList<M
       backdropUrl: m.backdropPath,
       runtime: m.durationMinutes,
       genres: genreMap.get(m.id) ?? [],
-      quality: null,
+      quality: bestQuality(qualityBuckets.get(m.id) ?? []),
       availabilityCount,
       availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
     }
@@ -342,7 +373,7 @@ export async function searchContent(
   const movieIds = movieRows.map((m) => m.id)
   const seriesIds = seriesRows.map((s) => s.id)
 
-  const [mGenreRows, mAvailCountRows, sGenreRows, sAvailCountRows, sSeasonCounts] =
+  const [mGenreRows, mAvailCountRows, mQualityRows, sGenreRows, sAvailCountRows, sSeasonCounts] =
     await Promise.all([
       movieIds.length > 0
         ? db
@@ -362,6 +393,17 @@ export async function searchContent(
               ),
             )
             .groupBy(movieAvailabilities.movieId)
+        : Promise.resolve([]),
+      movieIds.length > 0
+        ? db
+            .select({ movieId: movieAvailabilities.movieId, videoQuality: movieAvailabilities.videoQuality })
+            .from(movieAvailabilities)
+            .where(
+              and(
+                inArray(movieAvailabilities.movieId, movieIds),
+                eq(movieAvailabilities.status, 'AVAILABLE'),
+              ),
+            )
         : Promise.resolve([]),
       seriesIds.length > 0
         ? db
@@ -403,6 +445,13 @@ export async function searchContent(
     mAvailCountMap.set(movieId, Number(cnt))
   }
 
+  const mQualityBuckets = new Map<string, (string | null)[]>()
+  for (const { movieId, videoQuality } of mQualityRows) {
+    const bucket = mQualityBuckets.get(movieId) ?? []
+    bucket.push(videoQuality)
+    mQualityBuckets.set(movieId, bucket)
+  }
+
   const sGenreMap = new Map<string, string[]>()
   for (const { seriesId, name } of sGenreRows) {
     const arr = sGenreMap.get(seriesId) ?? []
@@ -432,7 +481,7 @@ export async function searchContent(
         backdropUrl: m.backdropPath,
         runtime: m.durationMinutes,
         genres: mGenreMap.get(m.id) ?? [],
-        quality: null,
+        quality: bestQuality(mQualityBuckets.get(m.id) ?? []),
         availabilityCount,
         availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
       }

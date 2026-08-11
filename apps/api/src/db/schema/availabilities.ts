@@ -19,6 +19,10 @@ export const movieAvailabilities = pgTable(
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull(),
     unavailableAt: timestamp('unavailable_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    audioLanguage: text('audio_language'),
+    subtitleLanguage: text('subtitle_language'),
+    videoQuality: text('video_quality'),
+    rawTitle: text('raw_title'),
   },
   (t) => [
     unique().on(t.movieId, t.providerId, t.providerItemId),
@@ -40,6 +44,10 @@ export const seriesAvailabilities = pgTable(
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull(),
     unavailableAt: timestamp('unavailable_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    audioLanguage: text('audio_language'),
+    subtitleLanguage: text('subtitle_language'),
+    videoQuality: text('video_quality'),
+    rawTitle: text('raw_title'),
   },
   (t) => [
     unique().on(t.seriesId, t.providerId, t.providerItemId),
@@ -61,6 +69,10 @@ export const episodeAvailabilities = pgTable(
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull(),
     unavailableAt: timestamp('unavailable_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    audioLanguage: text('audio_language'),
+    subtitleLanguage: text('subtitle_language'),
+    videoQuality: text('video_quality'),
+    rawTitle: text('raw_title'),
   },
   (t) => [unique().on(t.episodeId, t.providerId, t.providerItemId)],
 )

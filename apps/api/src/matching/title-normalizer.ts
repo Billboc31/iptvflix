@@ -1,6 +1,10 @@
+import { extractVariantAttributes, type VariantAttributes } from './variant-extractor.js'
+export type { VariantAttributes } from './variant-extractor.js'
+
 export interface NormalizeResult {
   normalizedTitle: string
   extractedYear: number | null
+  variantAttributes: VariantAttributes
 }
 
 // Tags in specificity order: longer/more-specific patterns must precede their prefixes
@@ -32,6 +36,8 @@ function makeTagRe(global: boolean): RegExp {
 }
 
 export function normalizeTitle(raw: string): NormalizeResult {
+  const variantAttributes = extractVariantAttributes(raw)
+
   // Step 1: Replace dot and underscore separators with spaces
   let working = raw.replace(/[._]/g, ' ')
 
@@ -66,5 +72,5 @@ export function normalizeTitle(raw: string): NormalizeResult {
     .trim()
     .toLocaleLowerCase('fr')
 
-  return { normalizedTitle, extractedYear }
+  return { normalizedTitle, extractedYear, variantAttributes }
 }

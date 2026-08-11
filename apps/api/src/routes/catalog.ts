@@ -20,7 +20,23 @@ import type {
   EnrichmentStatus,
   AvailabilityStatus,
   PaginatedList,
+  AvailabilityVariantResponse,
 } from '@iptvflix/api-contracts'
+
+const QUALITY_ORDER: Record<string, number> = { '4K': 3, '1080p': 2, '720p': 1, '480p': 0 }
+
+function bestQuality(qualities: (string | null)[]): string | null {
+  let best: string | null = null
+  let bestRank = -1
+  for (const q of qualities) {
+    const rank = q !== null ? (QUALITY_ORDER[q] ?? -1) : -1
+    if (rank > bestRank) {
+      best = q
+      bestRank = rank
+    }
+  }
+  return best
+}
 
 function deriveEnrichmentStatus(row: {
   tmdbId: number | null
@@ -106,6 +122,22 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       .groupBy(movieAvailabilities.movieId)
     const availCountMap = new Map(availCountRows.map((r) => [r.movieId, Number(r.cnt)]))
 
+    const qualityRows = await db
+      .select({ movieId: movieAvailabilities.movieId, videoQuality: movieAvailabilities.videoQuality })
+      .from(movieAvailabilities)
+      .where(
+        and(
+          inArray(movieAvailabilities.movieId, movieIds),
+          eq(movieAvailabilities.status, 'AVAILABLE'),
+        ),
+      )
+    const qualityBuckets = new Map<string, (string | null)[]>()
+    for (const { movieId, videoQuality } of qualityRows) {
+      const bucket = qualityBuckets.get(movieId) ?? []
+      bucket.push(videoQuality)
+      qualityBuckets.set(movieId, bucket)
+    }
+
     const items: MovieResponse[] = movieRows.map((m) => {
       const availabilityCount = availCountMap.get(m.id) ?? 0
       return {
@@ -117,7 +149,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         backdropUrl: m.backdropPath,
         runtime: m.durationMinutes,
         genres: genreMap.get(m.id) ?? [],
-        quality: null,
+        quality: bestQuality(qualityBuckets.get(m.id) ?? []),
         availabilityCount,
         availabilityStatus: (availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE') as AvailabilityStatus,
       }
@@ -152,6 +184,18 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       )
     const availabilityCount = Number(availCountRows[0]?.cnt ?? 0)
 
+    const variantRows = await db
+      .select({
+        id: movieAvailabilities.id,
+        audioLanguage: movieAvailabilities.audioLanguage,
+        subtitleLanguage: movieAvailabilities.subtitleLanguage,
+        videoQuality: movieAvailabilities.videoQuality,
+        rawTitle: movieAvailabilities.rawTitle,
+      })
+      .from(movieAvailabilities)
+      .where(eq(movieAvailabilities.movieId, id))
+    const variants: AvailabilityVariantResponse[] = variantRows
+
     const response: MovieDetailResponse = {
       id: movie.id,
       title: movie.title,
@@ -161,13 +205,14 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       backdropUrl: movie.backdropPath,
       runtime: movie.durationMinutes,
       genres: filterString(genreRows.map((r) => r.name)),
-      quality: null,
+      quality: bestQuality(variants.map((v) => v.videoQuality)),
       availabilityCount,
       availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
       originalTitle: movie.originalTitle,
       imdbId: movie.imdbId,
       tmdbId: movie.tmdbId,
       enrichmentStatus: deriveEnrichmentStatus(movie),
+      variants,
     }
 
     return response
@@ -308,6 +353,18 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       .groupBy(seasons.id, seasons.seasonNumber, seasons.title, seasons.airYear)
       .orderBy(asc(seasons.seasonNumber))
 
+    const seriesVariantRows = await db
+      .select({
+        id: seriesAvailabilities.id,
+        audioLanguage: seriesAvailabilities.audioLanguage,
+        subtitleLanguage: seriesAvailabilities.subtitleLanguage,
+        videoQuality: seriesAvailabilities.videoQuality,
+        rawTitle: seriesAvailabilities.rawTitle,
+      })
+      .from(seriesAvailabilities)
+      .where(eq(seriesAvailabilities.seriesId, id))
+    const seriesVariants: AvailabilityVariantResponse[] = seriesVariantRows
+
     const response: SeriesDetailResponse = {
       id: seriesRow.id,
       title: seriesRow.title,
@@ -329,6 +386,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         episodeCount: Number(s.episodeCount),
         airYear: s.airYear,
       })),
+      variants: seriesVariants,
     }
 
     return response
@@ -372,6 +430,24 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         .groupBy(episodeAvailabilities.episodeId)
       const availCountMap = new Map(availCountRows.map((r) => [r.episodeId, Number(r.cnt)]))
 
+      const epVariantRows = await db
+        .select({
+          episodeId: episodeAvailabilities.episodeId,
+          id: episodeAvailabilities.id,
+          audioLanguage: episodeAvailabilities.audioLanguage,
+          subtitleLanguage: episodeAvailabilities.subtitleLanguage,
+          videoQuality: episodeAvailabilities.videoQuality,
+          rawTitle: episodeAvailabilities.rawTitle,
+        })
+        .from(episodeAvailabilities)
+        .where(inArray(episodeAvailabilities.episodeId, episodeIds))
+      const epVariantMap = new Map<string, AvailabilityVariantResponse[]>()
+      for (const { episodeId, ...variant } of epVariantRows) {
+        const arr = epVariantMap.get(episodeId) ?? []
+        arr.push(variant)
+        epVariantMap.set(episodeId, arr)
+      }
+
       return episodeRows.map((e): EpisodeResponse => {
         const availabilityCount = availCountMap.get(e.id) ?? 0
         return {
@@ -383,6 +459,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
           airDate: e.airDate,
           availabilityCount,
           availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
+          variants: epVariantMap.get(e.id) ?? [],
         }
       })
     },
@@ -418,6 +495,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const seriesAvailCountMap = new Map<string, number>()
     const seasonCountMap = new Map<string, number>()
 
+    const movieQualityMap = new Map<string, string | null>()
     if (movieIds.length > 0) {
       const mgRows = await db
         .select({ movieId: movieGenres.movieId, name: genres.name })
@@ -439,6 +517,25 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         )
         .groupBy(movieAvailabilities.movieId)
       for (const r of maRows) movieAvailCountMap.set(r.movieId, Number(r.cnt))
+
+      const mqRows = await db
+        .select({ movieId: movieAvailabilities.movieId, videoQuality: movieAvailabilities.videoQuality })
+        .from(movieAvailabilities)
+        .where(
+          and(
+            inArray(movieAvailabilities.movieId, movieIds),
+            eq(movieAvailabilities.status, 'AVAILABLE'),
+          ),
+        )
+      const mqBuckets = new Map<string, (string | null)[]>()
+      for (const { movieId, videoQuality } of mqRows) {
+        const bucket = mqBuckets.get(movieId) ?? []
+        bucket.push(videoQuality)
+        mqBuckets.set(movieId, bucket)
+      }
+      for (const [movieId, qualities] of mqBuckets) {
+        movieQualityMap.set(movieId, bestQuality(qualities))
+      }
     }
 
     if (seriesIds.length > 0) {
@@ -485,7 +582,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
           backdropUrl: m.backdropPath,
           runtime: m.durationMinutes,
           genres: movieGenreMap.get(m.id) ?? [],
-          quality: null,
+          quality: movieQualityMap.get(m.id) ?? null,
           availabilityCount,
           availabilityStatus: (availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE') as AvailabilityStatus,
         }
