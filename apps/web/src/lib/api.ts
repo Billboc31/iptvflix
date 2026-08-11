@@ -35,7 +35,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { ...init, headers })
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText)
-    throw new ApiError(res.status, text)
+    let message = text
+    try {
+      const parsed = JSON.parse(text) as { error?: string }
+      if (parsed?.error) message = parsed.error
+    } catch {
+      // keep raw text
+    }
+    throw new ApiError(res.status, message)
   }
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>

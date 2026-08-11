@@ -8,6 +8,7 @@ import { moviesRoutes } from './routes/movies.js'
 import { seriesRoutes } from './routes/series.js'
 import { searchRoutes } from './routes/search.js'
 import { genresRoutes } from './routes/genres.js'
+import { syncRunsRoutes } from './routes/sync-runs.js'
 import { PORT, CORS_ORIGIN, TMDB_API_KEY } from './config/env.js'
 import { db } from './db/client.js'
 import { TmdbClient } from './providers/metadata/tmdb/client.js'
@@ -24,6 +25,7 @@ app.setErrorHandler((error, _request, reply) => {
 await app.register(cors, { origin: CORS_ORIGIN })
 await app.register(healthRoutes)
 await app.register(sourcesRoutes)
+await app.register(syncRunsRoutes)
 await app.register(moviesRoutes)
 await app.register(seriesRoutes)
 await app.register(searchRoutes)
