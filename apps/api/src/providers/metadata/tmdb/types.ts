@@ -16,6 +16,7 @@ export interface TmdbMovieDetail {
   imdb_id: string | null
   popularity: number
   vote_average: number
+  status?: string
 }
 
 export interface TmdbSeriesDetail {
@@ -29,6 +30,7 @@ export interface TmdbSeriesDetail {
   genres: TmdbGenre[]
   popularity: number
   vote_average: number
+  status?: string
 }
 
 export interface TmdbSearchResultItem {
@@ -37,6 +39,8 @@ export interface TmdbSearchResultItem {
   name?: string
   release_date?: string
   first_air_date?: string
+  poster_path?: string | null
+  overview?: string
 }
 
 export interface TmdbSearchResponse {

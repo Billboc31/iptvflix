@@ -507,3 +507,21 @@ export async function searchContent(
 export async function listGenres(): Promise<GenreResponse[]> {
   return db.select({ id: genres.id, name: genres.name }).from(genres).orderBy(asc(genres.name))
 }
+
+export async function getMovieTmdbIds(movieIds: string[]): Promise<Set<string>> {
+  if (movieIds.length === 0) return new Set()
+  const rows = await db
+    .select({ tmdbId: movies.tmdbId })
+    .from(movies)
+    .where(inArray(movies.id, movieIds))
+  return new Set(rows.filter((r) => r.tmdbId !== null).map((r) => String(r.tmdbId)))
+}
+
+export async function getSeriesTmdbIds(seriesIds: string[]): Promise<Set<string>> {
+  if (seriesIds.length === 0) return new Set()
+  const rows = await db
+    .select({ tmdbId: series.tmdbId })
+    .from(series)
+    .where(inArray(series.id, seriesIds))
+  return new Set(rows.filter((r) => r.tmdbId !== null).map((r) => String(r.tmdbId)))
+}

@@ -15,6 +15,11 @@ function parseYear(dateStr: string | undefined): number | null {
   return isNaN(n) ? null : n
 }
 
+function deriveReleaseStatus(dateStr?: string): string | null {
+  if (!dateStr) return null
+  return new Date(dateStr) > new Date() ? 'Upcoming' : 'Released'
+}
+
 function mapMovieDetail(raw: TmdbMovieDetail): ExternalMovieMetadata {
   return {
     title: raw.title,
@@ -28,6 +33,8 @@ function mapMovieDetail(raw: TmdbMovieDetail): ExternalMovieMetadata {
     imdbId: raw.imdb_id ?? null,
     popularity: raw.popularity ?? null,
     voteAverage: raw.vote_average ?? null,
+    releaseStatus: raw.status ?? null,
+    releaseDate: raw.release_date || null,
   }
 }
 
@@ -43,6 +50,8 @@ function mapSeriesDetail(raw: TmdbSeriesDetail): ExternalSeriesMetadata {
     imdbId: null,
     popularity: raw.popularity ?? null,
     voteAverage: raw.vote_average ?? null,
+    releaseStatus: raw.status ?? null,
+    firstAirDate: raw.first_air_date || null,
   }
 }
 
@@ -122,6 +131,10 @@ export class TmdbClient implements MetadataProvider {
         title: item.title ?? item.name ?? '',
         year: parseYear(item.release_date ?? item.first_air_date),
         mediaType: 'MOVIE' as const,
+        posterPath: item.poster_path ?? null,
+        synopsis: item.overview || null,
+        releaseStatus: deriveReleaseStatus(item.release_date),
+        releaseDate: item.release_date || null,
       }))
     } catch (err) {
       if (err instanceof TmdbNetworkError) throw err
@@ -141,6 +154,10 @@ export class TmdbClient implements MetadataProvider {
         title: item.name ?? item.title ?? '',
         year: parseYear(item.first_air_date ?? item.release_date),
         mediaType: 'SERIES' as const,
+        posterPath: item.poster_path ?? null,
+        synopsis: item.overview || null,
+        releaseStatus: deriveReleaseStatus(item.first_air_date),
+        firstAirDate: item.first_air_date || null,
       }))
     } catch (err) {
       if (err instanceof TmdbNetworkError) throw err

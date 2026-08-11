@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import type { MovieResponse, SeriesResponse } from '@iptvflix/api-contracts'
-import { searchContent } from '../lib/api.js'
+import type {
+  MovieResponse,
+  SeriesResponse,
+  ExternalMovieCandidate,
+  ExternalSeriesCandidate,
+} from '@iptvflix/api-contracts'
+import { searchContent, materializeMovie, materializeSeries } from '../lib/api.js'
 import PosterCard from '../components/content/PosterCard.js'
 import Spinner from '../components/ui/Spinner.js'
 import EmptyState from '../components/ui/EmptyState.js'
@@ -18,6 +23,8 @@ export default function SearchPage() {
 
   const [movies, setMovies] = useState<MovieResponse[]>([])
   const [series, setSeries] = useState<SeriesResponse[]>([])
+  const [externalMovies, setExternalMovies] = useState<ExternalMovieCandidate[]>([])
+  const [externalSeries, setExternalSeries] = useState<ExternalSeriesCandidate[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const [retryCount, setRetryCount] = useState(0)
@@ -26,20 +33,26 @@ export default function SearchPage() {
     if (!debouncedQuery.trim()) {
       setMovies([])
       setSeries([])
+      setExternalMovies([])
+      setExternalSeries([])
       setError(null)
       return
     }
     setLoading(true)
     setError(null)
     searchContent(debouncedQuery)
-      .then(({ movies: m, series: s }) => {
+      .then(({ movies: m, series: s, externalMovies: em, externalSeries: es }) => {
         setMovies(m)
         setSeries(s)
+        setExternalMovies(em)
+        setExternalSeries(es)
       })
       .catch((err: Error) => {
         setError(err)
         setMovies([])
         setSeries([])
+        setExternalMovies([])
+        setExternalSeries([])
       })
       .finally(() => setLoading(false))
   }, [debouncedQuery, retryCount])
@@ -51,6 +64,40 @@ export default function SearchPage() {
   }, [query, setSearchParams])
 
   const total = movies.length + series.length
+  const hasExternal = externalMovies.length > 0 || externalSeries.length > 0
+  const showExternal = hasExternal && total <= 5
+
+  async function handleExternalMovieClick(candidate: ExternalMovieCandidate) {
+    try {
+      const { id } = await materializeMovie(candidate.tmdbId)
+      navigate(`/movies/${id}`)
+    } catch {
+      // silently ignore — user can retry
+    }
+  }
+
+  async function handleExternalSeriesClick(candidate: ExternalSeriesCandidate) {
+    try {
+      const { id } = await materializeSeries(candidate.tmdbId)
+      navigate(`/series/${id}`)
+    } catch {
+      // silently ignore
+    }
+  }
+
+  function externalMovieBadge(candidate: ExternalMovieCandidate) {
+    if (candidate.releaseStatus && candidate.releaseStatus !== 'Released') {
+      return { label: 'À venir', variant: 'upcoming' as const }
+    }
+    return { label: 'Non disponible', variant: 'unavailable' as const }
+  }
+
+  function externalSeriesBadge(candidate: ExternalSeriesCandidate) {
+    if (candidate.releaseStatus && candidate.releaseStatus !== 'Released') {
+      return { label: 'À venir', variant: 'upcoming' as const }
+    }
+    return { label: 'Non disponible', variant: 'unavailable' as const }
+  }
 
   return (
     <div className="px-8 py-6">
@@ -80,7 +127,7 @@ export default function SearchPage() {
         />
       )}
 
-      {!loading && !error && query.trim() && total === 0 && (
+      {!loading && !error && query.trim() && total === 0 && !showExternal && (
         <EmptyState
           icon="🔎"
           heading="Aucun résultat"
@@ -109,7 +156,7 @@ export default function SearchPage() {
       )}
 
       {!loading && !error && series.length > 0 && (
-        <section>
+        <section className="mb-8">
           <h2 className="text-lg font-semibold text-white mb-4">
             Séries <span className="text-gray-500 text-sm">({series.length})</span>
           </h2>
@@ -124,6 +171,53 @@ export default function SearchPage() {
               />
             ))}
           </div>
+        </section>
+      )}
+
+      {!loading && !error && showExternal && (
+        <section>
+          <h2 className="text-lg font-semibold text-gray-400 mb-1">
+            Aussi trouvé en dehors de votre catalogue
+          </h2>
+          <p className="text-xs text-gray-600 mb-4">
+            Ces titres ne sont pas disponibles dans vos sources configurées.
+          </p>
+
+          {externalMovies.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-medium text-gray-500 mb-3">Films</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                {externalMovies.map((m) => (
+                  <PosterCard
+                    key={m.tmdbId}
+                    title={m.title}
+                    year={m.year}
+                    posterUrl={m.posterUrl}
+                    badge={externalMovieBadge(m)}
+                    onClick={() => handleExternalMovieClick(m)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {externalSeries.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium text-gray-500 mb-3">Séries</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                {externalSeries.map((s) => (
+                  <PosterCard
+                    key={s.tmdbId}
+                    title={s.title}
+                    year={s.year}
+                    posterUrl={s.posterUrl}
+                    badge={externalSeriesBadge(s)}
+                    onClick={() => handleExternalSeriesClick(s)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       )}
     </div>

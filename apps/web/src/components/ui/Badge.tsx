@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-type Variant = 'default' | 'accent' | 'available' | 'unavailable' | 'quality' | 'info'
+type Variant = 'default' | 'accent' | 'available' | 'unavailable' | 'upcoming' | 'quality' | 'info'
 
 type BadgeProps = {
   variant?: Variant
@@ -13,6 +13,7 @@ const VARIANTS: Record<Variant, string> = {
   accent: 'bg-[#e50914] text-white',
   available: 'bg-green-700 text-green-100',
   unavailable: 'bg-gray-700 text-gray-400',
+  upcoming: 'bg-amber-700 text-amber-100',
   quality: 'bg-blue-700 text-blue-100',
   info: 'bg-[#1a1a24] text-gray-300 border border-white/10',
 }
