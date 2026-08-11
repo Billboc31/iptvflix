@@ -1,0 +1,90 @@
+import { http, HttpResponse } from 'msw'
+import { setupServer } from 'msw/node'
+import type {
+  MovieResponse,
+  SeriesResponse,
+  SourceResponse,
+  SyncRunResponse,
+  PaginatedList,
+} from '@iptvflix/api-contracts'
+
+export const MOCK_MOVIE: MovieResponse = {
+  id: 'movie-1',
+  title: 'The Test Movie',
+  year: 2024,
+  synopsis: 'A great test movie.',
+  posterUrl: null,
+  backdropUrl: null,
+  runtime: 120,
+  genres: ['Action'],
+  quality: 'HD',
+  availabilityStatus: 'AVAILABLE',
+}
+
+export const MOCK_SERIES: SeriesResponse = {
+  id: 'series-1',
+  title: 'The Test Series',
+  year: 2023,
+  synopsis: 'A great test series.',
+  posterUrl: null,
+  backdropUrl: null,
+  genres: ['Drama'],
+  seasonCount: 2,
+  availabilityStatus: 'AVAILABLE',
+}
+
+export const MOCK_SOURCE: SourceResponse = {
+  id: 'source-1',
+  name: 'My IPTV',
+  type: 'XTREAM',
+  baseUrl: 'http://provider.example.com',
+  username: 'user',
+  enabled: true,
+  createdAt: new Date('2024-01-01'),
+  updatedAt: new Date('2024-01-01'),
+}
+
+export const MOCK_SYNC_RUN: SyncRunResponse = {
+  id: 'run-1',
+  sourceId: 'source-1',
+  status: 'DONE',
+  startedAt: '2024-01-01T10:00:00Z',
+  finishedAt: '2024-01-01T10:05:00Z',
+  moviesAdded: 50,
+  seriesAdded: 10,
+}
+
+const moviesList: PaginatedList<MovieResponse> = {
+  items: [MOCK_MOVIE],
+  total: 1,
+  page: 1,
+  pageSize: 20,
+}
+
+const seriesList: PaginatedList<SeriesResponse> = {
+  items: [MOCK_SERIES],
+  total: 1,
+  page: 1,
+  pageSize: 20,
+}
+
+export const handlers = [
+  http.get('/api/movies', () => HttpResponse.json(moviesList)),
+  http.get('/api/movies/:id', () => HttpResponse.json(MOCK_MOVIE)),
+  http.get('/api/series', () => HttpResponse.json(seriesList)),
+  http.get('/api/series/:id', () => HttpResponse.json(MOCK_SERIES)),
+  http.get('/api/search', () =>
+    HttpResponse.json({ movies: [MOCK_MOVIE], series: [MOCK_SERIES] }),
+  ),
+  http.get('/api/sources', () => HttpResponse.json([MOCK_SOURCE])),
+  http.post('/api/sources', () => HttpResponse.json(MOCK_SOURCE, { status: 201 })),
+  http.patch('/api/sources/:id', () => HttpResponse.json(MOCK_SOURCE)),
+  http.delete('/api/sources/:id', () => new HttpResponse(null, { status: 204 })),
+  http.post('/api/sources/:id/test', () =>
+    HttpResponse.json({ ok: true, message: 'Connexion réussie' }),
+  ),
+  http.get('/api/sync-runs', () => HttpResponse.json([MOCK_SYNC_RUN])),
+  http.post('/api/sync-runs', () => HttpResponse.json(MOCK_SYNC_RUN, { status: 201 })),
+]
+
+export const server = setupServer(...handlers)
