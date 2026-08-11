@@ -245,54 +245,70 @@ describe('CatalogSyncService', () => {
   })
 
   describe('retry / idempotency', () => {
-    it('leaves no orphan rows and no stale RUNNING lock after a failed sync', async () => {
+    it('reuses an existing movie row when tmdbId already exists', async () => {
       const conflictTmdbId = 88001
       const fetchedAt = new Date('2026-01-01T10:00:00Z')
 
-      // Pre-insert a movie that will conflict with the incoming stream's tmdbId
-      const [conflictingMovie] = await db
+      const [existingMovie] = await db
         .insert(movies)
         .values({ title: 'Pre-existing Movie', tmdbId: conflictTmdbId })
         .returning()
 
       try {
-        const snapshot = makeSnapshot(
-          [makeVodStream({ stream_id: 7, name: 'Conflict Movie', tmdb: String(conflictTmdbId) })],
-          [],
-          fetchedAt,
+        const result = await CatalogSyncService.syncCatalog(
+          testSourceId,
+          makeSnapshot(
+            [makeVodStream({ stream_id: 7, name: 'Conflict Movie', tmdb: String(conflictTmdbId) })],
+            [],
+            fetchedAt,
+          ),
         )
 
-        const result = await CatalogSyncService.syncCatalog(testSourceId, snapshot)
+        expect(result.status).toBe('completed')
+        expect(result.counts.moviesCreated).toBe(1)
 
-        // The sync should fail because of the tmdbId constraint violation
-        expect(result.status).toBe('failed')
-
-        // No orphan availability rows created by the failed sync
         const avRows = await db
           .select()
           .from(movieAvailabilities)
           .where(eq(movieAvailabilities.providerId, testSourceId))
-        expect(avRows).toHaveLength(0)
+        expect(avRows).toHaveLength(1)
+        expect(avRows[0].movieId).toBe(existingMovie.id)
 
-        // syncRuns must not be left as RUNNING
-        const runs = await db.select().from(syncRuns).where(eq(syncRuns.sourceId, testSourceId))
-        expect(runs.every((r) => r.status !== 'RUNNING')).toBe(true)
-        expect(runs.some((r) => r.status === 'FAILED')).toBe(true)
+        const movieRows = await db.select().from(movies).where(eq(movies.tmdbId, conflictTmdbId))
+        expect(movieRows).toHaveLength(1)
       } finally {
-        await db.delete(movies).where(eq(movies.id, conflictingMovie.id))
+        await db.delete(movieAvailabilities).where(eq(movieAvailabilities.providerId, testSourceId))
+        await db.delete(movies).where(eq(movies.id, existingMovie.id))
+        await db.delete(syncRuns).where(eq(syncRuns.sourceId, testSourceId))
       }
+    })
 
-      // Retry with a clean snapshot (no conflicting tmdbId) — must succeed
-      const retryResult = await CatalogSyncService.syncCatalog(
+    it('maps two provider streams with the same tmdbId to one movie', async () => {
+      const fetchedAt = new Date('2026-01-01T10:00:00Z')
+      const result = await CatalogSyncService.syncCatalog(
         testSourceId,
         makeSnapshot(
-          [makeVodStream({ stream_id: 7, name: 'Fixed Movie', tmdb: '' })],
+          [
+            makeVodStream({ stream_id: 71, name: 'Dup A', tmdb: '99001' }),
+            makeVodStream({ stream_id: 72, name: 'Dup B', tmdb: '99001' }),
+          ],
           [],
-          new Date('2026-01-01T11:00:00Z'),
+          fetchedAt,
         ),
       )
-      expect(retryResult.status).toBe('completed')
-      expect(retryResult.counts.moviesCreated).toBe(1)
+
+      expect(result.status).toBe('completed')
+      expect(result.counts.moviesCreated).toBe(2)
+
+      const avRows = await db
+        .select()
+        .from(movieAvailabilities)
+        .where(eq(movieAvailabilities.providerId, testSourceId))
+      expect(avRows).toHaveLength(2)
+      expect(avRows[0].movieId).toBe(avRows[1].movieId)
+
+      const movieRows = await db.select().from(movies).where(eq(movies.tmdbId, 99001))
+      expect(movieRows).toHaveLength(1)
     })
   })
 

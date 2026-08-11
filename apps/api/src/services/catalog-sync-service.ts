@@ -49,6 +49,56 @@ function isUniqueConstraintViolation(err: unknown): boolean {
   return code === '23505'
 }
 
+async function resolveMovieId(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  stream: { name: string; cover?: string; plot?: string; description?: string; tmdb?: string },
+): Promise<string> {
+  const tmdbId = parseTmdbId(stream.tmdb)
+
+  if (tmdbId != null) {
+    const [existingByTmdb] = await tx
+      .select({ id: movies.id })
+      .from(movies)
+      .where(eq(movies.tmdbId, tmdbId))
+      .limit(1)
+    if (existingByTmdb) return existingByTmdb.id
+
+    const inserted = await tx
+      .insert(movies)
+      .values({
+        title: stream.name,
+        posterPath: stream.cover ?? null,
+        synopsis: stream.plot ?? stream.description ?? null,
+        year: null,
+        tmdbId,
+      })
+      .onConflictDoNothing({ target: movies.tmdbId })
+      .returning({ id: movies.id })
+
+    if (inserted[0]) return inserted[0].id
+
+    const [row] = await tx
+      .select({ id: movies.id })
+      .from(movies)
+      .where(eq(movies.tmdbId, tmdbId))
+      .limit(1)
+    if (row) return row.id
+    throw new Error(`Failed to resolve movie for tmdbId=${tmdbId}`)
+  }
+
+  const [inserted] = await tx
+    .insert(movies)
+    .values({
+      title: stream.name,
+      posterPath: stream.cover ?? null,
+      synopsis: stream.plot ?? stream.description ?? null,
+      year: null,
+      tmdbId: null,
+    })
+    .returning({ id: movies.id })
+  return inserted.id
+}
+
 export const CatalogSyncService = {
   async syncCatalog(sourceId: string, snapshot: XtreamCatalogSnapshot): Promise<CatalogSyncResult> {
     // Clear any stale RUNNING lock for this source
@@ -118,51 +168,38 @@ export const CatalogSyncService = {
         const seenMovieProviderItemIds = new Set<string>()
         for (const stream of snapshot.vodStreams) {
           const providerItemId = stream.stream_id.toString()
-          try {
-            const [existing] = await tx
-              .select({ id: movieAvailabilities.id })
-              .from(movieAvailabilities)
+          const [existing] = await tx
+            .select({ id: movieAvailabilities.id })
+            .from(movieAvailabilities)
+            .where(
+              and(
+                eq(movieAvailabilities.providerId, sourceId),
+                eq(movieAvailabilities.providerItemId, providerItemId),
+              ),
+            )
+
+          if (!existing) {
+            const movieId = await resolveMovieId(tx, stream)
+            await tx.insert(movieAvailabilities).values({
+              movieId,
+              providerId: sourceId,
+              providerItemId,
+              firstSeenAt: snapshot.fetchedAt,
+              lastSeenAt: snapshot.fetchedAt,
+              status: 'AVAILABLE',
+            })
+            counts.moviesCreated++
+          } else {
+            await tx
+              .update(movieAvailabilities)
+              .set({ lastSeenAt: snapshot.fetchedAt, status: 'AVAILABLE', unavailableAt: null })
               .where(
                 and(
                   eq(movieAvailabilities.providerId, sourceId),
                   eq(movieAvailabilities.providerItemId, providerItemId),
                 ),
               )
-
-            if (!existing) {
-              const [movie] = await tx
-                .insert(movies)
-                .values({
-                  title: stream.name,
-                  posterPath: stream.cover ?? null,
-                  synopsis: stream.plot ?? stream.description ?? null,
-                  year: null,
-                  tmdbId: parseTmdbId(stream.tmdb),
-                })
-                .returning()
-              await tx.insert(movieAvailabilities).values({
-                movieId: movie.id,
-                providerId: sourceId,
-                providerItemId,
-                firstSeenAt: snapshot.fetchedAt,
-                lastSeenAt: snapshot.fetchedAt,
-                status: 'AVAILABLE',
-              })
-              counts.moviesCreated++
-            } else {
-              await tx
-                .update(movieAvailabilities)
-                .set({ lastSeenAt: snapshot.fetchedAt, status: 'AVAILABLE', unavailableAt: null })
-                .where(
-                  and(
-                    eq(movieAvailabilities.providerId, sourceId),
-                    eq(movieAvailabilities.providerItemId, providerItemId),
-                  ),
-                )
-              counts.moviesUpdated++
-            }
-          } catch (err) {
-            counts.failedCount++
+            counts.moviesUpdated++
           }
           seenMovieProviderItemIds.add(providerItemId)
         }
@@ -171,50 +208,46 @@ export const CatalogSyncService = {
         const seenSeriesProviderItemIds = new Set<string>()
         for (const s of snapshot.series) {
           const providerItemId = s.series_id.toString()
-          try {
-            const [existing] = await tx
-              .select({ id: seriesAvailabilities.id })
-              .from(seriesAvailabilities)
+          const [existing] = await tx
+            .select({ id: seriesAvailabilities.id })
+            .from(seriesAvailabilities)
+            .where(
+              and(
+                eq(seriesAvailabilities.providerId, sourceId),
+                eq(seriesAvailabilities.providerItemId, providerItemId),
+              ),
+            )
+
+          if (!existing) {
+            const [seriesRow] = await tx
+              .insert(series)
+              .values({
+                title: s.name,
+                posterPath: s.cover ?? null,
+                synopsis: s.plot ?? null,
+                firstAirYear: parseYear(s.releaseDate),
+              })
+              .returning()
+            await tx.insert(seriesAvailabilities).values({
+              seriesId: seriesRow.id,
+              providerId: sourceId,
+              providerItemId,
+              firstSeenAt: snapshot.fetchedAt,
+              lastSeenAt: snapshot.fetchedAt,
+              status: 'AVAILABLE',
+            })
+            counts.seriesCreated++
+          } else {
+            await tx
+              .update(seriesAvailabilities)
+              .set({ lastSeenAt: snapshot.fetchedAt, status: 'AVAILABLE', unavailableAt: null })
               .where(
                 and(
                   eq(seriesAvailabilities.providerId, sourceId),
                   eq(seriesAvailabilities.providerItemId, providerItemId),
                 ),
               )
-
-            if (!existing) {
-              const [seriesRow] = await tx
-                .insert(series)
-                .values({
-                  title: s.name,
-                  posterPath: s.cover ?? null,
-                  synopsis: s.plot ?? null,
-                  firstAirYear: parseYear(s.releaseDate),
-                })
-                .returning()
-              await tx.insert(seriesAvailabilities).values({
-                seriesId: seriesRow.id,
-                providerId: sourceId,
-                providerItemId,
-                firstSeenAt: snapshot.fetchedAt,
-                lastSeenAt: snapshot.fetchedAt,
-                status: 'AVAILABLE',
-              })
-              counts.seriesCreated++
-            } else {
-              await tx
-                .update(seriesAvailabilities)
-                .set({ lastSeenAt: snapshot.fetchedAt, status: 'AVAILABLE', unavailableAt: null })
-                .where(
-                  and(
-                    eq(seriesAvailabilities.providerId, sourceId),
-                    eq(seriesAvailabilities.providerItemId, providerItemId),
-                  ),
-                )
-              counts.seriesUpdated++
-            }
-          } catch (err) {
-            counts.failedCount++
+            counts.seriesUpdated++
           }
           seenSeriesProviderItemIds.add(providerItemId)
         }
