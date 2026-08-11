@@ -3,5 +3,8 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T005-implement-xtream-codes-catalog-ingestion",
   "issue_number": 6,
-  "updated_at": "2026-08-11T07:22:11Z"
+  "updated_at": "2026-08-11T07:22:11Z",
+  "pr_number": 14,
+  "pr_url": "https://github.com/Billboc31/iptvflix/pull/14",
+  "pr_state": "open"
 }
