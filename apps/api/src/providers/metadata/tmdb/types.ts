@@ -30,3 +30,15 @@ export interface TmdbSeriesDetail {
   popularity: number
   vote_average: number
 }
+
+export interface TmdbSearchResultItem {
+  id: number
+  title?: string
+  name?: string
+  release_date?: string
+  first_air_date?: string
+}
+
+export interface TmdbSearchResponse {
+  results: TmdbSearchResultItem[]
+}

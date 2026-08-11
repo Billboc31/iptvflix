@@ -1,0 +1,12 @@
+{
+  "ticket_id": "T011",
+  "state": "TEST_COMPLETE",
+  "branch": "ticket/T011-implement-resilient-iptv-title-normalization-and-c",
+  "issue_number": 20,
+  "updated_at": "2026-08-11T13:42:37Z",
+  "pr_number": 29,
+  "pr_synced": true,
+  "pre_conflict_state": "TEST_COMPLETE",
+  "conflict_cleared_at": "2026-08-11T13:42:37Z",
+  "conflict_clear_reason": "PR #29 mergeable=True mergeable_state='clean'"
+}

@@ -25,7 +25,34 @@ export interface ExternalSeriesMetadata {
   voteAverage: number | null
 }
 
+export interface MetadataCandidate {
+  externalId: string
+  title: string
+  year: number | null
+  mediaType: 'MOVIE' | 'SERIES'
+}
+
 export interface MetadataProvider {
   getMovieMetadata(tmdbId: number): Promise<ExternalMovieMetadata | null>
   getSeriesMetadata(tmdbId: number): Promise<ExternalSeriesMetadata | null>
+  searchMovies(query: string, year?: number | null): Promise<MetadataCandidate[]>
+  searchSeries(query: string, year?: number | null): Promise<MetadataCandidate[]>
+}
+
+export class NoopMetadataProvider implements MetadataProvider {
+  async getMovieMetadata(_tmdbId: number): Promise<ExternalMovieMetadata | null> {
+    return null
+  }
+
+  async getSeriesMetadata(_tmdbId: number): Promise<ExternalSeriesMetadata | null> {
+    return null
+  }
+
+  async searchMovies(_query: string, _year?: number | null): Promise<MetadataCandidate[]> {
+    return []
+  }
+
+  async searchSeries(_query: string, _year?: number | null): Promise<MetadataCandidate[]> {
+    return []
+  }
 }
