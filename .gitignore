@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+out/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Android
+.gradle/
+*.apk
+*.aab
+apps/android-tv/local.properties
+apps/android-tv/.idea/
+apps/android-tv/app/build/
+
+# Editor
+.DS_Store
+*.swp
+*.swo
+
+# Vite
+.vite/
