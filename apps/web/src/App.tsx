@@ -9,6 +9,7 @@ import SeriesDetailPage from './pages/SeriesDetailPage.js'
 import SearchPage from './pages/SearchPage.js'
 import SourcesPage from './pages/SourcesPage.js'
 import OnboardingPage from './pages/OnboardingPage.js'
+import MyListPage from './pages/MyListPage.js'
 
 export default function App() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
             <Route path="/series/:id" element={<SeriesDetailPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/sources" element={<SourcesPage />} />
+            <Route path="/my-list" element={<MyListPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

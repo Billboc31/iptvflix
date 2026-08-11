@@ -11,6 +11,13 @@ import type {
   TestSourceResult,
   SyncRunResponse,
   TriggerSyncBody,
+  WatchlistEntry,
+  AddToWatchlistBody,
+  WatchlistMediaType,
+  ViewingProgressRow,
+  UpsertProgressBody,
+  ProgressMediaType,
+  ContinueWatchingItem,
 } from '@iptvflix/api-contracts'
 
 const BASE = import.meta.env.VITE_API_BASE ?? '/api'
@@ -109,4 +116,28 @@ export function listSyncRuns(): Promise<SyncRunResponse[]> {
 
 export function triggerSync(body: TriggerSyncBody): Promise<SyncRunResponse> {
   return request('/sync-runs', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function fetchWatchlist(): Promise<WatchlistEntry[]> {
+  return request('/watchlist')
+}
+
+export function addToWatchlist(body: AddToWatchlistBody): Promise<WatchlistEntry> {
+  return request('/watchlist', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function removeFromWatchlist(mediaType: WatchlistMediaType, mediaId: string): Promise<void> {
+  return request(`/watchlist/${mediaType}/${mediaId}`, { method: 'DELETE' })
+}
+
+export function upsertProgress(
+  mediaType: ProgressMediaType,
+  mediaId: string,
+  body: UpsertProgressBody,
+): Promise<ViewingProgressRow> {
+  return request(`/progress/${mediaType}/${mediaId}`, { method: 'PUT', body: JSON.stringify(body) })
+}
+
+export function fetchContinueWatching(): Promise<ContinueWatchingItem[]> {
+  return request('/continue-watching')
 }
