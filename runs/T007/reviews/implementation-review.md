@@ -1,12 +1,12 @@
-Now I have everything I need to write the review. Let me produce the structured report.
+Now I have a complete picture. Let me write the second review.
 
 ---
 
-# PR Review — T007: Build Netflix-inspired web experience
+# PR Review — T007: Build Netflix-inspired web experience (tentative 2)
 
 ## Résumé
 
-L'implémentation livre une base frontend solide et typée (React 18 + TypeScript + Tailwind CSS v4). La structure de composants, le shell applicatif, les hooks, les pages et les contrats API répondent globalement au scope du ticket. Les tests passent (26/26), le compilateur TypeScript ne signale aucune erreur, et aucun DTO Xtream ne fuite dans les composants UI. Deux problèmes bloquants identifiés, plusieurs points mineurs.
+Cette review fait suite à `IMPLEMENTATION_FIX_REQUIRED` (tentative 1). Les deux points bloquants identifiés lors de la première review ont été correctement résolus. 26/26 tests passent, TypeScript compile sans erreur, et aucun DTO Xtream ne fuite dans les composants UI. Les problèmes modérés restants sont des limitations fonctionnelles connues et acceptables pour une fondation V1.
 
 ---
 
@@ -16,126 +16,85 @@ L'implémentation livre une base frontend solide et typée (React 18 + TypeScrip
 |---|---|
 | `vitest run` — 26/26 tests | ✅ |
 | `tsc --noEmit` — 0 erreur | ✅ |
-| Respect des contrats API canoniques | ✅ |
+| BLOQUANT 1 corrigé — liens nav vers écran vide | ✅ |
+| BLOQUANT 2 corrigé — polling sync onboarding | ✅ |
 | Aucune fuite de DTO Xtream dans `apps/web/src/` | ✅ |
-| Coverage des pages requises (8 routes) | ✅ |
+| Coverage des 8 routes requises | ✅ |
 | États loading/empty/error présents | ✅ |
-| Scope exclu absent du code | ✅ (playback, TMDB, recommendation, Android TV) |
-| Cohérence visuelle avec le design board | Partielle (voir problèmes) |
+| Scope exclu absent (playback, TMDB, Android TV) | ✅ |
+| Contrats API canoniques dans `packages/api-contracts/` | ✅ |
 
 ---
 
 ## Points validés
 
-- **Architecture** : découpage clair `ui/content/sources/layout`, hooks isolés, client API unique en `lib/api.ts`.
-- **Contrats API** : `catalog.ts`, `sync.ts`, `sources.ts` dans `packages/api-contracts` — aucun type Xtream dans les pages ou composants.
-- **Thème** : palette dark (`#0a0a0f`, `#111118`, `#e50914`) fidèle au board de référence.
-- **Composants réutilisables** : `PosterCard`, `HeroSection`, `HorizontalRow`, `PosterGrid`, `FilterBar`, `Button`, `Dialog`, `Toast`, `Badge`, `Skeleton`, `EmptyState`, `ErrorState`.
-- **Navigation active** : `NavLink` avec `border-r border-[#e50914]` signale la route courante.
-- **Sync auto-poll** : `useSync` relance toutes les 3 s tant qu'un run est `PENDING | RUNNING`.
-- **Onboarding wizard** : 3 étapes structurées, source créée avant de passer à l'étape 2.
-- **MSW mocking** : handlers cohérents couvrant tous les endpoints testés.
+**BLOQUANT 1 — Liens nav désactivés (résolu)**
+`apps/web/src/components/layout/LeftNav.tsx:14-16` — Les trois items `disabled: true` (Radar Cinéma, Ma Liste, Historique) rendent maintenant comme des `<div>` avec `opacity-40 cursor-not-allowed select-none` et `title="Fonctionnalité à venir"`. Aucun `NavLink` ne pointe vers une route non déclarée. Comportement correct.
+
+**BLOQUANT 2 — Polling sync onboarding (résolu)**
+`apps/web/src/pages/OnboardingPage.tsx:31-46` — `handleSync` implémente un polling récursif sur `listSyncRuns()` toutes les 2 s jusqu'à `status === 'DONE' | 'FAILED'`. L'étape 3 n'est déclenchée qu'une fois le run terminé. Le cas d'erreur est géré avec `setSyncError`. Comportement correct.
+
+**Architecture**
+Découpage `ui/content/sources/layout` propre. Hooks isolés (`useSync`, `useSources`, `useMovies`, `useSeries`). Client API unique en `lib/api.ts`. `Toast` via context provider.
+
+**Contrats canoniques**
+`packages/api-contracts/src/` : `catalog.ts`, `sync.ts`, `sources.ts` — aucun type Xtream dans les pages ou composants. Export `index.ts` additif, compatible backward.
+
+**Tests**
+7 fichiers de test, 26 assertions, couverture MSW complète pour tous les endpoints testés. Handlers cohérents.
 
 ---
 
 ## Problèmes détectés
 
-### 🔴 BLOQUANT 1 — Liens nav menant à un écran vide
+### 🟡 MODÉRÉ (non bloquant) — Sync global toujours hardcodé sur `sources[0]`
 
-**Fichier** : `apps/web/src/components/layout/LeftNav.tsx:9-18`
+**Fichier** : `apps/web/src/pages/SourcesPage.tsx:70`
 
-Trois entrées de nav pointent vers des routes non déclarées dans `App.tsx` :
-
-```
-{ label: 'Radar Cinéma', to: '/radar', icon: '🎭' }
-{ label: 'Ma Liste',     to: '/list',  icon: '❤️' }
-{ label: 'Historique',  to: '/history', icon: '🕐' }
-```
-
-React Router ne matche aucune `<Route>` pour ces paths → la zone de contenu reste **vide** sans erreur. Un utilisateur qui clique voit un écran noir. Les fonctionnalités sont exclues du ticket mais les liens doivent soit être désactivés visuellement, soit pointer vers une page "Fonctionnalité à venir".
-
-**Correction attendue** : Ajouter `pointer-events-none opacity-40` sur ces items (classe conditionnelle) ou créer une route catch-all qui affiche un `EmptyState` avec un message explicite.
+Signalé en tentative 1, non corrigé. Pour un utilisateur multi-sources le bouton "Synchroniser" du banner ne synchronise que la première source de la liste. `SourceCard` n'expose pas de bouton de sync par source. Acceptable pour cette fondation V1 mais à traiter dans un ticket de suivi avant toute mise en production avec plusieurs sources.
 
 ---
 
-### 🔴 BLOQUANT 2 — Onboarding step 2 : fausse confirmation de sync terminé
-
-**Fichier** : `apps/web/src/pages/OnboardingPage.tsx:26-43`
-
-```tsx
-const run = await triggerSync({ sourceId })
-if (run.status === 'FAILED') {
-  setSyncError(run.error ?? 'Erreur inconnue')
-} else {
-  setSyncDone(true)           // ← déclenché même si run.status === 'PENDING'
-  setTimeout(() => setStep(3), 1500)
-}
-```
-
-`triggerSync` retourne le run avec `status: 'PENDING'`. La condition `=== 'FAILED'` est fausse → `syncDone = true` et le wizard avance à l'étape 3 au bout de 1,5 s alors que la synchronisation n'est pas terminée. L'utilisateur pense que son catalogue est importé alors qu'il ne l'est pas.
-
-**Correction attendue** : Après `triggerSync`, boucler en polling (`setInterval` ou récursif `setTimeout`) sur `listSyncRuns()` jusqu'à `status === 'DONE' | 'FAILED'`, puis progresser ou afficher l'erreur.
-
----
-
-### 🟡 MODÉRÉ 1 — "Tester la connexion" inaccessible à la création
+### 🟡 MODÉRÉ (non bloquant) — "Tester la connexion" mode édition uniquement
 
 **Fichier** : `apps/web/src/components/sources/SourceForm.tsx:135`
 
-```tsx
-{initial && onTest && (
-  <Button ...>Tester la connexion</Button>
-)}
-```
-
-Le design board montre le bouton "Tester la connexion" dans le formulaire d'ajout d'une source. L'API `testSource(id)` exige un `id` existant — la contrainte est réelle — mais l'UX peut être résolue en affichant "Enregistrer puis tester" ou en proposant un test après sauvegarde. Actuellement, les nouveaux utilisateurs ne peuvent pas tester avant de valider leur source dans le formulaire principal (seule l'édition le permet).
+Signalé en tentative 1, non corrigé. Contrainte API réelle (`testSource` exige un `id` existant). Acceptable pour V1.
 
 ---
 
-### 🟡 MODÉRÉ 2 — Sync hardcoded sur `sources[0]`
-
-**Fichier** : `apps/web/src/pages/SourcesPage.tsx:67`
-
-```tsx
-await triggerSync(sources[0].id)
-```
-
-Si l'utilisateur possède plusieurs sources, le bouton "Synchroniser" déclenche toujours la première. Le design board montre un contrôle de sync par source dans `SourceCard`. À corriger ou documenter explicitement comme simplification temporaire.
-
----
-
-### 🟡 MODÉRÉ 3 — Filtre "Disponibilité" absent du catalogue
+### 🟡 MODÉRÉ (non bloquant) — Filtre "Disponibilité" absent du catalogue
 
 **Fichier** : `apps/web/src/components/content/FilterBar.tsx`
 
-Le design board (écran "Catalogue Films") affiche quatre filtres : Genres, Années, **Disponibilité**, Qualité. Le FilterBar n'implémente que Genres, Années et Qualité (optionnel). `MovieFilters` ne contient pas de champ `availability` dans les contrats actuels, ce qui nécessiterait une extension du contrat pour l'implémenter. Point mineur en l'absence du backend correspondant mais écart visuel notable avec le board.
+Signalé en tentative 1, non corrigé. Le contrat `MovieFilters` ne contient pas de champ `availability` — la contrainte est backend. Acceptable en l'absence de l'endpoint correspondant.
 
 ---
 
-### 🔵 MINEUR 1 — Icônes emoji dans la navigation
+### 🔵 MINEUR — Icônes emoji dans la navigation
 
 **Fichier** : `apps/web/src/components/layout/LeftNav.tsx`
 
-Le design board utilise des icônes vectorielles. L'implémentation utilise des emoji Unicode (`🏠`, `🎬`, `📺`, etc.). Rendu inconsistant selon l'OS (Apple Emoji vs Twemoji). Acceptable pour une fondation mais à remplacer par une bibliothèque SVG dans une itération suivante.
+Rendu emoji non uniforme selon l'OS. À remplacer par une bibliothèque SVG (ex. `lucide-react`) dans une itération suivante.
 
 ---
 
-### 🔵 MINEUR 2 — Avertissements React Router v6 Future Flags
+### 🔵 MINEUR — React Router v6 Future Flags warnings dans les tests
 
-Les tests affichent des warnings `v7_startTransition` et `v7_relativeSplatPath`. Non bloquants pour cette version mais à résoudre avant la migration vers React Router v7.
+Warnings `v7_startTransition` et `v7_relativeSplatPath` non bloquants. À adresser avant migration v7.
 
 ---
 
 ## Risques éventuels
 
-- **Sécurité** : aucun secret hardcodé, `VITE_API_BASE` via `.env`. Le mot de passe de source n'est jamais loggué. ✅
-- **Régressions** : aucun composant existant modifié de manière destructive. Les changements dans `packages/api-contracts` sont additifs. ✅
-- **Dépendances** : toutes justifiées par le ticket (react-router-dom, tailwindcss, vitest, msw). ✅
+- **Sécurité** : aucun secret hardcodé, `VITE_API_BASE` via `.env`, mot de passe source jamais loggué. ✅
+- **Régressions** : changements dans `packages/api-contracts` sont additifs. Aucun composant existant modifié de manière destructive. ✅
+- **Memory leak potentiel** : le `setTimeout` récursif dans `OnboardingPage.handleSync` n'est pas annulé si le composant se démonte entre deux appels. Dans le cadre d'un wizard d'onboarding linéaire et non démontable pendant la sync, ce risque est marginal. À surveiller.
 
 ---
 
 ## Décision
 
-Les deux points bloquants (liens nav → écran vide, confirmation de sync prématurée dans l'onboarding) produisent des comportements trompeurs pour l'utilisateur final et ne sont pas acceptables dans une fondation sur laquelle vont s'appuyer les tickets suivants.
+Les deux blocages de la tentative 1 sont résolus correctement. L'implémentation constitue une fondation frontend solide, typée et testée. Les trois points modérés restants sont des limitations connues sans comportement trompeur — ils seront traités dans des tickets de suivi. Les mineurs sont purement cosmétiques.
 
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
