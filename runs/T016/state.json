@@ -1,7 +1,7 @@
 {
   "ticket_id": "T016",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T016-evolve-the-canonical-catalog-to-support-media-with",
   "issue_number": 33,
-  "updated_at": "2026-08-11T16:58:00Z"
+  "updated_at": "2026-08-11T17:19:30Z"
 }
