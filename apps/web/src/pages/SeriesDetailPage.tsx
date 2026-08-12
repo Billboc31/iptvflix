@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import type { SeriesDetailResponse } from '@iptvflix/api-contracts'
+import type { SeriesDetailResponse, AvailabilityVariantResponse } from '@iptvflix/api-contracts'
 import { getSeries, ApiError } from '../lib/api.js'
 import Badge from '../components/ui/Badge.js'
 import Button from '../components/ui/Button.js'
@@ -8,6 +8,24 @@ import Skeleton from '../components/ui/Skeleton.js'
 import ErrorState from '../components/ui/ErrorState.js'
 import WatchlistButton from '../components/content/WatchlistButton.js'
 import SeasonAccordion from '../components/detail/SeasonAccordion.js'
+
+function VariantBadge({ variant }: { variant: AvailabilityVariantResponse }) {
+  const parts = []
+  if (variant.audioLanguage) parts.push(variant.audioLanguage.toUpperCase())
+  if (variant.subtitleLanguage) parts.push(`sub:${variant.subtitleLanguage}`)
+  if (variant.videoQuality) parts.push(variant.videoQuality)
+  return (
+    <span
+      className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded border ${
+        variant.status === 'AVAILABLE'
+          ? 'border-white/20 text-gray-300'
+          : 'border-white/10 text-gray-600 line-through'
+      }`}
+    >
+      {parts.length > 0 ? parts.join(' · ') : 'Inconnu'}
+    </span>
+  )
+}
 
 function DetailSkeleton() {
   return (
@@ -47,6 +65,7 @@ export default function SeriesDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [notFound, setNotFound] = useState(false)
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -54,7 +73,10 @@ export default function SeriesDetailPage() {
     setNotFound(false)
     setError(null)
     getSeries(id)
-      .then(setSeries)
+      .then((s) => {
+        setSeries(s)
+        setSelectedVariantId(s.selectedVariantId)
+      })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 404) {
           setNotFound(true)
@@ -147,6 +169,33 @@ export default function SeriesDetailPage() {
               <p className="text-gray-300 text-sm leading-relaxed mb-6 max-w-2xl">
                 {series.synopsis}
               </p>
+            )}
+
+            {/* Variant selector */}
+            {series.variants.length > 0 && (
+              <div className="mb-6">
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">
+                  Version disponible
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {series.variants.map((v) => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => v.status === 'AVAILABLE' && setSelectedVariantId(v.id)}
+                      className={`cursor-pointer transition-opacity ${
+                        v.status !== 'AVAILABLE' ? 'opacity-40 cursor-not-allowed' : ''
+                      } ${
+                        selectedVariantId === v.id
+                          ? 'ring-2 ring-[#e50914] rounded'
+                          : ''
+                      }`}
+                    >
+                      <VariantBadge variant={v} />
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
 
             {/* Seasons */}

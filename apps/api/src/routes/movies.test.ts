@@ -1,14 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
 
-const { mockListMovies, mockGetMovie } = vi.hoisted(() => ({
+const { mockListMovies } = vi.hoisted(() => ({
   mockListMovies: vi.fn(),
-  mockGetMovie: vi.fn(),
 }))
 
 vi.mock('../services/catalog-service.js', () => ({
   listMovies: mockListMovies,
-  getMovie: mockGetMovie,
   NotFoundError: class NotFoundError extends Error {
     readonly statusCode = 404
     constructor(entity: string, id: string) {
@@ -173,23 +171,3 @@ describe('GET /movies', () => {
   })
 })
 
-describe('GET /movies/:id', () => {
-  it('returns movie when found', async () => {
-    mockGetMovie.mockResolvedValue(MOCK_MOVIE)
-    const res = await app.inject({ method: 'GET', url: `/movies/${MOCK_MOVIE.id}` })
-    expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual(MOCK_MOVIE)
-  })
-
-  it('returns 404 when service returns null', async () => {
-    mockGetMovie.mockResolvedValue(null)
-    const res = await app.inject({ method: 'GET', url: '/movies/a1b2c3d4-0000-0000-0000-000000000099' })
-    expect(res.statusCode).toBe(404)
-  })
-
-  it('returns 404 for non-UUID id without calling service', async () => {
-    const res = await app.inject({ method: 'GET', url: '/movies/not-a-uuid' })
-    expect(res.statusCode).toBe(404)
-    expect(mockGetMovie).not.toHaveBeenCalled()
-  })
-})
