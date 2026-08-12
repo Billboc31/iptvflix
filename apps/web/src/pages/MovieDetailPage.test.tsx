@@ -1,9 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/handlers.js'
-import { MOCK_MOVIE, MOCK_UNMATCHED_MOVIE } from '../test/handlers.js'
+import { MOCK_MOVIE, MOCK_UNMATCHED_MOVIE, MOCK_MOVIE_NO_TRAILER } from '../test/handlers.js'
 import MovieDetailPage from './MovieDetailPage.js'
 
 function renderPage(id = 'movie-1') {
@@ -83,5 +84,69 @@ describe('MovieDetailPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /réessayer/i })).toBeInTheDocument()
     })
+  })
+
+  it('shows voteAverage and certification when present', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: MOCK_MOVIE.title })).toBeInTheDocument()
+    })
+    expect(screen.getByText(/★ 7\.9/)).toBeInTheDocument()
+    expect(screen.getByText('PG-13')).toBeInTheDocument()
+  })
+
+  it('shows trailer play button when trailerKey is present', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /bande-annonce/i })).toBeInTheDocument()
+    })
+  })
+
+  it('does not show trailer button when trailerKey is null', async () => {
+    server.use(
+      http.get('/api/movies/:id', () => HttpResponse.json(MOCK_MOVIE_NO_TRAILER)),
+    )
+    renderPage('movie-3')
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: MOCK_MOVIE_NO_TRAILER.title })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('button', { name: /bande-annonce/i })).not.toBeInTheDocument()
+  })
+
+  it('shows cast member names when cast is present', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('Jane Doe')).toBeInTheDocument()
+    })
+    expect(screen.getByText('John Smith')).toBeInTheDocument()
+  })
+
+  it('shows director name when present', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('Denis Villeneuve')).toBeInTheDocument()
+    })
+  })
+
+  it('does not show cast section when cast is empty and director is null', async () => {
+    server.use(
+      http.get('/api/movies/:id', () => HttpResponse.json(MOCK_MOVIE_NO_TRAILER)),
+    )
+    renderPage('movie-3')
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: MOCK_MOVIE_NO_TRAILER.title })).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/Casting/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Réalisateur/i)).not.toBeInTheDocument()
+  })
+
+  it('loads trailer iframe on play button click', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /bande-annonce/i })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /bande-annonce/i }))
+    expect(screen.getByTitle(/trailer/i)).toHaveAttribute('src', expect.stringContaining('abc123'))
   })
 })

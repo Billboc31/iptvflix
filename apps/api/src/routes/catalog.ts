@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { and, count, eq, inArray, asc, sql } from 'drizzle-orm'
+import { and, asc, count, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { movies, movieGenres } from '../db/schema/movies.js'
 import { series as seriesTable, seriesGenres } from '../db/schema/series.js'
@@ -11,6 +11,8 @@ import {
   seriesAvailabilities,
   episodeAvailabilities,
 } from '../db/schema/availabilities.js'
+import { mediaVideos } from '../db/schema/media-videos.js'
+import { mediaCredits } from '../db/schema/media-credits.js'
 import { viewingProgress } from '../db/schema/viewing-progress.js'
 import type {
   MovieDetailResponse,
@@ -18,9 +20,12 @@ import type {
   EpisodeResponse,
   EnrichmentStatus,
   AvailabilityVariantResponse,
+  CastMemberResponse,
 } from '@iptvflix/api-contracts'
 import { getDefaultProfilePreferences } from '../services/profile-service.js'
 import { resolveVariant } from '../services/availability-resolver.js'
+
+const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w185'
 
 function deriveEnrichmentStatus(row: {
   tmdbId: number | null
@@ -67,6 +72,24 @@ function computeWatchState(
   return 'in_progress'
 }
 
+function mapCreditsToCast(
+  creditRows: { role: string; name: string; character: string | null; creditOrder: number; profilePath: string | null }[],
+): { cast: CastMemberResponse[]; director: string | null } {
+  const cast: CastMemberResponse[] = creditRows
+    .filter((c) => c.role === 'cast')
+    .sort((a, b) => a.creditOrder - b.creditOrder)
+    .map((c) => ({
+      name: c.name,
+      character: c.character,
+      profileUrl: c.profilePath ? `${TMDB_IMAGE_BASE}${c.profilePath}` : null,
+    }))
+
+  const directorRow = creditRows.find((c) => c.role === 'director')
+  const director = directorRow?.name ?? null
+
+  return { cast, director }
+}
+
 export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   // ---------------------------------------------------------------------------
   // GET /movies/:id
@@ -78,7 +101,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const [movie] = await db.select().from(movies).where(eq(movies.id, id))
     if (!movie) return reply.status(404).send({ error: 'Movie not found' })
 
-    const [genreRows, availCountRows, variantRows, prefs] = await Promise.all([
+    const [genreRows, availCountRows, variantRows, prefs, videoRows, creditRows] = await Promise.all([
       db
         .select({ name: genres.name })
         .from(movieGenres)
@@ -106,11 +129,34 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         .from(movieAvailabilities)
         .where(eq(movieAvailabilities.movieId, id)),
       getDefaultProfilePreferences(),
+      db
+        .select({
+          youtubeKey: mediaVideos.youtubeKey,
+          videoType: mediaVideos.videoType,
+          official: mediaVideos.official,
+        })
+        .from(mediaVideos)
+        .where(and(eq(mediaVideos.mediaType, 'movie'), eq(mediaVideos.mediaId, id)))
+        .orderBy(asc(mediaVideos.fetchedAt)),
+      db
+        .select({
+          role: mediaCredits.role,
+          name: mediaCredits.name,
+          character: mediaCredits.character,
+          creditOrder: mediaCredits.creditOrder,
+          profilePath: mediaCredits.profilePath,
+        })
+        .from(mediaCredits)
+        .where(and(eq(mediaCredits.mediaType, 'movie'), eq(mediaCredits.mediaId, id)))
+        .orderBy(asc(mediaCredits.creditOrder)),
     ])
 
     const availabilityCount = Number(availCountRows[0]?.cnt ?? 0)
     const variants: AvailabilityVariantResponse[] = variantRows
     const { selectedVariantId } = resolveVariant(variantRows, prefs)
+
+    const trailerKey = videoRows[0]?.youtubeKey ?? null
+    const { cast, director } = mapCreditsToCast(creditRows)
 
     const response: MovieDetailResponse = {
       id: movie.id,
@@ -130,6 +176,11 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       enrichmentStatus: deriveEnrichmentStatus(movie),
       selectedVariantId,
       variants,
+      trailerKey,
+      cast,
+      director,
+      voteAverage: movie.voteAverage ?? null,
+      certification: movie.certification ?? null,
     }
 
     return response
@@ -145,7 +196,16 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const [seriesRow] = await db.select().from(seriesTable).where(eq(seriesTable.id, id))
     if (!seriesRow) return reply.status(404).send({ error: 'Series not found' })
 
-    const [genreRows, availCountRows, seasonRows, seriesVariantRows, prefs, availEpCountRows] = await Promise.all([
+    const [
+      genreRows,
+      availCountRows,
+      seasonRows,
+      seriesVariantRows,
+      prefs,
+      availEpCountRows,
+      videoRows,
+      creditRows,
+    ] = await Promise.all([
       db
         .select({ name: genres.name })
         .from(seriesGenres)
@@ -201,6 +261,26 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         )
         .where(eq(seasons.seriesId, id))
         .groupBy(seasons.id, seasons.seasonNumber),
+      db
+        .select({
+          youtubeKey: mediaVideos.youtubeKey,
+          videoType: mediaVideos.videoType,
+          official: mediaVideos.official,
+        })
+        .from(mediaVideos)
+        .where(and(eq(mediaVideos.mediaType, 'series'), eq(mediaVideos.mediaId, id)))
+        .orderBy(asc(mediaVideos.fetchedAt)),
+      db
+        .select({
+          role: mediaCredits.role,
+          name: mediaCredits.name,
+          character: mediaCredits.character,
+          creditOrder: mediaCredits.creditOrder,
+          profilePath: mediaCredits.profilePath,
+        })
+        .from(mediaCredits)
+        .where(and(eq(mediaCredits.mediaType, 'series'), eq(mediaCredits.mediaId, id)))
+        .orderBy(asc(mediaCredits.creditOrder)),
     ])
 
     const availabilityCount = Number(availCountRows[0]?.cnt ?? 0)
@@ -208,6 +288,9 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const { selectedVariantId } = resolveVariant(seriesVariantRows, prefs)
 
     const availEpCountMap = new Map(availEpCountRows.map((r) => [r.seasonNumber, Number(r.cnt)]))
+
+    const trailerKey = videoRows[0]?.youtubeKey ?? null
+    const { cast, director } = mapCreditsToCast(creditRows)
 
     const response: SeriesDetailResponse = {
       id: seriesRow.id,
@@ -233,6 +316,12 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         airYear: s.airYear,
       })),
       variants: seriesVariants,
+      trailerKey,
+      cast,
+      director,
+      voteAverage: seriesRow.voteAverage ?? null,
+      certification: seriesRow.certification ?? null,
+      status: seriesRow.status ?? null,
     }
 
     return response

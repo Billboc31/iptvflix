@@ -2,10 +2,21 @@ import type {
   MetadataProvider,
   ExternalMovieMetadata,
   ExternalSeriesMetadata,
+  ExternalVideo,
+  ExternalCreditPerson,
   MetadataCandidate,
   DiscoveryFeed,
 } from '../types.js'
-import type { TmdbMovieDetail, TmdbSeriesDetail, TmdbSearchResponse } from './types.js'
+import type {
+  TmdbMovieDetail,
+  TmdbSeriesDetail,
+  TmdbSearchResponse,
+  TmdbVideosResponse,
+  TmdbCreditsResponse,
+  TmdbAggregateCreditsResponse,
+  TmdbReleaseDatesResponse,
+  TmdbContentRatingsResponse,
+} from './types.js'
 import { TmdbRateLimitError, TmdbNetworkError } from './errors.js'
 
 const BASE_URL = 'https://api.themoviedb.org/3'
@@ -21,7 +32,7 @@ function deriveReleaseStatus(dateStr?: string): string | null {
   return new Date(dateStr) > new Date() ? 'Upcoming' : 'Released'
 }
 
-function mapMovieDetail(raw: TmdbMovieDetail): ExternalMovieMetadata {
+function mapMovieDetail(raw: TmdbMovieDetail): Omit<ExternalMovieMetadata, 'certification'> {
   return {
     title: raw.title,
     originalTitle: raw.original_title ?? null,
@@ -39,7 +50,7 @@ function mapMovieDetail(raw: TmdbMovieDetail): ExternalMovieMetadata {
   }
 }
 
-function mapSeriesDetail(raw: TmdbSeriesDetail): ExternalSeriesMetadata {
+function mapSeriesDetail(raw: TmdbSeriesDetail): Omit<ExternalSeriesMetadata, 'certification'> {
   return {
     title: raw.name,
     originalTitle: raw.original_name ?? null,
@@ -51,10 +62,13 @@ function mapSeriesDetail(raw: TmdbSeriesDetail): ExternalSeriesMetadata {
     imdbId: null,
     popularity: raw.popularity ?? null,
     voteAverage: raw.vote_average ?? null,
+    status: raw.status ?? null,
     releaseStatus: raw.status ?? null,
     firstAirDate: raw.first_air_date || null,
   }
 }
+
+const MAX_CAST = 10
 
 export class TmdbClient implements MetadataProvider {
   private readonly apiKey: string
@@ -102,7 +116,7 @@ export class TmdbClient implements MetadataProvider {
     if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
     try {
       const raw = (await response.json()) as TmdbMovieDetail
-      return mapMovieDetail(raw)
+      return { ...mapMovieDetail(raw), certification: null }
     } catch {
       throw new TmdbNetworkError('Could not parse TMDB movie response')
     }
@@ -114,9 +128,132 @@ export class TmdbClient implements MetadataProvider {
     if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
     try {
       const raw = (await response.json()) as TmdbSeriesDetail
-      return mapSeriesDetail(raw)
+      return { ...mapSeriesDetail(raw), certification: null }
     } catch {
       throw new TmdbNetworkError('Could not parse TMDB series response')
+    }
+  }
+
+  async getMovieVideos(tmdbId: number): Promise<ExternalVideo[]> {
+    const response = await this.fetchWithRetry(`${BASE_URL}/movie/${tmdbId}/videos`)
+    if (!response.ok) return []
+    try {
+      const raw = (await response.json()) as TmdbVideosResponse
+      return (raw.results ?? [])
+        .filter((v) => v.site === 'YouTube')
+        .map((v) => ({
+          key: v.key,
+          site: v.site,
+          type: v.type,
+          official: v.official,
+          publishedAt: v.published_at ?? null,
+        }))
+    } catch {
+      return []
+    }
+  }
+
+  async getSeriesVideos(tmdbId: number): Promise<ExternalVideo[]> {
+    const response = await this.fetchWithRetry(`${BASE_URL}/tv/${tmdbId}/videos`)
+    if (!response.ok) return []
+    try {
+      const raw = (await response.json()) as TmdbVideosResponse
+      return (raw.results ?? [])
+        .filter((v) => v.site === 'YouTube')
+        .map((v) => ({
+          key: v.key,
+          site: v.site,
+          type: v.type,
+          official: v.official,
+          publishedAt: v.published_at ?? null,
+        }))
+    } catch {
+      return []
+    }
+  }
+
+  async getMovieCredits(tmdbId: number): Promise<ExternalCreditPerson[]> {
+    const response = await this.fetchWithRetry(`${BASE_URL}/movie/${tmdbId}/credits`)
+    if (!response.ok) return []
+    try {
+      const raw = (await response.json()) as TmdbCreditsResponse
+      const cast: ExternalCreditPerson[] = (raw.cast ?? [])
+        .slice(0, MAX_CAST)
+        .map((c) => ({
+          name: c.name,
+          character: c.character || null,
+          role: 'cast' as const,
+          order: c.order,
+          profilePath: c.profile_path,
+        }))
+      const directors: ExternalCreditPerson[] = (raw.crew ?? [])
+        .filter((c) => c.job === 'Director')
+        .map((c, i) => ({
+          name: c.name,
+          character: null,
+          role: 'director' as const,
+          order: i,
+          profilePath: c.profile_path,
+        }))
+      return [...cast, ...directors]
+    } catch {
+      return []
+    }
+  }
+
+  async getSeriesCredits(tmdbId: number): Promise<ExternalCreditPerson[]> {
+    const response = await this.fetchWithRetry(`${BASE_URL}/tv/${tmdbId}/aggregate_credits`)
+    if (!response.ok) return []
+    try {
+      const raw = (await response.json()) as TmdbAggregateCreditsResponse
+      const cast: ExternalCreditPerson[] = (raw.cast ?? [])
+        .slice(0, MAX_CAST)
+        .map((c) => ({
+          name: c.name,
+          character: c.roles?.[0]?.character ?? null,
+          role: 'cast' as const,
+          order: c.order,
+          profilePath: c.profile_path,
+        }))
+      const creators: ExternalCreditPerson[] = (raw.crew ?? [])
+        .filter((c) => c.job === 'Creator' || c.job === 'Executive Producer')
+        .slice(0, 2)
+        .map((c, i) => ({
+          name: c.name,
+          character: null,
+          role: 'director' as const,
+          order: i,
+          profilePath: c.profile_path,
+        }))
+      return [...cast, ...creators]
+    } catch {
+      return []
+    }
+  }
+
+  async getMovieCertification(tmdbId: number): Promise<string | null> {
+    const response = await this.fetchWithRetry(`${BASE_URL}/movie/${tmdbId}/release_dates`)
+    if (!response.ok) return null
+    try {
+      const raw = (await response.json()) as TmdbReleaseDatesResponse
+      const usEntry = (raw.results ?? []).find((r) => r.iso_3166_1 === 'US')
+      if (!usEntry) return null
+      const certified = usEntry.release_dates.find((d) => d.certification)
+      return certified?.certification ?? null
+    } catch {
+      return null
+    }
+  }
+
+  async getSeriesCertification(tmdbId: number): Promise<string | null> {
+    const response = await this.fetchWithRetry(`${BASE_URL}/tv/${tmdbId}/content_ratings`)
+    if (!response.ok) return null
+    try {
+      const raw = (await response.json()) as TmdbContentRatingsResponse
+      const usEntry = (raw.results ?? []).find((r) => r.iso_3166_1 === 'US')
+      return usEntry?.rating ?? null
+    } catch {
+      return null
     }
   }
 

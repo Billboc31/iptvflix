@@ -48,3 +48,68 @@ export interface TmdbSearchResultItem {
 export interface TmdbSearchResponse {
   results: TmdbSearchResultItem[]
 }
+
+export interface TmdbVideoResult {
+  key: string
+  site: string
+  type: string
+  official: boolean
+  published_at?: string
+}
+
+export interface TmdbVideosResponse {
+  results: TmdbVideoResult[]
+}
+
+export interface TmdbCastMember {
+  name: string
+  character: string
+  order: number
+  profile_path: string | null
+}
+
+export interface TmdbCrewMember {
+  name: string
+  job: string
+  profile_path: string | null
+}
+
+export interface TmdbCreditsResponse {
+  cast: TmdbCastMember[]
+  crew: TmdbCrewMember[]
+}
+
+export interface TmdbAggregateCastMember {
+  name: string
+  roles: { character: string; episode_count: number }[]
+  order: number
+  profile_path: string | null
+}
+
+export interface TmdbAggregateCreditsResponse {
+  cast: TmdbAggregateCastMember[]
+  crew: TmdbCrewMember[]
+}
+
+export interface TmdbReleaseDateEntry {
+  certification: string
+  release_type: number
+}
+
+export interface TmdbReleaseDatesRegion {
+  iso_3166_1: string
+  release_dates: TmdbReleaseDateEntry[]
+}
+
+export interface TmdbReleaseDatesResponse {
+  results: TmdbReleaseDatesRegion[]
+}
+
+export interface TmdbContentRatingEntry {
+  iso_3166_1: string
+  rating: string
+}
+
+export interface TmdbContentRatingsResponse {
+  results: TmdbContentRatingEntry[]
+}

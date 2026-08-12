@@ -4,7 +4,9 @@ import type * as schema from '../db/schema/index.js'
 import { movies, movieGenres } from '../db/schema/movies.js'
 import { series, seriesGenres } from '../db/schema/series.js'
 import { genres } from '../db/schema/genres.js'
-import type { MetadataProvider } from '../providers/metadata/types.js'
+import { mediaVideos } from '../db/schema/media-videos.js'
+import { mediaCredits } from '../db/schema/media-credits.js'
+import type { MetadataProvider, ExternalVideo, ExternalCreditPerson } from '../providers/metadata/types.js'
 
 type Db = PostgresJsDatabase<typeof schema>
 
@@ -20,6 +22,15 @@ function slugify(name: string): string {
 
 async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function pickBestTrailer(videos: ExternalVideo[]): ExternalVideo | null {
+  const officialTrailer = videos.find((v) => v.official && v.type === 'Trailer')
+  if (officialTrailer) return officialTrailer
+  const anyTrailer = videos.find((v) => v.type === 'Trailer')
+  if (anyTrailer) return anyTrailer
+  const teaser = videos.find((v) => v.official && v.type === 'Teaser') ?? videos.find((v) => v.type === 'Teaser')
+  return teaser ?? null
 }
 
 export type EnrichResult = 'enriched' | 'skipped' | 'no-tmdb-id' | 'provider-failed'
@@ -64,9 +75,14 @@ export class MetadataEnrichmentService {
       if (movie.metadataEnrichedAt > threshold) return 'skipped'
     }
 
-    let metadata
+    let metadata, videos: ExternalVideo[], credits: ExternalCreditPerson[], certification: string | null
     try {
-      metadata = await this.provider.getMovieMetadata(movie.tmdbId)
+      ;[metadata, videos, credits, certification] = await Promise.all([
+        this.provider.getMovieMetadata(movie.tmdbId),
+        this.provider.getMovieVideos(movie.tmdbId),
+        this.provider.getMovieCredits(movie.tmdbId),
+        this.provider.getMovieCertification(movie.tmdbId),
+      ])
     } catch {
       return 'provider-failed'
     }
@@ -83,6 +99,8 @@ export class MetadataEnrichmentService {
         backdropPath: metadata.backdropPath,
         durationMinutes: metadata.runtimeMinutes,
         imdbId: metadata.imdbId,
+        voteAverage: metadata.voteAverage,
+        certification,
         metadataProvider: 'tmdb',
         metadataEnrichedAt: new Date(),
         updatedAt: new Date(),
@@ -97,6 +115,9 @@ export class MetadataEnrichmentService {
           .values(genreIds.map((genreId) => ({ movieId, genreId })))
       }
     })
+
+    await this.persistVideos('movie', movieId, videos)
+    await this.persistCredits('movie', movieId, credits)
 
     return 'enriched'
   }
@@ -123,9 +144,14 @@ export class MetadataEnrichmentService {
       if (seriesRow.metadataEnrichedAt > threshold) return 'skipped'
     }
 
-    let metadata
+    let metadata, videos: ExternalVideo[], credits: ExternalCreditPerson[], certification: string | null
     try {
-      metadata = await this.provider.getSeriesMetadata(seriesRow.tmdbId)
+      ;[metadata, videos, credits, certification] = await Promise.all([
+        this.provider.getSeriesMetadata(seriesRow.tmdbId),
+        this.provider.getSeriesVideos(seriesRow.tmdbId),
+        this.provider.getSeriesCredits(seriesRow.tmdbId),
+        this.provider.getSeriesCertification(seriesRow.tmdbId),
+      ])
     } catch {
       return 'provider-failed'
     }
@@ -141,6 +167,9 @@ export class MetadataEnrichmentService {
         posterPath: metadata.posterPath,
         backdropPath: metadata.backdropPath,
         imdbId: metadata.imdbId,
+        voteAverage: metadata.voteAverage,
+        certification,
+        status: metadata.status,
         metadataProvider: 'tmdb',
         metadataEnrichedAt: new Date(),
         updatedAt: new Date(),
@@ -155,6 +184,9 @@ export class MetadataEnrichmentService {
           .values(genreIds.map((genreId) => ({ seriesId, genreId })))
       }
     })
+
+    await this.persistVideos('series', seriesId, videos)
+    await this.persistCredits('series', seriesId, credits)
 
     return 'enriched'
   }
@@ -220,6 +252,52 @@ export class MetadataEnrichmentService {
     }
 
     return counts
+  }
+
+  private async persistVideos(
+    mediaType: string,
+    mediaId: string,
+    videos: ExternalVideo[],
+  ): Promise<void> {
+    await this.db
+      .delete(mediaVideos)
+      .where(and(eq(mediaVideos.mediaType, mediaType), eq(mediaVideos.mediaId, mediaId)))
+
+    const best = pickBestTrailer(videos)
+    if (!best) return
+
+    await this.db.insert(mediaVideos).values({
+      mediaType,
+      mediaId,
+      youtubeKey: best.key,
+      videoType: best.type,
+      official: best.official,
+      publishedAt: best.publishedAt ? new Date(best.publishedAt) : null,
+    })
+  }
+
+  private async persistCredits(
+    mediaType: string,
+    mediaId: string,
+    credits: ExternalCreditPerson[],
+  ): Promise<void> {
+    await this.db
+      .delete(mediaCredits)
+      .where(and(eq(mediaCredits.mediaType, mediaType), eq(mediaCredits.mediaId, mediaId)))
+
+    if (credits.length === 0) return
+
+    await this.db.insert(mediaCredits).values(
+      credits.map((c) => ({
+        mediaType,
+        mediaId,
+        role: c.role,
+        name: c.name,
+        character: c.character,
+        creditOrder: c.order,
+        profilePath: c.profilePath,
+      })),
+    )
   }
 
   private async upsertGenres(
