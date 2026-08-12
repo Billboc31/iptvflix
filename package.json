@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm --parallel --filter './apps/*' dev",
+    "reset-local": "bash scripts/reset-local.sh",
+    "start-local": "bash scripts/start-local.sh",
     "build": "pnpm --filter './packages/*' build && pnpm --filter './apps/*' build",
     "lint": "pnpm --filter './packages/*' --filter './apps/api' --filter './apps/web' lint",
     "typecheck": "pnpm --filter './packages/*' --filter './apps/api' --filter './apps/web' typecheck",
