@@ -109,4 +109,5 @@ export interface XtreamCatalogSnapshot {
   seriesCategories: XtreamCategory[]
   series: XtreamSeries[]
   seriesInfo?: Record<number, XtreamSeriesInfo>
+  failedSeriesIds?: number[]
 }

@@ -79,6 +79,8 @@ interface NormalizedSnapshot {
   series: NormalizedSeriesItem[]
   /** undefined = provider does not supply episode data; no lifecycle action taken */
   episodes?: NormalizedEpisodeItem[]
+  /** Series whose episode fetch failed — their episodes must not be marked UNAVAILABLE */
+  failedSeriesProviderIds?: string[]
 }
 
 const STALE_LOCK_MS = 10 * 60 * 1000
@@ -310,7 +312,7 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
     seriesCreated: 0,
     seriesUpdated: 0,
     unavailableCount: 0,
-    failedCount: 0,
+    failedCount: snapshot.failedSeriesProviderIds?.length ?? 0,
   }
   let syncError: Error | undefined
 
@@ -597,8 +599,34 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
           seenEpisodeProviderItemIds.add(ep.providerItemId)
         }
 
+        const protectedEpisodeIds = new Set<string>()
+        const failedProviderIds = snapshot.failedSeriesProviderIds
+        if (failedProviderIds && failedProviderIds.length > 0) {
+          const protectedRows = await tx
+            .select({ providerItemId: episodeAvailabilities.providerItemId })
+            .from(episodeAvailabilities)
+            .innerJoin(episodes, eq(episodeAvailabilities.episodeId, episodes.id))
+            .innerJoin(
+              seriesAvailabilities,
+              and(
+                eq(episodes.seriesId, seriesAvailabilities.seriesId),
+                eq(seriesAvailabilities.providerId, sourceId),
+                inArray(seriesAvailabilities.providerItemId, failedProviderIds),
+              ),
+            )
+            .where(
+              and(
+                eq(episodeAvailabilities.providerId, sourceId),
+                eq(episodeAvailabilities.status, 'AVAILABLE'),
+              ),
+            )
+          for (const row of protectedRows) {
+            protectedEpisodeIds.add(row.providerItemId)
+          }
+        }
+
         const missingEpisodeIds = [...previouslyAvailableEpisodeIds].filter(
-          (id) => !seenEpisodeProviderItemIds.has(id),
+          (id) => !seenEpisodeProviderItemIds.has(id) && !protectedEpisodeIds.has(id),
         )
         if (missingEpisodeIds.length > 0) {
           const disappearedEpisodes = await tx
@@ -706,6 +734,7 @@ export const CatalogSyncService = {
         }
       }),
       episodes: normalizedEpisodes,
+      failedSeriesProviderIds: snapshot.failedSeriesIds?.map(String),
     })
   },
 
