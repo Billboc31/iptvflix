@@ -3,5 +3,7 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T025-reuse-canonical-series-identity-when-syncing-plex",
   "issue_number": 50,
-  "updated_at": "2026-08-12T07:20:28Z"
+  "updated_at": "2026-08-12T07:20:45Z",
+  "pr_number": 57,
+  "pr_synced": true
 }
