@@ -3,8 +3,10 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T042-generate-personalized-shelves-from-seed-media-and",
   "issue_number": 83,
-  "updated_at": "2026-08-12T13:49:44Z",
+  "updated_at": "2026-08-12T13:49:54Z",
   "pre_conflict_state": "IMPLEMENTATION_FIX_REQUIRED",
   "conflict_detected_at": "2026-08-12T13:16:37Z",
-  "conflicted_files": []
+  "conflicted_files": [],
+  "pr_number": 92,
+  "pr_synced": true
 }
