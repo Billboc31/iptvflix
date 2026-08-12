@@ -1,7 +1,7 @@
 {
   "ticket_id": "T038",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T038-build-a-bounded-local-discovery-candidate-pool-fro",
   "issue_number": 78,
-  "updated_at": "2026-08-12T12:03:16Z"
+  "updated_at": "2026-08-12T12:18:03Z"
 }
