@@ -353,7 +353,7 @@ export async function listShelves(profileId: string): Promise<ShelfSummaryRespon
   const userSummaries: ShelfSummaryResponse[] = userRows.map((r) => ({
     id: r.id,
     title: r.title,
-    type: r.type as 'MANUAL' | 'DYNAMIC',
+    type: r.type as 'MANUAL' | 'DYNAMIC' | 'GENERATED',
     layoutHint: r.layoutHint as 'ROW' | 'GRID',
     position: r.position,
   }))
@@ -375,7 +375,7 @@ export async function getShelf(shelfId: string, profileId: string): Promise<Shel
   if (shelf.profileId !== profileId) throw new ForbiddenError()
 
   let items: ShelfItem[]
-  if (shelf.type === 'MANUAL') {
+  if (shelf.type === 'MANUAL' || shelf.type === 'GENERATED') {
     items = await resolveManualItems(shelfId)
   } else {
     // DYNAMIC
@@ -386,7 +386,7 @@ export async function getShelf(shelfId: string, profileId: string): Promise<Shel
   return {
     id: shelf.id,
     title: shelf.title,
-    type: shelf.type as 'MANUAL' | 'DYNAMIC',
+    type: shelf.type as 'MANUAL' | 'DYNAMIC' | 'GENERATED',
     layoutHint: shelf.layoutHint as 'ROW' | 'GRID',
     items,
   }
@@ -417,7 +417,7 @@ export async function createShelf(profileId: string, body: CreateShelfBody): Pro
   return {
     id: row.id,
     title: row.title,
-    type: row.type as 'MANUAL' | 'DYNAMIC',
+    type: row.type as 'MANUAL' | 'DYNAMIC' | 'GENERATED',
     layoutHint: row.layoutHint as 'ROW' | 'GRID',
     position: row.position,
   }
@@ -443,7 +443,7 @@ export async function updateShelf(shelfId: string, profileId: string, body: Upda
   return {
     id: row.id,
     title: row.title,
-    type: row.type as 'MANUAL' | 'DYNAMIC',
+    type: row.type as 'MANUAL' | 'DYNAMIC' | 'GENERATED',
     layoutHint: row.layoutHint as 'ROW' | 'GRID',
     position: row.position,
   }

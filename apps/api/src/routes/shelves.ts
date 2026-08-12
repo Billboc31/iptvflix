@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
-import type { CreateShelfBody, UpdateShelfBody, AddShelfMemberBody, ReorderShelfMembersBody } from '@iptvflix/api-contracts'
+import type { CreateShelfBody, UpdateShelfBody, AddShelfMemberBody, ReorderShelfMembersBody, GenerateShelfBody } from '@iptvflix/api-contracts'
 import {
   listShelves,
   getShelf,
@@ -10,6 +10,7 @@ import {
   removeMember,
   reorderMembers,
 } from '../services/shelf-service.js'
+import { generateShelfFromSeeds, refreshGeneratedShelf } from '../services/shelf-generation-service.js'
 import { NotFoundError, ForbiddenError, ValidationError } from '../errors.js'
 import { DEFAULT_PROFILE_ID } from '../services/profile-service.js'
 
@@ -121,4 +122,42 @@ export async function shelvesRoutes(app: FastifyInstance): Promise<void> {
       }
     },
   )
+
+  app.post<{ Body: GenerateShelfBody }>('/shelves/generate', async (request, reply) => {
+    const { title, seedMediaIds, mediaType, availableToMe, limit } = request.body ?? {}
+
+    if (!title || typeof title !== 'string') {
+      return reply.status(400).send({ error: 'title is required' })
+    }
+    if (!Array.isArray(seedMediaIds) || seedMediaIds.length < 3 || seedMediaIds.length > 10) {
+      return reply.status(400).send({ error: 'seedMediaIds must have between 3 and 10 entries', validationError: true })
+    }
+    for (const seed of seedMediaIds) {
+      if (!seed?.mediaType || !seed?.mediaId) {
+        return reply.status(400).send({ error: 'each seed must have mediaType and mediaId', validationError: true })
+      }
+      if (seed.mediaType !== 'MOVIE' && seed.mediaType !== 'SERIES') {
+        return reply.status(400).send({ error: 'seed mediaType must be MOVIE or SERIES', validationError: true })
+      }
+    }
+    if (mediaType != null && mediaType !== 'MOVIE' && mediaType !== 'SERIES') {
+      return reply.status(400).send({ error: 'mediaType must be MOVIE or SERIES', validationError: true })
+    }
+
+    try {
+      const result = await generateShelfFromSeeds(DEFAULT_PROFILE_ID, { title, seedMediaIds, mediaType, availableToMe, limit })
+      return reply.status(201).send(result)
+    } catch (err) {
+      return handleServiceError(err, reply)
+    }
+  })
+
+  app.post<{ Params: { id: string } }>('/shelves/:id/refresh', async (request, reply) => {
+    try {
+      const result = await refreshGeneratedShelf(request.params.id, DEFAULT_PROFILE_ID)
+      return result
+    } catch (err) {
+      return handleServiceError(err, reply)
+    }
+  })
 }

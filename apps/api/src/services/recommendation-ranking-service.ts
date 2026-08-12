@@ -20,6 +20,8 @@ type RankOpts = {
   availableToMe?: boolean
   includeSeen?: boolean
   limit?: number
+  positiveMediaIds?: string[]
+  preferGenreIds?: string[]
 }
 
 type InternalCandidate = {
@@ -79,8 +81,9 @@ export async function rankRecommendations(
 
   const genreScores = (tasteRow?.genreScores ?? {}) as Record<string, number>
   const genreMeta = (tasteRow?.genreMeta ?? {}) as Record<string, { slug: string; name: string }>
-  const positiveMediaIds = new Set<string>(tasteRow?.positiveMediaIds ?? [])
+  const positiveMediaIds = new Set<string>([...(tasteRow?.positiveMediaIds ?? []), ...(opts.positiveMediaIds ?? [])])
   const negativeMediaIds = new Set<string>(tasteRow?.negativeMediaIds ?? [])
+  const preferGenreSet = new Set<string>(opts.preferGenreIds ?? [])
 
   const movieGenreMap = new Map<string, string[]>()
   for (const { movieId, genreId } of movieGenreRows) {
@@ -187,13 +190,15 @@ export async function rankRecommendations(
     let score: number
     let reasons: string[]
 
+    const preferGenreBonus = preferGenreSet.size > 0 && c.genreIds.some((gId) => preferGenreSet.has(gId)) ? 3.0 : 0
+
     if (coldStart) {
-      score = (c.popularity ?? 0) * (c.voteAverage ?? 0)
+      score = (c.popularity ?? 0) * (c.voteAverage ?? 0) + preferGenreBonus
       reasons = ['popular pick']
     } else {
       const genreAffinity = c.genreIds.reduce((sum, gId) => sum + (genreScores[gId] ?? 0), 0)
       const positiveBonus = positiveMediaIds.has(c.mediaId) ? 5.0 : 0
-      score = genreAffinity + positiveBonus + seenPenalty
+      score = genreAffinity + positiveBonus + seenPenalty + preferGenreBonus
 
       const matchedGenreNames: string[] = []
       for (const gId of c.genreIds) {

@@ -1,7 +1,7 @@
 import { pgTable, pgEnum, uuid, text, integer, timestamp, unique, jsonb } from 'drizzle-orm/pg-core'
 import { profiles } from './profiles.js'
 
-export const shelfTypeEnum = pgEnum('shelf_type', ['SYSTEM', 'MANUAL', 'DYNAMIC'])
+export const shelfTypeEnum = pgEnum('shelf_type', ['SYSTEM', 'MANUAL', 'DYNAMIC', 'GENERATED'])
 export const layoutHintEnum = pgEnum('layout_hint', ['ROW', 'GRID'])
 export const shelfMediaTypeEnum = pgEnum('shelf_media_type', ['MOVIE', 'SERIES'])
 

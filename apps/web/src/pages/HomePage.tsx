@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import HeroSection from '../components/content/HeroSection.js'
 import ShelfRow from '../components/content/ShelfRow.js'
+import GenerateShelfDialog from '../components/content/GenerateShelfDialog.js'
 import EmptyState from '../components/ui/EmptyState.js'
 import Spinner from '../components/ui/Spinner.js'
 import Button from '../components/ui/Button.js'
@@ -28,7 +30,8 @@ function ShelfRows({ shelves }: { shelves: ShelfSummaryResponse[] }) {
 export default function HomePage() {
   const navigate = useNavigate()
   const { data: movies, loading: moviesLoading } = useMovies({ pageSize: 1 })
-  const { shelves, loading: shelvesLoading } = useShelves()
+  const { shelves, loading: shelvesLoading, refetch: refetchShelves } = useShelves()
+  const [generateDialogOpen, setGenerateDialogOpen] = useState(false)
 
   const isLoading = moviesLoading || shelvesLoading
   const hasContent = (movies?.items.length ?? 0) > 0 || shelves.length > 0
@@ -64,7 +67,22 @@ export default function HomePage() {
       {isLoading && <Spinner />}
 
       {/* Shelf rows */}
-      {!shelvesLoading && <ShelfRows shelves={shelves} />}
+      {!shelvesLoading && (
+        <>
+          <div className="flex justify-end px-4 py-2">
+            <Button variant="secondary" size="sm" onClick={() => setGenerateDialogOpen(true)}>
+              + Créer une sélection
+            </Button>
+          </div>
+          <ShelfRows shelves={shelves} />
+        </>
+      )}
+
+      <GenerateShelfDialog
+        open={generateDialogOpen}
+        onClose={() => setGenerateDialogOpen(false)}
+        onSuccess={() => refetchShelves()}
+      />
     </div>
   )
 }

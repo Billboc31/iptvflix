@@ -1,4 +1,4 @@
-export type ShelfType = 'SYSTEM' | 'MANUAL' | 'DYNAMIC'
+export type ShelfType = 'SYSTEM' | 'MANUAL' | 'DYNAMIC' | 'GENERATED'
 export type LayoutHint = 'ROW' | 'GRID'
 
 export type ShelfItem = {
@@ -54,4 +54,34 @@ export type AddShelfMemberBody = {
 
 export type ReorderShelfMembersBody = {
   members: Array<{ mediaType: 'MOVIE' | 'SERIES'; mediaId: string }>
+}
+
+export type SeedMediaRef = {
+  mediaType: 'MOVIE' | 'SERIES'
+  mediaId: string
+}
+
+export type GeneratedShelfRules = {
+  seedMediaIds: SeedMediaRef[]
+  mediaType?: 'MOVIE' | 'SERIES'
+  availableToMe?: boolean
+  limit: number
+  inferredGenreIds: string[]
+  generatedAt: string
+}
+
+export type GenerateShelfBody = {
+  title: string
+  seedMediaIds: SeedMediaRef[]
+  mediaType?: 'MOVIE' | 'SERIES'
+  availableToMe?: boolean
+  limit?: number
+}
+
+export type GenerateShelfResponse = {
+  shelf: ShelfSummaryResponse
+  explanation: {
+    inferredGenreIds: string[]
+    seedTitles: string[]
+  }
 }
