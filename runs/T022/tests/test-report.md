@@ -1,30 +1,24 @@
 ---
 
-## Test Report — T022
+## T022 — Test Report: PASS
 
-**Verdict: PASS** — All 8 acceptance criteria satisfied, no regressions.
+All 8 acceptance criteria validated. Here's the summary:
 
-### Results by criterion
+| AC | Criterion | Status |
+|----|-----------|--------|
+| 1 | One canonical Series page, no duplicated provider structures | PASS |
+| 2 | Season shows `X/Y episodes available` | PASS |
+| 3 | Multi-source episode appears once with multiple variants | PASS |
+| 4 | UNAVAILABLE episode visually distinct from missing metadata | PASS |
+| 5 | Watch state (watched/in_progress) reflected per episode | PASS |
+| 6 | Partial source coverage (Plex S1-3 / IPTV S1-5) represented | PASS |
+| 7 | Language/quality variants don't duplicate episode rows | PASS |
+| 8 | Automated tests cover full, partial, multi-source, unavailable | PASS |
 
-| AC | Description | Status |
-|---|---|---|
-| AC1 | Canonical Series page — no duplicate provider structures | **PASS** |
-| AC2 | Season shows `X/Y episodes available` | **PASS** |
-| AC3 | Episode with multi-source availability appears once | **PASS** |
-| AC4 | UNAVAILABLE episodes visually distinct | **PASS** |
-| AC5 | Watch state (watched/in_progress/unwatched) reflected | **PASS** |
-| AC6 | Partial source coverage represented correctly | **PASS** |
-| AC7 | Language/quality variants don't duplicate episode rows | **PASS** |
-| AC8 | Automated tests cover all cases | **PASS** |
+**Test results:**
+- `apps/api`: 343/343 tests pass (28 files)
+- `apps/web`: 77/77 tests pass (15 files)
 
-### Test runs
+**TypeScript:** Clean for `api-contracts` and `apps/web`. Pre-existing errors in `apps/api` (sources.test.ts, catalog-sync-service.test.ts, vertical-slice.test.ts) — confirmed not introduced by T022 via git log.
 
-- **API (343 tests):** all pass — including new catalog tests for `availableEpisodeCount` aggregation, `watchState` with/without `profileId`, multi-source variants, UNAVAILABLE episodes, invalid `profileId` → 400.
-- **Web (77 tests):** all pass — including new `SeasonAccordion` tests (fraction display, 0/N, plural/singular) and `EpisodeRow` tests (watched/in_progress/null/unwatched states, UNAVAILABLE styling).
-
-### TypeScript
-
-- `api-contracts` and `web`: no errors.
-- `api`: pre-existing errors in `vertical-slice.test.ts`, `sources.test.ts`, `catalog-sync-service.test.ts` — all in files **not touched by T022**, carried forward from earlier tickets.
-
-Report saved to `runs/T022/tests/tester-report.md`.
+One non-blocking note: `SeriesDetailPage.test.tsx` emits MSW warnings for `GET /api/profile` (no mock handler), but tests pass correctly since the page gracefully handles a missing profile by defaulting `watchState` to `null`.
