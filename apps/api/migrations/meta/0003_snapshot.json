@@ -1,6 +1,6 @@
 {
   "id": "37d7869e-39e2-4b9b-9afd-af5d89d622f5",
-  "prevId": "0002_real_leper_queen",
+  "prevId": "4b6513d2-138f-4115-8a10-cdc3b5d3ea65",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
