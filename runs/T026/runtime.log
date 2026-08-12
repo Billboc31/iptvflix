@@ -15,3 +15,10 @@
 [2026-08-12T07:22:34Z] conflict-resolver: running tests
 [2026-08-12T07:22:34Z] conflict-resolver: test-report written: runs/T026/conflict/test-report.md
 [2026-08-12T07:22:34Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-12T07:22:34Z] conflict-resolver: commit: sha=6f29ce6
+[2026-08-12T07:22:34Z] conflict-resolver: git push --force-with-lease origin ticket/T026-fix-dynamic-shelf-availability-filtering-and-unsup
+[2026-08-12T07:22:36Z] conflict-resolver: push succeeded
+[2026-08-12T07:22:37Z] conflict-resolver: state → CONFLICT_RESOLVED_REVIEW_NEEDED
+[2026-08-12T07:22:37Z] auto-finalize-conflict: gate disabled for project='iptvflix'
+[2026-08-12T07:22:37Z] conflict-resolver: transition CONFLICT_RESOLVED_REVIEW_NEEDED → TEST_COMPLETE (auto, PROJECT_SETTING)
+[2026-08-12T07:22:37Z] auto-run: TEST_COMPLETE — running PR lifecycle
