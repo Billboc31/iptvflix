@@ -9,6 +9,8 @@ import ErrorState from '../components/ui/ErrorState.js'
 import WatchlistButton from '../components/content/WatchlistButton.js'
 import FeedbackButtons from '../components/content/FeedbackButtons.js'
 import SeasonAccordion from '../components/detail/SeasonAccordion.js'
+import TrailerPlayer from '../components/detail/TrailerPlayer.js'
+import CastRow from '../components/detail/CastRow.js'
 
 function VariantBadge({ variant }: { variant: AvailabilityVariantResponse }) {
   const parts = []
@@ -152,6 +154,15 @@ export default function SeriesDetailPage() {
                   {series.seasonCount} saison{series.seasonCount > 1 ? 's' : ''}
                 </span>
               )}
+              {series.status && (
+                <Badge variant="info">{series.status}</Badge>
+              )}
+              {series.certification && (
+                <Badge variant="default">{series.certification}</Badge>
+              )}
+              {series.voteAverage !== null && (
+                <span className="text-yellow-400 text-sm font-medium">★ {series.voteAverage.toFixed(1)}</span>
+              )}
               <Badge variant={series.availabilityStatus === 'AVAILABLE' ? 'available' : 'unavailable'}>
                 {series.availabilityStatus === 'AVAILABLE' ? 'Disponible' : 'Indisponible'}
               </Badge>
@@ -179,6 +190,9 @@ export default function SeriesDetailPage() {
               </p>
             )}
 
+            {/* Trailer */}
+            <TrailerPlayer trailerKey={series.trailerKey} title={series.title} />
+
             {/* Variant selector */}
             {series.variants.length > 0 && (
               <div className="mb-6">
@@ -205,6 +219,9 @@ export default function SeriesDetailPage() {
                 </div>
               </div>
             )}
+
+            {/* Cast */}
+            <CastRow cast={series.cast} director={series.director} />
 
             {/* Seasons */}
             <div className="mt-6">

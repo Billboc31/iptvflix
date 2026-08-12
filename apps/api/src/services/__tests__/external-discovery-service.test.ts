@@ -30,6 +30,12 @@ function makeProvider(overrides: Partial<MetadataProvider> = {}): MetadataProvid
     getSeriesMetadata: vi.fn().mockResolvedValue(null),
     fetchMovieFeed: vi.fn().mockResolvedValue([]),
     fetchSeriesFeed: vi.fn().mockResolvedValue([]),
+    getMovieVideos: vi.fn().mockResolvedValue([]),
+    getSeriesVideos: vi.fn().mockResolvedValue([]),
+    getMovieCredits: vi.fn().mockResolvedValue([]),
+    getSeriesCredits: vi.fn().mockResolvedValue([]),
+    getMovieCertification: vi.fn().mockResolvedValue(null),
+    getSeriesCertification: vi.fn().mockResolvedValue(null),
     ...overrides,
   }
 }
@@ -220,6 +226,7 @@ describe('ExternalDiscoveryService', () => {
         imdbId: 'tt0133093',
         popularity: 64.5,
         voteAverage: 8.2,
+        certification: null,
         releaseStatus: 'Released',
         releaseDate: '1999-03-31',
       })
@@ -287,6 +294,8 @@ describe('ExternalDiscoveryService', () => {
         imdbId: 'tt0903747',
         popularity: 93.2,
         voteAverage: 9.5,
+        certification: null,
+        status: null,
         releaseStatus: 'Released',
         firstAirDate: '2008-01-20',
       })

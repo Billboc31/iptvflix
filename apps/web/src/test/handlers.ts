@@ -34,6 +34,24 @@ export const MOCK_MOVIE: MovieDetailResponse = {
   enrichmentStatus: 'matched',
   selectedVariantId: null,
   variants: [],
+  trailerKey: 'abc123',
+  cast: [
+    { name: 'Jane Doe', character: 'Hero', profileUrl: null },
+    { name: 'John Smith', character: 'Villain', profileUrl: null },
+  ],
+  director: 'Denis Villeneuve',
+  voteAverage: 7.9,
+  certification: 'PG-13',
+}
+
+export const MOCK_MOVIE_NO_TRAILER: MovieDetailResponse = {
+  ...MOCK_MOVIE,
+  id: 'movie-3',
+  trailerKey: null,
+  cast: [],
+  director: null,
+  voteAverage: null,
+  certification: null,
 }
 
 export const MOCK_UNMATCHED_MOVIE: MovieDetailResponse = {
@@ -54,6 +72,11 @@ export const MOCK_UNMATCHED_MOVIE: MovieDetailResponse = {
   enrichmentStatus: 'unmatched',
   selectedVariantId: null,
   variants: [],
+  trailerKey: null,
+  cast: [],
+  director: null,
+  voteAverage: null,
+  certification: null,
 }
 
 export const MOCK_SERIES: SeriesDetailResponse = {
@@ -77,6 +100,12 @@ export const MOCK_SERIES: SeriesDetailResponse = {
     { seasonNumber: 1, title: 'Saison 1', episodeCount: 3, availableEpisodeCount: 2, airYear: 2023 },
     { seasonNumber: 2, title: null, episodeCount: 2, availableEpisodeCount: 0, airYear: 2024 },
   ],
+  trailerKey: 'xyz789',
+  cast: [{ name: 'Alice Martin', character: 'Lead', profileUrl: null }],
+  director: 'Showrunner Name',
+  voteAverage: 8.2,
+  certification: 'TV-MA',
+  status: 'Returning Series',
 }
 
 export const MOCK_EPISODES: EpisodeResponse[] = [

@@ -72,6 +72,8 @@ const MOVIE_ROW = {
   backdropPath: null,
   tmdbId: 12345,
   imdbId: null,
+  voteAverage: 7.8,
+  certification: 'PG-13',
   createdAt: new Date(),
   updatedAt: new Date(),
 }
@@ -86,6 +88,9 @@ const SERIES_ROW = {
   backdropPath: null,
   tmdbId: null,
   imdbId: null,
+  voteAverage: 8.1,
+  certification: 'TV-MA',
+  status: 'Returning Series',
   createdAt: new Date(),
   updatedAt: new Date(),
 }
@@ -142,6 +147,28 @@ const VARIANT_VOSTFR = {
   rawTitle: 'Test Movie VOSTFR',
 }
 
+const VIDEO_TRAILER = {
+  youtubeKey: 'abc123',
+  videoType: 'Trailer',
+  official: true,
+}
+
+const CREDIT_CAST = {
+  role: 'cast',
+  name: 'Jane Doe',
+  character: 'Hero',
+  creditOrder: 0,
+  profilePath: null,
+}
+
+const CREDIT_DIRECTOR = {
+  role: 'director',
+  name: 'Denis Villeneuve',
+  character: null,
+  creditOrder: 0,
+  profilePath: null,
+}
+
 // ---------------------------------------------------------------------------
 // GET /movies/:id
 // ---------------------------------------------------------------------------
@@ -153,6 +180,8 @@ describe('GET /movies/:id', () => {
       .mockReturnValueOnce(selectChain([{ name: 'Action' }])) // genres
       .mockReturnValueOnce(selectChain([AVAIL_COUNT_ONE]))     // availability count
       .mockReturnValueOnce(selectChain([VARIANT_FRENCH_1080])) // variants
+      .mockReturnValueOnce(selectChain([]))                    // videos
+      .mockReturnValueOnce(selectChain([]))                    // credits
 
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
     expect(res.statusCode).toBe(200)
@@ -178,6 +207,8 @@ describe('GET /movies/:id', () => {
       .mockReturnValueOnce(selectChain([]))
       .mockReturnValueOnce(selectChain([AVAIL_COUNT_ONE]))
       .mockReturnValueOnce(selectChain([VARIANT_FRENCH_1080]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
 
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
     const body = res.json()
@@ -193,6 +224,8 @@ describe('GET /movies/:id', () => {
       .mockReturnValueOnce(selectChain([]))
       .mockReturnValueOnce(selectChain([]))
       .mockReturnValueOnce(selectChain([unavailVariant]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
 
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
     const body = res.json()
@@ -205,6 +238,8 @@ describe('GET /movies/:id', () => {
       .mockReturnValueOnce(selectChain([]))
       .mockReturnValueOnce(selectChain([AVAIL_COUNT_ONE]))
       .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
 
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
     expect(res.json().enrichmentStatus).toBe('matched')
@@ -214,6 +249,8 @@ describe('GET /movies/:id', () => {
     const unmatchedRow = { ...MOVIE_ROW, tmdbId: null, imdbId: null, synopsis: null }
     mockDb.select
       .mockReturnValueOnce(selectChain([unmatchedRow]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
       .mockReturnValueOnce(selectChain([]))
       .mockReturnValueOnce(selectChain([]))
       .mockReturnValueOnce(selectChain([]))
@@ -240,6 +277,8 @@ describe('GET /movies/:id', () => {
       .mockReturnValueOnce(selectChain([]))
       .mockReturnValueOnce(selectChain([]))
       .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
 
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
     expect(res.json().availabilityStatus).toBe('UNAVAILABLE')
@@ -252,6 +291,8 @@ describe('GET /movies/:id', () => {
       .mockReturnValueOnce(selectChain([]))
       .mockReturnValueOnce(selectChain([AVAIL_COUNT_ONE]))
       .mockReturnValueOnce(selectChain([VARIANT_FRENCH_1080]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
 
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
     const body = res.json()
@@ -268,6 +309,8 @@ describe('GET /movies/:id', () => {
       .mockReturnValueOnce(selectChain([]))
       .mockReturnValueOnce(selectChain([{ cnt: 2 }]))
       .mockReturnValueOnce(selectChain([VARIANT_FRENCH_1080, VARIANT_MULTI_4K]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
 
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
     const body = res.json()
@@ -283,6 +326,8 @@ describe('GET /movies/:id', () => {
       .mockReturnValueOnce(selectChain([]))
       .mockReturnValueOnce(selectChain([AVAIL_COUNT_ONE]))
       .mockReturnValueOnce(selectChain([VARIANT_VOSTFR]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
 
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
     const body = res.json()
@@ -297,6 +342,8 @@ describe('GET /movies/:id', () => {
       .mockReturnValueOnce(selectChain([]))
       .mockReturnValueOnce(selectChain([{ cnt: 2 }]))
       .mockReturnValueOnce(selectChain([VARIANT_FRENCH_1080, VARIANT_MULTI_4K]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
 
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
     expect(res.json().quality).toBe('4K')
@@ -313,10 +360,85 @@ describe('GET /movies/:id', () => {
       .mockReturnValueOnce(selectChain([]))
       .mockReturnValueOnce(selectChain([{ cnt: 2 }]))
       .mockReturnValueOnce(selectChain([VARIANT_FRENCH_1080, VARIANT_MULTI_4K]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
 
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
     const body = res.json()
     expect(body.selectedVariantId).toBe(VARIANT_FRENCH_1080.id)
+  })
+
+  it('returns trailerKey from mediaVideos when present', async () => {
+    mockDb.select
+      .mockReturnValueOnce(selectChain([MOVIE_ROW]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([VIDEO_TRAILER]))
+      .mockReturnValueOnce(selectChain([]))
+
+    const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
+    expect(res.json().trailerKey).toBe('abc123')
+  })
+
+  it('returns trailerKey null when no mediaVideos row exists', async () => {
+    mockDb.select
+      .mockReturnValueOnce(selectChain([MOVIE_ROW]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+
+    const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
+    expect(res.json().trailerKey).toBeNull()
+  })
+
+  it('returns cast array and director from mediaCredits', async () => {
+    mockDb.select
+      .mockReturnValueOnce(selectChain([MOVIE_ROW]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([CREDIT_CAST, CREDIT_DIRECTOR]))
+
+    const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
+    const body = res.json()
+    expect(body.cast).toHaveLength(1)
+    expect(body.cast[0].name).toBe('Jane Doe')
+    expect(body.cast[0].character).toBe('Hero')
+    expect(body.director).toBe('Denis Villeneuve')
+  })
+
+  it('returns empty cast and null director when no mediaCredits exist', async () => {
+    mockDb.select
+      .mockReturnValueOnce(selectChain([MOVIE_ROW]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+
+    const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
+    const body = res.json()
+    expect(body.cast).toEqual([])
+    expect(body.director).toBeNull()
+  })
+
+  it('returns voteAverage and certification from movie row', async () => {
+    mockDb.select
+      .mockReturnValueOnce(selectChain([MOVIE_ROW]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+
+    const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
+    const body = res.json()
+    expect(body.voteAverage).toBe(7.8)
+    expect(body.certification).toBe('PG-13')
   })
 })
 
@@ -333,6 +455,8 @@ describe('GET /series/:id', () => {
       .mockReturnValueOnce(selectChain([SEASON_ROW]))        // seasons
       .mockReturnValueOnce(selectChain([]))                  // variants
       .mockReturnValueOnce(selectChain([]))                  // available ep count per season
+      .mockReturnValueOnce(selectChain([]))                  // videos
+      .mockReturnValueOnce(selectChain([]))                  // credits
 
     const res = await app.inject({ method: 'GET', url: `/series/${SERIES_ROW.id}` })
     expect(res.statusCode).toBe(200)
@@ -362,6 +486,8 @@ describe('GET /series/:id', () => {
       .mockReturnValueOnce(selectChain([S1, S2]))       // seasons
       .mockReturnValueOnce(selectChain([]))             // variants
       .mockReturnValueOnce(selectChain([{ seasonNumber: 1, cnt: 2 }])) // avail ep count (S2 absent → 0)
+      .mockReturnValueOnce(selectChain([]))             // videos
+      .mockReturnValueOnce(selectChain([]))             // credits
 
     const res = await app.inject({ method: 'GET', url: `/series/${SERIES_ROW.id}` })
     expect(res.statusCode).toBe(200)
@@ -381,6 +507,45 @@ describe('GET /series/:id', () => {
     const res = await app.inject({ method: 'GET', url: '/series/not-a-uuid' })
     expect(res.statusCode).toBe(404)
     expect(mockDb.select).not.toHaveBeenCalled()
+  })
+
+  it('returns trailerKey, cast, director, voteAverage, certification and status for rich series', async () => {
+    mockDb.select
+      .mockReturnValueOnce(selectChain([SERIES_ROW]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([VIDEO_TRAILER]))
+      .mockReturnValueOnce(selectChain([CREDIT_CAST, CREDIT_DIRECTOR]))
+
+    const res = await app.inject({ method: 'GET', url: `/series/${SERIES_ROW.id}` })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+
+    expect(body.trailerKey).toBe('abc123')
+    expect(body.cast).toHaveLength(1)
+    expect(body.cast[0].name).toBe('Jane Doe')
+    expect(body.director).toBe('Denis Villeneuve')
+    expect(body.voteAverage).toBe(8.1)
+    expect(body.certification).toBe('TV-MA')
+    expect(body.status).toBe('Returning Series')
+  })
+
+  it('returns trailerKey null for series without videos', async () => {
+    mockDb.select
+      .mockReturnValueOnce(selectChain([SERIES_ROW]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+
+    const res = await app.inject({ method: 'GET', url: `/series/${SERIES_ROW.id}` })
+    expect(res.json().trailerKey).toBeNull()
   })
 })
 

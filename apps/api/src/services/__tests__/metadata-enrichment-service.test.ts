@@ -26,6 +26,7 @@ const movieMetadata: ExternalMovieMetadata = {
   imdbId: 'tt0133093',
   popularity: 64.5,
   voteAverage: 8.2,
+  certification: null,
 }
 
 const seriesMetadata: ExternalSeriesMetadata = {
@@ -39,6 +40,8 @@ const seriesMetadata: ExternalSeriesMetadata = {
   imdbId: null,
   popularity: 93.2,
   voteAverage: 9.5,
+  certification: null,
+  status: null,
 }
 
 function makeSelectChain(resolvedValue: unknown) {
@@ -78,6 +81,12 @@ function makeProvider(overrides: Partial<MetadataProvider> = {}): MetadataProvid
     searchSeries: vi.fn().mockResolvedValue([]),
     fetchMovieFeed: vi.fn().mockResolvedValue([]),
     fetchSeriesFeed: vi.fn().mockResolvedValue([]),
+    getMovieVideos: vi.fn().mockResolvedValue([]),
+    getSeriesVideos: vi.fn().mockResolvedValue([]),
+    getMovieCredits: vi.fn().mockResolvedValue([]),
+    getSeriesCredits: vi.fn().mockResolvedValue([]),
+    getMovieCertification: vi.fn().mockResolvedValue(null),
+    getSeriesCertification: vi.fn().mockResolvedValue(null),
     ...overrides,
   }
 }

@@ -8,6 +8,8 @@ import Skeleton from '../components/ui/Skeleton.js'
 import ErrorState from '../components/ui/ErrorState.js'
 import WatchlistButton from '../components/content/WatchlistButton.js'
 import FeedbackButtons from '../components/content/FeedbackButtons.js'
+import TrailerPlayer from '../components/detail/TrailerPlayer.js'
+import CastRow from '../components/detail/CastRow.js'
 
 function DetailSkeleton() {
   return (
@@ -145,6 +147,12 @@ export default function MovieDetailPage() {
               {movie.runtime && (
                 <span className="text-gray-400 text-sm">{movie.runtime} min</span>
               )}
+              {movie.certification && (
+                <Badge variant="default">{movie.certification}</Badge>
+              )}
+              {movie.voteAverage !== null && (
+                <span className="text-yellow-400 text-sm font-medium">★ {movie.voteAverage.toFixed(1)}</span>
+              )}
               {movie.quality && <Badge variant="quality">{movie.quality}</Badge>}
               <Badge variant={movie.availabilityStatus === 'AVAILABLE' ? 'available' : 'unavailable'}>
                 {movie.availabilityStatus === 'AVAILABLE' ? 'Disponible' : 'Indisponible'}
@@ -173,6 +181,9 @@ export default function MovieDetailPage() {
               </p>
             )}
 
+            {/* Trailer */}
+            <TrailerPlayer trailerKey={movie.trailerKey} title={movie.title} />
+
             {/* Variant selector */}
             {movie.variants.length > 0 && (
               <div className="mb-6">
@@ -199,6 +210,9 @@ export default function MovieDetailPage() {
                 </div>
               </div>
             )}
+
+            {/* Cast */}
+            <CastRow cast={movie.cast} director={movie.director} />
 
             <div className="flex flex-wrap gap-3">
               <Button variant="ghost" onClick={() => navigate(-1)}>

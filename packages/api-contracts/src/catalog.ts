@@ -12,6 +12,12 @@ export type AvailabilityVariantResponse = {
   rawTitle: string | null
 }
 
+export type CastMemberResponse = {
+  name: string
+  character: string | null
+  profileUrl: string | null
+}
+
 export type MovieResponse = {
   id: string
   title: string
@@ -33,6 +39,11 @@ export type MovieDetailResponse = MovieResponse & {
   enrichmentStatus: EnrichmentStatus
   selectedVariantId: string | null
   variants: AvailabilityVariantResponse[]
+  trailerKey: string | null
+  cast: CastMemberResponse[]
+  director: string | null
+  voteAverage: number | null
+  certification: string | null
 }
 
 export type SeriesResponse = {
@@ -64,6 +75,12 @@ export type SeriesDetailResponse = SeriesResponse & {
   selectedVariantId: string | null
   seasons: SeasonSummary[]
   variants: AvailabilityVariantResponse[]
+  trailerKey: string | null
+  cast: CastMemberResponse[]
+  director: string | null
+  voteAverage: number | null
+  certification: string | null
+  status: string | null
 }
 
 export type EpisodeResponse = {

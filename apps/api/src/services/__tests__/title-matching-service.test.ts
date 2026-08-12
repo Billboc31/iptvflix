@@ -22,6 +22,12 @@ function makeProvider(
     searchSeries: searchSeriesFn,
     fetchMovieFeed: async () => [],
     fetchSeriesFeed: async () => [],
+    getMovieVideos: async () => [],
+    getSeriesVideos: async () => [],
+    getMovieCredits: async () => [],
+    getSeriesCredits: async () => [],
+    getMovieCertification: async () => null,
+    getSeriesCertification: async () => null,
   }
 }
 

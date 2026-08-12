@@ -104,4 +104,48 @@ describe('SeriesDetailPage', () => {
 
     expect(fetchCount).toBe(1)
   })
+
+  it('shows status badge when series status is present', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('Returning Series')).toBeInTheDocument()
+    })
+  })
+
+  it('shows voteAverage and certification when present', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: MOCK_SERIES.title })).toBeInTheDocument()
+    })
+    expect(screen.getByText(/★ 8\.2/)).toBeInTheDocument()
+    expect(screen.getByText('TV-MA')).toBeInTheDocument()
+  })
+
+  it('shows trailer play button when trailerKey is present', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /bande-annonce/i })).toBeInTheDocument()
+    })
+  })
+
+  it('does not show trailer button when trailerKey is null', async () => {
+    server.use(
+      http.get('/api/series/:id', () =>
+        HttpResponse.json({ ...MOCK_SERIES, trailerKey: null }),
+      ),
+    )
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: MOCK_SERIES.title })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('button', { name: /bande-annonce/i })).not.toBeInTheDocument()
+  })
+
+  it('shows cast and director when present', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('Alice Martin')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Showrunner Name')).toBeInTheDocument()
+  })
 })

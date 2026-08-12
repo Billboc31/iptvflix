@@ -10,6 +10,7 @@ export interface ExternalMovieMetadata {
   imdbId: string | null
   popularity: number | null
   voteAverage: number | null
+  certification: string | null
   releaseStatus?: string | null
   releaseDate?: string | null
 }
@@ -25,8 +26,26 @@ export interface ExternalSeriesMetadata {
   imdbId: string | null
   popularity: number | null
   voteAverage: number | null
+  certification: string | null
+  status: string | null
   releaseStatus?: string | null
   firstAirDate?: string | null
+}
+
+export interface ExternalVideo {
+  key: string
+  site: string
+  type: string
+  official: boolean
+  publishedAt: string | null
+}
+
+export interface ExternalCreditPerson {
+  name: string
+  character: string | null
+  role: 'cast' | 'director'
+  order: number
+  profilePath: string | null
 }
 
 export type DiscoveryFeed = 'popular' | 'trending' | 'upcoming'
@@ -52,6 +71,12 @@ export interface MetadataProvider {
   searchSeries(query: string, year?: number | null): Promise<MetadataCandidate[]>
   fetchMovieFeed(feed: DiscoveryFeed, page: number): Promise<MetadataCandidate[]>
   fetchSeriesFeed(feed: DiscoveryFeed, page: number): Promise<MetadataCandidate[]>
+  getMovieVideos(tmdbId: number): Promise<ExternalVideo[]>
+  getSeriesVideos(tmdbId: number): Promise<ExternalVideo[]>
+  getMovieCredits(tmdbId: number): Promise<ExternalCreditPerson[]>
+  getSeriesCredits(tmdbId: number): Promise<ExternalCreditPerson[]>
+  getMovieCertification(tmdbId: number): Promise<string | null>
+  getSeriesCertification(tmdbId: number): Promise<string | null>
 }
 
 export class NoopMetadataProvider implements MetadataProvider {
@@ -77,5 +102,29 @@ export class NoopMetadataProvider implements MetadataProvider {
 
   async fetchSeriesFeed(_feed: DiscoveryFeed, _page: number): Promise<MetadataCandidate[]> {
     return []
+  }
+
+  async getMovieVideos(_tmdbId: number): Promise<ExternalVideo[]> {
+    return []
+  }
+
+  async getSeriesVideos(_tmdbId: number): Promise<ExternalVideo[]> {
+    return []
+  }
+
+  async getMovieCredits(_tmdbId: number): Promise<ExternalCreditPerson[]> {
+    return []
+  }
+
+  async getSeriesCredits(_tmdbId: number): Promise<ExternalCreditPerson[]> {
+    return []
+  }
+
+  async getMovieCertification(_tmdbId: number): Promise<string | null> {
+    return null
+  }
+
+  async getSeriesCertification(_tmdbId: number): Promise<string | null> {
+    return null
   }
 }
