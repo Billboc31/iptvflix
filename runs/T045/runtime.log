@@ -1,0 +1,35 @@
+[2026-08-12T12:54:23Z] auto-run start: state=INIT
+[2026-08-12T12:54:23Z] auto-run: running step=planner
+[2026-08-12T12:54:28Z] auto-run: pre-planner rebase onto integration ok
+[2026-08-12T12:54:28Z] prompt: resolved=prompts/generic/planner.md source=generic
+[2026-08-12T12:54:28Z] prompt: generic fallback — injecting runs/T045/ticket.md
+[2026-08-12T12:54:28Z] compose: global-context=docs/ai/global-context.md
+[2026-08-12T12:54:28Z] compose: role=ai/roles/planner.md
+[2026-08-12T12:54:28Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-12T12:54:28Z] compose: skill=ai/skills/architecture-discipline.md
+[2026-08-12T12:54:28Z] compose: skill=ai/skills/documentation.md
+[2026-08-12T12:54:28Z] compose: task (canonical prompt)
+[2026-08-12T12:54:28Z] snapshot: runtime-prompt=runs/T045/prompts/planner-attempt-1.md
+[2026-08-12T12:56:34Z] auto-run: step=planner done rc=0
+[2026-08-12T13:06:04Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-12T13:06:04Z] auto-run: running step=tester
+[2026-08-12T13:06:05Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-12T13:06:05Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-12T13:06:05Z] prompt: generic fallback — injecting runs/T045/ticket.md
+[2026-08-12T13:06:05Z] compose: global-context=docs/ai/global-context.md
+[2026-08-12T13:06:05Z] compose: role=ai/roles/tester.md
+[2026-08-12T13:06:05Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-12T13:06:05Z] compose: skill=ai/skills/testing.md
+[2026-08-12T13:06:05Z] compose: skill=ai/skills/debugging.md
+[2026-08-12T13:06:05Z] compose: task (canonical prompt)
+[2026-08-12T13:06:05Z] snapshot: runtime-prompt=runs/T045/prompts/tester-attempt-1.md
+[2026-08-12T13:09:16Z] auto-run: step=tester done rc=0
+[2026-08-12T13:09:16Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-12T13:09:16Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-12T13:09:16Z] commit-checkpoint: unstaged runtime garbage: ['runs/T045/daemon.lock', 'runs/T045/runtime.log', 'runs/T045/workflow-status.md']
+[2026-08-12T13:09:16Z] commit-checkpoint: sha=6deb253 files=3 title='test(T045/workflow): tester — update 3 file(s)'
+[2026-08-12T13:09:16Z] auto-run: auto-push triggered
+[2026-08-12T13:09:16Z] push: tolerating runtime dirty files (not blocking): ['runs/T045/daemon.lock', 'runs/T045/runtime.log', 'runs/T045/workflow-status.md']
+[2026-08-12T13:09:16Z] push: pushing branch=ticket/T045-add-one-command-local-reset-and-remote-test-deploy
+[2026-08-12T13:09:18Z] push: done branch=ticket/T045-add-one-command-local-reset-and-remote-test-deploy
+[2026-08-12T13:09:18Z] auto-run: TEST_COMPLETE — running PR lifecycle
