@@ -24,7 +24,7 @@ export async function upsertReleaseFields(
 }
 
 export async function recordReleaseEvent(
-  mediaType: 'MOVIE' | 'SERIES',
+  mediaType: 'MOVIE' | 'SERIES' | 'EPISODE',
   mediaId: string,
   eventType: ReleaseEventType,
   occurredAt: Date,
@@ -37,7 +37,7 @@ export async function recordReleaseEvent(
 }
 
 export async function getTimeline(
-  mediaType: 'MOVIE' | 'SERIES',
+  mediaType: 'MOVIE' | 'SERIES' | 'EPISODE',
   mediaId: string,
 ): Promise<ReleaseLifecycle> {
   const events = await db
@@ -64,7 +64,7 @@ export async function getTimeline(
       theatricalReleaseDate = row.theatricalReleaseDate
       digitalReleaseDate = row.digitalReleaseDate
     }
-  } else {
+  } else if (mediaType === 'SERIES') {
     const [row] = await db
       .select({
         announcedAt: series.announcedAt,
@@ -79,6 +79,7 @@ export async function getTimeline(
       digitalReleaseDate = row.digitalReleaseDate
     }
   }
+  // EPISODE: no release-date fields; announcedAt/theatricalReleaseDate/digitalReleaseDate remain null
 
   return {
     announcedAt,

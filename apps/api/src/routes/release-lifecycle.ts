@@ -6,10 +6,10 @@ export async function releaseLifecycleRoutes(app: FastifyInstance): Promise<void
     '/release-lifecycle/:mediaType/:mediaId',
     async (request, reply) => {
       const { mediaType, mediaId } = request.params
-      if (mediaType !== 'MOVIE' && mediaType !== 'SERIES') {
-        return reply.status(400).send({ error: 'mediaType must be MOVIE or SERIES' })
+      if (mediaType !== 'MOVIE' && mediaType !== 'SERIES' && mediaType !== 'EPISODE') {
+        return reply.status(400).send({ error: 'mediaType must be MOVIE, SERIES, or EPISODE' })
       }
-      const lifecycle = await getTimeline(mediaType as 'MOVIE' | 'SERIES', mediaId)
+      const lifecycle = await getTimeline(mediaType as 'MOVIE' | 'SERIES' | 'EPISODE', mediaId)
       return reply.send(lifecycle)
     },
   )

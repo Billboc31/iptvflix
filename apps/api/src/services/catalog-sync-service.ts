@@ -552,7 +552,7 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
           )
 
           const [existing] = await tx
-            .select({ id: episodeAvailabilities.id, episodeId: episodeAvailabilities.episodeId })
+            .select({ id: episodeAvailabilities.id, episodeId: episodeAvailabilities.episodeId, status: episodeAvailabilities.status })
             .from(episodeAvailabilities)
             .where(
               and(
@@ -571,6 +571,10 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
               lastSeenAt: snapshot.fetchedAt,
               status: 'AVAILABLE',
             })
+            await tx
+              .insert(releaseEvents)
+              .values({ mediaType: 'EPISODE', mediaId: episodeId, eventType: 'SOURCE_APPEARED', occurredAt: snapshot.fetchedAt, sourceId })
+              .onConflictDoNothing()
           } else if (existing.episodeId !== episodeId) {
             console.warn(
               `[catalog-sync] provider item ${sourceId}/${ep.providerItemId} already assigned to episode ${existing.episodeId}, skipping reassignment to ${episodeId}`,
@@ -578,10 +582,17 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
             seenEpisodeProviderItemIds.add(ep.providerItemId)
             continue
           } else {
+            const wasUnavailable = existing.status === 'UNAVAILABLE'
             await tx
               .update(episodeAvailabilities)
               .set({ lastSeenAt: snapshot.fetchedAt, status: 'AVAILABLE', unavailableAt: null })
               .where(eq(episodeAvailabilities.id, existing.id))
+            if (wasUnavailable) {
+              await tx
+                .insert(releaseEvents)
+                .values({ mediaType: 'EPISODE', mediaId: episodeId, eventType: 'SOURCE_APPEARED', occurredAt: snapshot.fetchedAt, sourceId })
+                .onConflictDoNothing()
+            }
           }
           seenEpisodeProviderItemIds.add(ep.providerItemId)
         }
@@ -590,7 +601,7 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
           (id) => !seenEpisodeProviderItemIds.has(id),
         )
         if (missingEpisodeIds.length > 0) {
-          await tx
+          const disappearedEpisodes = await tx
             .update(episodeAvailabilities)
             .set({ status: 'UNAVAILABLE', unavailableAt: snapshot.fetchedAt })
             .where(
@@ -600,6 +611,13 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
                 inArray(episodeAvailabilities.providerItemId, missingEpisodeIds),
               ),
             )
+            .returning({ episodeId: episodeAvailabilities.episodeId })
+          for (const { episodeId } of disappearedEpisodes) {
+            await tx
+              .insert(releaseEvents)
+              .values({ mediaType: 'EPISODE', mediaId: episodeId, eventType: 'SOURCE_DISAPPEARED', occurredAt: snapshot.fetchedAt, sourceId })
+              .onConflictDoNothing()
+          }
           counts.unavailableCount += missingEpisodeIds.length
         }
       }

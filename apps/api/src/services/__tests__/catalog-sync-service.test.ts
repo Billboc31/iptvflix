@@ -125,6 +125,13 @@ afterEach(async () => {
   if (seriesRows.length > 0) {
     const seriesIds = seriesRows.map((r) => r.seriesId)
     await db.delete(releaseEvents).where(inArray(releaseEvents.mediaId, seriesIds))
+    const epRows = await db
+      .select({ episodeId: episodeAvailabilities.episodeId })
+      .from(episodeAvailabilities)
+      .where(eq(episodeAvailabilities.providerId, testSourceId))
+    if (epRows.length > 0) {
+      await db.delete(releaseEvents).where(inArray(releaseEvents.mediaId, epRows.map((r) => r.episodeId)))
+    }
     // cascade: series → seasons → episodes → episodeAvailabilities
     await db.delete(seriesTable).where(inArray(seriesTable.id, seriesIds))
   }
@@ -1024,6 +1031,270 @@ describe('CatalogSyncService', () => {
         .where(eq(releaseEvents.mediaId, movieAv.movieId))
       expect(events).toHaveLength(1)
       expect(events[0].eventType).toBe('SOURCE_APPEARED')
+    })
+
+    it('records exactly one SOURCE_APPEARED event per episode on first episode sync', async () => {
+      const t1 = new Date('2026-06-01T10:00:00Z')
+      const seriesEntry = makeSeriesEntry({ series_id: 600, name: 'Lifecycle Episode Series' })
+      const info = makeSeriesInfo({
+        '1': [
+          { id: 'ep-600-1', episode_num: 1, title: 'Ep One' },
+          { id: 'ep-600-2', episode_num: 2, title: 'Ep Two' },
+        ],
+      })
+
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 600: info }))
+
+      const epAvRows = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, testSourceId))
+      expect(epAvRows).toHaveLength(2)
+
+      for (const row of epAvRows) {
+        const events = await db
+          .select()
+          .from(releaseEvents)
+          .where(and(eq(releaseEvents.mediaId, row.episodeId), eq(releaseEvents.eventType, 'SOURCE_APPEARED')))
+        expect(events).toHaveLength(1)
+        expect(events[0].sourceId).toBe(testSourceId)
+        expect(events[0].occurredAt.toISOString()).toBe(t1.toISOString())
+      }
+    })
+
+    it('does not create additional episode events when re-syncing with an identical episode snapshot', async () => {
+      const t1 = new Date('2026-06-01T10:00:00Z')
+      const t2 = new Date('2026-06-02T10:00:00Z')
+      const seriesEntry = makeSeriesEntry({ series_id: 601, name: 'Stable Lifecycle Episode Series' })
+      const info = makeSeriesInfo({ '1': [{ id: 'ep-601-1', episode_num: 1, title: 'Stable Ep' }] })
+
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 601: info }))
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t2, { 601: info }))
+
+      const [epAvRow] = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, testSourceId))
+      const events = await db
+        .select()
+        .from(releaseEvents)
+        .where(eq(releaseEvents.mediaId, epAvRow.episodeId))
+      expect(events).toHaveLength(1)
+      expect(events[0].eventType).toBe('SOURCE_APPEARED')
+    })
+
+    it('records SOURCE_DISAPPEARED when an episode is absent from an authoritative snapshot', async () => {
+      const t1 = new Date('2026-06-01T10:00:00Z')
+      const t2 = new Date('2026-06-02T10:00:00Z')
+      const seriesEntry = makeSeriesEntry({ series_id: 602, name: 'Disappearing Episode Series' })
+
+      await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot([], [seriesEntry], t1, {
+          602: makeSeriesInfo({ '1': [{ id: 'ep-602-1', episode_num: 1, title: 'Gone Ep' }] }),
+        }),
+      )
+      await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot([], [seriesEntry], t2, { 602: makeSeriesInfo({ '1': [] }) }),
+      )
+
+      const [epAvRow] = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, testSourceId))
+      const events = await db
+        .select()
+        .from(releaseEvents)
+        .where(eq(releaseEvents.mediaId, epAvRow.episodeId))
+      expect(events.filter((e) => e.eventType === 'SOURCE_APPEARED')).toHaveLength(1)
+      const disappeared = events.filter((e) => e.eventType === 'SOURCE_DISAPPEARED')
+      expect(disappeared).toHaveLength(1)
+      expect(disappeared[0].sourceId).toBe(testSourceId)
+      expect(disappeared[0].occurredAt.toISOString()).toBe(t2.toISOString())
+    })
+
+    it('records a new SOURCE_APPEARED when an episode reappears after disappearing', async () => {
+      const t1 = new Date('2026-06-01T10:00:00Z')
+      const t2 = new Date('2026-06-02T10:00:00Z')
+      const t3 = new Date('2026-06-03T10:00:00Z')
+      const seriesEntry = makeSeriesEntry({ series_id: 603, name: 'Reappearing Episode Series' })
+      const info = makeSeriesInfo({ '1': [{ id: 'ep-603-1', episode_num: 1, title: 'Returning Ep' }] })
+
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 603: info }))
+      await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot([], [seriesEntry], t2, { 603: makeSeriesInfo({ '1': [] }) }),
+      )
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t3, { 603: info }))
+
+      const [epAvRow] = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, testSourceId))
+      const events = await db
+        .select()
+        .from(releaseEvents)
+        .where(eq(releaseEvents.mediaId, epAvRow.episodeId))
+      expect(events.filter((e) => e.eventType === 'SOURCE_APPEARED')).toHaveLength(2)
+      expect(events.filter((e) => e.eventType === 'SOURCE_DISAPPEARED')).toHaveLength(1)
+    })
+
+    it('episode events carry the correct sourceId', async () => {
+      const t1 = new Date('2026-06-01T10:00:00Z')
+      const seriesEntry = makeSeriesEntry({ series_id: 604, name: 'Source Identity Episode Series' })
+      const info = makeSeriesInfo({ '1': [{ id: 'ep-604-1', episode_num: 1, title: 'Ep' }] })
+
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 604: info }))
+
+      const [epAvRow] = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, testSourceId))
+      const [event] = await db
+        .select()
+        .from(releaseEvents)
+        .where(and(eq(releaseEvents.mediaId, epAvRow.episodeId), eq(releaseEvents.eventType, 'SOURCE_APPEARED')))
+      expect(event.sourceId).toBe(testSourceId)
+    })
+  })
+
+  describe('Plex episode lifecycle', () => {
+    async function cleanupPlexSource(plexSourceId: string) {
+      const epAvRows = await db
+        .select({ episodeId: episodeAvailabilities.episodeId })
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, plexSourceId))
+      if (epAvRows.length > 0) {
+        await db.delete(releaseEvents).where(inArray(releaseEvents.mediaId, epAvRows.map((r) => r.episodeId)))
+      }
+      const serAvRows = await db
+        .select({ seriesId: seriesAvailabilities.seriesId })
+        .from(seriesAvailabilities)
+        .where(eq(seriesAvailabilities.providerId, plexSourceId))
+      if (serAvRows.length > 0) {
+        await db.delete(releaseEvents).where(inArray(releaseEvents.mediaId, serAvRows.map((r) => r.seriesId)))
+        await db.delete(seriesTable).where(inArray(seriesTable.id, serAvRows.map((r) => r.seriesId)))
+      }
+      await db.delete(syncRuns).where(eq(syncRuns.sourceId, plexSourceId))
+      await db.delete(sources).where(eq(sources.id, plexSourceId))
+    }
+
+    it('records SOURCE_APPEARED on first Plex episode sync and does not duplicate on idempotent re-sync', async () => {
+      const t1 = new Date('2026-07-01T10:00:00Z')
+      const t2 = new Date('2026-07-02T10:00:00Z')
+      const [plexSource] = await db
+        .insert(sources)
+        .values({ name: 'Plex Episode Source', type: 'PLEX', baseUrl: 'http://plex-ep.test' })
+        .returning()
+
+      try {
+        const plexSnapshot: PlexCatalogSnapshot = {
+          sourceId: plexSource.id,
+          fetchedAt: t1,
+          movies: [],
+          shows: [{ ratingKey: 'plex-show-700', title: 'Plex Episode Show', Guid: [{ id: 'tmdb://70001' }] }],
+          episodes: [
+            {
+              ratingKey: 'plex-ep-700-1',
+              grandparentRatingKey: 'plex-show-700',
+              parentIndex: 1,
+              index: 1,
+              title: 'Plex Pilot',
+            },
+          ],
+        }
+
+        await CatalogSyncService.syncPlexCatalog(plexSource.id, plexSnapshot)
+
+        const epAvRows = await db
+          .select()
+          .from(episodeAvailabilities)
+          .where(eq(episodeAvailabilities.providerId, plexSource.id))
+        expect(epAvRows).toHaveLength(1)
+        expect(epAvRows[0].status).toBe('AVAILABLE')
+        expect(epAvRows[0].providerItemId).toBe('plex-ep-700-1')
+
+        const events1 = await db
+          .select()
+          .from(releaseEvents)
+          .where(and(eq(releaseEvents.mediaId, epAvRows[0].episodeId), eq(releaseEvents.eventType, 'SOURCE_APPEARED')))
+        expect(events1).toHaveLength(1)
+        expect(events1[0].sourceId).toBe(plexSource.id)
+        expect(events1[0].occurredAt.toISOString()).toBe(t1.toISOString())
+
+        // Idempotent re-sync: no duplicate events
+        await CatalogSyncService.syncPlexCatalog(plexSource.id, { ...plexSnapshot, fetchedAt: t2 })
+
+        const events2 = await db
+          .select()
+          .from(releaseEvents)
+          .where(and(eq(releaseEvents.mediaId, epAvRows[0].episodeId), eq(releaseEvents.eventType, 'SOURCE_APPEARED')))
+        expect(events2).toHaveLength(1)
+
+        const epAvRowsAfter = await db
+          .select()
+          .from(episodeAvailabilities)
+          .where(eq(episodeAvailabilities.providerId, plexSource.id))
+        expect(epAvRowsAfter[0].firstSeenAt.toISOString()).toBe(t1.toISOString())
+        expect(epAvRowsAfter[0].lastSeenAt.toISOString()).toBe(t2.toISOString())
+      } finally {
+        await cleanupPlexSource(plexSource.id)
+      }
+    })
+
+    it('records SOURCE_DISAPPEARED when a Plex episode is absent from a subsequent full snapshot', async () => {
+      const t1 = new Date('2026-07-01T10:00:00Z')
+      const t2 = new Date('2026-07-02T10:00:00Z')
+      const [plexSource] = await db
+        .insert(sources)
+        .values({ name: 'Plex Disappearing Episode Source', type: 'PLEX', baseUrl: 'http://plex-ep2.test' })
+        .returning()
+
+      try {
+        const baseSnapshot: PlexCatalogSnapshot = {
+          sourceId: plexSource.id,
+          fetchedAt: t1,
+          movies: [],
+          shows: [{ ratingKey: 'plex-show-701', title: 'Plex Disappearing Show', Guid: [{ id: 'tmdb://70002' }] }],
+          episodes: [
+            { ratingKey: 'plex-ep-701-1', grandparentRatingKey: 'plex-show-701', parentIndex: 1, index: 1, title: 'Keep' },
+            { ratingKey: 'plex-ep-701-2', grandparentRatingKey: 'plex-show-701', parentIndex: 1, index: 2, title: 'Gone' },
+          ],
+        }
+
+        await CatalogSyncService.syncPlexCatalog(plexSource.id, baseSnapshot)
+
+        // Second sync: only the first episode remains
+        await CatalogSyncService.syncPlexCatalog(plexSource.id, {
+          ...baseSnapshot,
+          fetchedAt: t2,
+          episodes: [{ ratingKey: 'plex-ep-701-1', grandparentRatingKey: 'plex-show-701', parentIndex: 1, index: 1, title: 'Keep' }],
+        })
+
+        const epAvRows = await db
+          .select()
+          .from(episodeAvailabilities)
+          .where(eq(episodeAvailabilities.providerId, plexSource.id))
+        expect(epAvRows).toHaveLength(2)
+
+        const kept = epAvRows.find((r) => r.providerItemId === 'plex-ep-701-1')!
+        const gone = epAvRows.find((r) => r.providerItemId === 'plex-ep-701-2')!
+
+        expect(kept.status).toBe('AVAILABLE')
+        expect(gone.status).toBe('UNAVAILABLE')
+        expect(gone.unavailableAt!.toISOString()).toBe(t2.toISOString())
+
+        const goneEvents = await db
+          .select()
+          .from(releaseEvents)
+          .where(and(eq(releaseEvents.mediaId, gone.episodeId), eq(releaseEvents.eventType, 'SOURCE_DISAPPEARED')))
+        expect(goneEvents).toHaveLength(1)
+        expect(goneEvents[0].sourceId).toBe(plexSource.id)
+        expect(goneEvents[0].occurredAt.toISOString()).toBe(t2.toISOString())
+      } finally {
+        await cleanupPlexSource(plexSource.id)
+      }
     })
   })
 })
