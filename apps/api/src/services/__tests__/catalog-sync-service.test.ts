@@ -18,8 +18,6 @@ let testSourceId: string
 function makeVodStream(overrides: Partial<XtreamVodStream> & { stream_id: number; name: string }): XtreamVodStream {
   return {
     num: overrides.stream_id,
-    name: overrides.name,
-    stream_id: overrides.stream_id,
     stream_icon: '',
     rating: '0',
     added: '1700000000',
@@ -32,8 +30,6 @@ function makeVodStream(overrides: Partial<XtreamVodStream> & { stream_id: number
 
 function makeSeriesEntry(overrides: Partial<XtreamSeries> & { series_id: number; name: string }): XtreamSeries {
   return {
-    series_id: overrides.series_id,
-    name: overrides.name,
     cover: '',
     category_id: '1',
     rating: '0',
