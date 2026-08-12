@@ -1,7 +1,7 @@
 {
   "ticket_id": "T024",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T024-fix-episode-availability-lifecycle-and-provider-ep",
   "issue_number": 49,
-  "updated_at": "2026-08-12T05:20:03Z"
+  "updated_at": "2026-08-12T06:38:55Z"
 }
