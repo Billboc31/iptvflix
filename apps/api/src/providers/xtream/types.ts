@@ -107,4 +107,5 @@ export interface XtreamCatalogSnapshot {
   vodStreams: XtreamVodStream[]
   seriesCategories: XtreamCategory[]
   series: XtreamSeries[]
+  seriesInfo?: Record<number, XtreamSeriesInfo>
 }

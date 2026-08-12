@@ -114,6 +114,9 @@ function happyHandlers() {
       }
       if (action === 'get_vod_streams') return HttpResponse.json(FAKE_VOD_STREAMS)
       if (action === 'get_series') return HttpResponse.json(FAKE_SERIES_LIST)
+      if (action === 'get_series_info') {
+        return HttpResponse.json({ info: { name: '', cover: '', plot: '', cast: '', director: '', genre: '', releaseDate: '', last_modified: '', rating: '0', rating_5based: 0, backdrop_path: [], youtube_trailer: '', episode_run_time: '', category_id: '1', category_name: '' }, episodes: {} })
+      }
       return HttpResponse.json([])
     }),
   ]
@@ -441,6 +444,9 @@ describe('Vertical slice integration — source config → sync → catalog quer
         }
         if (action === 'get_vod_streams') return HttpResponse.json([FAKE_VOD_STREAMS[1]])
         if (action === 'get_series') return HttpResponse.json(FAKE_SERIES_LIST)
+        if (action === 'get_series_info') {
+          return HttpResponse.json({ info: { name: '', cover: '', plot: '', cast: '', director: '', genre: '', releaseDate: '', last_modified: '', rating: '0', rating_5based: 0, backdrop_path: [], youtube_trailer: '', episode_run_time: '', category_id: '1', category_name: '' }, episodes: {} })
+        }
         return HttpResponse.json([])
       }),
     )

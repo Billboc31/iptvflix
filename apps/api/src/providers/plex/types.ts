@@ -26,9 +26,21 @@ export interface PlexShowItem {
   Guid?: PlexGuid[]
 }
 
+export interface PlexEpisodeItem {
+  ratingKey: string
+  grandparentRatingKey: string
+  parentIndex: number
+  index: number
+  title: string
+  summary?: string
+  duration?: number
+  originallyAvailableAt?: string
+}
+
 export interface PlexCatalogSnapshot {
   sourceId: string
   fetchedAt: Date
   movies: PlexMovieItem[]
   shows: PlexShowItem[]
+  episodes: PlexEpisodeItem[]
 }

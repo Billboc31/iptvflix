@@ -51,6 +51,14 @@ async function fetchXtreamSnapshot(source: typeof sources.$inferSelect): Promise
     client.getSeries(),
   ])
 
+  const seriesInfoEntries = await Promise.all(
+    series.map(async (s) => {
+      const info = await client.getSeriesInfo(s.series_id)
+      return [s.series_id, info] as const
+    }),
+  )
+  const seriesInfo = Object.fromEntries(seriesInfoEntries)
+
   return {
     sourceId: source.id,
     fetchedAt: new Date(),
@@ -58,6 +66,7 @@ async function fetchXtreamSnapshot(source: typeof sources.$inferSelect): Promise
     vodStreams,
     seriesCategories,
     series,
+    seriesInfo,
   }
 }
 
@@ -68,11 +77,14 @@ async function fetchPlexSnapshot(source: typeof sources.$inferSelect): Promise<P
   const movieSections = sections.filter((s) => s.type === 'movie')
   const showSections = sections.filter((s) => s.type === 'show')
 
-  const [allMovies, allShows] = await Promise.all([
+  const [allMovies, allShows, allEpisodes] = await Promise.all([
     Promise.all(movieSections.map((s) => client.fetchMovies(s.key))).then((arrays) =>
       arrays.flat(),
     ),
     Promise.all(showSections.map((s) => client.fetchShows(s.key))).then((arrays) =>
+      arrays.flat(),
+    ),
+    Promise.all(showSections.map((s) => client.fetchEpisodes(s.key))).then((arrays) =>
       arrays.flat(),
     ),
   ])
@@ -82,6 +94,7 @@ async function fetchPlexSnapshot(source: typeof sources.$inferSelect): Promise<P
     fetchedAt: new Date(),
     movies: allMovies,
     shows: allShows,
+    episodes: allEpisodes,
   }
 }
 
