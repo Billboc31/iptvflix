@@ -35,13 +35,18 @@ const mockSource = {
   updatedAt: new Date('2024-01-01T00:00:00Z'),
 }
 
-function setupInsert(rows: typeof mockSource[]) {
+type MockSource = Omit<typeof mockSource, 'type' | 'username'> & {
+  type: 'XTREAM' | 'PLEX' | 'M3U'
+  username: string | null
+}
+
+function setupInsert(rows: MockSource[]) {
   mockDb.insert.mockReturnValue({
     values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue(rows) }),
   })
 }
 
-function setupSelect(rows: (typeof mockSource)[]) {
+function setupSelect(rows: MockSource[]) {
   // .from() must be directly awaitable (for listSources) AND support .where() (for getSource etc.)
   const fromResult = Object.assign(Promise.resolve(rows), {
     where: vi.fn().mockResolvedValue(rows),
@@ -49,7 +54,7 @@ function setupSelect(rows: (typeof mockSource)[]) {
   mockDb.select.mockReturnValue({ from: vi.fn().mockReturnValue(fromResult) })
 }
 
-function setupUpdate(rows: (typeof mockSource)[]) {
+function setupUpdate(rows: MockSource[]) {
   mockDb.update.mockReturnValue({
     set: vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue(rows) }),
