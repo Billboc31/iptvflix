@@ -1,6 +1,6 @@
 {
-  "id": "20d53bba-fb7d-4b9a-92c1-0ef31f89c1ca",
-  "prevId": "dc4ae351-5b04-4f34-b592-720ba65d22c7",
+  "id": "0014_episode_availability_provider_uniqueness",
+  "prevId": "0014_episode_availability_provider_uniqueness",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -139,6 +139,14 @@
           "nullsNotDistinct": false,
           "columns": [
             "episode_id",
+            "provider_id",
+            "provider_item_id"
+          ]
+        },
+        "episode_availabilities_provider_id_provider_item_id_unique": {
+          "name": "episode_availabilities_provider_id_provider_item_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
             "provider_id",
             "provider_item_id"
           ]
@@ -698,6 +706,24 @@
           "primaryKey": false,
           "notNull": false
         },
+        "announced_at": {
+          "name": "announced_at",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "theatrical_release_date": {
+          "name": "theatrical_release_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "digital_release_date": {
+          "name": "digital_release_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -804,6 +830,24 @@
         "metadata_enriched_at": {
           "name": "metadata_enriched_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "announced_at": {
+          "name": "announced_at",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "theatrical_release_date": {
+          "name": "theatrical_release_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "digital_release_date": {
+          "name": "digital_release_date",
+          "type": "date",
           "primaryKey": false,
           "notNull": false
         },
@@ -1212,6 +1256,33 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "preferred_audio_languages": {
+          "name": "preferred_audio_languages",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "preferred_subtitle_languages": {
+          "name": "preferred_subtitle_languages",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "preferred_source_ids": {
+          "name": "preferred_source_ids",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "max_video_quality": {
+          "name": "max_video_quality",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -1544,6 +1615,224 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
+    },
+    "public.release_events": {
+      "name": "release_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "media_type": {
+          "name": "media_type",
+          "type": "watchlist_media_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "media_id": {
+          "name": "media_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "release_event_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_id": {
+          "name": "source_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "release_events_source_events_unique": {
+          "name": "release_events_source_events_unique",
+          "columns": [
+            {
+              "expression": "media_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "media_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "event_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "event_type IN ('SOURCE_APPEARED', 'SOURCE_DISAPPEARED')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "release_events_non_source_events_unique": {
+          "name": "release_events_non_source_events_unique",
+          "columns": [
+            {
+              "expression": "media_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "media_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "event_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "event_type NOT IN ('SOURCE_APPEARED', 'SOURCE_DISAPPEARED')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "release_events_source_id_sources_id_fk": {
+          "name": "release_events_source_id_sources_id_fk",
+          "tableFrom": "release_events",
+          "tableTo": "sources",
+          "columnsFrom": [
+            "source_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.follow_release": {
+      "name": "follow_release",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "profile_id": {
+          "name": "profile_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "media_type": {
+          "name": "media_type",
+          "type": "watchlist_media_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "media_id": {
+          "name": "media_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "followed_at": {
+          "name": "followed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "follow_release_profile_id_profiles_id_fk": {
+          "name": "follow_release_profile_id_profiles_id_fk",
+          "tableFrom": "follow_release",
+          "tableTo": "profiles",
+          "columnsFrom": [
+            "profile_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "follow_release_profile_id_media_type_media_id_unique": {
+          "name": "follow_release_profile_id_media_type_media_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "profile_id",
+            "media_type",
+            "media_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     }
   },
   "enums": {
@@ -1560,7 +1849,8 @@
       "schema": "public",
       "values": [
         "XTREAM",
-        "M3U"
+        "M3U",
+        "PLEX"
       ]
     },
     "public.sync_run_status": {
@@ -1603,6 +1893,17 @@
       "values": [
         "MOVIE",
         "SERIES"
+      ]
+    },
+    "public.release_event_type": {
+      "name": "release_event_type",
+      "schema": "public",
+      "values": [
+        "ANNOUNCED",
+        "THEATRICAL_RELEASE",
+        "DIGITAL_RELEASE",
+        "SOURCE_APPEARED",
+        "SOURCE_DISAPPEARED"
       ]
     }
   },

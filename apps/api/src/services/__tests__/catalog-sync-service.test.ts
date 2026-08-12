@@ -125,6 +125,13 @@ afterEach(async () => {
   if (seriesRows.length > 0) {
     const seriesIds = seriesRows.map((r) => r.seriesId)
     await db.delete(releaseEvents).where(inArray(releaseEvents.mediaId, seriesIds))
+    const epRows = await db
+      .select({ episodeId: episodeAvailabilities.episodeId })
+      .from(episodeAvailabilities)
+      .where(eq(episodeAvailabilities.providerId, testSourceId))
+    if (epRows.length > 0) {
+      await db.delete(releaseEvents).where(inArray(releaseEvents.mediaId, epRows.map((r) => r.episodeId)))
+    }
     // cascade: series → seasons → episodes → episodeAvailabilities
     await db.delete(seriesTable).where(inArray(seriesTable.id, seriesIds))
   }
@@ -1024,6 +1031,131 @@ describe('CatalogSyncService', () => {
         .where(eq(releaseEvents.mediaId, movieAv.movieId))
       expect(events).toHaveLength(1)
       expect(events[0].eventType).toBe('SOURCE_APPEARED')
+    })
+
+    it('records exactly one SOURCE_APPEARED event per episode on first episode sync', async () => {
+      const t1 = new Date('2026-06-01T10:00:00Z')
+      const seriesEntry = makeSeriesEntry({ series_id: 600, name: 'Lifecycle Episode Series' })
+      const info = makeSeriesInfo({
+        '1': [
+          { id: 'ep-600-1', episode_num: 1, title: 'Ep One' },
+          { id: 'ep-600-2', episode_num: 2, title: 'Ep Two' },
+        ],
+      })
+
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 600: info }))
+
+      const epAvRows = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, testSourceId))
+      expect(epAvRows).toHaveLength(2)
+
+      for (const row of epAvRows) {
+        const events = await db
+          .select()
+          .from(releaseEvents)
+          .where(and(eq(releaseEvents.mediaId, row.episodeId), eq(releaseEvents.eventType, 'SOURCE_APPEARED')))
+        expect(events).toHaveLength(1)
+        expect(events[0].sourceId).toBe(testSourceId)
+        expect(events[0].occurredAt.toISOString()).toBe(t1.toISOString())
+      }
+    })
+
+    it('does not create additional episode events when re-syncing with an identical episode snapshot', async () => {
+      const t1 = new Date('2026-06-01T10:00:00Z')
+      const t2 = new Date('2026-06-02T10:00:00Z')
+      const seriesEntry = makeSeriesEntry({ series_id: 601, name: 'Stable Lifecycle Episode Series' })
+      const info = makeSeriesInfo({ '1': [{ id: 'ep-601-1', episode_num: 1, title: 'Stable Ep' }] })
+
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 601: info }))
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t2, { 601: info }))
+
+      const [epAvRow] = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, testSourceId))
+      const events = await db
+        .select()
+        .from(releaseEvents)
+        .where(eq(releaseEvents.mediaId, epAvRow.episodeId))
+      expect(events).toHaveLength(1)
+      expect(events[0].eventType).toBe('SOURCE_APPEARED')
+    })
+
+    it('records SOURCE_DISAPPEARED when an episode is absent from an authoritative snapshot', async () => {
+      const t1 = new Date('2026-06-01T10:00:00Z')
+      const t2 = new Date('2026-06-02T10:00:00Z')
+      const seriesEntry = makeSeriesEntry({ series_id: 602, name: 'Disappearing Episode Series' })
+
+      await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot([], [seriesEntry], t1, {
+          602: makeSeriesInfo({ '1': [{ id: 'ep-602-1', episode_num: 1, title: 'Gone Ep' }] }),
+        }),
+      )
+      await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot([], [seriesEntry], t2, { 602: makeSeriesInfo({ '1': [] }) }),
+      )
+
+      const [epAvRow] = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, testSourceId))
+      const events = await db
+        .select()
+        .from(releaseEvents)
+        .where(eq(releaseEvents.mediaId, epAvRow.episodeId))
+      expect(events.filter((e) => e.eventType === 'SOURCE_APPEARED')).toHaveLength(1)
+      const disappeared = events.filter((e) => e.eventType === 'SOURCE_DISAPPEARED')
+      expect(disappeared).toHaveLength(1)
+      expect(disappeared[0].sourceId).toBe(testSourceId)
+      expect(disappeared[0].occurredAt.toISOString()).toBe(t2.toISOString())
+    })
+
+    it('records a new SOURCE_APPEARED when an episode reappears after disappearing', async () => {
+      const t1 = new Date('2026-06-01T10:00:00Z')
+      const t2 = new Date('2026-06-02T10:00:00Z')
+      const t3 = new Date('2026-06-03T10:00:00Z')
+      const seriesEntry = makeSeriesEntry({ series_id: 603, name: 'Reappearing Episode Series' })
+      const info = makeSeriesInfo({ '1': [{ id: 'ep-603-1', episode_num: 1, title: 'Returning Ep' }] })
+
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 603: info }))
+      await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot([], [seriesEntry], t2, { 603: makeSeriesInfo({ '1': [] }) }),
+      )
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t3, { 603: info }))
+
+      const [epAvRow] = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, testSourceId))
+      const events = await db
+        .select()
+        .from(releaseEvents)
+        .where(eq(releaseEvents.mediaId, epAvRow.episodeId))
+      expect(events.filter((e) => e.eventType === 'SOURCE_APPEARED')).toHaveLength(2)
+      expect(events.filter((e) => e.eventType === 'SOURCE_DISAPPEARED')).toHaveLength(1)
+    })
+
+    it('episode events carry the correct sourceId', async () => {
+      const t1 = new Date('2026-06-01T10:00:00Z')
+      const seriesEntry = makeSeriesEntry({ series_id: 604, name: 'Source Identity Episode Series' })
+      const info = makeSeriesInfo({ '1': [{ id: 'ep-604-1', episode_num: 1, title: 'Ep' }] })
+
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 604: info }))
+
+      const [epAvRow] = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, testSourceId))
+      const [event] = await db
+        .select()
+        .from(releaseEvents)
+        .where(and(eq(releaseEvents.mediaId, epAvRow.episodeId), eq(releaseEvents.eventType, 'SOURCE_APPEARED')))
+      expect(event.sourceId).toBe(testSourceId)
     })
   })
 })

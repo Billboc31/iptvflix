@@ -4,6 +4,8 @@ import { sources } from './sources.js'
 import { watchlistMediaTypeEnum } from './watchlist.js'
 import { profiles } from './profiles.js'
 
+export const releaseEventMediaTypeEnum = pgEnum('release_event_media_type', ['MOVIE', 'SERIES', 'EPISODE'])
+
 export const releaseEventTypeEnum = pgEnum('release_event_type', [
   'ANNOUNCED',
   'THEATRICAL_RELEASE',
@@ -16,7 +18,7 @@ export const releaseEvents = pgTable(
   'release_events',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    mediaType: watchlistMediaTypeEnum('media_type').notNull(),
+    mediaType: releaseEventMediaTypeEnum('media_type').notNull(),
     mediaId: uuid('media_id').notNull(),
     eventType: releaseEventTypeEnum('event_type').notNull(),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
