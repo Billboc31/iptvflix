@@ -1,0 +1,16 @@
+{
+  "ticket_id": "T026",
+  "state": "TEST_COMPLETE",
+  "branch": "ticket/T026-fix-dynamic-shelf-availability-filtering-and-unsup",
+  "issue_number": 51,
+  "updated_at": "2026-08-12T07:22:37Z",
+  "pr_number": 58,
+  "pr_synced": true,
+  "pre_conflict_state": "TEST_COMPLETE",
+  "conflict_detected_at": "2026-08-12T07:22:13Z",
+  "conflict_pr_number": 58,
+  "conflicted_files": [
+    "apps/api/src/routes/__tests__/shelves.test.ts",
+    "apps/api/src/services/shelf-service.ts"
+  ]
+}

@@ -104,6 +104,15 @@ function setupSelectWhereOrderLimit(rows: object[]) {
   })
 }
 
+// Subquery builder: select().from().where() returns a non-Promise value (used as SQL subquery arg)
+function setupSelectFromWhere(returnValue: unknown = {}) {
+  mockDb.select.mockReturnValueOnce({
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue(returnValue),
+    }),
+  })
+}
+
 // For MAX(position) queries: select().from().where()
 function setupSelectMaxPos(maxPos: number) {
   mockDb.select.mockReturnValueOnce({
@@ -194,6 +203,24 @@ describe('validateDynamicRules', () => {
 
   it('rejects invalid watchState', () => {
     expect(() => validateDynamicRules({ watchState: 'PARTIAL' })).toThrow('watchState')
+  })
+
+  it('rejects watchState with mediaType SERIES', () => {
+    expect(() => validateDynamicRules({ mediaType: 'SERIES', watchState: 'IN_PROGRESS' })).toThrow(
+      "watchState is only supported when mediaType is 'MOVIE'",
+    )
+  })
+
+  it('rejects watchState without mediaType', () => {
+    expect(() => validateDynamicRules({ watchState: 'COMPLETED' })).toThrow(
+      "watchState is only supported when mediaType is 'MOVIE'",
+    )
+  })
+
+  it('accepts watchState with mediaType MOVIE', () => {
+    const result = validateDynamicRules({ mediaType: 'MOVIE', watchState: 'IN_PROGRESS' })
+    expect(result.mediaType).toBe('MOVIE')
+    expect(result.watchState).toBe('IN_PROGRESS')
   })
 
   it('rejects non-array genreIds', () => {
@@ -297,6 +324,43 @@ describe('POST /shelves', () => {
       payload: { type: 'MANUAL' },
     })
     expect(res.statusCode).toBe(400)
+  })
+
+  it('returns 400 for watchState with mediaType SERIES', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/shelves',
+      payload: { title: 'Bad Shelf', type: 'DYNAMIC', rules: { mediaType: 'SERIES', watchState: 'IN_PROGRESS' } },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toContain("watchState is only supported when mediaType is 'MOVIE'")
+  })
+
+  it('returns 400 for watchState without mediaType', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/shelves',
+      payload: { title: 'Bad Shelf', type: 'DYNAMIC', rules: { watchState: 'COMPLETED' } },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toContain("watchState is only supported when mediaType is 'MOVIE'")
+  })
+
+  it('accepts watchState with mediaType MOVIE', async () => {
+    setupSelectMaxPos(0)
+    setupInsert([{
+      ...mockManualShelf,
+      type: 'DYNAMIC',
+      rules: { mediaType: 'MOVIE', watchState: 'IN_PROGRESS' },
+      position: 1,
+    }])
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/shelves',
+      payload: { title: 'In Progress Movies', type: 'DYNAMIC', rules: { mediaType: 'MOVIE', watchState: 'IN_PROGRESS' } },
+    })
+    expect(res.statusCode).toBe(201)
   })
 })
 
@@ -451,5 +515,99 @@ describe('Profile isolation', () => {
       url: `/shelves/${SHELF_ID}`,
     })
     expect(res.statusCode).toBe(403)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GET /shelves/:id — dynamic shelf availability tri-state evaluation
+// ---------------------------------------------------------------------------
+
+describe('GET /shelves/:id dynamic availability evaluation', () => {
+  const DYNAMIC_SHELF_ID = 'dddddddd-0000-0000-0000-000000000001'
+
+  const makeDynamicShelf = (rules: object) => ({
+    ...mockManualShelf,
+    id: DYNAMIC_SHELF_ID,
+    type: 'DYNAMIC' as const,
+    rules,
+  })
+
+  const movieUnavailable = { id: 'movie-upcoming', title: 'Upcoming Film', posterPath: null }
+  const movieAvailable = { id: 'movie-live', title: 'Live Film', posterPath: '/live.jpg' }
+  const seriesUnavailable = { id: 'series-upcoming', title: 'Upcoming Series', posterPath: null }
+  const seriesAvailable = { id: 'series-live', title: 'Live Series', posterPath: '/series.jpg' }
+
+  it('availableToMe: false for movies — returns only movies with no AVAILABLE record', async () => {
+    setupSelectWhere([makeDynamicShelf({ mediaType: 'MOVIE', availableToMe: false })])
+    setupSelectFromWhere({}) // notInArray subquery
+    setupSelectWhereOrderLimit([movieUnavailable])
+
+    const res = await app.inject({ method: 'GET', url: `/shelves/${DYNAMIC_SHELF_ID}` })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as { items: Array<{ mediaId: string }> }
+    expect(body.items).toHaveLength(1)
+    expect(body.items[0].mediaId).toBe('movie-upcoming')
+  })
+
+  it('availableToMe: undefined for movies — returns movies regardless of availability', async () => {
+    setupSelectWhere([makeDynamicShelf({ mediaType: 'MOVIE' })])
+    setupSelectWhereOrderLimit([movieUnavailable, movieAvailable])
+
+    const res = await app.inject({ method: 'GET', url: `/shelves/${DYNAMIC_SHELF_ID}` })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as { items: Array<{ mediaId: string }> }
+    expect(body.items).toHaveLength(2)
+  })
+
+  it('availableToMe: false for series — returns only series with no AVAILABLE record', async () => {
+    setupSelectWhere([makeDynamicShelf({ mediaType: 'SERIES', availableToMe: false })])
+    setupSelectFromWhere({}) // notInArray subquery
+    setupSelectWhereOrderLimit([seriesUnavailable])
+
+    const res = await app.inject({ method: 'GET', url: `/shelves/${DYNAMIC_SHELF_ID}` })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as { items: Array<{ mediaId: string }> }
+    expect(body.items).toHaveLength(1)
+    expect(body.items[0].mediaId).toBe('series-upcoming')
+  })
+
+  it('availableToMe: undefined for series — returns series regardless of availability', async () => {
+    setupSelectWhere([makeDynamicShelf({ mediaType: 'SERIES' })])
+    setupSelectWhereOrderLimit([seriesUnavailable, seriesAvailable])
+
+    const res = await app.inject({ method: 'GET', url: `/shelves/${DYNAMIC_SHELF_ID}` })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as { items: Array<{ mediaId: string }> }
+    expect(body.items).toHaveLength(2)
+  })
+
+  it('availableToMe: true for movies — returns only movies with an AVAILABLE record', async () => {
+    setupSelectWhere([makeDynamicShelf({ mediaType: 'MOVIE', availableToMe: true })])
+    setupSelectFromWhere({}) // inArray subquery
+    setupSelectWhereOrderLimit([movieAvailable])
+
+    const res = await app.inject({ method: 'GET', url: `/shelves/${DYNAMIC_SHELF_ID}` })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as { items: Array<{ mediaId: string }> }
+    expect(body.items).toHaveLength(1)
+    expect(body.items[0].mediaId).toBe('movie-live')
+  })
+
+  it('availableToMe: true for series — returns only series with an AVAILABLE record', async () => {
+    setupSelectWhere([makeDynamicShelf({ mediaType: 'SERIES', availableToMe: true })])
+    setupSelectFromWhere({}) // inArray subquery
+    setupSelectWhereOrderLimit([seriesAvailable])
+
+    const res = await app.inject({ method: 'GET', url: `/shelves/${DYNAMIC_SHELF_ID}` })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as { items: Array<{ mediaId: string }> }
+    expect(body.items).toHaveLength(1)
+    expect(body.items[0].mediaId).toBe('series-live')
   })
 })
