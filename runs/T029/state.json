@@ -1,0 +1,7 @@
+{
+  "ticket_id": "T029",
+  "state": "INIT",
+  "branch": "ticket/T029-make-release-lifecycle-event-idempotency-source-aw",
+  "issue_number": 61,
+  "updated_at": "2026-08-12T08:30:14Z"
+}
