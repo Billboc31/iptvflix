@@ -3,5 +3,10 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T044-add-refresh-semantics-for-generated-and-recommenda",
   "issue_number": 85,
-  "updated_at": "2026-08-12T14:10:09Z"
+  "updated_at": "2026-08-12T14:10:24Z",
+  "pr_number": 93,
+  "pr_synced": true,
+  "pr_merged": true,
+  "daemon_archived": true,
+  "issue_closed": true
 }
