@@ -1,21 +1,36 @@
-IMPLEMENTATION_FIX_REQUIRED
+# PR Review — T055 (attempt 2)
+
+## Résumé
+
+L'implémentation de second passage corrige tous les points bloquants et significatifs. Voici le verdict :
 
 ---
 
-## Résumé de la review T055
+## Corrections validées
 
-L'implémentation est structurellement solide (routes enregistrées, middleware de device auth correct, SSE propre, schéma cohérent avec les UUIDs du catalogue). Deux bugs bloquants ont été identifiés :
+**[BLOQUANT 1] Token delivery — CORRIGÉ**
+`deviceToken varchar(64)` ajouté au schéma `pairingCodes` et à la migration. `approvePairingCode` stocke le plain-text token ; `getPairingStatus` le retourne via `row.deviceToken ?? undefined`. La TV reçoit son credential.
 
-**[BLOQUANT 1] — Le token n'atteint jamais la TV**
-`getPairingStatus` retourne `deviceToken: undefined` (ligne 60 de `pairing.service.ts`). Le token plain-text est généré dans `approvePairingCode` et rendu à la Web app, mais n'est pas stocké en DB. La TV qui sonde son code de pairing reçoit `{ status: 'approved', deviceToken: undefined }` — elle ne peut pas s'authentifier. Le flow de pairing est non-fonctionnel de bout en bout.
+**[BLOQUANT 2] Web auth sur approbation/gestion — CORRIGÉ**
+`authenticateWeb` middleware créé (Bearer `WEB_SECRET`, 503 si non configuré, 401 si absent/incorrect). Guard appliqué sur les 6 endpoints ciblés : `GET/POST /pairing/codes/:code[/approve]`, `GET/PATCH/DELETE /devices/*`, `POST /devices/:id/commands`.
 
-**[BLOQUANT 2] — Aucune auth Web sur les routes d'approbation/gestion**
-`POST /pairing/codes/:code/approve`, `GET/PATCH/DELETE /devices/*` et `POST /devices/:id/commands` sont ouverts sans aucune vérification d'identité. N'importe quel client peut approuver un pairing code en cours et voler le device token. Violates the ticket AC : *"An authenticated Web user can approve pairing"*.
+**[SIGNIFICATIF 3] État stale dans `getPendingCommands` — CORRIGÉ**
+Les lignes transitionnées vers `delivered` sont copiées avec `{ ...row, state: 'delivered' }` avant `map(toResponse)`.
 
-**Actions obligatoires :**
-1. Ajouter une colonne `device_token` dans `pairing_codes` pour stocker le token temporairement et le retourner via `getPairingStatus`.
-2. Ajouter un guard d'auth Web minimal sur les routes d'approbation et de gestion (même provisoire en attendant #95).
+**[SIGNIFICATIF 4] Test "revoked device cannot authenticate" — CORRIGÉ**
+`authenticateDevice.test.ts:82-90` couvre le cas → 401.
 
-**Points significatifs recommandés :**
-- `getPendingCommands` retourne `state: 'pending'` même après transition vers `delivered` en DB (stale data).
-- Test manquant : "revoked device cannot authenticate" (critère d'acceptation du ticket).
+---
+
+## Observations mineures (non bloquantes)
+
+- `PairingCodeAlreadyApprovedError` reste du code mort (défini, jamais lancé). Cleanup recommandé post-merge.
+- `deviceToken` n'est pas nulé après récupération TV (suggestion de la première review non implémentée). Acceptable : exposition bornée par le TTL 5 min du code.
+
+---
+
+## Critères d'acceptation : tous satisfaits.
+
+545 tests verts, build TypeScript propre.
+
+IMPLEMENTATION_APPROVED
