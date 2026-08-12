@@ -1,0 +1,7 @@
+{
+  "ticket_id": "T037",
+  "state": "TEST_COMPLETE",
+  "branch": "ticket/T037-remove-already-tracked-node-modules-and-vitest-cac",
+  "issue_number": 77,
+  "updated_at": "2026-08-12T11:01:52Z"
+}
