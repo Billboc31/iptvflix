@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { ProfilePreferences } from '@iptvflix/api-contracts'
-import { getProfile, updateProfilePreferences } from '../lib/api.js'
+import type { ProfilePreferences, SourceResponse } from '@iptvflix/api-contracts'
+import { getProfile, listSources, updateProfilePreferences } from '../lib/api.js'
 import Button from '../components/ui/Button.js'
 import Spinner from '../components/ui/Spinner.js'
 
@@ -105,6 +105,112 @@ function LanguageListInput({
   )
 }
 
+function SourcePriorityInput({
+  sources,
+  value,
+  onChange,
+}: {
+  sources: SourceResponse[]
+  value: string[]
+  onChange: (v: string[]) => void
+}) {
+  const [selected, setSelected] = useState('')
+
+  const displayedIds = value.filter((id) => sources.some((s) => s.id === id))
+  const available = sources.filter((s) => !value.includes(s.id))
+
+  function add() {
+    if (!selected) return
+    onChange([...value, selected])
+    setSelected('')
+  }
+
+  function remove(id: string) {
+    onChange(value.filter((v) => v !== id))
+  }
+
+  function moveUp(idx: number) {
+    if (idx === 0) return
+    const next = [...displayedIds]
+    ;[next[idx - 1], next[idx]] = [next[idx], next[idx - 1]]
+    onChange(next)
+  }
+
+  function moveDown(idx: number) {
+    if (idx === displayedIds.length - 1) return
+    const next = [...displayedIds]
+    ;[next[idx], next[idx + 1]] = [next[idx + 1], next[idx]]
+    onChange(next)
+  }
+
+  return (
+    <div className="mb-6">
+      <label className="block text-sm font-medium text-gray-300 mb-2">
+        Sources préférées (ordre de priorité)
+      </label>
+      <ol className="mb-2 space-y-1">
+        {displayedIds.map((id, idx) => {
+          const source = sources.find((s) => s.id === id)!
+          return (
+            <li key={id} className="flex items-center gap-2 bg-white/5 rounded px-3 py-1.5 text-sm text-white">
+              <span className="w-6 text-gray-500 text-xs text-right">{idx + 1}.</span>
+              <span className="flex-1">{source.name}</span>
+              <button
+                type="button"
+                onClick={() => moveUp(idx)}
+                disabled={idx === 0}
+                className="text-gray-400 hover:text-white disabled:opacity-30 px-1"
+                aria-label={`Monter ${source.name}`}
+              >
+                ▲
+              </button>
+              <button
+                type="button"
+                onClick={() => moveDown(idx)}
+                disabled={idx === displayedIds.length - 1}
+                className="text-gray-400 hover:text-white disabled:opacity-30 px-1"
+                aria-label={`Descendre ${source.name}`}
+              >
+                ▼
+              </button>
+              <button
+                type="button"
+                onClick={() => remove(id)}
+                className="text-gray-400 hover:text-red-400 px-1"
+                aria-label={`Supprimer ${source.name}`}
+              >
+                ✕
+              </button>
+            </li>
+          )
+        })}
+        {displayedIds.length === 0 && (
+          <li className="text-gray-600 text-sm italic">Aucune source prioritaire configurée</li>
+        )}
+      </ol>
+      {available.length > 0 && (
+        <div className="flex gap-2">
+          <select
+            value={selected}
+            onChange={(e) => setSelected(e.target.value)}
+            className="flex-1 bg-white/5 border border-white/10 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-white/30"
+          >
+            <option value="" className="bg-[#111118]">Choisir une source…</option>
+            {available.map((s) => (
+              <option key={s.id} value={s.id} className="bg-[#111118]">
+                {s.name}
+              </option>
+            ))}
+          </select>
+          <Button type="button" variant="ghost" onClick={add}>
+            Ajouter
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ProfileSettingsPage() {
   const [prefs, setPrefs] = useState<ProfilePreferences>({
     preferredAudioLanguages: [],
@@ -112,14 +218,18 @@ export default function ProfileSettingsPage() {
     preferredSourceIds: [],
     maxVideoQuality: null,
   })
+  const [sources, setSources] = useState<SourceResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    getProfile()
-      .then((p) => setPrefs(p.preferences))
+    Promise.all([getProfile(), listSources()])
+      .then(([p, s]) => {
+        setPrefs(p.preferences)
+        setSources(s)
+      })
       .catch(() => setError('Impossible de charger les préférences.'))
       .finally(() => setLoading(false))
   }, [])
@@ -130,7 +240,11 @@ export default function ProfileSettingsPage() {
     setSaved(false)
     setError(null)
     try {
-      const updated = await updateProfilePreferences(prefs)
+      const toSave = {
+        ...prefs,
+        preferredSourceIds: prefs.preferredSourceIds.filter((id) => sources.some((s) => s.id === id)),
+      }
+      const updated = await updateProfilePreferences(toSave)
       setPrefs(updated.preferences)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
@@ -167,6 +281,12 @@ export default function ProfileSettingsPage() {
           label="Langues de sous-titres préférées (ordre de priorité)"
           value={prefs.preferredSubtitleLanguages}
           onChange={(v) => setPrefs((p) => ({ ...p, preferredSubtitleLanguages: v }))}
+        />
+
+        <SourcePriorityInput
+          sources={sources}
+          value={prefs.preferredSourceIds}
+          onChange={(v) => setPrefs((p) => ({ ...p, preferredSourceIds: v }))}
         />
 
         <div className="mb-6">

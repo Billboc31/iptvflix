@@ -1,0 +1,36 @@
+[2026-08-12T09:43:17Z] auto-run start: state=INIT
+[2026-08-12T09:43:17Z] auto-run: running step=planner
+[2026-08-12T09:43:22Z] auto-run: pre-planner rebase onto integration ok
+[2026-08-12T09:43:22Z] prompt: resolved=prompts/generic/planner.md source=generic
+[2026-08-12T09:43:22Z] prompt: generic fallback — injecting runs/T033/ticket.md
+[2026-08-12T09:43:22Z] compose: global-context=docs/ai/global-context.md
+[2026-08-12T09:43:22Z] compose: role=ai/roles/planner.md
+[2026-08-12T09:43:22Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-12T09:43:22Z] compose: skill=ai/skills/architecture-discipline.md
+[2026-08-12T09:43:22Z] compose: skill=ai/skills/documentation.md
+[2026-08-12T09:43:22Z] compose: task (canonical prompt)
+[2026-08-12T09:43:22Z] snapshot: runtime-prompt=runs/T033/prompts/planner-attempt-1.md
+[2026-08-12T09:46:35Z] compose: preferring on-disk runs/T033/plan.md over chatty stdout (agent Write beat meta-report)
+[2026-08-12T09:46:35Z] auto-run: step=planner done rc=0
+[2026-08-12T09:56:18Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-12T09:56:18Z] auto-run: running step=tester
+[2026-08-12T09:56:19Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-12T09:56:19Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-12T09:56:19Z] prompt: generic fallback — injecting runs/T033/ticket.md
+[2026-08-12T09:56:19Z] compose: global-context=docs/ai/global-context.md
+[2026-08-12T09:56:19Z] compose: role=ai/roles/tester.md
+[2026-08-12T09:56:19Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-12T09:56:19Z] compose: skill=ai/skills/testing.md
+[2026-08-12T09:56:19Z] compose: skill=ai/skills/debugging.md
+[2026-08-12T09:56:19Z] compose: task (canonical prompt)
+[2026-08-12T09:56:19Z] snapshot: runtime-prompt=runs/T033/prompts/tester-attempt-1.md
+[2026-08-12T09:57:42Z] auto-run: step=tester done rc=0
+[2026-08-12T09:57:42Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-12T09:57:42Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-12T09:57:42Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.vite/vitest/results.json', 'apps/web/node_modules/.vite/vitest/results.json', 'runs/T033/daemon.lock', 'runs/T033/runtime.log', 'runs/T033/workflow-status.md']
+[2026-08-12T09:57:42Z] commit-checkpoint: sha=6975982 files=4 title='test(T033/workflow): tester — update 4 file(s)'
+[2026-08-12T09:57:42Z] auto-run: auto-push triggered
+[2026-08-12T09:57:42Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.vite/vitest/results.json', 'apps/web/node_modules/.vite/vitest/results.json', 'runs/T033/daemon.lock', 'runs/T033/runtime.log', 'runs/T033/workflow-status.md']
+[2026-08-12T09:57:42Z] push: pushing branch=ticket/T033-add-source-priority-controls-to-playback-preferenc
+[2026-08-12T09:57:44Z] push: done branch=ticket/T033-add-source-priority-controls-to-playback-preferenc
+[2026-08-12T09:57:45Z] auto-run: TEST_COMPLETE — running PR lifecycle
