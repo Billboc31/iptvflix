@@ -1,0 +1,10 @@
+{
+  "ticket_id": "T023",
+  "state": "IMPLEMENTATION_APPROVED",
+  "branch": "ticket/T023-add-plex-as-a-provider-independent-media-availabil",
+  "issue_number": 40,
+  "pr_number": 47,
+  "pr_synced": true,
+  "updated_at": "2026-08-12T00:32:36Z",
+  "conflict_clear_reason": "manual rebuild 0011"
+}
