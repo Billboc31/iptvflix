@@ -520,6 +520,7 @@ describe('GET /series/:id/seasons/:seasonNumber/episodes', () => {
     expect(res.statusCode).toBe(400)
   })
 
+
   it('episode with all UNAVAILABLE variants shows availabilityStatus UNAVAILABLE and watchState null', async () => {
     const UNAVAIL_VARIANT = {
       episodeId: EPISODE_ROW.id, id: '00000000-0000-0000-0000-000000000103',
