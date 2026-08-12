@@ -134,6 +134,13 @@
       "when": 1786536919548,
       "tag": "0018_discovery_candidates",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786539934012,
+      "tag": "0019_generated_shelf",
+      "breakpoints": true
     }
   ]
 }

@@ -20,6 +20,7 @@ type RankOpts = {
   availableToMe?: boolean
   includeSeen?: boolean
   limit?: number
+  positiveMediaIds?: string[]
 }
 
 type InternalCandidate = {
@@ -79,7 +80,7 @@ export async function rankRecommendations(
 
   const genreScores = (tasteRow?.genreScores ?? {}) as Record<string, number>
   const genreMeta = (tasteRow?.genreMeta ?? {}) as Record<string, { slug: string; name: string }>
-  const positiveMediaIds = new Set<string>(tasteRow?.positiveMediaIds ?? [])
+  const positiveMediaIds = new Set<string>([...(tasteRow?.positiveMediaIds ?? []), ...(opts.positiveMediaIds ?? [])])
   const negativeMediaIds = new Set<string>(tasteRow?.negativeMediaIds ?? [])
 
   const movieGenreMap = new Map<string, string[]>()
