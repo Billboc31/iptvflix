@@ -1,7 +1,7 @@
 {
   "ticket_id": "T019",
-  "state": "IMPLEMENTATION_REVIEW_NEEDED",
+  "state": "IMPLEMENTATION_FIX_REQUIRED",
   "branch": "ticket/T019-add-universal-external-catalog-discovery-for-unava",
   "issue_number": 36,
-  "updated_at": "2026-08-12T00:31:11Z"
+  "updated_at": "2026-08-12T00:35:06Z"
 }
