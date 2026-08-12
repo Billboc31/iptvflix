@@ -27,6 +27,7 @@ export default function SearchPage() {
   const [externalSeries, setExternalSeries] = useState<ExternalSeriesCandidate[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
+  const [externalError, setExternalError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
 
   useEffect(() => {
@@ -36,6 +37,7 @@ export default function SearchPage() {
       setExternalMovies([])
       setExternalSeries([])
       setError(null)
+      setExternalError(null)
       return
     }
     setLoading(true)
@@ -68,20 +70,22 @@ export default function SearchPage() {
   const showExternal = hasExternal && total <= 5
 
   async function handleExternalMovieClick(candidate: ExternalMovieCandidate) {
+    setExternalError(null)
     try {
       const { id } = await materializeMovie(candidate.tmdbId)
       navigate(`/movies/${id}`)
     } catch {
-      // silently ignore — user can retry
+      setExternalError("Impossible d'ouvrir ce titre. Veuillez réessayer.")
     }
   }
 
   async function handleExternalSeriesClick(candidate: ExternalSeriesCandidate) {
+    setExternalError(null)
     try {
       const { id } = await materializeSeries(candidate.tmdbId)
       navigate(`/series/${id}`)
     } catch {
-      // silently ignore
+      setExternalError("Impossible d'ouvrir ce titre. Veuillez réessayer.")
     }
   }
 
@@ -182,6 +186,9 @@ export default function SearchPage() {
           <p className="text-xs text-gray-600 mb-4">
             Ces titres ne sont pas disponibles dans vos sources configurées.
           </p>
+          {externalError && (
+            <p role="alert" className="text-red-400 text-sm mb-4">{externalError}</p>
+          )}
 
           {externalMovies.length > 0 && (
             <div className="mb-6">
