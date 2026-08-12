@@ -28,6 +28,8 @@ import type {
   UpdateShelfBody,
   AddShelfMemberBody,
   ReorderShelfMembersBody,
+  GenerateShelfBody,
+  GenerateShelfResponse,
   ProfileResponse,
   UpdateProfilePreferencesBody,
   FeedbackItem,
@@ -200,6 +202,14 @@ export function removeShelfMember(id: string, mediaType: 'MOVIE' | 'SERIES', med
 
 export function reorderShelfMembers(id: string, body: ReorderShelfMembersBody): Promise<void> {
   return request(`/shelves/${id}/members/order`, { method: 'PUT', body: JSON.stringify(body) })
+}
+
+export function generateShelf(body: GenerateShelfBody): Promise<GenerateShelfResponse> {
+  return request('/shelves/generate', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function refreshShelf(id: string): Promise<GenerateShelfResponse> {
+  return request(`/shelves/${id}/refresh`, { method: 'POST' })
 }
 
 export function getProfile(): Promise<ProfileResponse> {

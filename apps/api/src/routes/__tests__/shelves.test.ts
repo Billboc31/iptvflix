@@ -13,7 +13,15 @@ const mockDb = vi.hoisted(() => ({
   transaction: vi.fn(),
 }))
 
+const mockGenerateShelfFromSeeds = vi.hoisted(() => vi.fn())
+const mockRefreshGeneratedShelf = vi.hoisted(() => vi.fn())
+
 vi.mock('../../db/client.js', () => ({ db: mockDb }))
+
+vi.mock('../../services/shelf-generation-service.js', () => ({
+  generateShelfFromSeeds: mockGenerateShelfFromSeeds,
+  refreshGeneratedShelf: mockRefreshGeneratedShelf,
+}))
 
 // Also mock the sub-services so system shelf resolvers don't hit real DB
 vi.mock('../../services/viewing-progress-service.js', () => ({
@@ -26,6 +34,7 @@ vi.mock('../../services/watchlist-service.js', () => ({
 
 import { shelvesRoutes } from '../shelves.js'
 import { validateDynamicRules } from '../../services/shelf-service.js'
+import { ValidationError } from '../../errors.js'
 
 // ---------------------------------------------------------------------------
 // Mock data
@@ -609,5 +618,135 @@ describe('GET /shelves/:id dynamic availability evaluation', () => {
     const body = res.json() as { items: Array<{ mediaId: string }> }
     expect(body.items).toHaveLength(1)
     expect(body.items[0].mediaId).toBe('series-live')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// POST /shelves/generate
+// ---------------------------------------------------------------------------
+
+describe('POST /shelves/generate', () => {
+  const MOVIE_ID_2 = 'bbbbbbbb-0000-0000-0000-000000000002'
+  const MOVIE_ID_3 = 'bbbbbbbb-0000-0000-0000-000000000003'
+
+  const THREE_SEEDS = [
+    { mediaType: 'MOVIE', mediaId: MOVIE_ID },
+    { mediaType: 'MOVIE', mediaId: MOVIE_ID_2 },
+    { mediaType: 'MOVIE', mediaId: MOVIE_ID_3 },
+  ]
+
+  const mockGenerateResponse = {
+    shelf: { id: SHELF_ID, title: 'Generated', type: 'GENERATED', layoutHint: 'ROW', position: 0 },
+    explanation: { inferredGenreIds: [], seedTitles: ['Movie A', 'Movie B', 'Movie C'] },
+  }
+
+  it('creates a GENERATED shelf and returns 201', async () => {
+    mockGenerateShelfFromSeeds.mockResolvedValueOnce(mockGenerateResponse)
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/shelves/generate',
+      payload: { title: 'My Generated Shelf', seedMediaIds: THREE_SEEDS },
+    })
+
+    expect(res.statusCode).toBe(201)
+    const body = res.json()
+    expect(body.shelf.type).toBe('GENERATED')
+    expect(body.explanation.seedTitles).toHaveLength(3)
+  })
+
+  it('returns 400 when title is missing', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/shelves/generate',
+      payload: { seedMediaIds: THREE_SEEDS },
+    })
+
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('returns 400 for fewer than 3 seeds', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/shelves/generate',
+      payload: {
+        title: 'Test',
+        seedMediaIds: [
+          { mediaType: 'MOVIE', mediaId: MOVIE_ID },
+          { mediaType: 'MOVIE', mediaId: MOVIE_ID_2 },
+        ],
+      },
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(res.json().validationError).toBe(true)
+  })
+
+  it('returns 400 for invalid seed mediaType', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/shelves/generate',
+      payload: {
+        title: 'Test',
+        seedMediaIds: [
+          { mediaType: 'BOOK', mediaId: MOVIE_ID },
+          { mediaType: 'MOVIE', mediaId: MOVIE_ID_2 },
+          { mediaType: 'MOVIE', mediaId: MOVIE_ID_3 },
+        ],
+      },
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(res.json().validationError).toBe(true)
+  })
+
+  it('returns 400 for invalid top-level mediaType', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/shelves/generate',
+      payload: { title: 'Test', seedMediaIds: THREE_SEEDS, mediaType: 'BOOK' },
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(res.json().validationError).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// POST /shelves/:id/refresh
+// ---------------------------------------------------------------------------
+
+describe('POST /shelves/:id/refresh', () => {
+  const mockRefreshResponse = {
+    shelf: { id: SHELF_ID, title: 'Refreshed', type: 'GENERATED', layoutHint: 'ROW', position: 0 },
+    explanation: { inferredGenreIds: [], seedTitles: ['Movie A', 'Movie B', 'Movie C'] },
+  }
+
+  it('refreshes a GENERATED shelf and returns 200', async () => {
+    mockRefreshGeneratedShelf.mockResolvedValueOnce(mockRefreshResponse)
+
+    const res = await app.inject({ method: 'POST', url: `/shelves/${SHELF_ID}/refresh` })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json().shelf.type).toBe('GENERATED')
+    expect(res.json().explanation.seedTitles).toHaveLength(3)
+  })
+
+  it('returns 400 for non-GENERATED shelf', async () => {
+    mockRefreshGeneratedShelf.mockRejectedValueOnce(new ValidationError('Shelf is not a GENERATED shelf'))
+
+    const res = await app.inject({ method: 'POST', url: `/shelves/${SHELF_ID}/refresh` })
+
+    expect(res.statusCode).toBe(400)
+    expect(res.json().validationError).toBe(true)
+  })
+
+  it('returns 404 when shelf does not exist', async () => {
+    const { NotFoundError } = await import('../../errors.js')
+    mockRefreshGeneratedShelf.mockRejectedValueOnce(new NotFoundError('Shelf', SHELF_ID))
+
+    const res = await app.inject({ method: 'POST', url: `/shelves/${SHELF_ID}/refresh` })
+
+    expect(res.statusCode).toBe(404)
   })
 })

@@ -175,6 +175,11 @@ export async function generateShelfFromSeeds(
     throw new ValidationError('seedMediaIds must have between 3 and 10 entries')
   }
 
+  const uniqueSeedIds = new Set(seedMediaIds.map((s) => s.mediaId))
+  if (uniqueSeedIds.size !== seedMediaIds.length) {
+    throw new ValidationError('seedMediaIds must not contain duplicate mediaId values')
+  }
+
   const limit = Math.min(Math.max(rawLimit ?? 20, 1), 100)
 
   const { members, inferredGenreIds, seedTitles } = await resolveGeneratedMembers(profileId, seedMediaIds, {
@@ -193,24 +198,28 @@ export async function generateShelfFromSeeds(
     generatedAt,
   }
 
-  const [{ maxPos }] = await db
-    .select({ maxPos: sql<number>`coalesce(max(${shelves.position}), -1)` })
-    .from(shelves)
-    .where(eq(shelves.profileId, profileId))
+  const shelf = await db.transaction(async (tx) => {
+    const [{ maxPos }] = await tx
+      .select({ maxPos: sql<number>`coalesce(max(${shelves.position}), -1)` })
+      .from(shelves)
+      .where(eq(shelves.profileId, profileId))
 
-  const position = (maxPos ?? -1) + 1
+    const position = (maxPos ?? -1) + 1
 
-  const [shelf] = await db
-    .insert(shelves)
-    .values({ profileId, title, type: 'GENERATED', rules, position, layoutHint: 'ROW' })
-    .returning()
+    const [inserted] = await tx
+      .insert(shelves)
+      .values({ profileId, title, type: 'GENERATED', rules, position, layoutHint: 'ROW' })
+      .returning()
 
-  if (members.length > 0) {
-    await db
-      .insert(shelfMembers)
-      .values(members.map((m, idx) => ({ shelfId: shelf.id, mediaType: m.mediaType, mediaId: m.mediaId, position: idx })))
-      .onConflictDoNothing()
-  }
+    if (members.length > 0) {
+      await tx
+        .insert(shelfMembers)
+        .values(members.map((m, idx) => ({ shelfId: inserted.id, mediaType: m.mediaType, mediaId: m.mediaId, position: idx })))
+        .onConflictDoNothing()
+    }
+
+    return inserted
+  })
 
   return {
     shelf: {
@@ -238,7 +247,7 @@ export async function refreshGeneratedShelf(
   if (shelf.type !== 'GENERATED') throw new ValidationError('Shelf is not a GENERATED shelf')
 
   const rules = shelf.rules as GeneratedShelfRules
-  if (!rules?.seedMediaIds || !Array.isArray(rules.seedMediaIds) || !rules.limit) {
+  if (!rules?.seedMediaIds || !Array.isArray(rules.seedMediaIds) || rules.limit == null) {
     throw new ValidationError('Shelf has invalid or missing generation rules')
   }
 
