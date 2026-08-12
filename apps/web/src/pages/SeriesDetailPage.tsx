@@ -7,6 +7,7 @@ import Button from '../components/ui/Button.js'
 import Skeleton from '../components/ui/Skeleton.js'
 import ErrorState from '../components/ui/ErrorState.js'
 import WatchlistButton from '../components/content/WatchlistButton.js'
+import FeedbackButtons from '../components/content/FeedbackButtons.js'
 import SeasonAccordion from '../components/detail/SeasonAccordion.js'
 
 function VariantBadge({ variant }: { variant: AvailabilityVariantResponse }) {
@@ -211,11 +212,12 @@ export default function SeriesDetailPage() {
               <SeasonAccordion seriesId={series.id} seasons={series.seasons} profileId={profileId} />
             </div>
 
-            <div className="flex gap-3 mt-6">
+            <div className="flex flex-wrap gap-3 mt-6">
               <Button variant="ghost" onClick={() => navigate(-1)}>
                 ← Retour
               </Button>
               <WatchlistButton mediaType="SERIES" mediaId={series.id} />
+              <FeedbackButtons mediaType="SERIES" mediaId={series.id} />
             </div>
           </div>
         </div>
