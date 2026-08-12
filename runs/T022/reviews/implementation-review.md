@@ -1,70 +1,61 @@
----
-
-# PR Review — T022: Unified Series Season and Episode Availability
-
-## Résumé
-
-L'implémentation couvre l'ensemble des critères d'acceptation du ticket. Deux problèmes medium sont détectés qui nécessitent correction avant approbation.
+I now have a complete picture. Let me write the final review.
 
 ---
 
-## Vérifications effectuées
+# PR Review — T022: Unified Series Season and Episode Availability (Attempt 2)
 
-Lecture complète de : `packages/api-contracts/src/catalog.ts`, `apps/api/src/routes/catalog.ts`, `catalog.test.ts`, `apps/web/src/lib/api.ts`, `SeriesDetailPage.tsx`, `SeasonAccordion.tsx`, `EpisodeRow.tsx`, `handlers.ts`, `SeasonAccordion.test.tsx`, `EpisodeRow.test.tsx`.
+## Context
 
----
-
-## Points validés
-
-- **Contrat** : `SeasonSummary.availableEpisodeCount` et `EpisodeResponse.watchState` ajoutés correctement, typage strict.
-- **Backend `GET /series/:id`** : 6ème requête parallèle `count(distinct episodeAvailabilities.episodeId)` groupée par `seasonNumber` — SQL correct, fallback `?? 0` pour saisons sans disponibilités.
-- **Backend `GET /series/:id/seasons/:sN/episodes`** : validation UUID du `profileId`, branche ternaire sans accès DB quand absent, `computeWatchState` avec seuils conformes au plan.
-- **Multi-source deduplication** : variants groupés par `episodeId`, un seul row par épisode avec `variants.length ≥ 2` — AC respecté.
-- **Frontend** : `SeasonAccordion` fraction `X / Y disponible(s)`, lazy-loading avec cache, pluriel correct. `EpisodeRow` `opacity-50` + aria-labels + fallback titre.
-- **Tests** : 5 nouveaux cas API + 13 cas composants couvrant tous les états prévus au plan.
-- **Scope** : aucun débordement sur le resolver, le write path progress, le player ou le multi-profil UI.
+This is a second review following `IMPLEMENTATION_FIX_REQUIRED`. The previous review flagged two medium issues and one minor issue. All three were addressed in commit `a5c268a`.
 
 ---
 
-## Problèmes détectés
+## Fix verification
 
-### [MEDIUM] Double map redondante — `apps/api/src/routes/catalog.ts` lignes 323–345
+### [MEDIUM] Double map redundancy — `catalog.ts`
+**Fixed.** `epRawVariantMap` has been removed. Only `epVariantMap` remains; it feeds both `variants:` and `resolveVariant()` at lines 333–344. The code is now clean and readable.
 
-`epVariantMap` et `epRawVariantMap` sont deux maps distinctes alimentées avec **les mêmes objets** dans la même boucle. La seule différence est le typage. Une seule map suffit. C'est ~15 lignes de bruit qui violent le skill code-quality ("garder les fonctions courtes et lisibles", "éviter la magie cachée").
+### [MEDIUM] Hardcoded `DEFAULT_PROFILE_ID` — `SeriesDetailPage.tsx`
+**Fixed.** The constant is gone. A `useEffect` at mount calls `getProfile()`, stores the id in state, and silently ignores failures (leaving `profileId` undefined, so `watchState` will be null). The catch is appropriate and the comment explains the non-obvious fallback.
 
-**Correction** : supprimer `epRawVariantMap`, passer `epVariantMap.get(e.id) ?? []` directement à `resolveVariant()`.
-
----
-
-### [MEDIUM] `DEFAULT_PROFILE_ID` hardcodé — `apps/web/src/pages/SeriesDetailPage.tsx` ligne 61
-
-```tsx
-const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
-```
-
-Le plan demande : *"Retrieve the active profile ID from the existing profile context."* L'UUID hardcodé sera envoyé dans chaque requête épisodes. Dans un contexte mono-profil actuel c'est fonctionnel, mais c'est un écart explicite du plan qui crée une dépendance silencieuse sur le profil 1.
-
-**Correction option A** (minimal) : ne pas passer `profileId` → `watchState: null` pour tous, comportement honnête.  
-**Correction option B** (conforme au plan) : appeler `getProfile()` au mount, stocker l'`id` retourné, le passer à `SeasonAccordion`.
+### [MINOR] No test for invalid `profileId` → 400
+**Fixed.** Test added at `catalog.test.ts:515`, injecting `profileId=not-a-uuid` and asserting `statusCode === 400`. The backend validation at lines 255–257 is now covered.
 
 ---
 
-## Risques éventuels
+## Full implementation review
 
-- [MINOR] Pas de test couvrant `?profileId=not-a-uuid` → 400 (la validation existe côté backend mais n'est pas testée).
+### Acceptance criteria
+
+| AC | Status |
+|---|---|
+| One canonical Series page shows known Seasons and Episodes | ✅ `SeriesDetailResponse.seasons` + per-season episode endpoint |
+| Season shows `X/Y episodes available` | ✅ `SeasonSummary.availableEpisodeCount` populated via 6th parallel query; displayed as "X / Y disponible(s)" in `SeasonAccordion` |
+| Episode shows multi-source availability without duplication | ✅ `variants[]` grouped by `episodeId`, one row per episode |
+| Missing availability visibly distinct | ✅ `opacity-50` + `Badge variant="unavailable"` for `UNAVAILABLE` episodes |
+| Watched/in-progress state reflected | ✅ `computeWatchState` with correct thresholds (< 5% = unwatched, ≥ 90% = watched) |
+| Partial source coverage (Plex S1-S3 + IPTV S1-S5) | ✅ Per-season `availEpCountMap` using `count(distinct episodeId)` grouped by `seasonNumber` |
+| Language/quality variants do not duplicate rows | ✅ Verified by multi-variant test at line 486 |
+| Tests: full, partial, multi-source, unavailable | ✅ 6 API test cases + 13 component tests |
+
+### Code quality
+
+- `computeWatchState` (lines 58–68): clean pure function, correct thresholds, handles `durationSeconds === 0` edge case.
+- `SeasonAccordion`: lazy-load with cache per `seasonNumber`, proper accordion toggle, passes `profileId` down correctly.
+- `EpisodeRow`: minimal, no logic beyond render; `aria-label` on watch state indicators is correct for accessibility.
+- Backend availability count query uses `count()` with `eq(status, 'AVAILABLE')` filter — correctly counts only available variants.
+- `UUID_RE` validation on `profileId` before DB access: correct security boundary.
+
+### Scope
+
+No scope drift detected. The resolver, viewingProgress write path, player, and multi-profile UI are untouched. The docs changes (`domain-model.md`, `overview.md`) are relevant domain documentation, not scope creep.
+
+### Security
+
+No secrets exposed. External input (`profileId`) is validated against `UUID_RE` before use. No destructive operations.
 
 ---
 
-## Décision
+## No blocking issues remain.
 
-REQUEST_CHANGES
-
----
-
-## Actions demandées
-
-1. **`apps/api/src/routes/catalog.ts`** — Fusionner `epVariantMap` et `epRawVariantMap` en une seule map.
-2. **`apps/web/src/pages/SeriesDetailPage.tsx`** — Remplacer le `DEFAULT_PROFILE_ID` hardcodé : soit `undefined` (watchState null, safe), soit récupération via `getProfile()` au mount.
-3. (Non bloquant) Ajouter un test API pour `profileId` invalide → 400.
-
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
