@@ -1,12 +1,13 @@
 import 'dotenv/config'
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
-import { eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '../../db/client.js'
 import { movies } from '../../db/schema/movies.js'
 import { series as seriesTable } from '../../db/schema/series.js'
 import { sources } from '../../db/schema/sources.js'
 import { movieAvailabilities, seriesAvailabilities, episodeAvailabilities } from '../../db/schema/availabilities.js'
 import { syncRuns } from '../../db/schema/sync-runs.js'
+import { releaseEvents } from '../../db/schema/release-lifecycle.js'
 import { CatalogSyncService, SyncAlreadyRunningError } from '../catalog-sync-service.js'
 import type { XtreamCatalogSnapshot, XtreamVodStream, XtreamSeries, XtreamSeriesInfo } from '../../providers/xtream/types.js'
 import type { PlexCatalogSnapshot } from '../../providers/plex/types.js'
@@ -112,7 +113,9 @@ afterEach(async () => {
     .from(movieAvailabilities)
     .where(eq(movieAvailabilities.providerId, testSourceId))
   if (movieRows.length > 0) {
-    await db.delete(movies).where(inArray(movies.id, movieRows.map((r) => r.movieId)))
+    const movieIds = movieRows.map((r) => r.movieId)
+    await db.delete(releaseEvents).where(inArray(releaseEvents.mediaId, movieIds))
+    await db.delete(movies).where(inArray(movies.id, movieIds))
   }
 
   const seriesRows = await db
@@ -120,8 +123,10 @@ afterEach(async () => {
     .from(seriesAvailabilities)
     .where(eq(seriesAvailabilities.providerId, testSourceId))
   if (seriesRows.length > 0) {
+    const seriesIds = seriesRows.map((r) => r.seriesId)
+    await db.delete(releaseEvents).where(inArray(releaseEvents.mediaId, seriesIds))
     // cascade: series → seasons → episodes → episodeAvailabilities
-    await db.delete(seriesTable).where(inArray(seriesTable.id, seriesRows.map((r) => r.seriesId)))
+    await db.delete(seriesTable).where(inArray(seriesTable.id, seriesIds))
   }
 
   await db.delete(syncRuns).where(eq(syncRuns.sourceId, testSourceId))
@@ -823,6 +828,150 @@ describe('CatalogSyncService', () => {
         await db.delete(syncRuns).where(eq(syncRuns.sourceId, plexSource.id))
         await db.delete(sources).where(eq(sources.id, plexSource.id))
       }
+    })
+  })
+
+  describe('source lifecycle events', () => {
+    it('records exactly one SOURCE_APPEARED event per movie and series on first sync', async () => {
+      const t1 = new Date('2026-05-01T10:00:00Z')
+      const stream = makeVodStream({ stream_id: 500, name: 'Lifecycle Movie' })
+      const seriesEntry = makeSeriesEntry({ series_id: 500, name: 'Lifecycle Series' })
+
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [seriesEntry], t1))
+
+      const [movieAv] = await db
+        .select()
+        .from(movieAvailabilities)
+        .where(and(eq(movieAvailabilities.providerItemId, '500'), eq(movieAvailabilities.providerId, testSourceId)))
+      const [seriesAv] = await db
+        .select()
+        .from(seriesAvailabilities)
+        .where(and(eq(seriesAvailabilities.providerItemId, '500'), eq(seriesAvailabilities.providerId, testSourceId)))
+
+      const movieEvents = await db
+        .select()
+        .from(releaseEvents)
+        .where(and(eq(releaseEvents.mediaId, movieAv.movieId), eq(releaseEvents.eventType, 'SOURCE_APPEARED')))
+      expect(movieEvents).toHaveLength(1)
+      expect(movieEvents[0].sourceId).toBe(testSourceId)
+      expect(movieEvents[0].occurredAt.toISOString()).toBe(t1.toISOString())
+
+      const seriesEvents = await db
+        .select()
+        .from(releaseEvents)
+        .where(and(eq(releaseEvents.mediaId, seriesAv.seriesId), eq(releaseEvents.eventType, 'SOURCE_APPEARED')))
+      expect(seriesEvents).toHaveLength(1)
+      expect(seriesEvents[0].sourceId).toBe(testSourceId)
+    })
+
+    it('does not create additional events when re-syncing with an identical snapshot', async () => {
+      const t1 = new Date('2026-05-01T10:00:00Z')
+      const t2 = new Date('2026-05-02T10:00:00Z')
+      const stream = makeVodStream({ stream_id: 501, name: 'Stable Lifecycle Movie' })
+      const seriesEntry = makeSeriesEntry({ series_id: 501, name: 'Stable Lifecycle Series' })
+
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [seriesEntry], t1))
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [seriesEntry], t2))
+
+      const [movieAv] = await db
+        .select()
+        .from(movieAvailabilities)
+        .where(and(eq(movieAvailabilities.providerItemId, '501'), eq(movieAvailabilities.providerId, testSourceId)))
+      const movieEvents = await db
+        .select()
+        .from(releaseEvents)
+        .where(eq(releaseEvents.mediaId, movieAv.movieId))
+      expect(movieEvents).toHaveLength(1)
+      expect(movieEvents[0].eventType).toBe('SOURCE_APPEARED')
+
+      const [seriesAv] = await db
+        .select()
+        .from(seriesAvailabilities)
+        .where(and(eq(seriesAvailabilities.providerItemId, '501'), eq(seriesAvailabilities.providerId, testSourceId)))
+      const seriesEvts = await db
+        .select()
+        .from(releaseEvents)
+        .where(eq(releaseEvents.mediaId, seriesAv.seriesId))
+      expect(seriesEvts).toHaveLength(1)
+      expect(seriesEvts[0].eventType).toBe('SOURCE_APPEARED')
+    })
+
+    it('records SOURCE_DISAPPEARED when a previously AVAILABLE item is absent from the snapshot', async () => {
+      const t1 = new Date('2026-05-01T10:00:00Z')
+      const t2 = new Date('2026-05-02T10:00:00Z')
+      const stream = makeVodStream({ stream_id: 502, name: 'Disappearing Lifecycle Movie' })
+      const seriesEntry = makeSeriesEntry({ series_id: 502, name: 'Disappearing Lifecycle Series' })
+
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [seriesEntry], t1))
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [], t2))
+
+      const [movieAv] = await db
+        .select()
+        .from(movieAvailabilities)
+        .where(and(eq(movieAvailabilities.providerItemId, '502'), eq(movieAvailabilities.providerId, testSourceId)))
+      const movieEvents = await db
+        .select()
+        .from(releaseEvents)
+        .where(eq(releaseEvents.mediaId, movieAv.movieId))
+      expect(movieEvents.filter((e) => e.eventType === 'SOURCE_APPEARED')).toHaveLength(1)
+      const movieDisappeared = movieEvents.filter((e) => e.eventType === 'SOURCE_DISAPPEARED')
+      expect(movieDisappeared).toHaveLength(1)
+      expect(movieDisappeared[0].sourceId).toBe(testSourceId)
+      expect(movieDisappeared[0].occurredAt.toISOString()).toBe(t2.toISOString())
+
+      const [seriesAv] = await db
+        .select()
+        .from(seriesAvailabilities)
+        .where(and(eq(seriesAvailabilities.providerItemId, '502'), eq(seriesAvailabilities.providerId, testSourceId)))
+      const seriesEvts = await db
+        .select()
+        .from(releaseEvents)
+        .where(eq(releaseEvents.mediaId, seriesAv.seriesId))
+      expect(seriesEvts.filter((e) => e.eventType === 'SOURCE_APPEARED')).toHaveLength(1)
+      expect(seriesEvts.filter((e) => e.eventType === 'SOURCE_DISAPPEARED')).toHaveLength(1)
+    })
+
+    it('records a new SOURCE_APPEARED when an item reappears after disappearing', async () => {
+      const t1 = new Date('2026-05-01T10:00:00Z')
+      const t2 = new Date('2026-05-02T10:00:00Z')
+      const t3 = new Date('2026-05-03T10:00:00Z')
+      const stream = makeVodStream({ stream_id: 503, name: 'Reappearing Lifecycle Movie' })
+
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [], t1))
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [], t2))
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [], t3))
+
+      const [movieAv] = await db
+        .select()
+        .from(movieAvailabilities)
+        .where(and(eq(movieAvailabilities.providerItemId, '503'), eq(movieAvailabilities.providerId, testSourceId)))
+      const events = await db
+        .select()
+        .from(releaseEvents)
+        .where(eq(releaseEvents.mediaId, movieAv.movieId))
+      expect(events.filter((e) => e.eventType === 'SOURCE_APPEARED')).toHaveLength(2)
+      expect(events.filter((e) => e.eventType === 'SOURCE_DISAPPEARED')).toHaveLength(1)
+    })
+
+    it('does not create events for metadata-only updates on an already AVAILABLE item', async () => {
+      const t1 = new Date('2026-05-01T10:00:00Z')
+      const t2 = new Date('2026-05-02T10:00:00Z')
+      const stream = makeVodStream({ stream_id: 504, name: 'Metadata Movie' })
+      const streamUpdated = { ...stream, name: 'Metadata Movie Updated' }
+
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [], t1))
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([streamUpdated], [], t2))
+
+      const [movieAv] = await db
+        .select()
+        .from(movieAvailabilities)
+        .where(and(eq(movieAvailabilities.providerItemId, '504'), eq(movieAvailabilities.providerId, testSourceId)))
+      const events = await db
+        .select()
+        .from(releaseEvents)
+        .where(eq(releaseEvents.mediaId, movieAv.movieId))
+      expect(events).toHaveLength(1)
+      expect(events[0].eventType).toBe('SOURCE_APPEARED')
     })
   })
 })
