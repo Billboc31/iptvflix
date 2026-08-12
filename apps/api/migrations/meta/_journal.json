@@ -149,5 +149,12 @@
       "tag": "0020_media_videos_credits",
       "breakpoints": true
     },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786577231827,
+      "tag": "0021_tv_pairing_commands",
+      "breakpoints": true
+    }
   ]
 }
