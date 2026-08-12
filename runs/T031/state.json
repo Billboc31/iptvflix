@@ -3,5 +3,8 @@
   "state": "IMPLEMENTATION_APPROVED",
   "branch": "ticket/T031-enforce-provider-item-uniqueness-for-episode-avail",
   "issue_number": 66,
-  "updated_at": "2026-08-12T09:16:34Z"
+  "updated_at": "2026-08-12T09:17:38Z",
+  "pre_conflict_state": "IMPLEMENTATION_APPROVED",
+  "conflict_detected_at": "2026-08-12T09:17:02Z",
+  "conflicted_files": []
 }
