@@ -1,7 +1,7 @@
 {
   "ticket_id": "T029",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T029-make-release-lifecycle-event-idempotency-source-aw",
   "issue_number": 61,
-  "updated_at": "2026-08-12T08:35:13Z"
+  "updated_at": "2026-08-12T08:46:09Z"
 }

@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { db } from '../../db/client.js'
 import { movies } from '../../db/schema/movies.js'
 import { sources } from '../../db/schema/sources.js'
@@ -13,6 +13,7 @@ import {
 
 let testMovieId: string
 let testSourceId: string
+let testSourceId2: string
 
 beforeAll(async () => {
   const [source] = await db
@@ -20,6 +21,12 @@ beforeAll(async () => {
     .values({ name: 'RLS Test Source', type: 'XTREAM', baseUrl: 'http://test.rls.example.com', username: 'u', password: 'p' })
     .returning()
   testSourceId = source.id
+
+  const [source2] = await db
+    .insert(sources)
+    .values({ name: 'RLS Test Source 2', type: 'XTREAM', baseUrl: 'http://test2.rls.example.com', username: 'u', password: 'p' })
+    .returning()
+  testSourceId2 = source2.id
 
   const [movie] = await db
     .insert(movies)
@@ -31,7 +38,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.delete(releaseEvents).where(eq(releaseEvents.mediaId, testMovieId))
   await db.delete(movies).where(eq(movies.id, testMovieId))
-  await db.delete(sources).where(eq(sources.id, testSourceId))
+  await db.delete(sources).where(inArray(sources.id, [testSourceId, testSourceId2]))
 })
 
 describe('upsertReleaseFields', () => {
@@ -115,5 +122,98 @@ describe('getTimeline', () => {
     } finally {
       await db.delete(movies).where(eq(movies.id, fresh.id))
     }
+  })
+})
+
+describe('source-aware idempotency', () => {
+  it('allows two different sources to record SOURCE_APPEARED at the same timestamp', async () => {
+    const occurredAt = new Date('2025-06-01T00:00:00Z')
+
+    await recordReleaseEvent('MOVIE', testMovieId, 'SOURCE_APPEARED', occurredAt, testSourceId)
+    await recordReleaseEvent('MOVIE', testMovieId, 'SOURCE_APPEARED', occurredAt, testSourceId2)
+
+    const events = await db
+      .select()
+      .from(releaseEvents)
+      .where(eq(releaseEvents.mediaId, testMovieId))
+
+    const appeared = events.filter(
+      (e) => e.eventType === 'SOURCE_APPEARED' && e.occurredAt.toISOString() === occurredAt.toISOString(),
+    )
+    expect(appeared).toHaveLength(2)
+    const sourceIds = appeared.map((e) => e.sourceId).sort()
+    expect(sourceIds).toEqual([testSourceId, testSourceId2].sort())
+  })
+
+  it('is idempotent when the same source re-inserts SOURCE_APPEARED at the same timestamp', async () => {
+    const occurredAt = new Date('2025-06-01T00:00:00Z')
+
+    await recordReleaseEvent('MOVIE', testMovieId, 'SOURCE_APPEARED', occurredAt, testSourceId)
+
+    const events = await db
+      .select()
+      .from(releaseEvents)
+      .where(eq(releaseEvents.mediaId, testMovieId))
+
+    const appeared = events.filter(
+      (e) =>
+        e.eventType === 'SOURCE_APPEARED' &&
+        e.sourceId === testSourceId &&
+        e.occurredAt.toISOString() === occurredAt.toISOString(),
+    )
+    expect(appeared).toHaveLength(1)
+  })
+
+  it('allows two different sources to record SOURCE_DISAPPEARED at the same timestamp', async () => {
+    const occurredAt = new Date('2025-07-01T00:00:00Z')
+
+    await recordReleaseEvent('MOVIE', testMovieId, 'SOURCE_DISAPPEARED', occurredAt, testSourceId)
+    await recordReleaseEvent('MOVIE', testMovieId, 'SOURCE_DISAPPEARED', occurredAt, testSourceId2)
+
+    const events = await db
+      .select()
+      .from(releaseEvents)
+      .where(eq(releaseEvents.mediaId, testMovieId))
+
+    const disappeared = events.filter(
+      (e) => e.eventType === 'SOURCE_DISAPPEARED' && e.occurredAt.toISOString() === occurredAt.toISOString(),
+    )
+    expect(disappeared).toHaveLength(2)
+  })
+
+  it('is idempotent when the same source re-inserts SOURCE_DISAPPEARED at the same timestamp', async () => {
+    const occurredAt = new Date('2025-07-01T00:00:00Z')
+
+    await recordReleaseEvent('MOVIE', testMovieId, 'SOURCE_DISAPPEARED', occurredAt, testSourceId)
+
+    const events = await db
+      .select()
+      .from(releaseEvents)
+      .where(eq(releaseEvents.mediaId, testMovieId))
+
+    const disappeared = events.filter(
+      (e) =>
+        e.eventType === 'SOURCE_DISAPPEARED' &&
+        e.sourceId === testSourceId &&
+        e.occurredAt.toISOString() === occurredAt.toISOString(),
+    )
+    expect(disappeared).toHaveLength(1)
+  })
+
+  it('retains idempotency for non-source events (ANNOUNCED)', async () => {
+    const occurredAt = new Date('2024-01-01T00:00:00Z')
+
+    await recordReleaseEvent('MOVIE', testMovieId, 'ANNOUNCED', occurredAt)
+    await recordReleaseEvent('MOVIE', testMovieId, 'ANNOUNCED', occurredAt)
+
+    const events = await db
+      .select()
+      .from(releaseEvents)
+      .where(eq(releaseEvents.mediaId, testMovieId))
+
+    const announced = events.filter(
+      (e) => e.eventType === 'ANNOUNCED' && e.occurredAt.toISOString() === occurredAt.toISOString(),
+    )
+    expect(announced).toHaveLength(1)
   })
 })
