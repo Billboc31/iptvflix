@@ -7,6 +7,7 @@ import Button from '../components/ui/Button.js'
 import Skeleton from '../components/ui/Skeleton.js'
 import ErrorState from '../components/ui/ErrorState.js'
 import WatchlistButton from '../components/content/WatchlistButton.js'
+import FeedbackButtons from '../components/content/FeedbackButtons.js'
 
 function DetailSkeleton() {
   return (
@@ -199,11 +200,12 @@ export default function MovieDetailPage() {
               </div>
             )}
 
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <Button variant="ghost" onClick={() => navigate(-1)}>
                 ← Retour
               </Button>
               <WatchlistButton mediaType="MOVIE" mediaId={movie.id} />
+              <FeedbackButtons mediaType="MOVIE" mediaId={movie.id} />
             </div>
           </div>
         </div>

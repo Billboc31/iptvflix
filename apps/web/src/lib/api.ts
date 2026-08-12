@@ -30,6 +30,8 @@ import type {
   ReorderShelfMembersBody,
   ProfileResponse,
   UpdateProfilePreferencesBody,
+  FeedbackItem,
+  SetFeedbackBody,
 } from '@iptvflix/api-contracts'
 
 const BASE = import.meta.env.VITE_API_BASE ?? '/api'
@@ -206,4 +208,16 @@ export function getProfile(): Promise<ProfileResponse> {
 
 export function updateProfilePreferences(body: UpdateProfilePreferencesBody): Promise<ProfileResponse> {
   return request('/profile/preferences', { method: 'PATCH', body: JSON.stringify(body) })
+}
+
+export function fetchFeedback(): Promise<FeedbackItem[]> {
+  return request('/feedback')
+}
+
+export function setFeedback(mediaType: WatchlistMediaType, mediaId: string, body: SetFeedbackBody): Promise<FeedbackItem> {
+  return request(`/feedback/${mediaType}/${mediaId}`, { method: 'PUT', body: JSON.stringify(body) })
+}
+
+export function clearFeedback(mediaType: WatchlistMediaType, mediaId: string): Promise<void> {
+  return request(`/feedback/${mediaType}/${mediaId}`, { method: 'DELETE' })
 }

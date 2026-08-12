@@ -1,4 +1,16 @@
 export type WatchlistMediaType = 'MOVIE' | 'SERIES'
+export type FeedbackType = 'LIKE' | 'DISLIKE' | 'NOT_INTERESTED'
+
+export type SetFeedbackBody = {
+  feedback: FeedbackType
+}
+
+export type FeedbackItem = {
+  mediaType: WatchlistMediaType
+  mediaId: string
+  feedback: FeedbackType
+  updatedAt: string
+}
 export type ProgressMediaType = 'MOVIE' | 'EPISODE'
 
 export type WatchlistEntry = {
