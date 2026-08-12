@@ -1,0 +1,1 @@
+Done. `apps/web/vite.config.ts` now has `host: '0.0.0.0'` in the `server` block — proxy `/api` is untouched. The dev server will bind on all interfaces and Vite will print the `Network:` URL on startup.

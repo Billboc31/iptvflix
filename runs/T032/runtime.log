@@ -1,0 +1,35 @@
+[2026-08-12T09:00:25Z] auto-run start: state=INIT
+[2026-08-12T09:00:25Z] auto-run: running step=planner
+[2026-08-12T09:00:30Z] auto-run: pre-planner rebase onto integration ok
+[2026-08-12T09:00:30Z] prompt: resolved=prompts/generic/planner.md source=generic
+[2026-08-12T09:00:30Z] prompt: generic fallback — injecting runs/T032/ticket.md
+[2026-08-12T09:00:30Z] compose: global-context=docs/ai/global-context.md
+[2026-08-12T09:00:30Z] compose: role=ai/roles/planner.md
+[2026-08-12T09:00:30Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-12T09:00:30Z] compose: skill=ai/skills/architecture-discipline.md
+[2026-08-12T09:00:30Z] compose: skill=ai/skills/documentation.md
+[2026-08-12T09:00:30Z] compose: task (canonical prompt)
+[2026-08-12T09:00:30Z] snapshot: runtime-prompt=runs/T032/prompts/planner-attempt-1.md
+[2026-08-12T09:00:46Z] auto-run: step=planner done rc=0
+[2026-08-12T09:03:01Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-12T09:03:01Z] auto-run: running step=tester
+[2026-08-12T09:03:02Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-12T09:03:02Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-12T09:03:02Z] prompt: generic fallback — injecting runs/T032/ticket.md
+[2026-08-12T09:03:02Z] compose: global-context=docs/ai/global-context.md
+[2026-08-12T09:03:02Z] compose: role=ai/roles/tester.md
+[2026-08-12T09:03:02Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-12T09:03:02Z] compose: skill=ai/skills/testing.md
+[2026-08-12T09:03:02Z] compose: skill=ai/skills/debugging.md
+[2026-08-12T09:03:02Z] compose: task (canonical prompt)
+[2026-08-12T09:03:02Z] snapshot: runtime-prompt=runs/T032/prompts/tester-attempt-1.md
+[2026-08-12T09:10:42Z] auto-run: step=tester done rc=0
+[2026-08-12T09:10:42Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-12T09:10:42Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-12T09:10:42Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.bin/drizzle-kit', 'apps/api/node_modules/.bin/msw', 'apps/api/node_modules/.bin/tsc', 'apps/api/node_modules/.bin/tsserver', 'apps/api/node_modules/.bin/tsx', 'apps/api/node_modules/.bin/vitest', 'apps/web/node_modules/.bin/msw', 'apps/web/node_modules/.bin/tsc', 'apps/web/node_modules/.bin/tsserver', 'apps/web/node_modules/.bin/vite', 'apps/web/node_modules/.bin/vitest', 'apps/web/node_modules/.vite/vitest/results.json', 'runs/T032/daemon.lock', 'runs/T032/runtime.log', 'runs/T032/workflow-status.md']
+[2026-08-12T09:10:42Z] commit-checkpoint: sha=4485af0 files=3 title='test(T032/workflow): tester — update 3 file(s)'
+[2026-08-12T09:10:42Z] auto-run: auto-push triggered
+[2026-08-12T09:10:42Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.bin/drizzle-kit', 'apps/api/node_modules/.bin/msw', 'apps/api/node_modules/.bin/tsc', 'apps/api/node_modules/.bin/tsserver', 'apps/api/node_modules/.bin/tsx', 'apps/api/node_modules/.bin/vitest', 'apps/web/node_modules/.bin/msw', 'apps/web/node_modules/.bin/tsc', 'apps/web/node_modules/.bin/tsserver', 'apps/web/node_modules/.bin/vite', 'apps/web/node_modules/.bin/vitest', 'apps/web/node_modules/.vite/vitest/results.json', 'runs/T032/daemon.lock', 'runs/T032/runtime.log', 'runs/T032/workflow-status.md']
+[2026-08-12T09:10:42Z] push: pushing branch=ticket/T032-chore-web-expose-vite-dev-server-sur-0-0-0-0-pour
+[2026-08-12T09:10:44Z] push: done branch=ticket/T032-chore-web-expose-vite-dev-server-sur-0-0-0-0-pour
+[2026-08-12T09:10:44Z] auto-run: TEST_COMPLETE — running PR lifecycle
