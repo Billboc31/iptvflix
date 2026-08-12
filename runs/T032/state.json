@@ -1,7 +1,7 @@
 {
   "ticket_id": "T032",
-  "state": "IMPLEMENTATION_APPROVED",
+  "state": "TEST_COMPLETE",
   "branch": "ticket/T032-chore-web-expose-vite-dev-server-sur-0-0-0-0-pour",
   "issue_number": 67,
-  "updated_at": "2026-08-12T09:02:12Z"
+  "updated_at": "2026-08-12T09:10:42Z"
 }
