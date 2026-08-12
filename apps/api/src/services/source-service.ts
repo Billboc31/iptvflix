@@ -7,6 +7,7 @@ import type {
   UpdateSourceBody,
   TestSourceResult,
 } from '@iptvflix/api-contracts'
+import { PlexClient } from '../providers/plex/client.js'
 
 export class NotFoundError extends Error {
   readonly statusCode = 404
@@ -68,6 +69,17 @@ export async function testSourceConnection(id: string): Promise<TestSourceResult
 
   if (row.type === 'M3U') {
     return { ok: false, message: 'M3U connection test not yet implemented' }
+  }
+
+  if (row.type === 'PLEX') {
+    const client = new PlexClient(row.baseUrl, row.password ?? '')
+    const result = await client.testConnection()
+    return {
+      ok: result.ok,
+      message: result.ok
+        ? `Connected to ${result.serverName ?? 'Plex server'}`
+        : (result.message ?? 'Connection failed'),
+    }
   }
 
   const url = `${row.baseUrl}/player_api.php?username=${encodeURIComponent(row.username ?? '')}&password=${encodeURIComponent(row.password ?? '')}&action=get_server_info`

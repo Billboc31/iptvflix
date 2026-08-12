@@ -41,7 +41,13 @@ export default function SourceForm({ initial, onSubmit, onTest, onClose }: Sourc
     setError(null)
     setSaving(true)
     try {
-      const body: CreateSourceBody = { name, type, baseUrl, username: username || null, password: password || null }
+      const body: CreateSourceBody = {
+        name,
+        type,
+        baseUrl,
+        username: type === 'PLEX' ? null : (username || null),
+        password: password || null,
+      }
       await onSubmit(body)
       onClose()
     } catch (e) {
@@ -72,7 +78,7 @@ export default function SourceForm({ initial, onSubmit, onTest, onClose }: Sourc
       <div>
         <p className="text-sm text-gray-400 mb-2">Type</p>
         <div className="flex gap-4">
-          {(['XTREAM', 'M3U'] as SourceType[]).map((t) => (
+          {(['XTREAM', 'M3U', 'PLEX'] as SourceType[]).map((t) => (
             <label key={t} className="flex items-center gap-2 cursor-pointer text-sm text-white">
               <input
                 type="radio"
@@ -99,34 +105,37 @@ export default function SourceForm({ initial, onSubmit, onTest, onClose }: Sourc
           type="url"
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder="http://provider.example.com"
+          placeholder={type === 'PLEX' ? 'http://plex-server.example.com:32400' : 'http://provider.example.com'}
           className="w-full bg-[#111118] border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#e50914]/50"
         />
       </div>
 
-      {/* Username */}
-      <div>
-        <label className="block text-sm text-gray-400 mb-1" htmlFor="source-username">
-          Identifiant
-        </label>
-        <input
-          id="source-username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          className="w-full bg-[#111118] border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#e50914]/50"
-        />
-      </div>
+      {/* Username — hidden for PLEX */}
+      {type !== 'PLEX' && (
+        <div>
+          <label className="block text-sm text-gray-400 mb-1" htmlFor="source-username">
+            Identifiant
+          </label>
+          <input
+            id="source-username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="w-full bg-[#111118] border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#e50914]/50"
+          />
+        </div>
+      )}
 
-      {/* Password */}
+      {/* Password / Plex Token */}
       <div>
         <label className="block text-sm text-gray-400 mb-1" htmlFor="source-password">
-          Mot de passe
+          {type === 'PLEX' ? 'Plex Token' : 'Mot de passe'}
         </label>
         <input
           id="source-password"
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          placeholder={type === 'PLEX' ? 'Votre token Plex' : undefined}
           className="w-full bg-[#111118] border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#e50914]/50"
         />
       </div>

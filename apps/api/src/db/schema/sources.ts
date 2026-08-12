@@ -1,6 +1,6 @@
 import { pgTable, pgEnum, text, boolean, timestamp, uuid } from 'drizzle-orm/pg-core'
 
-export const sourceTypeEnum = pgEnum('source_type', ['XTREAM', 'M3U'])
+export const sourceTypeEnum = pgEnum('source_type', ['XTREAM', 'M3U', 'PLEX'])
 
 export const sources = pgTable('sources', {
   id: uuid('id').primaryKey().defaultRandom(),

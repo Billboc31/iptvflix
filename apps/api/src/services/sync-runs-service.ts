@@ -5,6 +5,8 @@ import { sources } from '../db/schema/sources.js'
 import { syncRuns } from '../db/schema/sync-runs.js'
 import { XtreamCodesClient } from '../providers/xtream/client.js'
 import type { XtreamCatalogSnapshot } from '../providers/xtream/types.js'
+import { PlexClient } from '../providers/plex/client.js'
+import type { PlexCatalogSnapshot } from '../providers/plex/types.js'
 import {
   CatalogSyncService,
   SyncAlreadyRunningError,
@@ -59,6 +61,30 @@ async function fetchXtreamSnapshot(source: typeof sources.$inferSelect): Promise
   }
 }
 
+async function fetchPlexSnapshot(source: typeof sources.$inferSelect): Promise<PlexCatalogSnapshot> {
+  const client = new PlexClient(source.baseUrl, source.password ?? '', 60_000)
+
+  const sections = await client.fetchLibrarySections()
+  const movieSections = sections.filter((s) => s.type === 'movie')
+  const showSections = sections.filter((s) => s.type === 'show')
+
+  const [allMovies, allShows] = await Promise.all([
+    Promise.all(movieSections.map((s) => client.fetchMovies(s.key))).then((arrays) =>
+      arrays.flat(),
+    ),
+    Promise.all(showSections.map((s) => client.fetchShows(s.key))).then((arrays) =>
+      arrays.flat(),
+    ),
+  ])
+
+  return {
+    sourceId: source.id,
+    fetchedAt: new Date(),
+    movies: allMovies,
+    shows: allShows,
+  }
+}
+
 export async function triggerSync(body: TriggerSyncBody): Promise<SyncRunResponse> {
   if (!body?.sourceId) {
     const err = new Error('sourceId is required')
@@ -75,15 +101,22 @@ export async function triggerSync(body: TriggerSyncBody): Promise<SyncRunRespons
     throw err
   }
 
-  if (source.type !== 'XTREAM') {
-    const err = new Error('Only XTREAM sources can be synchronized for now')
+  if (source.type !== 'XTREAM' && source.type !== 'PLEX') {
+    const err = new Error('Only XTREAM and PLEX sources can be synchronized')
     ;(err as Error & { statusCode?: number }).statusCode = 400
     throw err
   }
 
   try {
-    const snapshot = await fetchXtreamSnapshot(source)
-    const result = await CatalogSyncService.syncCatalog(source.id, snapshot)
+    let result: Awaited<ReturnType<typeof CatalogSyncService.syncCatalog>>
+    if (source.type === 'PLEX') {
+      const snapshot = await fetchPlexSnapshot(source)
+      result = await CatalogSyncService.syncPlexCatalog(source.id, snapshot)
+    } else {
+      const snapshot = await fetchXtreamSnapshot(source)
+      result = await CatalogSyncService.syncCatalog(source.id, snapshot)
+    }
+
     const [row] = await db.select().from(syncRuns).where(eq(syncRuns.id, result.runId))
     if (!row) {
       throw new Error('Sync completed but run record is missing')

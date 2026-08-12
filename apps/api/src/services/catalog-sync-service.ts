@@ -10,6 +10,7 @@ import {
 import { syncRuns } from '../db/schema/sync-runs.js'
 import type { XtreamCatalogSnapshot } from '../providers/xtream/types.js'
 import { normalizeTitle } from '../matching/title-normalizer.js'
+import type { PlexCatalogSnapshot, PlexGuid } from '../providers/plex/types.js'
 
 export interface CatalogSyncResult {
   runId: string
@@ -30,6 +31,37 @@ export class SyncAlreadyRunningError extends Error {
     super(`Sync already running for source ${sourceId}`)
     this.name = 'SyncAlreadyRunningError'
   }
+}
+
+interface NormalizedMovieItem {
+  providerItemId: string
+  title: string
+  posterPath?: string | null
+  synopsis?: string | null
+  tmdb?: string
+  rawTitle?: string | null
+  audioLanguage?: string | null
+  subtitleLanguage?: string | null
+  videoQuality?: string | null
+}
+
+interface NormalizedSeriesItem {
+  providerItemId: string
+  title: string
+  posterPath?: string | null
+  synopsis?: string | null
+  firstAirYear?: number | null
+  rawTitle?: string | null
+  audioLanguage?: string | null
+  subtitleLanguage?: string | null
+  videoQuality?: string | null
+}
+
+interface NormalizedSnapshot {
+  sourceId: string
+  fetchedAt: Date
+  movies: NormalizedMovieItem[]
+  series: NormalizedSeriesItem[]
 }
 
 const STALE_LOCK_MS = 10 * 60 * 1000
@@ -63,11 +95,16 @@ function isUniqueConstraintViolation(err: unknown): boolean {
   return code === '23505'
 }
 
+function extractPlexTmdbId(guids: PlexGuid[] | undefined): string | undefined {
+  const found = guids?.find((g) => g.id.startsWith('tmdb://'))
+  return found ? found.id.slice('tmdb://'.length) : undefined
+}
+
 async function resolveMovieId(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-  stream: { name: string; cover?: string; plot?: string; description?: string; tmdb?: string },
+  item: NormalizedMovieItem,
 ): Promise<string> {
-  const tmdbId = parseTmdbId(stream.tmdb)
+  const tmdbId = parseTmdbId(item.tmdb)
 
   if (tmdbId != null) {
     const [existingByTmdb] = await tx
@@ -80,9 +117,9 @@ async function resolveMovieId(
     const inserted = await tx
       .insert(movies)
       .values({
-        title: stream.name,
-        posterPath: stream.cover ?? null,
-        synopsis: stream.plot ?? stream.description ?? null,
+        title: item.title,
+        posterPath: item.posterPath ?? null,
+        synopsis: item.synopsis ?? null,
         year: null,
         tmdbId,
       })
@@ -103,9 +140,9 @@ async function resolveMovieId(
   const [inserted] = await tx
     .insert(movies)
     .values({
-      title: stream.name,
-      posterPath: stream.cover ?? null,
-      synopsis: stream.plot ?? stream.description ?? null,
+      title: item.title,
+      posterPath: item.posterPath ?? null,
+      synopsis: item.synopsis ?? null,
       year: null,
       tmdbId: null,
     })
@@ -113,280 +150,334 @@ async function resolveMovieId(
   return inserted.id
 }
 
-export const CatalogSyncService = {
-  async syncCatalog(sourceId: string, snapshot: XtreamCatalogSnapshot): Promise<CatalogSyncResult> {
-    // Clear any stale RUNNING lock for this source
-    const staleThreshold = new Date(Date.now() - STALE_LOCK_MS)
-    await db
-      .update(syncRuns)
-      .set({ status: 'FAILED', completedAt: new Date(), errorMessage: 'stale lock cleared' })
-      .where(
-        and(
-          eq(syncRuns.sourceId, sourceId),
-          eq(syncRuns.status, 'RUNNING'),
-          lt(syncRuns.startedAt, staleThreshold),
-        ),
-      )
+async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): Promise<CatalogSyncResult> {
+  // Clear any stale RUNNING lock for this source
+  const staleThreshold = new Date(Date.now() - STALE_LOCK_MS)
+  await db
+    .update(syncRuns)
+    .set({ status: 'FAILED', completedAt: new Date(), errorMessage: 'stale lock cleared' })
+    .where(
+      and(
+        eq(syncRuns.sourceId, sourceId),
+        eq(syncRuns.status, 'RUNNING'),
+        lt(syncRuns.startedAt, staleThreshold),
+      ),
+    )
 
-    // Acquire lock by inserting a RUNNING run record
-    let runId: string
-    try {
-      const [run] = await db
-        .insert(syncRuns)
-        .values({ sourceId, status: 'RUNNING' })
-        .returning()
-      runId = run.id
-    } catch (err) {
-      if (isUniqueConstraintViolation(err)) {
-        throw new SyncAlreadyRunningError(sourceId)
-      }
-      throw err
+  // Acquire lock by inserting a RUNNING run record
+  let runId: string
+  try {
+    const [run] = await db
+      .insert(syncRuns)
+      .values({ sourceId, status: 'RUNNING' })
+      .returning()
+    runId = run.id
+  } catch (err) {
+    if (isUniqueConstraintViolation(err)) {
+      throw new SyncAlreadyRunningError(sourceId)
     }
+    throw err
+  }
 
-    const counts = {
-      moviesCreated: 0,
-      moviesUpdated: 0,
-      seriesCreated: 0,
-      seriesUpdated: 0,
-      unavailableCount: 0,
-      failedCount: 0,
-    }
-    let syncError: Error | undefined
+  const counts = {
+    moviesCreated: 0,
+    moviesUpdated: 0,
+    seriesCreated: 0,
+    seriesUpdated: 0,
+    unavailableCount: 0,
+    failedCount: 0,
+  }
+  let syncError: Error | undefined
 
-    try {
-      await db.transaction(async (tx) => {
-        // Collect currently AVAILABLE items for this source before sync
-        const prevMovieRows = await tx
-          .select({ providerItemId: movieAvailabilities.providerItemId })
+  try {
+    await db.transaction(async (tx) => {
+      // Collect currently AVAILABLE items for this source before sync
+      const prevMovieRows = await tx
+        .select({ providerItemId: movieAvailabilities.providerItemId })
+        .from(movieAvailabilities)
+        .where(
+          and(
+            eq(movieAvailabilities.providerId, sourceId),
+            eq(movieAvailabilities.status, 'AVAILABLE'),
+          ),
+        )
+      const previouslyAvailableMovieIds = new Set(prevMovieRows.map((r) => r.providerItemId))
+
+      const prevSeriesRows = await tx
+        .select({ providerItemId: seriesAvailabilities.providerItemId })
+        .from(seriesAvailabilities)
+        .where(
+          and(
+            eq(seriesAvailabilities.providerId, sourceId),
+            eq(seriesAvailabilities.status, 'AVAILABLE'),
+          ),
+        )
+      const previouslyAvailableSeriesIds = new Set(prevSeriesRows.map((r) => r.providerItemId))
+
+      // Sync movies
+      const seenMovieProviderItemIds = new Set<string>()
+      for (const movie of snapshot.movies) {
+        const providerItemId = movie.providerItemId
+        const [existing] = await tx
+          .select({ id: movieAvailabilities.id })
           .from(movieAvailabilities)
           .where(
             and(
               eq(movieAvailabilities.providerId, sourceId),
-              eq(movieAvailabilities.status, 'AVAILABLE'),
+              eq(movieAvailabilities.providerItemId, providerItemId),
             ),
           )
-        const previouslyAvailableMovieIds = new Set(prevMovieRows.map((r) => r.providerItemId))
 
-        const prevSeriesRows = await tx
-          .select({ providerItemId: seriesAvailabilities.providerItemId })
-          .from(seriesAvailabilities)
-          .where(
-            and(
-              eq(seriesAvailabilities.providerId, sourceId),
-              eq(seriesAvailabilities.status, 'AVAILABLE'),
-            ),
-          )
-        const previouslyAvailableSeriesIds = new Set(prevSeriesRows.map((r) => r.providerItemId))
-
-        // Sync VOD streams
-        const seenMovieProviderItemIds = new Set<string>()
-        for (const stream of snapshot.vodStreams) {
-          const providerItemId = stream.stream_id.toString()
-          const [existing] = await tx
-            .select({ id: movieAvailabilities.id })
-            .from(movieAvailabilities)
+        if (!existing) {
+          const movieId = await resolveMovieId(tx, movie)
+          await tx.insert(movieAvailabilities).values({
+            movieId,
+            providerId: sourceId,
+            providerItemId,
+            firstSeenAt: snapshot.fetchedAt,
+            lastSeenAt: snapshot.fetchedAt,
+            status: 'AVAILABLE',
+            rawTitle: movie.rawTitle ?? null,
+            audioLanguage: movie.audioLanguage ?? null,
+            subtitleLanguage: movie.subtitleLanguage ?? null,
+            videoQuality: movie.videoQuality ?? null,
+          })
+          counts.moviesCreated++
+        } else {
+          await tx
+            .update(movieAvailabilities)
+            .set({
+              lastSeenAt: snapshot.fetchedAt,
+              status: 'AVAILABLE',
+              unavailableAt: null,
+              rawTitle: movie.rawTitle ?? null,
+              audioLanguage: movie.audioLanguage ?? null,
+              subtitleLanguage: movie.subtitleLanguage ?? null,
+              videoQuality: movie.videoQuality ?? null,
+            })
             .where(
               and(
                 eq(movieAvailabilities.providerId, sourceId),
                 eq(movieAvailabilities.providerItemId, providerItemId),
               ),
             )
+          counts.moviesUpdated++
+        }
+        seenMovieProviderItemIds.add(providerItemId)
+      }
 
-          const { variantAttributes } = normalizeTitle(stream.name)
-          if (!existing) {
-            const movieId = await resolveMovieId(tx, stream)
-            await tx.insert(movieAvailabilities).values({
-              movieId,
-              providerId: sourceId,
-              providerItemId,
-              firstSeenAt: snapshot.fetchedAt,
+      // Sync series
+      const seenSeriesProviderItemIds = new Set<string>()
+      for (const s of snapshot.series) {
+        const providerItemId = s.providerItemId
+        const [existing] = await tx
+          .select({ id: seriesAvailabilities.id })
+          .from(seriesAvailabilities)
+          .where(
+            and(
+              eq(seriesAvailabilities.providerId, sourceId),
+              eq(seriesAvailabilities.providerItemId, providerItemId),
+            ),
+          )
+
+        if (!existing) {
+          const [seriesRow] = await tx
+            .insert(series)
+            .values({
+              title: s.title,
+              posterPath: s.posterPath ?? null,
+              synopsis: s.synopsis ?? null,
+              firstAirYear: s.firstAirYear ?? null,
+            })
+            .returning()
+          await tx.insert(seriesAvailabilities).values({
+            seriesId: seriesRow.id,
+            providerId: sourceId,
+            providerItemId,
+            firstSeenAt: snapshot.fetchedAt,
+            lastSeenAt: snapshot.fetchedAt,
+            status: 'AVAILABLE',
+            rawTitle: s.rawTitle ?? null,
+            audioLanguage: s.audioLanguage ?? null,
+            subtitleLanguage: s.subtitleLanguage ?? null,
+            videoQuality: s.videoQuality ?? null,
+          })
+          counts.seriesCreated++
+        } else {
+          await tx
+            .update(seriesAvailabilities)
+            .set({
               lastSeenAt: snapshot.fetchedAt,
               status: 'AVAILABLE',
-              rawTitle: stream.name,
-              audioLanguage: variantAttributes.audioLanguage,
-              subtitleLanguage: variantAttributes.subtitleLanguage,
-              videoQuality: variantAttributes.videoQuality,
+              unavailableAt: null,
+              rawTitle: s.rawTitle ?? null,
+              audioLanguage: s.audioLanguage ?? null,
+              subtitleLanguage: s.subtitleLanguage ?? null,
+              videoQuality: s.videoQuality ?? null,
             })
-            counts.moviesCreated++
-          } else {
-            await tx
-              .update(movieAvailabilities)
-              .set({
-                lastSeenAt: snapshot.fetchedAt,
-                status: 'AVAILABLE',
-                unavailableAt: null,
-                rawTitle: stream.name,
-                audioLanguage: variantAttributes.audioLanguage,
-                subtitleLanguage: variantAttributes.subtitleLanguage,
-                videoQuality: variantAttributes.videoQuality,
-              })
-              .where(
-                and(
-                  eq(movieAvailabilities.providerId, sourceId),
-                  eq(movieAvailabilities.providerItemId, providerItemId),
-                ),
-              )
-            counts.moviesUpdated++
-          }
-          seenMovieProviderItemIds.add(providerItemId)
-        }
-
-        // Sync series
-        const seenSeriesProviderItemIds = new Set<string>()
-        for (const s of snapshot.series) {
-          const providerItemId = s.series_id.toString()
-          const [existing] = await tx
-            .select({ id: seriesAvailabilities.id })
-            .from(seriesAvailabilities)
             .where(
               and(
                 eq(seriesAvailabilities.providerId, sourceId),
                 eq(seriesAvailabilities.providerItemId, providerItemId),
               ),
             )
-
-          const { variantAttributes: seriesVariantAttrs } = normalizeTitle(s.name)
-          if (!existing) {
-            const [seriesRow] = await tx
-              .insert(series)
-              .values({
-                title: s.name,
-                posterPath: s.cover ?? null,
-                synopsis: s.plot ?? null,
-                firstAirYear: parseYear(s.releaseDate),
-              })
-              .returning()
-            await tx.insert(seriesAvailabilities).values({
-              seriesId: seriesRow.id,
-              providerId: sourceId,
-              providerItemId,
-              firstSeenAt: snapshot.fetchedAt,
-              lastSeenAt: snapshot.fetchedAt,
-              status: 'AVAILABLE',
-              rawTitle: s.name,
-              audioLanguage: seriesVariantAttrs.audioLanguage,
-              subtitleLanguage: seriesVariantAttrs.subtitleLanguage,
-              videoQuality: seriesVariantAttrs.videoQuality,
-            })
-            counts.seriesCreated++
-          } else {
-            await tx
-              .update(seriesAvailabilities)
-              .set({
-                lastSeenAt: snapshot.fetchedAt,
-                status: 'AVAILABLE',
-                unavailableAt: null,
-                rawTitle: s.name,
-                audioLanguage: seriesVariantAttrs.audioLanguage,
-                subtitleLanguage: seriesVariantAttrs.subtitleLanguage,
-                videoQuality: seriesVariantAttrs.videoQuality,
-              })
-              .where(
-                and(
-                  eq(seriesAvailabilities.providerId, sourceId),
-                  eq(seriesAvailabilities.providerItemId, providerItemId),
-                ),
-              )
-            counts.seriesUpdated++
-          }
-          seenSeriesProviderItemIds.add(providerItemId)
+          counts.seriesUpdated++
         }
+        seenSeriesProviderItemIds.add(providerItemId)
+      }
 
-        // Mark previously available items not in this snapshot as UNAVAILABLE
-        const missingMovieIds = [...previouslyAvailableMovieIds].filter(
-          (id) => !seenMovieProviderItemIds.has(id),
+      // Mark previously available items not in this snapshot as UNAVAILABLE
+      const missingMovieIds = [...previouslyAvailableMovieIds].filter(
+        (id) => !seenMovieProviderItemIds.has(id),
+      )
+      if (missingMovieIds.length > 0) {
+        await tx
+          .update(movieAvailabilities)
+          .set({ status: 'UNAVAILABLE', unavailableAt: snapshot.fetchedAt })
+          .where(
+            and(
+              eq(movieAvailabilities.providerId, sourceId),
+              eq(movieAvailabilities.status, 'AVAILABLE'),
+              inArray(movieAvailabilities.providerItemId, missingMovieIds),
+            ),
+          )
+        counts.unavailableCount += missingMovieIds.length
+      }
+
+      const missingSeriesIds = [...previouslyAvailableSeriesIds].filter(
+        (id) => !seenSeriesProviderItemIds.has(id),
+      )
+      if (missingSeriesIds.length > 0) {
+        await tx
+          .update(seriesAvailabilities)
+          .set({ status: 'UNAVAILABLE', unavailableAt: snapshot.fetchedAt })
+          .where(
+            and(
+              eq(seriesAvailabilities.providerId, sourceId),
+              eq(seriesAvailabilities.status, 'AVAILABLE'),
+              inArray(seriesAvailabilities.providerItemId, missingSeriesIds),
+            ),
+          )
+        counts.unavailableCount += missingSeriesIds.length
+      }
+
+      // Mark stale episode_availabilities as UNAVAILABLE.
+      // The snapshot does not yet carry episode-level stream data, so
+      // seenEpisodeProviderItemIds is always empty and this marks any
+      // episode availability rows recorded in a prior pass as gone.
+      const prevEpisodeRows = await tx
+        .select({ providerItemId: episodeAvailabilities.providerItemId })
+        .from(episodeAvailabilities)
+        .where(
+          and(
+            eq(episodeAvailabilities.providerId, sourceId),
+            eq(episodeAvailabilities.status, 'AVAILABLE'),
+          ),
         )
-        if (missingMovieIds.length > 0) {
-          await tx
-            .update(movieAvailabilities)
-            .set({ status: 'UNAVAILABLE', unavailableAt: snapshot.fetchedAt })
-            .where(
-              and(
-                eq(movieAvailabilities.providerId, sourceId),
-                eq(movieAvailabilities.status, 'AVAILABLE'),
-                inArray(movieAvailabilities.providerItemId, missingMovieIds),
-              ),
-            )
-          counts.unavailableCount += missingMovieIds.length
-        }
+      const previouslyAvailableEpisodeIds = new Set(
+        prevEpisodeRows.map((r) => r.providerItemId),
+      )
 
-        const missingSeriesIds = [...previouslyAvailableSeriesIds].filter(
-          (id) => !seenSeriesProviderItemIds.has(id),
-        )
-        if (missingSeriesIds.length > 0) {
-          await tx
-            .update(seriesAvailabilities)
-            .set({ status: 'UNAVAILABLE', unavailableAt: snapshot.fetchedAt })
-            .where(
-              and(
-                eq(seriesAvailabilities.providerId, sourceId),
-                eq(seriesAvailabilities.status, 'AVAILABLE'),
-                inArray(seriesAvailabilities.providerItemId, missingSeriesIds),
-              ),
-            )
-          counts.unavailableCount += missingSeriesIds.length
-        }
-
-        // Mark stale episode_availabilities as UNAVAILABLE.
-        // The snapshot does not yet carry episode-level stream data, so
-        // seenEpisodeProviderItemIds is always empty and this marks any
-        // episode availability rows recorded in a prior pass as gone.
-        const prevEpisodeRows = await tx
-          .select({ providerItemId: episodeAvailabilities.providerItemId })
-          .from(episodeAvailabilities)
+      // No episode-level data in snapshot → seenEpisodeProviderItemIds is empty
+      const missingEpisodeIds = [...previouslyAvailableEpisodeIds]
+      if (missingEpisodeIds.length > 0) {
+        await tx
+          .update(episodeAvailabilities)
+          .set({ status: 'UNAVAILABLE', unavailableAt: snapshot.fetchedAt })
           .where(
             and(
               eq(episodeAvailabilities.providerId, sourceId),
               eq(episodeAvailabilities.status, 'AVAILABLE'),
+              inArray(episodeAvailabilities.providerItemId, missingEpisodeIds),
             ),
           )
-        const previouslyAvailableEpisodeIds = new Set(
-          prevEpisodeRows.map((r) => r.providerItemId),
-        )
+        counts.unavailableCount += missingEpisodeIds.length
+      }
+    })
+  } catch (err) {
+    syncError = err instanceof Error ? err : new Error(String(err))
+  }
 
-        // No episode-level data in snapshot → seenEpisodeProviderItemIds is empty
-        const missingEpisodeIds = [...previouslyAvailableEpisodeIds]
-        if (missingEpisodeIds.length > 0) {
-          await tx
-            .update(episodeAvailabilities)
-            .set({ status: 'UNAVAILABLE', unavailableAt: snapshot.fetchedAt })
-            .where(
-              and(
-                eq(episodeAvailabilities.providerId, sourceId),
-                eq(episodeAvailabilities.status, 'AVAILABLE'),
-                inArray(episodeAvailabilities.providerItemId, missingEpisodeIds),
-              ),
-            )
-          counts.unavailableCount += missingEpisodeIds.length
-        }
-      })
-    } catch (err) {
-      syncError = err instanceof Error ? err : new Error(String(err))
-    }
-
-    // Release lock — always runs regardless of sync outcome
-    if (syncError) {
-      await db
-        .update(syncRuns)
-        .set({ status: 'FAILED', completedAt: new Date(), errorMessage: syncError.message })
-        .where(eq(syncRuns.id, runId))
-      return { runId, status: 'failed', counts, error: syncError.message }
-    }
-
+  // Release lock — always runs regardless of sync outcome
+  if (syncError) {
     await db
       .update(syncRuns)
-      .set({
-        status: 'COMPLETED',
-        completedAt: new Date(),
-        moviesCreated: counts.moviesCreated,
-        moviesUpdated: counts.moviesUpdated,
-        seriesCreated: counts.seriesCreated,
-        seriesUpdated: counts.seriesUpdated,
-        unavailableCount: counts.unavailableCount,
-        failedCount: counts.failedCount,
-      })
+      .set({ status: 'FAILED', completedAt: new Date(), errorMessage: syncError.message })
       .where(eq(syncRuns.id, runId))
+    return { runId, status: 'failed', counts, error: syncError.message }
+  }
 
-    return { runId, status: 'completed', counts }
+  await db
+    .update(syncRuns)
+    .set({
+      status: 'COMPLETED',
+      completedAt: new Date(),
+      moviesCreated: counts.moviesCreated,
+      moviesUpdated: counts.moviesUpdated,
+      seriesCreated: counts.seriesCreated,
+      seriesUpdated: counts.seriesUpdated,
+      unavailableCount: counts.unavailableCount,
+      failedCount: counts.failedCount,
+    })
+    .where(eq(syncRuns.id, runId))
+
+  return { runId, status: 'completed', counts }
+}
+
+export const CatalogSyncService = {
+  async syncCatalog(sourceId: string, snapshot: XtreamCatalogSnapshot): Promise<CatalogSyncResult> {
+    return syncNormalized(sourceId, {
+      sourceId: snapshot.sourceId,
+      fetchedAt: snapshot.fetchedAt,
+      movies: snapshot.vodStreams.map((s) => {
+        const { variantAttributes } = normalizeTitle(s.name)
+        return {
+          providerItemId: s.stream_id.toString(),
+          title: s.name,
+          posterPath: s.cover,
+          synopsis: s.plot ?? s.description,
+          tmdb: s.tmdb,
+          rawTitle: s.name,
+          audioLanguage: variantAttributes.audioLanguage,
+          subtitleLanguage: variantAttributes.subtitleLanguage,
+          videoQuality: variantAttributes.videoQuality,
+        }
+      }),
+      series: snapshot.series.map((s) => {
+        const { variantAttributes } = normalizeTitle(s.name)
+        return {
+          providerItemId: s.series_id.toString(),
+          title: s.name,
+          posterPath: s.cover,
+          synopsis: s.plot,
+          firstAirYear: parseYear(s.releaseDate),
+          rawTitle: s.name,
+          audioLanguage: variantAttributes.audioLanguage,
+          subtitleLanguage: variantAttributes.subtitleLanguage,
+          videoQuality: variantAttributes.videoQuality,
+        }
+      }),
+    })
+  },
+
+  async syncPlexCatalog(sourceId: string, snapshot: PlexCatalogSnapshot): Promise<CatalogSyncResult> {
+    return syncNormalized(sourceId, {
+      sourceId: snapshot.sourceId,
+      fetchedAt: snapshot.fetchedAt,
+      movies: snapshot.movies.map((m) => ({
+        providerItemId: m.ratingKey,
+        title: m.title,
+        posterPath: m.thumb,
+        synopsis: m.summary,
+        tmdb: extractPlexTmdbId(m.Guid),
+      })),
+      series: snapshot.shows.map((s) => ({
+        providerItemId: s.ratingKey,
+        title: s.title,
+        posterPath: s.thumb,
+        synopsis: s.summary,
+        firstAirYear: s.year ?? null,
+      })),
+    })
   },
 }
