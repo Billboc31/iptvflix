@@ -7,33 +7,18 @@ import EmptyState from '../components/ui/EmptyState.js'
 import Spinner from '../components/ui/Spinner.js'
 import Button from '../components/ui/Button.js'
 import { useMovies } from '../hooks/useMovies.js'
-import { useShelves } from '../hooks/useShelves.js'
-import { useShelf } from '../hooks/useShelf.js'
-import type { ShelfSummaryResponse } from '@iptvflix/api-contracts'
+import { useHome } from '../hooks/useHome.js'
 
-function ShelfRowLoader({ summary }: { summary: ShelfSummaryResponse }) {
-  const { shelf } = useShelf(summary.id)
-  if (!shelf) return null
-  return <ShelfRow shelf={shelf} />
-}
-
-function ShelfRows({ shelves }: { shelves: ShelfSummaryResponse[] }) {
-  return (
-    <>
-      {shelves.map((summary) => (
-        <ShelfRowLoader key={summary.id} summary={summary} />
-      ))}
-    </>
-  )
-}
+const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
 
 export default function HomePage() {
   const navigate = useNavigate()
   const { data: movies, loading: moviesLoading } = useMovies({ pageSize: 1 })
-  const { shelves, loading: shelvesLoading, refetch: refetchShelves } = useShelves()
+  const { data: homeData, isLoading: homeLoading } = useHome(DEFAULT_PROFILE_ID)
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false)
 
-  const isLoading = moviesLoading || shelvesLoading
+  const shelves = homeData?.shelves ?? []
+  const isLoading = moviesLoading || homeLoading
   const hasContent = (movies?.items.length ?? 0) > 0 || shelves.length > 0
 
   if (!isLoading && !hasContent) {
@@ -50,6 +35,7 @@ export default function HomePage() {
   }
 
   const hero = movies?.items[0]
+  const isColdStart = homeData?.coldStart === true && shelves.length === 0
 
   return (
     <div>
@@ -67,21 +53,28 @@ export default function HomePage() {
       {isLoading && <Spinner />}
 
       {/* Shelf rows */}
-      {!shelvesLoading && (
+      {!homeLoading && (
         <>
           <div className="flex justify-end px-4 py-2">
             <Button variant="secondary" size="sm" onClick={() => setGenerateDialogOpen(true)}>
               + Créer une sélection
             </Button>
           </div>
-          <ShelfRows shelves={shelves} />
+          {isColdStart && (
+            <p className="px-4 py-2 text-sm text-gray-400">
+              Commencez à regarder des contenus pour recevoir des recommandations personnalisées.
+            </p>
+          )}
+          {shelves.map((shelf) => (
+            <ShelfRow key={shelf.id} shelf={shelf} />
+          ))}
         </>
       )}
 
       <GenerateShelfDialog
         open={generateDialogOpen}
         onClose={() => setGenerateDialogOpen(false)}
-        onSuccess={() => refetchShelves()}
+        onSuccess={() => {}}
       />
     </div>
   )
