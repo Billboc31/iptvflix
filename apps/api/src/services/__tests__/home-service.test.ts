@@ -115,6 +115,11 @@ function setupMocks({
 
 beforeEach(() => {
   vi.resetAllMocks()
+  mockDb.select.mockReturnValue({
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue([]),
+    }),
+  })
 })
 
 // ---------------------------------------------------------------------------
