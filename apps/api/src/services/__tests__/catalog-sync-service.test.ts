@@ -638,6 +638,58 @@ describe('CatalogSyncService', () => {
         // canonicalSeries is cleaned up by afterEach via testSourceId's seriesAvailabilities cascade
       }
     })
+
+    it('does not reassign a provider item already attached to another canonical episode', async () => {
+      const t1 = new Date('2026-02-01T10:00:00Z')
+      const t2 = new Date('2026-02-02T10:00:00Z')
+      const seriesEntry = makeSeriesEntry({ series_id: 106, name: 'Conflict Series' })
+
+      // First sync: provider maps 'ep-conflict-1' to S01E01
+      const infoEp1 = makeSeriesInfo({
+        '1': [
+          { id: 'ep-conflict-1', episode_num: 1, title: 'Ep 1' },
+          { id: 'ep-conflict-2', episode_num: 2, title: 'Ep 2' },
+        ],
+      })
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 106: infoEp1 }))
+
+      // Second sync: same provider remaps 'ep-conflict-1' to S01E02 (provider data corruption/bug)
+      const infoRemap = makeSeriesInfo({
+        '1': [
+          { id: 'ep-conflict-2', episode_num: 1, title: 'Ep 1' },
+          { id: 'ep-conflict-1', episode_num: 2, title: 'Ep 2 (remapped)' },
+        ],
+      })
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t2, { 106: infoRemap }))
+
+      // ep-conflict-1 must still point to S01E01 (no reassignment)
+      const rows = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(
+          and(
+            eq(episodeAvailabilities.providerId, testSourceId),
+            eq(episodeAvailabilities.providerItemId, 'ep-conflict-1'),
+          ),
+        )
+
+      expect(rows).toHaveLength(1)
+
+      // Verify it still belongs to the original episode (S01E01) by checking ep-conflict-2
+      // went to S01E01 in t2 while ep-conflict-1 stayed on its original episode
+      const ep1Rows = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(
+          and(
+            eq(episodeAvailabilities.providerId, testSourceId),
+            eq(episodeAvailabilities.providerItemId, 'ep-conflict-2'),
+          ),
+        )
+      expect(ep1Rows).toHaveLength(1)
+      // ep-conflict-1 and ep-conflict-2 must map to different episodes
+      expect(rows[0].episodeId).not.toBe(ep1Rows[0].episodeId)
+    })
   })
 
   describe('canonical Series identity resolution', () => {

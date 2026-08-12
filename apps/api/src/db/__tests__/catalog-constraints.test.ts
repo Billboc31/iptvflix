@@ -213,6 +213,76 @@ describe('catalog domain constraints', () => {
     ).rejects.toThrow()
   })
 
+  it('rejects same (provider_id, provider_item_id) across two different episodes in episode_availabilities', async () => {
+    const now = new Date()
+
+    const [season2] = await db
+      .insert(seasons)
+      .values({ seriesId, seasonNumber: 2 })
+      .returning()
+    testRowIds.push({ table: 'seasons', id: season2.id })
+
+    const [episodeB] = await db
+      .insert(episodes)
+      .values({ seasonId: season2.id, seriesId, episodeNumber: 1 })
+      .returning()
+    testRowIds.push({ table: 'episodes', id: episodeB.id })
+
+    const [row] = await db
+      .insert(episodeAvailabilities)
+      .values({
+        episodeId,
+        providerId: 'xtream:server1',
+        providerItemId: 'ep-cross-42',
+        firstSeenAt: now,
+        lastSeenAt: now,
+      })
+      .returning()
+    testRowIds.push({ table: 'episode_availabilities', id: row.id })
+
+    await expect(
+      db.insert(episodeAvailabilities).values({
+        episodeId: episodeB.id,
+        providerId: 'xtream:server1',
+        providerItemId: 'ep-cross-42',
+        firstSeenAt: now,
+        lastSeenAt: now,
+      }),
+    ).rejects.toThrow()
+  })
+
+  it('allows multiple distinct provider items to map to the same canonical episode', async () => {
+    const now = new Date()
+
+    const [row1] = await db
+      .insert(episodeAvailabilities)
+      .values({
+        episodeId,
+        providerId: 'xtream:server1',
+        providerItemId: 'ep-multi-1',
+        firstSeenAt: now,
+        lastSeenAt: now,
+      })
+      .returning()
+    testRowIds.push({ table: 'episode_availabilities', id: row1.id })
+
+    const [row2] = await db
+      .insert(episodeAvailabilities)
+      .values({
+        episodeId,
+        providerId: 'xtream:server2',
+        providerItemId: 'ep-multi-1',
+        firstSeenAt: now,
+        lastSeenAt: now,
+      })
+      .returning()
+    testRowIds.push({ table: 'episode_availabilities', id: row2.id })
+
+    expect(row1.episodeId).toBe(episodeId)
+    expect(row2.episodeId).toBe(episodeId)
+    expect(row1.providerId).not.toBe(row2.providerId)
+  })
+
   it('canonical movie exists and is retrievable with zero availability rows', async () => {
     const rows = await db
       .select()
