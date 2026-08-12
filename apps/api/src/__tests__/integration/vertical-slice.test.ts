@@ -19,6 +19,7 @@ import {
 import { sourcesRoutes } from '../../routes/sources.js'
 import { moviesRoutes } from '../../routes/movies.js'
 import { seriesRoutes } from '../../routes/series.js'
+import { catalogRoutes } from '../../routes/catalog.js'
 import { syncRunsRoutes } from '../../routes/sync-runs.js'
 import { searchRoutes } from '../../routes/search.js'
 import { discoveryRoutes } from '../../routes/discovery.js'
@@ -131,6 +132,7 @@ beforeAll(async () => {
   await app.register(sourcesRoutes)
   await app.register(moviesRoutes)
   await app.register(seriesRoutes)
+  await app.register(catalogRoutes)
   await app.register(syncRunsRoutes)
   await app.ready()
 })
@@ -526,6 +528,7 @@ describe('Vertical slice — external discovery flow', () => {
     await discoveryApp.register(searchRoutes, { discoveryService })
     await discoveryApp.register(discoveryRoutes, { discoveryService })
     await discoveryApp.register(moviesRoutes)
+    await discoveryApp.register(catalogRoutes)
     await discoveryApp.ready()
   })
 

@@ -1,14 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
 
-const { mockListSeries, mockGetSeries } = vi.hoisted(() => ({
+const { mockListSeries } = vi.hoisted(() => ({
   mockListSeries: vi.fn(),
-  mockGetSeries: vi.fn(),
 }))
 
 vi.mock('../services/catalog-service.js', () => ({
   listSeries: mockListSeries,
-  getSeries: mockGetSeries,
   NotFoundError: class NotFoundError extends Error {
     readonly statusCode = 404
     constructor(entity: string, id: string) {
@@ -155,23 +153,3 @@ describe('GET /series', () => {
   })
 })
 
-describe('GET /series/:id', () => {
-  it('returns series when found', async () => {
-    mockGetSeries.mockResolvedValue(MOCK_SERIES)
-    const res = await app.inject({ method: 'GET', url: `/series/${MOCK_SERIES.id}` })
-    expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual(MOCK_SERIES)
-  })
-
-  it('returns 404 when service returns null', async () => {
-    mockGetSeries.mockResolvedValue(null)
-    const res = await app.inject({ method: 'GET', url: '/series/a1b2c3d4-0000-0000-0000-000000000099' })
-    expect(res.statusCode).toBe(404)
-  })
-
-  it('returns 404 for non-UUID id without calling service', async () => {
-    const res = await app.inject({ method: 'GET', url: '/series/not-a-uuid' })
-    expect(res.statusCode).toBe(404)
-    expect(mockGetSeries).not.toHaveBeenCalled()
-  })
-})

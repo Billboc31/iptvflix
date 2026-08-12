@@ -14,6 +14,8 @@ import { watchlistRoutes } from './routes/watchlist.js'
 import { viewingProgressRoutes } from './routes/viewing-progress.js'
 import { shelvesRoutes } from './routes/shelves.js'
 import { followReleaseRoutes } from './routes/follow-release.js'
+import { catalogRoutes } from './routes/catalog.js'
+import { profileRoutes } from './routes/profile.js'
 import { testHelpersRoutes } from './routes/test-helpers.js'
 import { PORT, CORS_ORIGIN, TMDB_API_KEY } from './config/env.js'
 import { db } from './db/client.js'
@@ -46,6 +48,8 @@ await app.register(watchlistRoutes)
 await app.register(viewingProgressRoutes)
 await app.register(shelvesRoutes)
 await app.register(followReleaseRoutes)
+await app.register(catalogRoutes)
+await app.register(profileRoutes)
 
 const enrichmentService = TMDB_API_KEY
   ? new MetadataEnrichmentService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))

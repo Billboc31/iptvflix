@@ -28,6 +28,8 @@ import type {
   UpdateShelfBody,
   AddShelfMemberBody,
   ReorderShelfMembersBody,
+  ProfileResponse,
+  UpdateProfilePreferencesBody,
 } from '@iptvflix/api-contracts'
 
 const BASE = import.meta.env.VITE_API_BASE ?? '/api'
@@ -195,4 +197,12 @@ export function removeShelfMember(id: string, mediaType: 'MOVIE' | 'SERIES', med
 
 export function reorderShelfMembers(id: string, body: ReorderShelfMembersBody): Promise<void> {
   return request(`/shelves/${id}/members/order`, { method: 'PUT', body: JSON.stringify(body) })
+}
+
+export function getProfile(): Promise<ProfileResponse> {
+  return request('/profile')
+}
+
+export function updateProfilePreferences(body: UpdateProfilePreferencesBody): Promise<ProfileResponse> {
+  return request('/profile/preferences', { method: 'PATCH', body: JSON.stringify(body) })
 }

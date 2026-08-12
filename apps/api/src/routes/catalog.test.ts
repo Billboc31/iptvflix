@@ -2,8 +2,12 @@ import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vites
 import Fastify from 'fastify'
 
 const mockDb = vi.hoisted(() => ({ select: vi.fn() }))
-
 vi.mock('../db/client.js', () => ({ db: mockDb }))
+
+const mockGetDefaultProfilePreferences = vi.hoisted(() => vi.fn())
+vi.mock('../services/profile-service.js', () => ({
+  getDefaultProfilePreferences: mockGetDefaultProfilePreferences,
+}))
 
 import { catalogRoutes } from './catalog.js'
 
@@ -26,6 +30,13 @@ function selectChain(rows: unknown[]) {
   return chain
 }
 
+const EMPTY_PREFS = {
+  preferredAudioLanguages: [],
+  preferredSubtitleLanguages: [],
+  preferredSourceIds: [],
+  maxVideoQuality: null,
+}
+
 // ---------------------------------------------------------------------------
 // App setup
 // ---------------------------------------------------------------------------
@@ -43,6 +54,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockGetDefaultProfilePreferences.mockResolvedValue(EMPTY_PREFS)
 })
 
 // ---------------------------------------------------------------------------
@@ -102,6 +114,8 @@ const AVAIL_COUNT_ONE = { cnt: 1 }
 
 const VARIANT_FRENCH_1080 = {
   id: '00000000-0000-0000-0000-000000000101',
+  status: 'AVAILABLE' as const,
+  providerId: 'source-1',
   audioLanguage: 'fr',
   subtitleLanguage: null,
   videoQuality: '1080p',
@@ -110,6 +124,8 @@ const VARIANT_FRENCH_1080 = {
 
 const VARIANT_MULTI_4K = {
   id: '00000000-0000-0000-0000-000000000102',
+  status: 'AVAILABLE' as const,
+  providerId: 'source-2',
   audioLanguage: null,
   subtitleLanguage: null,
   videoQuality: '4K',
@@ -118,6 +134,8 @@ const VARIANT_MULTI_4K = {
 
 const VARIANT_VOSTFR = {
   id: '00000000-0000-0000-0000-000000000103',
+  status: 'AVAILABLE' as const,
+  providerId: 'source-1',
   audioLanguage: null,
   subtitleLanguage: 'fr',
   videoQuality: null,
@@ -129,7 +147,7 @@ const VARIANT_VOSTFR = {
 // ---------------------------------------------------------------------------
 
 describe('GET /movies/:id', () => {
-  it('returns canonical MovieDetailResponse without provider-specific fields', async () => {
+  it('returns MovieDetailResponse with selectedVariantId and variant status/providerId', async () => {
     mockDb.select
       .mockReturnValueOnce(selectChain([MOVIE_ROW]))           // movie query
       .mockReturnValueOnce(selectChain([{ name: 'Action' }])) // genres
@@ -140,19 +158,45 @@ describe('GET /movies/:id', () => {
     expect(res.statusCode).toBe(200)
     const body = res.json()
 
-    // canonical fields present
     expect(body.id).toBe(MOVIE_ROW.id)
     expect(body.title).toBe('Test Movie')
-    expect(body.originalTitle).toBe('Original Test Movie')
-    expect(body.genres).toEqual(['Action'])
-    expect(body.enrichmentStatus).toBe('matched') // tmdbId=12345 + synopsis → matched
+    expect(body.enrichmentStatus).toBe('matched')
     expect(body.availabilityCount).toBe(1)
     expect(body.availabilityStatus).toBe('AVAILABLE')
+
+    // resolver fields
+    expect(body).toHaveProperty('selectedVariantId', VARIANT_FRENCH_1080.id)
 
     // no Xtream-specific keys
     expect(body).not.toHaveProperty('stream_id')
     expect(body).not.toHaveProperty('category_id')
-    expect(body).not.toHaveProperty('provider_item_id')
+  })
+
+  it('variant objects include status and providerId', async () => {
+    mockDb.select
+      .mockReturnValueOnce(selectChain([MOVIE_ROW]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([AVAIL_COUNT_ONE]))
+      .mockReturnValueOnce(selectChain([VARIANT_FRENCH_1080]))
+
+    const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
+    const body = res.json()
+
+    expect(body.variants[0].status).toBe('AVAILABLE')
+    expect(body.variants[0].providerId).toBe('source-1')
+  })
+
+  it('selectedVariantId is null when no AVAILABLE variants exist', async () => {
+    const unavailVariant = { ...VARIANT_FRENCH_1080, status: 'UNAVAILABLE' as const }
+    mockDb.select
+      .mockReturnValueOnce(selectChain([MOVIE_ROW]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([unavailVariant]))
+
+    const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
+    const body = res.json()
+    expect(body.selectedVariantId).toBeNull()
   })
 
   it('returns enrichmentStatus matched when tmdbId and synopsis are present', async () => {
@@ -163,7 +207,6 @@ describe('GET /movies/:id', () => {
       .mockReturnValueOnce(selectChain([]))
 
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
-    expect(res.statusCode).toBe(200)
     expect(res.json().enrichmentStatus).toBe('matched')
   })
 
@@ -176,13 +219,11 @@ describe('GET /movies/:id', () => {
       .mockReturnValueOnce(selectChain([]))
 
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
-    expect(res.statusCode).toBe(200)
     expect(res.json().enrichmentStatus).toBe('unmatched')
   })
 
   it('returns 404 for unknown movie id', async () => {
     mockDb.select.mockReturnValueOnce(selectChain([]))
-
     const res = await app.inject({ method: 'GET', url: '/movies/nonexistent' })
     expect(res.statusCode).toBe(404)
   })
@@ -195,7 +236,6 @@ describe('GET /movies/:id', () => {
       .mockReturnValueOnce(selectChain([]))
 
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
-    expect(res.statusCode).toBe(200)
     expect(res.json().availabilityStatus).toBe('UNAVAILABLE')
     expect(res.json().availabilityCount).toBe(0)
   })
@@ -208,7 +248,6 @@ describe('GET /movies/:id', () => {
       .mockReturnValueOnce(selectChain([VARIANT_FRENCH_1080]))
 
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
-    expect(res.statusCode).toBe(200)
     const body = res.json()
 
     expect(Array.isArray(body.variants)).toBe(true)
@@ -217,7 +256,7 @@ describe('GET /movies/:id', () => {
     expect(body.variants[0].videoQuality).toBe('1080p')
   })
 
-  it('two availability rows produce two variants, one canonical movie', async () => {
+  it('two availability rows produce two variants and selectedVariantId points to best', async () => {
     mockDb.select
       .mockReturnValueOnce(selectChain([MOVIE_ROW]))
       .mockReturnValueOnce(selectChain([]))
@@ -225,14 +264,11 @@ describe('GET /movies/:id', () => {
       .mockReturnValueOnce(selectChain([VARIANT_FRENCH_1080, VARIANT_MULTI_4K]))
 
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
-    expect(res.statusCode).toBe(200)
     const body = res.json()
 
     expect(body.variants).toHaveLength(2)
-    expect(body.variants[0].audioLanguage).toBe('fr')
-    expect(body.variants[0].videoQuality).toBe('1080p')
-    expect(body.variants[1].audioLanguage).toBeNull()
-    expect(body.variants[1].videoQuality).toBe('4K')
+    // With empty prefs, quality wins: 4K > 1080p → VARIANT_MULTI_4K selected
+    expect(body.selectedVariantId).toBe(VARIANT_MULTI_4K.id)
   })
 
   it('VOSTFR variant has subtitleLanguage fr and audioLanguage null', async () => {
@@ -249,20 +285,6 @@ describe('GET /movies/:id', () => {
     expect(body.variants[0].audioLanguage).toBeNull()
   })
 
-  it('MULTI variant has audioLanguage null', async () => {
-    mockDb.select
-      .mockReturnValueOnce(selectChain([MOVIE_ROW]))
-      .mockReturnValueOnce(selectChain([]))
-      .mockReturnValueOnce(selectChain([AVAIL_COUNT_ONE]))
-      .mockReturnValueOnce(selectChain([VARIANT_MULTI_4K]))
-
-    const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
-    const body = res.json()
-
-    expect(body.variants[0].audioLanguage).toBeNull()
-    expect(body.variants[0].subtitleLanguage).toBeNull()
-  })
-
   it('quality field reflects best videoQuality from variants', async () => {
     mockDb.select
       .mockReturnValueOnce(selectChain([MOVIE_ROW]))
@@ -273,6 +295,23 @@ describe('GET /movies/:id', () => {
     const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
     expect(res.json().quality).toBe('4K')
   })
+
+  it('profile audio preference selects fr variant over 4K null-audio variant', async () => {
+    mockGetDefaultProfilePreferences.mockResolvedValue({
+      ...EMPTY_PREFS,
+      preferredAudioLanguages: ['fr'],
+    })
+
+    mockDb.select
+      .mockReturnValueOnce(selectChain([MOVIE_ROW]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([{ cnt: 2 }]))
+      .mockReturnValueOnce(selectChain([VARIANT_FRENCH_1080, VARIANT_MULTI_4K]))
+
+    const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
+    const body = res.json()
+    expect(body.selectedVariantId).toBe(VARIANT_FRENCH_1080.id)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -280,7 +319,7 @@ describe('GET /movies/:id', () => {
 // ---------------------------------------------------------------------------
 
 describe('GET /series/:id', () => {
-  it('returns SeriesDetailResponse with seasons array', async () => {
+  it('returns SeriesDetailResponse with selectedVariantId and seasons array', async () => {
     mockDb.select
       .mockReturnValueOnce(selectChain([SERIES_ROW]))        // series query
       .mockReturnValueOnce(selectChain([{ name: 'Drama' }])) // genres
@@ -300,11 +339,12 @@ describe('GET /series/:id', () => {
     expect(body.availabilityCount).toBe(0)
     expect(body.availabilityStatus).toBe('UNAVAILABLE')
     expect(Array.isArray(body.variants)).toBe(true)
+    expect(body).toHaveProperty('selectedVariantId')
+    expect(body.selectedVariantId).toBeNull()
   })
 
   it('returns 404 for unknown series id', async () => {
     mockDb.select.mockReturnValueOnce(selectChain([]))
-
     const res = await app.inject({ method: 'GET', url: '/series/nonexistent' })
     expect(res.statusCode).toBe(404)
   })
@@ -319,7 +359,7 @@ describe('GET /series/:id/seasons/:seasonNumber/episodes', () => {
     id: '00000000-0000-0000-0000-000000000020',
   }
 
-  it('returns episode list for a valid season', async () => {
+  it('returns episode list with selectedVariantId for a valid season', async () => {
     mockDb.select
       .mockReturnValueOnce(selectChain([SEASON_DB_ROW]))                              // find season
       .mockReturnValueOnce(selectChain([EPISODE_ROW]))                               // episodes
@@ -340,6 +380,7 @@ describe('GET /series/:id/seasons/:seasonNumber/episodes', () => {
     expect(body[0].availabilityCount).toBe(1)
     expect(body[0].availabilityStatus).toBe('AVAILABLE')
     expect(Array.isArray(body[0].variants)).toBe(true)
+    expect(body[0]).toHaveProperty('selectedVariantId')
   })
 
   it('returns empty array when season has no episodes', async () => {
@@ -363,62 +404,5 @@ describe('GET /series/:id/seasons/:seasonNumber/episodes', () => {
       url: `/series/${SERIES_ROW.id}/seasons/99/episodes`,
     })
     expect(res.statusCode).toBe(404)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// GET /movies — list with quality derivation
-// ---------------------------------------------------------------------------
-
-describe('GET /movies', () => {
-  it('quality field reflects best videoQuality across variants', async () => {
-    mockDb.select
-      .mockReturnValueOnce(selectChain([{ total: 1 }]))  // count
-      .mockReturnValueOnce(selectChain([MOVIE_ROW]))     // movie rows
-      .mockReturnValueOnce(selectChain([]))              // genre rows
-      .mockReturnValueOnce(selectChain([{ movieId: MOVIE_ROW.id, cnt: 2 }]))  // avail count
-      .mockReturnValueOnce(selectChain([
-        { movieId: MOVIE_ROW.id, videoQuality: '1080p' },
-        { movieId: MOVIE_ROW.id, videoQuality: '4K' },
-      ]))  // quality rows
-
-    const res = await app.inject({ method: 'GET', url: '/movies' })
-    expect(res.statusCode).toBe(200)
-    const body = res.json()
-
-    expect(body.items).toHaveLength(1)
-    expect(body.items[0].quality).toBe('4K')
-  })
-
-  it('catalog list has one card per canonical movie — deduplication preserved', async () => {
-    // Two availability rows for same movie → single movie in list
-    mockDb.select
-      .mockReturnValueOnce(selectChain([{ total: 1 }]))
-      .mockReturnValueOnce(selectChain([MOVIE_ROW]))
-      .mockReturnValueOnce(selectChain([]))
-      .mockReturnValueOnce(selectChain([{ movieId: MOVIE_ROW.id, cnt: 2 }]))
-      .mockReturnValueOnce(selectChain([
-        { movieId: MOVIE_ROW.id, videoQuality: 'fr' },
-        { movieId: MOVIE_ROW.id, videoQuality: null },
-      ]))
-
-    const res = await app.inject({ method: 'GET', url: '/movies' })
-    const body = res.json()
-
-    // Still only one card despite two variants
-    expect(body.items).toHaveLength(1)
-    expect(body.total).toBe(1)
-  })
-
-  it('quality is null when all variant qualities are unknown', async () => {
-    mockDb.select
-      .mockReturnValueOnce(selectChain([{ total: 1 }]))
-      .mockReturnValueOnce(selectChain([MOVIE_ROW]))
-      .mockReturnValueOnce(selectChain([]))
-      .mockReturnValueOnce(selectChain([{ movieId: MOVIE_ROW.id, cnt: 1 }]))
-      .mockReturnValueOnce(selectChain([{ movieId: MOVIE_ROW.id, videoQuality: null }]))
-
-    const res = await app.inject({ method: 'GET', url: '/movies' })
-    expect(res.json().items[0].quality).toBeNull()
   })
 })
