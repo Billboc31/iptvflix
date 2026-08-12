@@ -11,8 +11,10 @@ export default function EpisodeRow({ episode }: Props) {
     ? new Date(episode.airDate).toLocaleDateString('fr-FR', { year: 'numeric', month: 'short', day: 'numeric' })
     : null
 
+  const isUnavailable = episode.availabilityStatus === 'UNAVAILABLE'
+
   return (
-    <div className="flex gap-3 py-3 border-b border-white/5 last:border-0">
+    <div className={`flex gap-3 py-3 border-b border-white/5 last:border-0 ${isUnavailable ? 'opacity-50' : ''}`}>
       <span className="flex-shrink-0 w-8 text-right text-gray-500 text-sm pt-0.5">
         {episode.episodeNumber}
       </span>
@@ -21,9 +23,15 @@ export default function EpisodeRow({ episode }: Props) {
           <span className="text-gray-200 text-sm font-medium">
             {episode.title ?? `Épisode ${episode.episodeNumber}`}
           </span>
-          <Badge variant={episode.availabilityStatus === 'AVAILABLE' ? 'available' : 'unavailable'}>
-            {episode.availabilityStatus === 'AVAILABLE' ? 'Disponible' : 'Indisponible'}
+          <Badge variant={isUnavailable ? 'unavailable' : 'available'}>
+            {isUnavailable ? 'Indisponible' : 'Disponible'}
           </Badge>
+          {episode.watchState === 'watched' && (
+            <span aria-label="Vu" className="text-green-400 text-xs font-medium">✓ Vu</span>
+          )}
+          {episode.watchState === 'in_progress' && (
+            <span aria-label="En cours" className="text-blue-400 text-xs font-medium">◑ En cours</span>
+          )}
         </div>
         {episode.synopsis && (
           <p className="text-gray-400 text-xs leading-relaxed line-clamp-2 mb-1">

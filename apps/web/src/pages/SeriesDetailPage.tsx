@@ -58,6 +58,8 @@ function DetailSkeleton() {
   )
 }
 
+const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
+
 export default function SeriesDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -201,7 +203,7 @@ export default function SeriesDetailPage() {
             {/* Seasons */}
             <div className="mt-6">
               <h2 className="text-lg font-semibold text-white mb-3">Saisons</h2>
-              <SeasonAccordion seriesId={series.id} seasons={series.seasons} />
+              <SeasonAccordion seriesId={series.id} seasons={series.seasons} profileId={DEFAULT_PROFILE_ID} />
             </div>
 
             <div className="flex gap-3 mt-6">

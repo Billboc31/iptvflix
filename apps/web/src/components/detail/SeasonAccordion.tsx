@@ -7,9 +7,10 @@ import EpisodeRow from './EpisodeRow.js'
 type Props = {
   seriesId: string
   seasons: SeasonSummary[]
+  profileId?: string
 }
 
-export default function SeasonAccordion({ seriesId, seasons }: Props) {
+export default function SeasonAccordion({ seriesId, seasons, profileId }: Props) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [episodeCache, setEpisodeCache] = useState<Map<number, EpisodeResponse[]>>(new Map())
   const [loading, setLoading] = useState<Set<number>>(new Set())
@@ -34,7 +35,7 @@ export default function SeasonAccordion({ seriesId, seasons }: Props) {
 
     setLoading((prev) => new Set([...prev, seasonNumber]))
     try {
-      const eps = await getSeriesSeasonEpisodes(seriesId, seasonNumber)
+      const eps = await getSeriesSeasonEpisodes(seriesId, seasonNumber, profileId)
       setEpisodeCache((prev) => new Map([...prev, [seasonNumber, eps]]))
     } finally {
       setLoading((prev) => {
@@ -69,7 +70,9 @@ export default function SeasonAccordion({ seriesId, seasons }: Props) {
               </span>
               <span className="flex items-center gap-3 text-gray-500 text-xs flex-shrink-0 ml-4">
                 {season.episodeCount > 0 && (
-                  <span>{season.episodeCount} épisode{season.episodeCount > 1 ? 's' : ''}</span>
+                  <span>
+                    {season.availableEpisodeCount} / {season.episodeCount} disponible{season.availableEpisodeCount > 1 ? 's' : ''}
+                  </span>
                 )}
                 {season.airYear && <span>{season.airYear}</span>}
                 <span className="text-gray-400">{isExpanded ? '▲' : '▼'}</span>

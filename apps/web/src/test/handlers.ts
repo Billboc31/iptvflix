@@ -74,8 +74,8 @@ export const MOCK_SERIES: SeriesDetailResponse = {
   selectedVariantId: null,
   variants: [],
   seasons: [
-    { seasonNumber: 1, title: 'Saison 1', episodeCount: 3, airYear: 2023 },
-    { seasonNumber: 2, title: null, episodeCount: 2, airYear: 2024 },
+    { seasonNumber: 1, title: 'Saison 1', episodeCount: 3, availableEpisodeCount: 2, airYear: 2023 },
+    { seasonNumber: 2, title: null, episodeCount: 2, availableEpisodeCount: 0, airYear: 2024 },
   ],
 }
 
@@ -91,6 +91,7 @@ export const MOCK_EPISODES: EpisodeResponse[] = [
     availabilityStatus: 'AVAILABLE',
     selectedVariantId: null,
     variants: [],
+    watchState: 'watched',
   },
   {
     id: 'ep-2',
@@ -103,6 +104,7 @@ export const MOCK_EPISODES: EpisodeResponse[] = [
     availabilityStatus: 'AVAILABLE',
     selectedVariantId: null,
     variants: [],
+    watchState: 'in_progress',
   },
   {
     id: 'ep-3',
@@ -115,6 +117,7 @@ export const MOCK_EPISODES: EpisodeResponse[] = [
     availabilityStatus: 'UNAVAILABLE',
     selectedVariantId: null,
     variants: [],
+    watchState: null,
   },
 ]
 

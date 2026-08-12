@@ -11,6 +11,7 @@ import {
   seriesAvailabilities,
   episodeAvailabilities,
 } from '../db/schema/availabilities.js'
+import { viewingProgress } from '../db/schema/viewing-progress.js'
 import type {
   MovieDetailResponse,
   SeriesDetailResponse,
@@ -52,6 +53,18 @@ function bestQuality(qualities: (string | null)[]): string | null {
     }
   }
   return best
+}
+
+function computeWatchState(
+  profileId: string | undefined,
+  progress: { progressSeconds: number; durationSeconds: number } | undefined,
+): 'unwatched' | 'in_progress' | 'watched' | null {
+  if (!profileId) return null
+  if (!progress || progress.durationSeconds === 0) return 'unwatched'
+  const ratio = progress.progressSeconds / progress.durationSeconds
+  if (ratio < 0.05) return 'unwatched'
+  if (ratio >= 0.90) return 'watched'
+  return 'in_progress'
 }
 
 export async function catalogRoutes(app: FastifyInstance): Promise<void> {
@@ -132,7 +145,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const [seriesRow] = await db.select().from(seriesTable).where(eq(seriesTable.id, id))
     if (!seriesRow) return reply.status(404).send({ error: 'Series not found' })
 
-    const [genreRows, availCountRows, seasonRows, seriesVariantRows, prefs] = await Promise.all([
+    const [genreRows, availCountRows, seasonRows, seriesVariantRows, prefs, availEpCountRows] = await Promise.all([
       db
         .select({ name: genres.name })
         .from(seriesGenres)
@@ -172,11 +185,29 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         .from(seriesAvailabilities)
         .where(eq(seriesAvailabilities.seriesId, id)),
       getDefaultProfilePreferences(),
+      db
+        .select({
+          seasonNumber: seasons.seasonNumber,
+          cnt: sql<number>`cast(count(distinct ${episodeAvailabilities.episodeId}) as integer)`,
+        })
+        .from(seasons)
+        .leftJoin(episodes, eq(episodes.seasonId, seasons.id))
+        .leftJoin(
+          episodeAvailabilities,
+          and(
+            eq(episodeAvailabilities.episodeId, episodes.id),
+            eq(episodeAvailabilities.status, 'AVAILABLE'),
+          ),
+        )
+        .where(eq(seasons.seriesId, id))
+        .groupBy(seasons.id, seasons.seasonNumber),
     ])
 
     const availabilityCount = Number(availCountRows[0]?.cnt ?? 0)
     const seriesVariants: AvailabilityVariantResponse[] = seriesVariantRows
     const { selectedVariantId } = resolveVariant(seriesVariantRows, prefs)
+
+    const availEpCountMap = new Map(availEpCountRows.map((r) => [r.seasonNumber, Number(r.cnt)]))
 
     const response: SeriesDetailResponse = {
       id: seriesRow.id,
@@ -198,6 +229,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         seasonNumber: s.seasonNumber,
         title: s.title,
         episodeCount: Number(s.episodeCount),
+        availableEpisodeCount: availEpCountMap.get(s.seasonNumber) ?? 0,
         airYear: s.airYear,
       })),
       variants: seriesVariants,
@@ -209,12 +241,20 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   // ---------------------------------------------------------------------------
   // GET /series/:id/seasons/:seasonNumber/episodes
   // ---------------------------------------------------------------------------
-  app.get<{ Params: { id: string; seasonNumber: string } }>(
+  app.get<{
+    Params: { id: string; seasonNumber: string }
+    Querystring: { profileId?: string }
+  }>(
     '/series/:id/seasons/:seasonNumber/episodes',
     async (request, reply) => {
       const { id, seasonNumber } = request.params
       const seasonNum = parseInt(seasonNumber, 10)
       if (isNaN(seasonNum)) return reply.status(404).send({ error: 'Season not found' })
+
+      const profileId = request.query.profileId
+      if (profileId !== undefined && !UUID_RE.test(profileId)) {
+        return reply.status(400).send({ error: 'Invalid profileId' })
+      }
 
       const [season] = await db
         .select({ id: seasons.id })
@@ -235,7 +275,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       if (episodeRows.length === 0) return []
 
       const episodeIds = episodeRows.map((e) => e.id)
-      const [availCountRows, epVariantRaws] = await Promise.all([
+      const [availCountRows, epVariantRaws, progressRows] = await Promise.all([
         db
           .select({ episodeId: episodeAvailabilities.episodeId, cnt: count() })
           .from(episodeAvailabilities)
@@ -259,9 +299,26 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
           })
           .from(episodeAvailabilities)
           .where(inArray(episodeAvailabilities.episodeId, episodeIds)),
+        profileId
+          ? db
+              .select({
+                mediaId: viewingProgress.mediaId,
+                progressSeconds: viewingProgress.progressSeconds,
+                durationSeconds: viewingProgress.durationSeconds,
+              })
+              .from(viewingProgress)
+              .where(
+                and(
+                  eq(viewingProgress.profileId, profileId),
+                  eq(viewingProgress.mediaType, 'EPISODE'),
+                  inArray(viewingProgress.mediaId, episodeIds),
+                ),
+              )
+          : Promise.resolve([] as { mediaId: string; progressSeconds: number; durationSeconds: number }[]),
       ])
 
       const availCountMap = new Map(availCountRows.map((r) => [r.episodeId, Number(r.cnt)]))
+      const progressMap = new Map(progressRows.map((r) => [r.mediaId, r]))
 
       const epVariantMap = new Map<string, AvailabilityVariantResponse[]>()
       const epRawVariantMap = new Map<
@@ -302,6 +359,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
           availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
           selectedVariantId,
           variants: epVariantMap.get(e.id) ?? [],
+          watchState: computeWatchState(profileId, progressMap.get(e.id)),
         }
       })
     },

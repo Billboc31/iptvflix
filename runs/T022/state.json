@@ -1,7 +1,7 @@
 {
   "ticket_id": "T022",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T022-build-unified-series-season-and-episode-availabili",
   "issue_number": 39,
-  "updated_at": "2026-08-12T06:02:17Z"
+  "updated_at": "2026-08-12T06:15:35Z"
 }

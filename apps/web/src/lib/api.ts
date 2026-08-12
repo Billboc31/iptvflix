@@ -95,8 +95,9 @@ export function getSeries(id: string): Promise<SeriesDetailResponse> {
 export function getSeriesSeasonEpisodes(
   seriesId: string,
   seasonNumber: number,
+  profileId?: string,
 ): Promise<EpisodeResponse[]> {
-  return request(`/series/${seriesId}/seasons/${seasonNumber}/episodes`)
+  return request(`/series/${seriesId}/seasons/${seasonNumber}/episodes${toQuery({ profileId })}`)
 }
 
 export function searchContent(q: string): Promise<SearchResponse> {
