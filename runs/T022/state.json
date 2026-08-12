@@ -3,5 +3,22 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T022-build-unified-series-season-and-episode-availabili",
   "issue_number": 39,
-  "updated_at": "2026-08-12T06:31:08Z"
+  "updated_at": "2026-08-12T06:35:04Z",
+  "pr_number": 55,
+  "pr_synced": true,
+  "pre_conflict_state": "TEST_COMPLETE",
+  "conflict_detected_at": "2026-08-12T06:31:20Z",
+  "conflict_pr_number": 55,
+  "conflicted_files": [
+    "apps/api/src/routes/catalog.test.ts",
+    "apps/api/src/routes/catalog.ts",
+    "apps/web/src/components/detail/EpisodeRow.test.tsx",
+    "apps/web/src/components/detail/EpisodeRow.tsx",
+    "apps/web/src/components/detail/SeasonAccordion.test.tsx",
+    "apps/web/src/components/detail/SeasonAccordion.tsx",
+    "apps/web/src/lib/api.ts",
+    "apps/web/src/pages/SeriesDetailPage.tsx",
+    "apps/web/src/test/handlers.ts",
+    "packages/api-contracts/src/catalog.ts"
+  ]
 }
