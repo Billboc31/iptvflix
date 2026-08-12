@@ -52,6 +52,7 @@ export type SeasonSummary = {
   seasonNumber: number
   title: string | null
   episodeCount: number
+  availableEpisodeCount: number
   airYear: number | null
 }
 
@@ -76,6 +77,7 @@ export type EpisodeResponse = {
   availabilityStatus: AvailabilityStatus
   selectedVariantId: string | null
   variants: AvailabilityVariantResponse[]
+  watchState: 'unwatched' | 'in_progress' | 'watched' | null
 }
 
 export type GenreResponse = {
