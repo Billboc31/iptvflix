@@ -1158,4 +1158,143 @@ describe('CatalogSyncService', () => {
       expect(event.sourceId).toBe(testSourceId)
     })
   })
+
+  describe('Plex episode lifecycle', () => {
+    async function cleanupPlexSource(plexSourceId: string) {
+      const epAvRows = await db
+        .select({ episodeId: episodeAvailabilities.episodeId })
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, plexSourceId))
+      if (epAvRows.length > 0) {
+        await db.delete(releaseEvents).where(inArray(releaseEvents.mediaId, epAvRows.map((r) => r.episodeId)))
+      }
+      const serAvRows = await db
+        .select({ seriesId: seriesAvailabilities.seriesId })
+        .from(seriesAvailabilities)
+        .where(eq(seriesAvailabilities.providerId, plexSourceId))
+      if (serAvRows.length > 0) {
+        await db.delete(releaseEvents).where(inArray(releaseEvents.mediaId, serAvRows.map((r) => r.seriesId)))
+        await db.delete(seriesTable).where(inArray(seriesTable.id, serAvRows.map((r) => r.seriesId)))
+      }
+      await db.delete(syncRuns).where(eq(syncRuns.sourceId, plexSourceId))
+      await db.delete(sources).where(eq(sources.id, plexSourceId))
+    }
+
+    it('records SOURCE_APPEARED on first Plex episode sync and does not duplicate on idempotent re-sync', async () => {
+      const t1 = new Date('2026-07-01T10:00:00Z')
+      const t2 = new Date('2026-07-02T10:00:00Z')
+      const [plexSource] = await db
+        .insert(sources)
+        .values({ name: 'Plex Episode Source', type: 'PLEX', baseUrl: 'http://plex-ep.test' })
+        .returning()
+
+      try {
+        const plexSnapshot: PlexCatalogSnapshot = {
+          sourceId: plexSource.id,
+          fetchedAt: t1,
+          movies: [],
+          shows: [{ ratingKey: 'plex-show-700', title: 'Plex Episode Show', Guid: [{ id: 'tmdb://70001' }] }],
+          episodes: [
+            {
+              ratingKey: 'plex-ep-700-1',
+              grandparentRatingKey: 'plex-show-700',
+              parentIndex: 1,
+              index: 1,
+              title: 'Plex Pilot',
+            },
+          ],
+        }
+
+        await CatalogSyncService.syncPlexCatalog(plexSource.id, plexSnapshot)
+
+        const epAvRows = await db
+          .select()
+          .from(episodeAvailabilities)
+          .where(eq(episodeAvailabilities.providerId, plexSource.id))
+        expect(epAvRows).toHaveLength(1)
+        expect(epAvRows[0].status).toBe('AVAILABLE')
+        expect(epAvRows[0].providerItemId).toBe('plex-ep-700-1')
+
+        const events1 = await db
+          .select()
+          .from(releaseEvents)
+          .where(and(eq(releaseEvents.mediaId, epAvRows[0].episodeId), eq(releaseEvents.eventType, 'SOURCE_APPEARED')))
+        expect(events1).toHaveLength(1)
+        expect(events1[0].sourceId).toBe(plexSource.id)
+        expect(events1[0].occurredAt.toISOString()).toBe(t1.toISOString())
+
+        // Idempotent re-sync: no duplicate events
+        await CatalogSyncService.syncPlexCatalog(plexSource.id, { ...plexSnapshot, fetchedAt: t2 })
+
+        const events2 = await db
+          .select()
+          .from(releaseEvents)
+          .where(and(eq(releaseEvents.mediaId, epAvRows[0].episodeId), eq(releaseEvents.eventType, 'SOURCE_APPEARED')))
+        expect(events2).toHaveLength(1)
+
+        const epAvRowsAfter = await db
+          .select()
+          .from(episodeAvailabilities)
+          .where(eq(episodeAvailabilities.providerId, plexSource.id))
+        expect(epAvRowsAfter[0].firstSeenAt.toISOString()).toBe(t1.toISOString())
+        expect(epAvRowsAfter[0].lastSeenAt.toISOString()).toBe(t2.toISOString())
+      } finally {
+        await cleanupPlexSource(plexSource.id)
+      }
+    })
+
+    it('records SOURCE_DISAPPEARED when a Plex episode is absent from a subsequent full snapshot', async () => {
+      const t1 = new Date('2026-07-01T10:00:00Z')
+      const t2 = new Date('2026-07-02T10:00:00Z')
+      const [plexSource] = await db
+        .insert(sources)
+        .values({ name: 'Plex Disappearing Episode Source', type: 'PLEX', baseUrl: 'http://plex-ep2.test' })
+        .returning()
+
+      try {
+        const baseSnapshot: PlexCatalogSnapshot = {
+          sourceId: plexSource.id,
+          fetchedAt: t1,
+          movies: [],
+          shows: [{ ratingKey: 'plex-show-701', title: 'Plex Disappearing Show', Guid: [{ id: 'tmdb://70002' }] }],
+          episodes: [
+            { ratingKey: 'plex-ep-701-1', grandparentRatingKey: 'plex-show-701', parentIndex: 1, index: 1, title: 'Keep' },
+            { ratingKey: 'plex-ep-701-2', grandparentRatingKey: 'plex-show-701', parentIndex: 1, index: 2, title: 'Gone' },
+          ],
+        }
+
+        await CatalogSyncService.syncPlexCatalog(plexSource.id, baseSnapshot)
+
+        // Second sync: only the first episode remains
+        await CatalogSyncService.syncPlexCatalog(plexSource.id, {
+          ...baseSnapshot,
+          fetchedAt: t2,
+          episodes: [{ ratingKey: 'plex-ep-701-1', grandparentRatingKey: 'plex-show-701', parentIndex: 1, index: 1, title: 'Keep' }],
+        })
+
+        const epAvRows = await db
+          .select()
+          .from(episodeAvailabilities)
+          .where(eq(episodeAvailabilities.providerId, plexSource.id))
+        expect(epAvRows).toHaveLength(2)
+
+        const kept = epAvRows.find((r) => r.providerItemId === 'plex-ep-701-1')!
+        const gone = epAvRows.find((r) => r.providerItemId === 'plex-ep-701-2')!
+
+        expect(kept.status).toBe('AVAILABLE')
+        expect(gone.status).toBe('UNAVAILABLE')
+        expect(gone.unavailableAt!.toISOString()).toBe(t2.toISOString())
+
+        const goneEvents = await db
+          .select()
+          .from(releaseEvents)
+          .where(and(eq(releaseEvents.mediaId, gone.episodeId), eq(releaseEvents.eventType, 'SOURCE_DISAPPEARED')))
+        expect(goneEvents).toHaveLength(1)
+        expect(goneEvents[0].sourceId).toBe(plexSource.id)
+        expect(goneEvents[0].occurredAt.toISOString()).toBe(t2.toISOString())
+      } finally {
+        await cleanupPlexSource(plexSource.id)
+      }
+    })
+  })
 })

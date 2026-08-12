@@ -1,17 +1,9 @@
-Everything looks correct. Implementation is complete.
+All 31 tests pass. Here's a summary of what was done:
 
----
+**Root cause found**: Migration `0015_episode_release_events.sql` (which creates the `release_event_media_type` enum with `MOVIE`, `SERIES`, `EPISODE` and migrates the `release_events.media_type` column) had not been applied to the test database, causing all episode lifecycle tests to fail with a "failed query" error.
 
-## Summary
+**Fix for the review blocker (P1 — AC7)**: Added a new `describe('Plex episode lifecycle')` block in `catalog-sync-service.test.ts` with two integration tests:
+1. **First appearance + idempotent re-sync** — verifies `SOURCE_APPEARED` is emitted exactly once when a Plex episode is synced for the first time, and no duplicate event is created on a second identical sync. Also verifies `firstSeenAt`/`lastSeenAt` timestamps.
+2. **Disappearance** — verifies `SOURCE_DISAPPEARED` is emitted when a Plex episode is absent from a subsequent full snapshot, with the correct `sourceId` and `occurredAt`.
 
-Six files changed to wire episode source lifecycle events end-to-end:
-
-**Files created:**
-- `apps/api/migrations/0014_episode_release_events.sql` — creates `release_event_media_type` enum (`MOVIE`, `SERIES`, `EPISODE`) and migrates `release_events.media_type` to use it
-
-**Files modified:**
-- `apps/api/src/db/schema/release-lifecycle.ts` — adds `releaseEventMediaTypeEnum`, switches `releaseEvents.mediaType` to use it (keeps `watchlistMediaTypeEnum` for `followRelease`)
-- `apps/api/src/services/release-lifecycle-service.ts` — widens `recordReleaseEvent` and `getTimeline` to accept `'EPISODE'`; `getTimeline` returns `null` for all three date fields when `mediaType === 'EPISODE'`
-- `apps/api/src/routes/release-lifecycle.ts` — accepts `EPISODE` as a valid `mediaType` param
-- `apps/api/src/services/catalog-sync-service.ts` — episode loop now fetches `status` in the existing-row select; emits `SOURCE_APPEARED` on first insert and reappearance (`wasUnavailable`); disappearance batch-update uses `.returning()` to emit `SOURCE_DISAPPEARED` per episode
-- `apps/api/src/services/__tests__/catalog-sync-service.test.ts` — `afterEach` cleans up episode release events before cascade-deleting series; five new test cases cover first appearance, idempotent re-sync, disappearance, reappearance, and source identity for episodes
+A shared `cleanupPlexSource` helper handles teardown (episode release events → series release events → cascade-delete series → sync runs → source).
