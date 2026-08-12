@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 
 export async function healthRoutes(app: FastifyInstance): Promise<void> {
-  app.get<{ Reply: HealthResponse }>('/health', async () => {
+  app.get<{ Reply: HealthResponse }>('/health', async (_req, reply) => {
     let dbStatus: 'ok' | 'unavailable'
     try {
       await db.execute(sql`SELECT 1`)
@@ -12,6 +12,9 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
     } catch {
       dbStatus = 'unavailable'
     }
-    return { status: 'ok', db: dbStatus }
+    if (dbStatus === 'unavailable') {
+      return reply.status(503).send({ status: 'ok', db: dbStatus })
+    }
+    return reply.send({ status: 'ok', db: dbStatus })
   })
 }

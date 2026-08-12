@@ -30,7 +30,7 @@ describe('GET /health', () => {
   it('returns db: unavailable when DB probe fails', async () => {
     vi.mocked(db.execute).mockRejectedValueOnce(new Error('connection refused'))
     const response = await app.inject({ method: 'GET', url: '/health' })
-    expect(response.statusCode).toBe(200)
+    expect(response.statusCode).toBe(503)
     expect(response.json()).toEqual({ status: 'ok', db: 'unavailable' })
   })
 })
