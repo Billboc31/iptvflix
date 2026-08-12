@@ -1,7 +1,7 @@
 {
   "ticket_id": "T031",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T031-enforce-provider-item-uniqueness-for-episode-avail",
   "issue_number": 66,
-  "updated_at": "2026-08-12T09:03:22Z"
+  "updated_at": "2026-08-12T09:12:14Z"
 }

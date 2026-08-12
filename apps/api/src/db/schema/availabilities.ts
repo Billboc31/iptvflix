@@ -74,5 +74,8 @@ export const episodeAvailabilities = pgTable(
     videoQuality: text('video_quality'),
     rawTitle: text('raw_title'),
   },
-  (t) => [unique().on(t.episodeId, t.providerId, t.providerItemId)],
+  (t) => [
+    unique().on(t.episodeId, t.providerId, t.providerItemId),
+    unique().on(t.providerId, t.providerItemId),
+  ],
 )

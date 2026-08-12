@@ -552,11 +552,10 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
           )
 
           const [existing] = await tx
-            .select({ id: episodeAvailabilities.id })
+            .select({ id: episodeAvailabilities.id, episodeId: episodeAvailabilities.episodeId })
             .from(episodeAvailabilities)
             .where(
               and(
-                eq(episodeAvailabilities.episodeId, episodeId),
                 eq(episodeAvailabilities.providerId, sourceId),
                 eq(episodeAvailabilities.providerItemId, ep.providerItemId),
               ),
@@ -572,17 +571,17 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
               lastSeenAt: snapshot.fetchedAt,
               status: 'AVAILABLE',
             })
+          } else if (existing.episodeId !== episodeId) {
+            console.warn(
+              `[catalog-sync] provider item ${sourceId}/${ep.providerItemId} already assigned to episode ${existing.episodeId}, skipping reassignment to ${episodeId}`,
+            )
+            seenEpisodeProviderItemIds.add(ep.providerItemId)
+            continue
           } else {
             await tx
               .update(episodeAvailabilities)
               .set({ lastSeenAt: snapshot.fetchedAt, status: 'AVAILABLE', unavailableAt: null })
-              .where(
-                and(
-                  eq(episodeAvailabilities.episodeId, episodeId),
-                  eq(episodeAvailabilities.providerId, sourceId),
-                  eq(episodeAvailabilities.providerItemId, ep.providerItemId),
-                ),
-              )
+              .where(eq(episodeAvailabilities.id, existing.id))
           }
           seenEpisodeProviderItemIds.add(ep.providerItemId)
         }
