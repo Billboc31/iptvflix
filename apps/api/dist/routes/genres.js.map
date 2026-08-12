@@ -1,0 +1,1 @@
+{"version":3,"file":"genres.js","sourceRoot":"","sources":["../../src/routes/genres.ts"],"names":[],"mappings":"AACA,OAAO,EAAE,UAAU,EAAE,MAAM,gCAAgC,CAAA;AAE3D,MAAM,CAAC,KAAK,UAAU,YAAY,CAAC,GAAoB;IACrD,GAAG,CAAC,GAAG,CAAC,SAAS,EAAE,KAAK,IAAI,EAAE;QAC5B,OAAO,UAAU,EAAE,CAAA;IACrB,CAAC,CAAC,CAAA;AACJ,CAAC"}

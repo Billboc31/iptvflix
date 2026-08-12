@@ -1,0 +1,1 @@
+{"version":3,"file":"variant-extractor.d.ts","sourceRoot":"","sources":["../../src/matching/variant-extractor.ts"],"names":[],"mappings":"AAAA,MAAM,WAAW,iBAAiB;IAChC,aAAa,EAAE,IAAI,GAAG,IAAI,GAAG,IAAI,CAAA;IACjC,gBAAgB,EAAE,IAAI,GAAG,IAAI,CAAA;IAC7B,YAAY,EAAE,IAAI,GAAG,OAAO,GAAG,MAAM,GAAG,MAAM,GAAG,IAAI,CAAA;CACtD;AAWD,wBAAgB,wBAAwB,CAAC,GAAG,EAAE,MAAM,GAAG,iBAAiB,CAyBvE"}
