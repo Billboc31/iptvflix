@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, integer, timestamp, primaryKey } from 'drizzle-orm/pg-core'
+import { pgTable, text, uuid, integer, timestamp, date, primaryKey } from 'drizzle-orm/pg-core'
 import { genres } from './genres.js'
 
 export const series = pgTable('series', {
@@ -13,6 +13,9 @@ export const series = pgTable('series', {
   imdbId: text('imdb_id').unique(),
   metadataProvider: text('metadata_provider'),
   metadataEnrichedAt: timestamp('metadata_enriched_at', { withTimezone: true }),
+  announcedAt: date('announced_at'),
+  theatricalReleaseDate: date('theatrical_release_date'),
+  digitalReleaseDate: date('digital_release_date'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
