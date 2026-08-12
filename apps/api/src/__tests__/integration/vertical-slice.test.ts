@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
-import Fastify from 'fastify'
+import Fastify, { type FastifyInstance } from 'fastify'
 import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
 import { and, eq, inArray } from 'drizzle-orm'
@@ -521,7 +521,7 @@ const FAKE_TMDB_MOVIE_DETAIL = {
 }
 
 describe('Vertical slice — external discovery flow', () => {
-  let discoveryApp: ReturnType<typeof Fastify>
+  let discoveryApp!: FastifyInstance
   let discoveryService: ExternalDiscoveryService
   let materializedMovieIds: string[] = []
   let materializedSeriesIds: string[] = []

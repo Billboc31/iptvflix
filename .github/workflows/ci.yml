@@ -48,6 +48,9 @@ jobs:
       - name: Run DB migrations
         run: pnpm --filter @iptvflix/api db:migrate
 
+      - name: Build
+        run: pnpm build
+
       - name: Typecheck
         run: pnpm typecheck
 

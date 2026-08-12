@@ -62,7 +62,7 @@ function setupSelectWhereOrder(rows: object[]) {
 }
 
 // insert().values().onConflictDoUpdate().returning() → Promise<rows>
-function setupUpsert(rows: ReturnType<typeof makeFeedbackRow>[]) {
+function setupUpsert(rows: (Omit<ReturnType<typeof makeFeedbackRow>, 'mediaType'> & { mediaType: 'MOVIE' | 'SERIES' })[]) {
   mockDb.insert.mockReturnValueOnce({
     values: vi.fn().mockReturnValue({
       onConflictDoUpdate: vi.fn().mockReturnValue({

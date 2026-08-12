@@ -16,6 +16,7 @@ const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
 
 import { sourcesRoutes } from './sources.js'
+import type { SourceType } from '@iptvflix/api-contracts'
 
 // ---------------------------------------------------------------------------
 // Mock row helpers
@@ -36,7 +37,7 @@ const mockSource = {
 }
 
 type MockSource = Omit<typeof mockSource, 'type' | 'username'> & {
-  type: 'XTREAM' | 'PLEX' | 'M3U'
+  type: SourceType
   username: string | null
 }
 
