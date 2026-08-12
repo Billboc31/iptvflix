@@ -12,3 +12,8 @@
 [2026-08-12T09:00:28Z] snapshot: runtime-prompt=runs/T031/prompts/planner-attempt-1.md
 [2026-08-12T09:03:20Z] compose: preferring on-disk runs/T031/plan.md over chatty stdout (agent Write beat meta-report)
 [2026-08-12T09:03:20Z] auto-run: step=planner done rc=0
+[2026-08-12T09:17:35Z] conflict-resolver: git rebase origin/main exit=0
+[2026-08-12T09:17:35Z] conflict-resolver: rebase clean — no conflicts
+[2026-08-12T09:17:35Z] conflict-resolver: running tests
+[2026-08-12T09:17:35Z] conflict-resolver: test-report written: runs/T031/conflict/test-report.md
+[2026-08-12T09:17:35Z] conflict-resolver: staging and committing resolution artifacts
