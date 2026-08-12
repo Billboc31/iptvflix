@@ -224,8 +224,14 @@ describe('GET /movies/:id', () => {
 
   it('returns 404 for unknown movie id', async () => {
     mockDb.select.mockReturnValueOnce(selectChain([]))
-    const res = await app.inject({ method: 'GET', url: '/movies/nonexistent' })
+    const res = await app.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id.slice(0, -1)}f` })
     expect(res.statusCode).toBe(404)
+  })
+
+  it('returns 404 without querying DB when id is not a valid UUID', async () => {
+    const res = await app.inject({ method: 'GET', url: '/movies/not-a-uuid' })
+    expect(res.statusCode).toBe(404)
+    expect(mockDb.select).not.toHaveBeenCalled()
   })
 
   it('reflects UNAVAILABLE and availabilityCount 0 when no availability rows exist', async () => {
@@ -345,8 +351,14 @@ describe('GET /series/:id', () => {
 
   it('returns 404 for unknown series id', async () => {
     mockDb.select.mockReturnValueOnce(selectChain([]))
-    const res = await app.inject({ method: 'GET', url: '/series/nonexistent' })
+    const res = await app.inject({ method: 'GET', url: `/series/${SERIES_ROW.id.slice(0, -1)}f` })
     expect(res.statusCode).toBe(404)
+  })
+
+  it('returns 404 without querying DB when id is not a valid UUID', async () => {
+    const res = await app.inject({ method: 'GET', url: '/series/not-a-uuid' })
+    expect(res.statusCode).toBe(404)
+    expect(mockDb.select).not.toHaveBeenCalled()
   })
 })
 

@@ -39,6 +39,8 @@ function filterString(names: (string | null)[]): string[] {
 
 const QUALITY_ORDER: Record<string, number> = { '4K': 3, '1080p': 2, '720p': 1, '480p': 0 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 function bestQuality(qualities: (string | null)[]): string | null {
   let best: string | null = null
   let bestRank = -1
@@ -58,6 +60,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   // ---------------------------------------------------------------------------
   app.get<{ Params: { id: string } }>('/movies/:id', async (request, reply) => {
     const { id } = request.params
+    if (!UUID_RE.test(id)) return reply.status(404).send({ error: 'Movie not found' })
 
     const [movie] = await db.select().from(movies).where(eq(movies.id, id))
     if (!movie) return reply.status(404).send({ error: 'Movie not found' })
@@ -124,6 +127,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   // ---------------------------------------------------------------------------
   app.get<{ Params: { id: string } }>('/series/:id', async (request, reply) => {
     const { id } = request.params
+    if (!UUID_RE.test(id)) return reply.status(404).send({ error: 'Series not found' })
 
     const [seriesRow] = await db.select().from(seriesTable).where(eq(seriesTable.id, id))
     if (!seriesRow) return reply.status(404).send({ error: 'Series not found' })

@@ -26,11 +26,14 @@ export const MOCK_MOVIE: MovieDetailResponse = {
   runtime: 120,
   genres: ['Action'],
   quality: 'HD',
+  availabilityCount: 1,
   availabilityStatus: 'AVAILABLE',
   originalTitle: 'The Original Test Movie',
   imdbId: null,
   tmdbId: 99999,
   enrichmentStatus: 'matched',
+  selectedVariantId: null,
+  variants: [],
 }
 
 export const MOCK_UNMATCHED_MOVIE: MovieDetailResponse = {
@@ -43,11 +46,14 @@ export const MOCK_UNMATCHED_MOVIE: MovieDetailResponse = {
   runtime: null,
   genres: [],
   quality: null,
+  availabilityCount: 0,
   availabilityStatus: 'UNAVAILABLE',
   originalTitle: null,
   imdbId: null,
   tmdbId: null,
   enrichmentStatus: 'unmatched',
+  selectedVariantId: null,
+  variants: [],
 }
 
 export const MOCK_SERIES: SeriesDetailResponse = {
@@ -59,11 +65,14 @@ export const MOCK_SERIES: SeriesDetailResponse = {
   backdropUrl: null,
   genres: ['Drama'],
   seasonCount: 2,
+  availabilityCount: 1,
   availabilityStatus: 'AVAILABLE',
   originalTitle: null,
   imdbId: null,
   tmdbId: 12345,
   enrichmentStatus: 'partial',
+  selectedVariantId: null,
+  variants: [],
   seasons: [
     { seasonNumber: 1, title: 'Saison 1', episodeCount: 3, airYear: 2023 },
     { seasonNumber: 2, title: null, episodeCount: 2, airYear: 2024 },
@@ -78,7 +87,10 @@ export const MOCK_EPISODES: EpisodeResponse[] = [
     synopsis: 'The first episode.',
     durationMinutes: 45,
     airDate: '2023-01-01',
+    availabilityCount: 1,
     availabilityStatus: 'AVAILABLE',
+    selectedVariantId: null,
+    variants: [],
   },
   {
     id: 'ep-2',
@@ -87,7 +99,10 @@ export const MOCK_EPISODES: EpisodeResponse[] = [
     synopsis: null,
     durationMinutes: 42,
     airDate: '2023-01-08',
+    availabilityCount: 1,
     availabilityStatus: 'AVAILABLE',
+    selectedVariantId: null,
+    variants: [],
   },
   {
     id: 'ep-3',
@@ -96,7 +111,10 @@ export const MOCK_EPISODES: EpisodeResponse[] = [
     synopsis: null,
     durationMinutes: null,
     airDate: null,
+    availabilityCount: 0,
     availabilityStatus: 'UNAVAILABLE',
+    selectedVariantId: null,
+    variants: [],
   },
 ]
 
