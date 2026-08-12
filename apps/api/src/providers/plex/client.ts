@@ -1,4 +1,4 @@
-import type { PlexLibrarySection, PlexMovieItem, PlexShowItem } from './types.js'
+import type { PlexLibrarySection, PlexMovieItem, PlexShowItem, PlexEpisodeItem } from './types.js'
 import { PlexAuthError, PlexNetworkError, PlexParseError } from './errors.js'
 
 const DEFAULT_TIMEOUT_MS = 10_000
@@ -108,6 +108,14 @@ export class PlexClient {
     if (!Array.isArray(metadata)) return []
     return metadata.map((m: unknown) => mapMetadataItem(m as Record<string, unknown>))
   }
+
+  async fetchEpisodes(sectionKey: string): Promise<PlexEpisodeItem[]> {
+    const raw = await this.fetch(`/library/sections/${sectionKey}/all`, { type: '4' })
+    const container = (raw as Record<string, unknown>)?.MediaContainer as Record<string, unknown> | undefined
+    const metadata = container?.Metadata
+    if (!Array.isArray(metadata)) return []
+    return metadata.map((m: unknown) => mapEpisodeMetadataItem(m as Record<string, unknown>))
+  }
 }
 
 function mapMetadataItem(m: Record<string, unknown>): PlexMovieItem {
@@ -123,5 +131,18 @@ function mapMetadataItem(m: Record<string, unknown>): PlexMovieItem {
           .filter((g) => typeof g.id === 'string')
           .map((g) => ({ id: g.id as string }))
       : undefined,
+  }
+}
+
+function mapEpisodeMetadataItem(m: Record<string, unknown>): PlexEpisodeItem {
+  return {
+    ratingKey: String(m.ratingKey),
+    grandparentRatingKey: String(m.grandparentRatingKey),
+    parentIndex: typeof m.parentIndex === 'number' ? m.parentIndex : 0,
+    index: typeof m.index === 'number' ? m.index : 0,
+    title: String(m.title),
+    summary: typeof m.summary === 'string' ? m.summary : undefined,
+    duration: typeof m.duration === 'number' ? m.duration : undefined,
+    originallyAvailableAt: typeof m.originallyAvailableAt === 'string' ? m.originallyAvailableAt : undefined,
   }
 }

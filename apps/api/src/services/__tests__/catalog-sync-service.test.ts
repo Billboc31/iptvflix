@@ -5,10 +5,10 @@ import { db } from '../../db/client.js'
 import { movies } from '../../db/schema/movies.js'
 import { series as seriesTable } from '../../db/schema/series.js'
 import { sources } from '../../db/schema/sources.js'
-import { movieAvailabilities, seriesAvailabilities } from '../../db/schema/availabilities.js'
+import { movieAvailabilities, seriesAvailabilities, episodeAvailabilities } from '../../db/schema/availabilities.js'
 import { syncRuns } from '../../db/schema/sync-runs.js'
 import { CatalogSyncService, SyncAlreadyRunningError } from '../catalog-sync-service.js'
-import type { XtreamCatalogSnapshot, XtreamVodStream, XtreamSeries } from '../../providers/xtream/types.js'
+import type { XtreamCatalogSnapshot, XtreamVodStream, XtreamSeries, XtreamSeriesInfo } from '../../providers/xtream/types.js'
 
 let testSourceId: string
 
@@ -42,6 +42,7 @@ function makeSnapshot(
   vodStreams: XtreamVodStream[],
   seriesEntries: XtreamSeries[],
   fetchedAt: Date,
+  seriesInfo?: Record<number, XtreamSeriesInfo>,
 ): XtreamCatalogSnapshot {
   return {
     sourceId: testSourceId,
@@ -50,6 +51,45 @@ function makeSnapshot(
     vodStreams,
     seriesCategories: [],
     series: seriesEntries,
+    seriesInfo,
+  }
+}
+
+function makeSeriesInfo(episodes: Record<string, Array<{ id: string; episode_num: number; title: string; releasedate?: string }>>): XtreamSeriesInfo {
+  return {
+    info: {
+      name: '',
+      cover: '',
+      plot: '',
+      cast: '',
+      director: '',
+      genre: '',
+      releaseDate: '',
+      last_modified: '',
+      rating: '0',
+      rating_5based: 0,
+      backdrop_path: [],
+      youtube_trailer: '',
+      episode_run_time: '',
+      category_id: '1',
+      category_name: '',
+    },
+    episodes: Object.fromEntries(
+      Object.entries(episodes).map(([season, eps]) => [
+        season,
+        eps.map((ep) => ({
+          id: ep.id,
+          episode_num: ep.episode_num,
+          title: ep.title,
+          container_extension: 'mkv',
+          info: {
+            duration_secs: 2700,
+            duration: '00:45:00',
+            releasedate: ep.releasedate,
+          },
+        })),
+      ]),
+    ),
   }
 }
 
@@ -79,6 +119,7 @@ afterEach(async () => {
     .from(seriesAvailabilities)
     .where(eq(seriesAvailabilities.providerId, testSourceId))
   if (seriesRows.length > 0) {
+    // cascade: series → seasons → episodes → episodeAvailabilities
     await db.delete(seriesTable).where(inArray(seriesTable.id, seriesRows.map((r) => r.seriesId)))
   }
 
@@ -367,6 +408,228 @@ describe('CatalogSyncService', () => {
         expect(avRows).toHaveLength(0)
       } finally {
         await db.delete(syncRuns).where(eq(syncRuns.id, existingRun.id))
+      }
+    })
+  })
+
+  describe('episode availability lifecycle', () => {
+    it('does not touch episode availabilities when snapshot has no episode data', async () => {
+      const t1 = new Date('2026-02-01T10:00:00Z')
+      const t2 = new Date('2026-02-02T10:00:00Z')
+      const seriesEntry = makeSeriesEntry({ series_id: 100, name: 'No-Episode Series' })
+
+      // First sync: create series + episodes
+      await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot([], [seriesEntry], t1, {
+          100: makeSeriesInfo({ '1': [{ id: 'ep-100-1', episode_num: 1, title: 'Pilot' }] }),
+        }),
+      )
+
+      const epAvRowsBefore = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, testSourceId))
+      expect(epAvRowsBefore).toHaveLength(1)
+      expect(epAvRowsBefore[0].status).toBe('AVAILABLE')
+
+      // Second sync: no seriesInfo → episodes must remain AVAILABLE
+      await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot([], [seriesEntry], t2),
+      )
+
+      const epAvRowsAfter = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, testSourceId))
+      expect(epAvRowsAfter).toHaveLength(1)
+      expect(epAvRowsAfter[0].status).toBe('AVAILABLE')
+    })
+
+    it('creates episode availability rows with correct timestamps on first episode snapshot', async () => {
+      const t1 = new Date('2026-02-01T10:00:00Z')
+      const seriesEntry = makeSeriesEntry({ series_id: 101, name: 'Episode Series' })
+
+      const result = await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot([], [seriesEntry], t1, {
+          101: makeSeriesInfo({
+            '1': [
+              { id: 'ep-101-1', episode_num: 1, title: 'Pilot', releasedate: '2024-01-01' },
+              { id: 'ep-101-2', episode_num: 2, title: 'Part Two' },
+            ],
+          }),
+        }),
+      )
+
+      expect(result.status).toBe('completed')
+
+      const epAvRows = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, testSourceId))
+      expect(epAvRows).toHaveLength(2)
+      for (const row of epAvRows) {
+        expect(row.status).toBe('AVAILABLE')
+        expect(row.firstSeenAt.toISOString()).toBe(t1.toISOString())
+        expect(row.lastSeenAt.toISOString()).toBe(t1.toISOString())
+        expect(row.unavailableAt).toBeNull()
+      }
+
+      expect(epAvRows.map((r) => r.providerItemId).sort()).toEqual(['ep-101-1', 'ep-101-2'])
+    })
+
+    it('preserves firstSeenAt and updates lastSeenAt on repeated episode syncs', async () => {
+      const t1 = new Date('2026-02-01T10:00:00Z')
+      const t2 = new Date('2026-02-02T10:00:00Z')
+      const seriesEntry = makeSeriesEntry({ series_id: 102, name: 'Stable Episode Series' })
+      const info = makeSeriesInfo({ '1': [{ id: 'ep-102-1', episode_num: 1, title: 'Stable Ep' }] })
+
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 102: info }))
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t2, { 102: info }))
+
+      const epAvRows = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, testSourceId))
+      expect(epAvRows).toHaveLength(1)
+      expect(epAvRows[0].firstSeenAt.toISOString()).toBe(t1.toISOString())
+      expect(epAvRows[0].lastSeenAt.toISOString()).toBe(t2.toISOString())
+      expect(epAvRows[0].status).toBe('AVAILABLE')
+    })
+
+    it('marks a disappeared episode UNAVAILABLE when absent from an authoritative snapshot', async () => {
+      const t1 = new Date('2026-02-01T10:00:00Z')
+      const t2 = new Date('2026-02-02T10:00:00Z')
+      const seriesEntry = makeSeriesEntry({ series_id: 103, name: 'Disappearing Series' })
+
+      await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot([], [seriesEntry], t1, {
+          103: makeSeriesInfo({
+            '1': [
+              { id: 'ep-103-1', episode_num: 1, title: 'Keep' },
+              { id: 'ep-103-2', episode_num: 2, title: 'Gone' },
+            ],
+          }),
+        }),
+      )
+
+      const result = await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot([], [seriesEntry], t2, {
+          103: makeSeriesInfo({ '1': [{ id: 'ep-103-1', episode_num: 1, title: 'Keep' }] }),
+        }),
+      )
+
+      expect(result.counts.unavailableCount).toBe(1)
+
+      const epAvRows = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, testSourceId))
+      expect(epAvRows).toHaveLength(2)
+
+      const kept = epAvRows.find((r) => r.providerItemId === 'ep-103-1')!
+      const gone = epAvRows.find((r) => r.providerItemId === 'ep-103-2')!
+
+      expect(kept.status).toBe('AVAILABLE')
+      expect(kept.unavailableAt).toBeNull()
+      expect(gone.status).toBe('UNAVAILABLE')
+      expect(gone.unavailableAt!.toISOString()).toBe(t2.toISOString())
+    })
+
+    it('restores a reappeared episode to AVAILABLE with original firstSeenAt and cleared unavailableAt', async () => {
+      const t1 = new Date('2026-02-01T10:00:00Z')
+      const t2 = new Date('2026-02-02T10:00:00Z')
+      const t3 = new Date('2026-02-03T10:00:00Z')
+      const seriesEntry = makeSeriesEntry({ series_id: 104, name: 'Reappearing Series' })
+      const info = makeSeriesInfo({ '1': [{ id: 'ep-104-1', episode_num: 1, title: 'Returning Ep' }] })
+
+      // Seen
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 104: info }))
+      // Gone
+      await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot([], [seriesEntry], t2, { 104: makeSeriesInfo({ '1': [] }) }),
+      )
+      // Reappeared
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t3, { 104: info }))
+
+      const [epAvRow] = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, testSourceId))
+
+      expect(epAvRow.status).toBe('AVAILABLE')
+      expect(epAvRow.unavailableAt).toBeNull()
+      expect(epAvRow.firstSeenAt.toISOString()).toBe(t1.toISOString())
+      expect(epAvRow.lastSeenAt.toISOString()).toBe(t3.toISOString())
+    })
+
+    it('creates independent episode availabilities for the same canonical episode across two sources', async () => {
+      const fetchedAt = new Date('2026-02-01T10:00:00Z')
+      const [secondSource] = await db
+        .insert(sources)
+        .values({ name: 'Second Source', type: 'XTREAM', baseUrl: 'http://other.example.com', username: 'u2', password: 'p2' })
+        .returning()
+
+      // Canonical series row shared between both sources (simulates cross-source deduplication)
+      const [canonicalSeries] = await db
+        .insert(seriesTable)
+        .values({ title: 'Multi-Source Series' })
+        .returning()
+
+      try {
+        // Pre-insert seriesAvailabilities for both sources pointing to the same canonical series
+        await db.insert(seriesAvailabilities).values([
+          { seriesId: canonicalSeries.id, providerId: testSourceId, providerItemId: '105', firstSeenAt: fetchedAt, lastSeenAt: fetchedAt, status: 'AVAILABLE' },
+          { seriesId: canonicalSeries.id, providerId: secondSource.id, providerItemId: '105', firstSeenAt: fetchedAt, lastSeenAt: fetchedAt, status: 'AVAILABLE' },
+        ])
+
+        const seriesEntry = makeSeriesEntry({ series_id: 105, name: 'Multi-Source Series' })
+        const epInfo = makeSeriesInfo({ '1': [{ id: 'ep-105-1', episode_num: 1, title: 'Shared Ep' }] })
+
+        // Source 1 syncs episode data → creates season + episode + availability
+        await CatalogSyncService.syncCatalog(
+          testSourceId,
+          makeSnapshot([], [seriesEntry], fetchedAt, { 105: epInfo }),
+        )
+
+        // Source 2 syncs same episode (different providerItemId) → reuses same season + episode
+        const source2EpInfo = makeSeriesInfo({ '1': [{ id: 'ep-105-1-s2', episode_num: 1, title: 'Shared Ep' }] })
+        await CatalogSyncService.syncCatalog(secondSource.id, {
+          sourceId: secondSource.id,
+          fetchedAt,
+          vodCategories: [],
+          vodStreams: [],
+          seriesCategories: [],
+          series: [seriesEntry],
+          seriesInfo: { 105: source2EpInfo },
+        })
+
+        const source1Rows = await db
+          .select()
+          .from(episodeAvailabilities)
+          .where(eq(episodeAvailabilities.providerId, testSourceId))
+        const source2Rows = await db
+          .select()
+          .from(episodeAvailabilities)
+          .where(eq(episodeAvailabilities.providerId, secondSource.id))
+
+        expect(source1Rows).toHaveLength(1)
+        expect(source2Rows).toHaveLength(1)
+        expect(source1Rows[0].status).toBe('AVAILABLE')
+        expect(source2Rows[0].status).toBe('AVAILABLE')
+        expect(source1Rows[0].providerItemId).not.toBe(source2Rows[0].providerItemId)
+        // Both availabilities point to the same canonical episode
+        expect(source1Rows[0].episodeId).toBe(source2Rows[0].episodeId)
+      } finally {
+        await db.delete(seriesAvailabilities).where(eq(seriesAvailabilities.providerId, secondSource.id))
+        await db.delete(syncRuns).where(eq(syncRuns.sourceId, secondSource.id))
+        await db.delete(sources).where(eq(sources.id, secondSource.id))
+        // canonicalSeries is cleaned up by afterEach via testSourceId's seriesAvailabilities cascade
       }
     })
   })
