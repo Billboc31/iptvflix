@@ -1,0 +1,7 @@
+{
+  "ticket_id": "T025",
+  "state": "INIT",
+  "branch": "ticket/T025-reuse-canonical-series-identity-when-syncing-plex",
+  "issue_number": 50,
+  "updated_at": "2026-08-12T05:20:32Z"
+}
