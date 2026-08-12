@@ -1,92 +1,78 @@
-Now I have enough context. Let me write the review.
+I now have a complete picture of the full implementation including the applied fixes. Let me write the final review.
 
 ---
 
-# PR Review — T019: Universal External Catalog Discovery
+# PR Review — T019: Universal External Catalog Discovery (Attempt 2, post-fix)
 
 ## Résumé
 
-L'implémentation ajoute une découverte externe via TMDB en fallback du search local, matérialise des enregistrements canoniques sans disponibilité, et expose les résultats dans l'UI avec des badges distinctifs. Le périmètre est respecté, l'architecture est propre.
+Cette review porte sur l'implémentation après correction des deux points bloquants identifiés lors de la review précédente (`IMPLEMENTATION_FIX_REQUIRED`). Les deux fixes ont été correctement appliqués. L'implémentation complète est vérifiée contre tous les critères d'acceptance du ticket.
 
 ## Vérifications effectuées
 
-- Contrat API (`api-contracts/src/catalog.ts`) — types et `SearchResponse` étendus
-- `ExternalDiscoveryService` — cache TTL, déduplication, isolation provider
-- `search.ts` — logique de threshold, calls parallèles, fallback propre
-- `discovery.ts` — POST /discovery/movies et /discovery/series, validation tmdbId
-- `index.ts` — branchement conditionnel sur `TMDB_API_KEY`
-- TMDB client — mapping `status`/`release_date`/`first_air_date`
-- Schéma DB — contrainte UNIQUE sur `tmdb_id` dans `movies` et `series`
-- `SearchPage.tsx` — section externe, badges, click → materialize → navigate
-- `PosterCard.tsx` — prop `badge` avec variantes `unavailable`/`upcoming`
-- `Badge.tsx` — variantes `unavailable` (gris) et `upcoming` (ambre) présentes
-- Tests unitaires `ExternalDiscoveryService` — 16 cas couvrant cache, dédup, erreur provider, idempotence
-- Tests d'intégration — 6 tests discovery : external-only, déduplication, zero availabilities, idempotence, provider failure, invalid tmdbId
+- `SearchPage.tsx` — `externalError` state, handlers corrigés, rendu inline `role="alert"`
+- `SearchPage.test.tsx` — 3 nouveaux tests (badge "À venir", badge "Non disponible", erreur materialize)
+- `packages/api-contracts/src/catalog.ts` — types `ExternalMovieCandidate`, `ExternalSeriesCandidate`, `SearchResponse` étendu
+- `ExternalDiscoveryService` — cache TTL 60s, déduplication, isolation erreur provider, idempotence materialize
+- `apps/api/src/routes/search.ts` — threshold `<= 5`, appels parallèles, fallback propre
+- `apps/api/src/routes/discovery.ts` — POST /discovery/movies et /discovery/series, validation tmdbId, graceful 503 sans clé
+- `apps/api/src/index.ts` — branchement conditionnel `TMDB_API_KEY`, enregistrement `discoveryRoutes`
+- `apps/api/src/providers/metadata/tmdb/client.ts` — mapping `status`, `release_date`, `first_air_date` ; `deriveReleaseStatus` sur résultats search
+- `apps/web/src/components/content/PosterCard.tsx` — prop `badge` avec variantes
+- `apps/web/src/components/ui/Badge.tsx` — variantes `unavailable` (gris) et `upcoming` (ambre) présentes
+- `apps/web/src/lib/api.ts` — `materializeMovie`, `materializeSeries` ajoutés
+- Tests unitaires `ExternalDiscoveryService` — 16 cas
+- Tests d'intégration — 6 tests discovery dans `vertical-slice.test.ts`
 
 ## Points validés
 
-- **Tous les critères d'acceptance API sont couverts** : recherche externe, zéro disponibilité, idempotence materialize, déduplication, isolation provider failure, threshold/cap.
-- **Cache in-memory TTL 60s** correctement implémenté : le résultat brut est mis en cache avant filtrage; le filtrage par `excludeTmdbIds` s'applique à chaque appel depuis le cache — design correct.
-- **Contrainte UNIQUE DB** présente sur `tmdb_id` dans les deux tables : `materializeMovie`/`materializeSeries` ne peuvent pas créer de doublons même en cas de race.
-- **Isolation des erreurs provider** : le `try/catch` retourne `[]` sans re-throw, la recherche locale est préservée.
-- **Branchement conditionnel** sur `TMDB_API_KEY` dans `index.ts` : pas de discovery sans clé, le `discoveryService` est `null` et les routes retournent `503`.
-- **`releaseStatus !== 'Released'` → badge "À venir"** : logique correcte et cohérente avec les données TMDB search (date-dérivé) et detail (champ `status` natif).
-- **Scope respecté** : aucun import en masse, aucune notification de release, aucun ranking.
+**Fix 1 — Échec silencieux au clic externe : CORRIGÉ**
+- `externalError` state ajouté (`SearchPage.tsx:30`)
+- Les deux handlers (`handleExternalMovieClick`, `handleExternalSeriesClick`) appellent `setExternalError(null)` en entrée et `setExternalError("Impossible d'ouvrir ce titre. Veuillez réessayer.")` dans le catch
+- `externalError` est affiché via `<p role="alert">` dans la section externe (`SearchPage.tsx:189-191`)
+- `externalError` est nettoyé sur nouvelle recherche (`SearchPage.tsx:40`)
+
+**Fix 2 — Tests web section externe : CORRIGÉS**
+- Test "upcoming badge": mock retournant `releaseStatus: 'In Production'` → vérifie le heading "Aussi trouvé en dehors de votre catalogue" et le badge "À venir" (`SearchPage.test.tsx:86-117`)
+- Test "Non disponible badge": mock `releaseStatus: 'Released'` → vérifie le badge "Non disponible" et le heading, couvre directement l'AC *"UI clearly distinguishes not available to me from not found"* (`SearchPage.test.tsx:119-150`)
+- Test "materialize failure": mock `POST /api/discovery/movies` → 503, click sur la carte → vérifie `role="alert"` et le message d'erreur attendu (`SearchPage.test.tsx:152-191`)
+
+**Critères d'acceptance — tous couverts**
+
+| AC | Status | Evidence |
+|---|---|---|
+| Recherche externe retourne un résultat hors catalogue local | ✅ | `search.ts` threshold + integration test |
+| Ouverture crée un enregistrement canonique avec zéro disponibilités | ✅ | `materializeMovie` + integration test zero availabilities |
+| Titre upcoming a une page de détail utile | ✅ | Métadonnées de base (titre, synopsis, poster, année) présentes ; unit test upcoming |
+| Pas de doublon local/externe pour même tmdbId | ✅ | `getMovieTmdbIds` + integration test déduplication |
+| Échec provider n'affecte pas la recherche locale | ✅ | try/catch retournant `[]` + integration test TMDB 500 |
+| UI distingue "non disponible" vs "non trouvé" | ✅ | Badges "Non disponible"/"À venir" + EmptyState + web tests |
+| Appels provider bornés/cachés | ✅ | Cap 5, TTL 60s, threshold local ≤ 5 + unit test cache |
+| Tests couvrent tous les scénarios AC | ✅ | 16 unit tests + 6 integration tests + 3 nouveaux web tests |
+
+**Architecture et scope**
+- Aucun import en masse dans la DB (scope respecté)
+- No-op propre quand `TMDB_API_KEY` absent (503 sur discovery, `[]` sur search)
+- Code simple et lisible — aucune abstraction superflue introduite
+- Contrat API backward-compatible (les nouveaux champs `externalMovies`/`externalSeries` ont des valeurs par défaut défensives côté web)
 
 ## Problèmes détectés
 
-### Mineur — Échec silencieux au clic sur un résultat externe
+Aucun problème bloquant. Les deux points requireing correction de la review précédente sont correctement résolus.
 
-Dans `SearchPage.tsx:70-86` :
+## Observations conservées (non bloquantes, connues)
 
-```tsx
-async function handleExternalMovieClick(candidate: ExternalMovieCandidate) {
-  try {
-    const { id } = await materializeMovie(candidate.tmdbId)
-    navigate(`/movies/${id}`)
-  } catch {
-    // silently ignore — user can retry
-  }
-}
-```
-
-Si `materializeMovie` échoue (timeout, 503, 5xx), **rien ne se passe visuellement**. L'utilisateur clique sur la carte, l'app reste figée sur la page de recherche sans indication d'erreur ni invitation à réessayer. Le commentaire dit "user can retry" mais rien ne leur signale qu'il faut le faire.
-
-**Correction suggérée** : Exposer un état d'erreur local `externalError` ou appeler le setter `setError` déjà existant pour afficher l'`ErrorState` (ou un message inline).
-
-### Mineur — Pas de test web pour la section "résultats externes"
-
-Les tests `SearchPage.test.tsx` couvrent empty state, error state et retry, mais **aucun test ne vérifie** :
-- que la section "Aussi trouvé en dehors de votre catalogue" s'affiche quand `externalMovies` est non-vide
-- que les badges "Non disponible" / "À venir" apparaissent sur les cartes externes
-- que la distinction UI "non disponible vs non trouvé" est correcte
-
-Le critère d'acceptance dit explicitement : *"The UI clearly distinguishes `not available to me` from `not found`."* Ce comportement n'est validé que côté API.
-
-**Correction suggérée** : Ajouter un test avec un mock retournant `externalMovies: [{ tmdbId: '999', title: '...', releaseStatus: 'In Production', ... }]` et vérifier que le heading "Aussi trouvé" et le badge "À venir" s'affichent.
-
-### Observation — Race condition TOCTOU dans `materializeMovie`/`materializeSeries`
-
-Le pattern SELECT → INSERT sans transaction est théoriquement sujet à une race. En pratique, la contrainte UNIQUE sur `tmdb_id` protège de la corruption : le second INSERT concurrent échouera avec une erreur de contrainte (→ HTTP 500 plutôt qu'idempotence). Pour un usage interactif mono-utilisateur, le risque est négligeable. À documenter ou corriger vers `INSERT ... ON CONFLICT DO NOTHING` si la montée en charge est envisagée.
-
-### Observation — `releaseStatus` non exposé dans `MovieDetailResponse`
-
-Après matérialisation d'un titre "In Production", la page détail (`MovieDetailResponse`) n'expose pas `releaseStatus`/`releaseDate`. L'utilisateur voit le titre avec `availabilityStatus: 'UNAVAILABLE'` mais pas le statut "En production". Le ticket dit "a useful detail page" — les métadonnées de base (titre, synopsis, poster, année) sont présentes, donc le critère est rempli. Mais l'information "Upcoming" disparaît au-delà de la SearchPage.
-
-### Observation — Cache sans éviction des clés expirées
-
-Le `Map` en mémoire accumule les entrées sans jamais les supprimer (TTL lazy-only). Avec suffisamment de requêtes distinctes, le cache grossit indéfiniment. Acceptable pour le scope actuel.
+- **TOCTOU `materializeMovie`/`materializeSeries`** : SELECT → INSERT sans transaction, protégé par UNIQUE constraint mais retournerait HTTP 500 au lieu d'idempotence en cas de race concurrent. Risque négligeable en usage interactif.
+- **`releaseStatus` absent de `MovieDetailResponse`** : le badge "À venir" disparaît après navigation vers la page de détail. L'AC "useful detail page" est rempli (titre, synopsis, poster, année présents). Acceptable dans le scope actuel.
+- **Cache sans éviction active** : le `Map` grossit indéfiniment (TTL lazy-only). Acceptable pour le volume d'usage attendu.
+- **Clé TMDB Bearer v4 vs v3** : si l'opérateur configure une clé v3, les appels échoueront silencieusement (`externalMovies: []`). Dégradation gracieuse, non bloquant.
 
 ## Risques éventuels
 
-- Clé TMDB configurée comme API key v3 (`?api_key=...`) vs Bearer v4 : le client utilise `Authorization: Bearer`. Si l'opérateur configure une clé v3, les appels TMDB échoueront silencieusement (→ `externalMovies: []`). Le comportement est dégradé sans cassure, mais la découverte ne fonctionne pas.
-- Le threshold `localTotal <= 5` inclut le cas `localTotal === 5` : avec exactement 5 résultats locaux, l'external discovery est quand même déclenché. Cohérent avec la constante nommée `LOCAL_RESULTS_THRESHOLD = 5` mais pourrait surprendre.
+Aucun risque additionnel identifié au-delà des observations ci-dessus, toutes déjà documentées lors de la review précédente.
 
 ## Décision
 
-L'implémentation est fonctionnellement correcte, architecturalement propre et le périmètre est respecté. Les tests API et intégration couvrent l'essentiel des critères d'acceptance. Deux points méritent correction avant validation finale :
+Les deux corrections requises sont proprement implémentées. Tous les critères d'acceptance du ticket T019 sont couverts — fonctionnellement, architecturalement et par les tests. Le scope est respecté, le code est lisible, la sécurité est maintenue.
 
-1. **L'échec silencieux au clic externe** — UX bloquant pour l'utilisateur (AC : "The UI clearly distinguishes `not available to me` from `not found`" implique aussi que le flux de navigation soit fiable ou signale clairement son échec).
-2. **L'absence de test web pour la section externe** — couverture insuffisante d'un AC explicite.
-
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
