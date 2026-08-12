@@ -512,6 +512,14 @@ describe('GET /series/:id/seasons/:seasonNumber/episodes', () => {
     expect(body[0].availabilityCount).toBe(2)
   })
 
+  it('returns 400 when profileId is not a valid UUID', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/series/${SERIES_ROW.id}/seasons/1/episodes?profileId=not-a-uuid`,
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
   it('episode with all UNAVAILABLE variants shows availabilityStatus UNAVAILABLE and watchState null', async () => {
     const UNAVAIL_VARIANT = {
       episodeId: EPISODE_ROW.id, id: '00000000-0000-0000-0000-000000000103',

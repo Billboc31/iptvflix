@@ -321,33 +321,16 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       const progressMap = new Map(progressRows.map((r) => [r.mediaId, r]))
 
       const epVariantMap = new Map<string, AvailabilityVariantResponse[]>()
-      const epRawVariantMap = new Map<
-        string,
-        Array<{
-          id: string
-          status: 'AVAILABLE' | 'UNAVAILABLE'
-          providerId: string
-          audioLanguage: string | null
-          subtitleLanguage: string | null
-          videoQuality: string | null
-          rawTitle: string | null
-        }>
-      >()
 
       for (const { episodeId, ...variant } of epVariantRaws) {
         const arr = epVariantMap.get(episodeId) ?? []
         arr.push(variant)
         epVariantMap.set(episodeId, arr)
-
-        const rawArr = epRawVariantMap.get(episodeId) ?? []
-        rawArr.push(variant)
-        epRawVariantMap.set(episodeId, rawArr)
       }
 
       return episodeRows.map((e): EpisodeResponse => {
         const availabilityCount = availCountMap.get(e.id) ?? 0
-        const rawVariants = epRawVariantMap.get(e.id) ?? []
-        const { selectedVariantId } = resolveVariant(rawVariants, prefs)
+        const { selectedVariantId } = resolveVariant(epVariantMap.get(e.id) ?? [], prefs)
         return {
           id: e.id,
           episodeNumber: e.episodeNumber,
