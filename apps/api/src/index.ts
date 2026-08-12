@@ -16,6 +16,7 @@ import { shelvesRoutes } from './routes/shelves.js'
 import { followReleaseRoutes } from './routes/follow-release.js'
 import { feedbackRoutes } from './routes/feedback.js'
 import { tasteRoutes } from './routes/taste.js'
+import { recommendationRoutes } from './routes/recommendations.js'
 import { releaseLifecycleRoutes } from './routes/release-lifecycle.js'
 import { catalogRoutes } from './routes/catalog.js'
 import { profileRoutes } from './routes/profile.js'
@@ -53,6 +54,7 @@ await app.register(shelvesRoutes)
 await app.register(followReleaseRoutes)
 await app.register(feedbackRoutes)
 await app.register(tasteRoutes)
+await app.register(recommendationRoutes)
 await app.register(releaseLifecycleRoutes)
 await app.register(catalogRoutes)
 await app.register(profileRoutes)
