@@ -23,6 +23,18 @@ apps/android-tv/app/build/
 *.swo
 # Vite
 .vite/
+
+# TypeScript emit artifacts in src/ (tsc --declaration side-effects)
+apps/web/src/**/*.js
+apps/web/src/**/*.js.map
+apps/web/src/**/*.d.ts
+apps/web/src/**/*.d.ts.map
+apps/web/vite.config.js
+apps/web/vite.config.js.map
+apps/web/vite.config.d.ts
+apps/web/vite.config.d.ts.map
+# Re-include the real Vite ambient types file
+!apps/web/src/vite-env.d.ts
 # Playwright
 e2e/playwright-report/
 e2e/test-results/
