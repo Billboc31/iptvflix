@@ -1,7 +1,7 @@
 {
   "ticket_id": "T018",
-  "state": "IMPLEMENTATION_REVIEW_NEEDED",
+  "state": "IMPLEMENTATION_FIX_REQUIRED",
   "branch": "ticket/T018-add-profile-playback-preferences-and-deterministic",
   "issue_number": 35,
-  "updated_at": "2026-08-12T05:37:00Z"
+  "updated_at": "2026-08-12T05:44:09Z"
 }
