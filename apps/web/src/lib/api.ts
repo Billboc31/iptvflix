@@ -34,6 +34,7 @@ import type {
   UpdateProfilePreferencesBody,
   FeedbackItem,
   SetFeedbackBody,
+  HomeResponse,
 } from '@iptvflix/api-contracts'
 
 const BASE = import.meta.env.VITE_API_BASE ?? '/api'
@@ -230,4 +231,8 @@ export function setFeedback(mediaType: WatchlistMediaType, mediaId: string, body
 
 export function clearFeedback(mediaType: WatchlistMediaType, mediaId: string): Promise<void> {
   return request(`/feedback/${mediaType}/${mediaId}`, { method: 'DELETE' })
+}
+
+export function fetchHome(profileId: string): Promise<HomeResponse> {
+  return request(`/profiles/${profileId}/home`)
 }

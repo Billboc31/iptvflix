@@ -17,6 +17,7 @@ import { followReleaseRoutes } from './routes/follow-release.js'
 import { feedbackRoutes } from './routes/feedback.js'
 import { tasteRoutes } from './routes/taste.js'
 import { recommendationRoutes } from './routes/recommendations.js'
+import { homeRoutes } from './routes/home.js'
 import { releaseLifecycleRoutes } from './routes/release-lifecycle.js'
 import { catalogRoutes } from './routes/catalog.js'
 import { profileRoutes } from './routes/profile.js'
@@ -55,6 +56,7 @@ await app.register(followReleaseRoutes)
 await app.register(feedbackRoutes)
 await app.register(tasteRoutes)
 await app.register(recommendationRoutes)
+await app.register(homeRoutes)
 await app.register(releaseLifecycleRoutes)
 await app.register(catalogRoutes)
 await app.register(profileRoutes)
