@@ -11,3 +11,25 @@
 [2026-08-12T11:30:51Z] compose: task (canonical prompt)
 [2026-08-12T11:30:51Z] snapshot: runtime-prompt=runs/T040/prompts/planner-attempt-1.md
 [2026-08-12T11:34:03Z] auto-run: step=planner done rc=0
+[2026-08-12T11:54:07Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-12T11:54:07Z] auto-run: running step=tester
+[2026-08-12T11:54:09Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-12T11:54:09Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-12T11:54:09Z] prompt: generic fallback — injecting runs/T040/ticket.md
+[2026-08-12T11:54:09Z] compose: global-context=docs/ai/global-context.md
+[2026-08-12T11:54:09Z] compose: role=ai/roles/tester.md
+[2026-08-12T11:54:09Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-12T11:54:09Z] compose: skill=ai/skills/testing.md
+[2026-08-12T11:54:09Z] compose: skill=ai/skills/debugging.md
+[2026-08-12T11:54:09Z] compose: task (canonical prompt)
+[2026-08-12T11:54:09Z] snapshot: runtime-prompt=runs/T040/prompts/tester-attempt-1.md
+[2026-08-12T11:57:41Z] auto-run: step=tester done rc=0
+[2026-08-12T11:57:41Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-12T11:57:41Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-12T11:57:42Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.vite/vitest/results.json', 'node_modules', 'runs/T040/daemon.lock', 'runs/T040/runtime.log', 'runs/T040/workflow-status.md']
+[2026-08-12T11:57:42Z] commit-checkpoint: sha=350b391 files=4 title='test(T040/workflow): tester — update 4 file(s)'
+[2026-08-12T11:57:42Z] auto-run: auto-push triggered
+[2026-08-12T11:57:42Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T040/daemon.lock', 'runs/T040/runtime.log', 'runs/T040/workflow-status.md', 'node_modules']
+[2026-08-12T11:57:42Z] push: pushing branch=ticket/T040-build-a-durable-profile-taste-model-from-viewing-a
+[2026-08-12T11:57:44Z] push: done branch=ticket/T040-build-a-durable-profile-taste-model-from-viewing-a
+[2026-08-12T11:57:44Z] auto-run: TEST_COMPLETE — running PR lifecycle
