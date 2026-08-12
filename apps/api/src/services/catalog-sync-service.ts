@@ -10,6 +10,7 @@ import {
   episodeAvailabilities,
 } from '../db/schema/availabilities.js'
 import { syncRuns } from '../db/schema/sync-runs.js'
+import { releaseEvents } from '../db/schema/release-lifecycle.js'
 import type { XtreamCatalogSnapshot } from '../providers/xtream/types.js'
 import { normalizeTitle } from '../matching/title-normalizer.js'
 import type { PlexCatalogSnapshot, PlexGuid } from '../providers/plex/types.js'
@@ -343,7 +344,7 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
       for (const movie of snapshot.movies) {
         const providerItemId = movie.providerItemId
         const [existing] = await tx
-          .select({ id: movieAvailabilities.id })
+          .select({ id: movieAvailabilities.id, movieId: movieAvailabilities.movieId, status: movieAvailabilities.status })
           .from(movieAvailabilities)
           .where(
             and(
@@ -366,8 +367,13 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
             subtitleLanguage: movie.subtitleLanguage ?? null,
             videoQuality: movie.videoQuality ?? null,
           })
+          await tx
+            .insert(releaseEvents)
+            .values({ mediaType: 'MOVIE', mediaId: movieId, eventType: 'SOURCE_APPEARED', occurredAt: snapshot.fetchedAt, sourceId })
+            .onConflictDoNothing()
           counts.moviesCreated++
         } else {
+          const wasUnavailable = existing.status === 'UNAVAILABLE'
           await tx
             .update(movieAvailabilities)
             .set({
@@ -385,6 +391,12 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
                 eq(movieAvailabilities.providerItemId, providerItemId),
               ),
             )
+          if (wasUnavailable) {
+            await tx
+              .insert(releaseEvents)
+              .values({ mediaType: 'MOVIE', mediaId: existing.movieId, eventType: 'SOURCE_APPEARED', occurredAt: snapshot.fetchedAt, sourceId })
+              .onConflictDoNothing()
+          }
           counts.moviesUpdated++
         }
         seenMovieProviderItemIds.add(providerItemId)
@@ -395,7 +407,7 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
       for (const s of snapshot.series) {
         const providerItemId = s.providerItemId
         const [existing] = await tx
-          .select({ id: seriesAvailabilities.id })
+          .select({ id: seriesAvailabilities.id, seriesId: seriesAvailabilities.seriesId, status: seriesAvailabilities.status })
           .from(seriesAvailabilities)
           .where(
             and(
@@ -418,8 +430,13 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
             subtitleLanguage: s.subtitleLanguage ?? null,
             videoQuality: s.videoQuality ?? null,
           })
+          await tx
+            .insert(releaseEvents)
+            .values({ mediaType: 'SERIES', mediaId: seriesId, eventType: 'SOURCE_APPEARED', occurredAt: snapshot.fetchedAt, sourceId })
+            .onConflictDoNothing()
           counts.seriesCreated++
         } else {
+          const wasUnavailable = existing.status === 'UNAVAILABLE'
           await tx
             .update(seriesAvailabilities)
             .set({
@@ -437,6 +454,12 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
                 eq(seriesAvailabilities.providerItemId, providerItemId),
               ),
             )
+          if (wasUnavailable) {
+            await tx
+              .insert(releaseEvents)
+              .values({ mediaType: 'SERIES', mediaId: existing.seriesId, eventType: 'SOURCE_APPEARED', occurredAt: snapshot.fetchedAt, sourceId })
+              .onConflictDoNothing()
+          }
           counts.seriesUpdated++
         }
         seenSeriesProviderItemIds.add(providerItemId)
@@ -447,7 +470,7 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
         (id) => !seenMovieProviderItemIds.has(id),
       )
       if (missingMovieIds.length > 0) {
-        await tx
+        const disappearedMovies = await tx
           .update(movieAvailabilities)
           .set({ status: 'UNAVAILABLE', unavailableAt: snapshot.fetchedAt })
           .where(
@@ -457,6 +480,13 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
               inArray(movieAvailabilities.providerItemId, missingMovieIds),
             ),
           )
+          .returning({ movieId: movieAvailabilities.movieId })
+        for (const { movieId } of disappearedMovies) {
+          await tx
+            .insert(releaseEvents)
+            .values({ mediaType: 'MOVIE', mediaId: movieId, eventType: 'SOURCE_DISAPPEARED', occurredAt: snapshot.fetchedAt, sourceId })
+            .onConflictDoNothing()
+        }
         counts.unavailableCount += missingMovieIds.length
       }
 
@@ -464,7 +494,7 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
         (id) => !seenSeriesProviderItemIds.has(id),
       )
       if (missingSeriesIds.length > 0) {
-        await tx
+        const disappearedSeries = await tx
           .update(seriesAvailabilities)
           .set({ status: 'UNAVAILABLE', unavailableAt: snapshot.fetchedAt })
           .where(
@@ -474,6 +504,13 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
               inArray(seriesAvailabilities.providerItemId, missingSeriesIds),
             ),
           )
+          .returning({ seriesId: seriesAvailabilities.seriesId })
+        for (const { seriesId } of disappearedSeries) {
+          await tx
+            .insert(releaseEvents)
+            .values({ mediaType: 'SERIES', mediaId: seriesId, eventType: 'SOURCE_DISAPPEARED', occurredAt: snapshot.fetchedAt, sourceId })
+            .onConflictDoNothing()
+        }
         counts.unavailableCount += missingSeriesIds.length
       }
 
