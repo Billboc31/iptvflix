@@ -1,7 +1,7 @@
 {
   "ticket_id": "T047",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T047-make-railway-vercel-staging-deployment-reproducibl",
   "issue_number": 96,
-  "updated_at": "2026-08-12T23:18:06Z"
+  "updated_at": "2026-08-12T23:21:15Z"
 }
