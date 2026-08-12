@@ -229,7 +229,7 @@ export async function generateShelfFromSeeds(
       layoutHint: shelf.layoutHint as 'ROW' | 'GRID',
       position: shelf.position,
     },
-    explanation: { inferredGenreIds, seedTitles },
+    explanation: { inferredGenreIds, seedTitles, generatedAt },
   }
 }
 
@@ -280,6 +280,6 @@ export async function refreshGeneratedShelf(
       layoutHint: shelf.layoutHint as 'ROW' | 'GRID',
       position: shelf.position,
     },
-    explanation: { inferredGenreIds, seedTitles },
+    explanation: { inferredGenreIds, seedTitles, generatedAt: updatedRules.generatedAt },
   }
 }

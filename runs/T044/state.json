@@ -1,7 +1,7 @@
 {
   "ticket_id": "T044",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T044-add-refresh-semantics-for-generated-and-recommenda",
   "issue_number": 85,
-  "updated_at": "2026-08-12T13:55:08Z"
+  "updated_at": "2026-08-12T14:02:15Z"
 }
