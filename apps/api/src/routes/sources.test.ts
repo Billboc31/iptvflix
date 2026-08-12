@@ -105,6 +105,18 @@ beforeEach(() => {
 // Tests
 // ---------------------------------------------------------------------------
 
+const mockPlexSource = {
+  id: '00000000-0000-0000-0000-000000000002',
+  name: 'My Plex Server',
+  type: 'PLEX' as const,
+  baseUrl: 'http://plex.example.com:32400',
+  username: null,
+  password: PASSWORD,
+  enabled: true,
+  createdAt: new Date('2024-01-01T00:00:00Z'),
+  updatedAt: new Date('2024-01-01T00:00:00Z'),
+}
+
 describe('POST /sources', () => {
   it('creates a valid XTREAM source and returns 201 without password', async () => {
     setupInsert([mockSource])
@@ -126,6 +138,26 @@ describe('POST /sources', () => {
     expect(body).not.toHaveProperty('password')
     expect(body.name).toBe('My XTREAM')
     expect(body.type).toBe('XTREAM')
+  })
+
+  it('creates a valid PLEX source and returns 201 without token', async () => {
+    setupInsert([mockPlexSource])
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/sources',
+      payload: {
+        name: 'My Plex Server',
+        type: 'PLEX',
+        baseUrl: 'http://plex.example.com:32400',
+        password: PASSWORD,
+      },
+    })
+
+    expect(res.statusCode).toBe(201)
+    const body = res.json()
+    expect(body).not.toHaveProperty('password')
+    expect(body.type).toBe('PLEX')
   })
 
   it('returns 400 when required fields are missing', async () => {
@@ -285,6 +317,59 @@ describe('POST /sources/:id/test', () => {
     const res = await app.inject({
       method: 'POST',
       url: `/sources/${mockSource.id}/test`,
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as { ok: boolean; message: string }
+    expect(body.ok).toBe(false)
+    expect(body.message).not.toContain(PASSWORD)
+  })
+
+  it('returns ok: true for PLEX source when identity endpoint responds with 200', async () => {
+    setupSelect([mockPlexSource])
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ MediaContainer: { friendlyName: 'My Plex', machineIdentifier: 'abc123' } }),
+    })
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/sources/${mockPlexSource.id}/test`,
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as { ok: boolean; message: string }
+    expect(body.ok).toBe(true)
+    expect(body.message).not.toContain(PASSWORD)
+  })
+
+  it('returns ok: false for PLEX source when token is invalid (401)', async () => {
+    setupSelect([mockPlexSource])
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      json: () => Promise.resolve({}),
+    })
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/sources/${mockPlexSource.id}/test`,
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as { ok: boolean; message: string }
+    expect(body.ok).toBe(false)
+    expect(body.message).not.toContain(PASSWORD)
+  })
+
+  it('returns ok: false for PLEX source on network failure', async () => {
+    setupSelect([mockPlexSource])
+    mockFetch.mockRejectedValueOnce(new TypeError('fetch failed'))
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/sources/${mockPlexSource.id}/test`,
     })
 
     expect(res.statusCode).toBe(200)

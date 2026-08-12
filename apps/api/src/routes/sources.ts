@@ -16,8 +16,8 @@ export async function sourcesRoutes(app: FastifyInstance): Promise<void> {
     if (!body?.name || !body?.type || !body?.baseUrl) {
       return reply.status(400).send({ error: 'name, type, and baseUrl are required' })
     }
-    if (body.type !== 'XTREAM' && body.type !== 'M3U') {
-      return reply.status(400).send({ error: 'type must be XTREAM or M3U' })
+    if (body.type !== 'XTREAM' && body.type !== 'M3U' && body.type !== 'PLEX') {
+      return reply.status(400).send({ error: 'type must be XTREAM, M3U, or PLEX' })
     }
     const source = await createSource(body)
     return reply.status(201).send(source)

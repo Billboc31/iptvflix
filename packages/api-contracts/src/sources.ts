@@ -1,4 +1,4 @@
-export type SourceType = 'XTREAM' | 'M3U'
+export type SourceType = 'XTREAM' | 'M3U' | 'PLEX'
 
 export type SourceResponse = {
   id: string
