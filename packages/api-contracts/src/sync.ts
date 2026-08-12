@@ -8,6 +8,7 @@ export type SyncRunResponse = {
   finishedAt: string | null
   moviesAdded: number
   seriesAdded: number
+  seriesInfoFailed?: number
   error?: string | null
 }
 

@@ -9,6 +9,7 @@ import { movieAvailabilities, seriesAvailabilities, episodeAvailabilities } from
 import { syncRuns } from '../../db/schema/sync-runs.js'
 import { releaseEvents } from '../../db/schema/release-lifecycle.js'
 import { CatalogSyncService, SyncAlreadyRunningError } from '../catalog-sync-service.js'
+import { withBoundedConcurrency } from '../sync-runs-service.js'
 import type { XtreamCatalogSnapshot, XtreamVodStream, XtreamSeries, XtreamSeriesInfo } from '../../providers/xtream/types.js'
 import type { PlexCatalogSnapshot } from '../../providers/plex/types.js'
 
@@ -887,6 +888,76 @@ describe('CatalogSyncService', () => {
         await db.delete(syncRuns).where(eq(syncRuns.sourceId, plexSource.id))
         await db.delete(sources).where(eq(sources.id, plexSource.id))
       }
+    })
+  })
+
+  describe('partial episode-fetch safety', () => {
+    it('withBoundedConcurrency limits concurrent in-flight tasks', async () => {
+      let peak = 0
+      let inflight = 0
+      const limit = 3
+      const totalTasks = 10
+
+      const tasks = Array.from({ length: totalTasks }, () => async () => {
+        inflight++
+        peak = Math.max(peak, inflight)
+        await new Promise<void>((resolve) => setTimeout(resolve, 10))
+        inflight--
+      })
+
+      await withBoundedConcurrency(tasks, limit)
+      expect(peak).toBeLessThanOrEqual(limit)
+    })
+
+    it('one failing series does not mark other series episodes UNAVAILABLE', async () => {
+      const t1 = new Date('2026-03-01T10:00:00Z')
+      const t2 = new Date('2026-03-02T10:00:00Z')
+      const seriesA = makeSeriesEntry({ series_id: 700, name: 'Series A' })
+      const seriesB = makeSeriesEntry({ series_id: 701, name: 'Series B' })
+      const infoA = makeSeriesInfo({ '1': [{ id: 'ep-700-1', episode_num: 1, title: 'A Ep 1' }] })
+      const infoB = makeSeriesInfo({ '1': [{ id: 'ep-701-1', episode_num: 1, title: 'B Ep 1' }] })
+
+      // First sync: both series with episodes
+      await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot([], [seriesA, seriesB], t1, { 700: infoA, 701: infoB }),
+      )
+
+      // Second sync: series B's getSeriesInfo failed — snapshot carries only series A episodes
+      const partialSnapshot: XtreamCatalogSnapshot = {
+        ...makeSnapshot([], [seriesA, seriesB], t2, { 700: infoA }),
+        failedSeriesIds: [701],
+      }
+      const result = await CatalogSyncService.syncCatalog(testSourceId, partialSnapshot)
+
+      expect(result.status).toBe('completed')
+
+      const epAvRows = await db
+        .select()
+        .from(episodeAvailabilities)
+        .where(eq(episodeAvailabilities.providerId, testSourceId))
+      expect(epAvRows).toHaveLength(2)
+
+      const epA = epAvRows.find((r) => r.providerItemId === 'ep-700-1')!
+      const epB = epAvRows.find((r) => r.providerItemId === 'ep-701-1')!
+
+      expect(epA.status).toBe('AVAILABLE')
+      expect(epB.status).toBe('AVAILABLE')
+      expect(epB.unavailableAt).toBeNull()
+    })
+
+    it('failed series info calls are reflected in counts.failedCount', async () => {
+      const t1 = new Date('2026-03-01T10:00:00Z')
+      const seriesA = makeSeriesEntry({ series_id: 800, name: 'Series A' })
+      const seriesB = makeSeriesEntry({ series_id: 801, name: 'Series B' })
+
+      const partialSnapshot: XtreamCatalogSnapshot = {
+        ...makeSnapshot([], [seriesA, seriesB], t1, { 800: makeSeriesInfo({ '1': [] }) }),
+        failedSeriesIds: [801],
+      }
+
+      const result = await CatalogSyncService.syncCatalog(testSourceId, partialSnapshot)
+      expect(result.counts.failedCount).toBe(1)
     })
   })
 

@@ -26,8 +26,31 @@ function toResponse(row: SyncRunRow): SyncRunResponse {
     finishedAt: row.completedAt ? row.completedAt.toISOString() : null,
     moviesAdded: row.moviesCreated,
     seriesAdded: row.seriesCreated,
+    seriesInfoFailed: row.failedCount,
     error: row.errorMessage ?? null,
   }
+}
+
+export async function withBoundedConcurrency<T>(
+  tasks: (() => Promise<T>)[],
+  limit: number,
+): Promise<PromiseSettledResult<T>[]> {
+  const results: PromiseSettledResult<T>[] = new Array(tasks.length)
+  const queue = tasks.map((task, i) => ({ task, i }))
+
+  async function worker(): Promise<void> {
+    while (queue.length > 0) {
+      const item = queue.shift()!
+      try {
+        results[item.i] = { status: 'fulfilled', value: await item.task() }
+      } catch (err) {
+        results[item.i] = { status: 'rejected', reason: err }
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, () => worker()))
+  return results
 }
 
 export async function listSyncRuns(): Promise<SyncRunResponse[]> {
@@ -51,13 +74,27 @@ async function fetchXtreamSnapshot(source: typeof sources.$inferSelect): Promise
     client.getSeries(),
   ])
 
-  const seriesInfoEntries = await Promise.all(
-    series.map(async (s) => {
+  const concurrencyLimit = parseInt(process.env.XTREAM_SERIES_CONCURRENCY ?? '5', 10)
+  const settledResults = await withBoundedConcurrency(
+    series.map((s) => async () => {
       const info = await client.getSeriesInfo(s.series_id)
       return [s.series_id, info] as const
     }),
+    concurrencyLimit,
   )
-  const seriesInfo = Object.fromEntries(seriesInfoEntries)
+
+  const seriesInfo: Record<number, Awaited<ReturnType<typeof client.getSeriesInfo>>> = {}
+  const failedSeriesIds: number[] = []
+  for (let i = 0; i < settledResults.length; i++) {
+    const r = settledResults[i]
+    if (r.status === 'fulfilled') {
+      const [id, info] = r.value
+      seriesInfo[id] = info
+    } else {
+      failedSeriesIds.push(series[i].series_id)
+      console.warn(`[xtream-snapshot] getSeriesInfo(${series[i].series_id}) failed:`, r.reason)
+    }
+  }
 
   return {
     sourceId: source.id,
@@ -67,6 +104,7 @@ async function fetchXtreamSnapshot(source: typeof sources.$inferSelect): Promise
     seriesCategories,
     series,
     seriesInfo,
+    failedSeriesIds: failedSeriesIds.length > 0 ? failedSeriesIds : undefined,
   }
 }
 
