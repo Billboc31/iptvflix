@@ -35,6 +35,9 @@ import type {
   FeedbackItem,
   SetFeedbackBody,
   HomeResponse,
+  LoginRequest,
+  LoginResponse,
+  MeResponse,
 } from '@iptvflix/api-contracts'
 
 const BASE = import.meta.env.VITE_API_BASE ?? '/api'
@@ -56,7 +59,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (init?.body != null && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
-  const res = await fetch(`${BASE}${path}`, { ...init, headers })
+  const res = await fetch(`${BASE}${path}`, { ...init, headers, credentials: 'include' })
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText)
     let message = text
@@ -235,4 +238,17 @@ export function clearFeedback(mediaType: WatchlistMediaType, mediaId: string): P
 
 export function fetchHome(profileId: string): Promise<HomeResponse> {
   return request(`/profiles/${profileId}/home`)
+}
+
+export function login(username: string, password: string): Promise<LoginResponse> {
+  const body: LoginRequest = { username, password }
+  return request('/auth/login', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function logout(): Promise<{ ok: true }> {
+  return request('/auth/logout', { method: 'POST' })
+}
+
+export function getMe(): Promise<MeResponse> {
+  return request('/auth/me')
 }

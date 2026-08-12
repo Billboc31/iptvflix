@@ -11,28 +11,39 @@ import SourcesPage from './pages/SourcesPage.js'
 import OnboardingPage from './pages/OnboardingPage.js'
 import MyListPage from './pages/MyListPage.js'
 import ProfileSettingsPage from './pages/ProfileSettingsPage.js'
+import LoginPage from './pages/LoginPage.js'
+import { AuthProvider } from './context/AuthContext.js'
+import ProtectedRoute from './components/ProtectedRoute.js'
 
 export default function App() {
   return (
     <ToastProvider>
       <BrowserRouter>
-        <Routes>
-          {/* Onboarding — no AppShell */}
-          <Route path="/onboarding" element={<OnboardingPage />} />
+        <AuthProvider>
+          <Routes>
+            {/* Public — login */}
+            <Route path="/login" element={<LoginPage />} />
 
-          {/* Main app — wrapped in AppShell */}
-          <Route element={<AppShell />}>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/movies" element={<MoviesPage />} />
-            <Route path="/movies/:id" element={<MovieDetailPage />} />
-            <Route path="/series" element={<SeriesPage />} />
-            <Route path="/series/:id" element={<SeriesDetailPage />} />
-            <Route path="/search" element={<SearchPage />} />
-            <Route path="/sources" element={<SourcesPage />} />
-            <Route path="/my-list" element={<MyListPage />} />
-            <Route path="/settings/playback" element={<ProfileSettingsPage />} />
-          </Route>
-        </Routes>
+            {/* Protected scope */}
+            <Route element={<ProtectedRoute />}>
+              {/* Onboarding — no AppShell */}
+              <Route path="/onboarding" element={<OnboardingPage />} />
+
+              {/* Main app — wrapped in AppShell */}
+              <Route element={<AppShell />}>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/movies" element={<MoviesPage />} />
+                <Route path="/movies/:id" element={<MovieDetailPage />} />
+                <Route path="/series" element={<SeriesPage />} />
+                <Route path="/series/:id" element={<SeriesDetailPage />} />
+                <Route path="/search" element={<SearchPage />} />
+                <Route path="/sources" element={<SourcesPage />} />
+                <Route path="/my-list" element={<MyListPage />} />
+                <Route path="/settings/playback" element={<ProfileSettingsPage />} />
+              </Route>
+            </Route>
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </ToastProvider>
   )

@@ -1,6 +1,8 @@
 import 'dotenv/config'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
+import jwt from '@fastify/jwt'
+import cookie from '@fastify/cookie'
 import { healthRoutes } from './routes/health.js'
 import { sourcesRoutes } from './routes/sources.js'
 import { enrichmentRoutes } from './routes/enrichment.js'
@@ -25,7 +27,9 @@ import { pairingRoutes } from './routes/pairing.js'
 import { devicesRoutes } from './routes/devices.js'
 import { commandsRoutes } from './routes/commands.js'
 import { testHelpersRoutes } from './routes/test-helpers.js'
-import { PORT, CORS_ORIGIN, TMDB_API_KEY } from './config/env.js'
+import { authRoutes } from './routes/auth.js'
+import { authenticate } from './plugins/auth.js'
+import { PORT, CORS_ORIGIN, TMDB_API_KEY, JWT_SECRET } from './config/env.js'
 import { db } from './db/client.js'
 import { TmdbClient } from './providers/metadata/tmdb/client.js'
 import { MetadataEnrichmentService } from './services/metadata-enrichment-service.js'
@@ -39,38 +43,50 @@ app.setErrorHandler((error, _request, reply) => {
   reply.status(status).send({ error: status >= 500 ? 'Internal Server Error' : error.message })
 })
 
-await app.register(cors, { origin: CORS_ORIGIN })
+await app.register(cors, { origin: CORS_ORIGIN, credentials: true })
+await app.register(jwt, { secret: JWT_SECRET })
+await app.register(cookie)
+
+// Public routes
 await app.register(healthRoutes)
-await app.register(sourcesRoutes)
-await app.register(syncRunsRoutes)
+await app.register(authRoutes)
 await app.register(moviesRoutes)
 await app.register(seriesRoutes)
+await app.register(genresRoutes)
+await app.register(catalogRoutes)
+await app.register(releaseLifecycleRoutes)
+
 const discoveryService = TMDB_API_KEY
   ? new ExternalDiscoveryService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
   : null
 
 await app.register(searchRoutes, { discoveryService: discoveryService ?? undefined })
-await app.register(discoveryRoutes, { discoveryService })
-await app.register(genresRoutes)
-await app.register(watchlistRoutes)
-await app.register(viewingProgressRoutes)
-await app.register(shelvesRoutes)
-await app.register(followReleaseRoutes)
-await app.register(feedbackRoutes)
-await app.register(tasteRoutes)
-await app.register(recommendationRoutes)
-await app.register(homeRoutes)
-await app.register(releaseLifecycleRoutes)
-await app.register(catalogRoutes)
-await app.register(profileRoutes)
 await app.register(pairingRoutes)
 await app.register(devicesRoutes)
 await app.register(commandsRoutes)
 
-const enrichmentService = TMDB_API_KEY
-  ? new MetadataEnrichmentService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
-  : null
-await app.register(enrichmentRoutes, { enrichmentService })
+// Protected routes
+await app.register(async function protectedScope(protectedApp) {
+  protectedApp.addHook('preHandler', authenticate)
+
+  await protectedApp.register(sourcesRoutes)
+  await protectedApp.register(syncRunsRoutes)
+  await protectedApp.register(profileRoutes)
+  await protectedApp.register(watchlistRoutes)
+  await protectedApp.register(viewingProgressRoutes)
+  await protectedApp.register(shelvesRoutes)
+  await protectedApp.register(followReleaseRoutes)
+  await protectedApp.register(feedbackRoutes)
+  await protectedApp.register(tasteRoutes)
+  await protectedApp.register(recommendationRoutes)
+  await protectedApp.register(homeRoutes)
+  await protectedApp.register(discoveryRoutes, { discoveryService })
+
+  const enrichmentService = TMDB_API_KEY
+    ? new MetadataEnrichmentService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
+    : null
+  await protectedApp.register(enrichmentRoutes, { enrichmentService })
+})
 
 if (process.env.NODE_ENV !== 'production') {
   await app.register(testHelpersRoutes)
