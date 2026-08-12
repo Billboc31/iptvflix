@@ -1,7 +1,7 @@
 {
   "ticket_id": "T035",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T035-extend-source-availability-lifecycle-to-episode-tr",
   "issue_number": 64,
-  "updated_at": "2026-08-12T08:59:56Z"
+  "updated_at": "2026-08-12T09:09:14Z"
 }
