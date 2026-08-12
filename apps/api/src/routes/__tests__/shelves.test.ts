@@ -584,4 +584,30 @@ describe('GET /shelves/:id dynamic availability evaluation', () => {
     const body = res.json() as { items: Array<{ mediaId: string }> }
     expect(body.items).toHaveLength(2)
   })
+
+  it('availableToMe: true for movies — returns only movies with an AVAILABLE record', async () => {
+    setupSelectWhere([makeDynamicShelf({ mediaType: 'MOVIE', availableToMe: true })])
+    setupSelectFromWhere({}) // inArray subquery
+    setupSelectWhereOrderLimit([movieAvailable])
+
+    const res = await app.inject({ method: 'GET', url: `/shelves/${DYNAMIC_SHELF_ID}` })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as { items: Array<{ mediaId: string }> }
+    expect(body.items).toHaveLength(1)
+    expect(body.items[0].mediaId).toBe('movie-live')
+  })
+
+  it('availableToMe: true for series — returns only series with an AVAILABLE record', async () => {
+    setupSelectWhere([makeDynamicShelf({ mediaType: 'SERIES', availableToMe: true })])
+    setupSelectFromWhere({}) // inArray subquery
+    setupSelectWhereOrderLimit([seriesAvailable])
+
+    const res = await app.inject({ method: 'GET', url: `/shelves/${DYNAMIC_SHELF_ID}` })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as { items: Array<{ mediaId: string }> }
+    expect(body.items).toHaveLength(1)
+    expect(body.items[0].mediaId).toBe('series-live')
+  })
 })
