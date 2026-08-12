@@ -1,4 +1,4 @@
-# Dependencies
+# Dependencies — global rule covers all subdirectory installs (e.g. apps/api/node_modules)
 node_modules/
 .pnpm-store/
 

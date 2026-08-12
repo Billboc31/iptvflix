@@ -1,0 +1,10 @@
+#!/bin/sh
+# Block commits that accidentally add/modify node_modules or .vite artifacts.
+# Deletions (D) are allowed — they represent cleanup like this one.
+added=$(git diff --cached --name-status | grep -E '^[AM]' | awk '{print $2}')
+if printf '%s\n' "$added" | grep -qE '^.*/node_modules/|^.*\.vite/'; then
+  echo "ERROR: staged paths contain node_modules or .vite artifacts — unstage them before committing."
+  printf '%s\n' "$added" | grep -E '^.*/node_modules/|^.*\.vite/'
+  exit 1
+fi
+exit 0
