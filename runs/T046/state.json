@@ -1,7 +1,7 @@
 {
   "ticket_id": "T046",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T046-protect-hosted-iptvflix-with-single-user-authentic",
   "issue_number": 95,
-  "updated_at": "2026-08-12T22:11:20Z"
+  "updated_at": "2026-08-12T23:34:50Z"
 }
