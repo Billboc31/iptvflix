@@ -3,5 +3,9 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T047-make-railway-vercel-staging-deployment-reproducibl",
   "issue_number": 96,
-  "updated_at": "2026-08-12T23:30:01Z"
+  "updated_at": "2026-08-12T23:30:14Z",
+  "pr_number": 108,
+  "pr_synced": true,
+  "pr_merged": true,
+  "daemon_archived": true
 }
