@@ -11,3 +11,7 @@
 [2026-08-12T23:30:54Z] compose: task (canonical prompt)
 [2026-08-12T23:30:54Z] snapshot: runtime-prompt=runs/T048/prompts/planner-attempt-1.md
 [2026-08-12T23:32:31Z] auto-run: step=planner done rc=0
+[2026-08-12T23:55:06Z] conflict-resolver: rebase clean — no conflicts
+[2026-08-12T23:55:06Z] conflict-resolver: running tests
+[2026-08-12T23:55:06Z] conflict-resolver: test-report written: runs/T048/conflict/test-report.md
+[2026-08-12T23:55:06Z] conflict-resolver: staging and committing resolution artifacts
