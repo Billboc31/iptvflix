@@ -16,3 +16,25 @@
 [2026-08-12T08:50:51Z] conflict-resolver: running tests
 [2026-08-12T08:50:51Z] conflict-resolver: test-report written: runs/T029/conflict/test-report.md
 [2026-08-12T08:50:51Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-12T08:51:25Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-12T08:51:25Z] auto-run: running step=tester
+[2026-08-12T08:51:26Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-12T08:51:26Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-12T08:51:26Z] prompt: generic fallback — injecting runs/T029/ticket.md
+[2026-08-12T08:51:26Z] compose: global-context=docs/ai/global-context.md
+[2026-08-12T08:51:26Z] compose: role=ai/roles/tester.md
+[2026-08-12T08:51:26Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-12T08:51:26Z] compose: skill=ai/skills/testing.md
+[2026-08-12T08:51:26Z] compose: skill=ai/skills/debugging.md
+[2026-08-12T08:51:26Z] compose: task (canonical prompt)
+[2026-08-12T08:51:26Z] snapshot: runtime-prompt=runs/T029/prompts/tester-attempt-1.md
+[2026-08-12T08:53:18Z] auto-run: step=tester done rc=0
+[2026-08-12T08:53:18Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-12T08:53:18Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-12T08:53:18Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.bin/drizzle-kit', 'apps/api/node_modules/.bin/msw', 'apps/api/node_modules/.bin/tsc', 'apps/api/node_modules/.bin/tsserver', 'apps/api/node_modules/.bin/tsx', 'apps/api/node_modules/.bin/vitest', 'apps/api/node_modules/.vite/vitest/results.json', 'apps/web/node_modules/.bin/msw', 'apps/web/node_modules/.bin/tsc', 'apps/web/node_modules/.bin/tsserver', 'apps/web/node_modules/.bin/vite', 'apps/web/node_modules/.bin/vitest', 'runs/T029/daemon.lock', 'runs/T029/runtime.log', 'runs/T029/workflow-status.md']
+[2026-08-12T08:53:18Z] commit-checkpoint: sha=1d05aec files=3 title='test(T029/workflow): tester — update 3 file(s)'
+[2026-08-12T08:53:18Z] auto-run: auto-push triggered
+[2026-08-12T08:53:18Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.bin/drizzle-kit', 'apps/api/node_modules/.bin/msw', 'apps/api/node_modules/.bin/tsc', 'apps/api/node_modules/.bin/tsserver', 'apps/api/node_modules/.bin/tsx', 'apps/api/node_modules/.bin/vitest', 'apps/api/node_modules/.vite/vitest/results.json', 'apps/web/node_modules/.bin/msw', 'apps/web/node_modules/.bin/tsc', 'apps/web/node_modules/.bin/tsserver', 'apps/web/node_modules/.bin/vite', 'apps/web/node_modules/.bin/vitest', 'runs/T029/daemon.lock', 'runs/T029/runtime.log', 'runs/T029/workflow-status.md']
+[2026-08-12T08:53:18Z] push: pushing branch=ticket/T029-make-release-lifecycle-event-idempotency-source-aw
+[2026-08-12T08:53:20Z] push: done branch=ticket/T029-make-release-lifecycle-event-idempotency-source-aw
+[2026-08-12T08:53:21Z] auto-run: TEST_COMPLETE — running PR lifecycle
