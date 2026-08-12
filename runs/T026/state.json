@@ -3,5 +3,7 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T026-fix-dynamic-shelf-availability-filtering-and-unsup",
   "issue_number": 51,
-  "updated_at": "2026-08-12T07:22:00Z"
+  "updated_at": "2026-08-12T07:22:10Z",
+  "pr_number": 58,
+  "pr_synced": true
 }
