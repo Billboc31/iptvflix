@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
+const mockDb = vi.hoisted(() => ({ select: vi.fn() }))
+
+vi.mock('../../db/client.js', () => ({ db: mockDb }))
+
 vi.mock('../shelf-service.js', () => ({
   getShelf: vi.fn(),
 }))
