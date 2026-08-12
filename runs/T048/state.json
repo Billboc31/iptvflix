@@ -3,5 +3,14 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T048-restore-full-green-validation-across-build-typeche",
   "issue_number": 97,
-  "updated_at": "2026-08-12T23:54:40Z"
+  "updated_at": "2026-08-12T23:55:08Z",
+  "pr_number": 110,
+  "pr_synced": true,
+  "pre_conflict_state": "TEST_COMPLETE",
+  "conflict_detected_at": "2026-08-12T23:54:53Z",
+  "conflict_pr_number": 110,
+  "conflicted_files": [
+    ".github/workflows/ci.yml",
+    ".gitignore"
+  ]
 }
