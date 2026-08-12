@@ -69,6 +69,7 @@ export interface XtreamSeriesDetail {
   episode_run_time: string
   category_id: string
   category_name: string
+  tmdb_id?: string
 }
 
 export interface XtreamEpisode {
