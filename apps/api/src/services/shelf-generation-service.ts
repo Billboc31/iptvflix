@@ -134,9 +134,9 @@ async function resolveGeneratedMembers(
   for (const r of seriesGenreRows) inferredGenreIdSet.add(r.genreId)
   const inferredGenreIds = [...inferredGenreIdSet]
 
-  // Rank with seeds as positive signals, fetching extra to allow seed filtering
+  // Rank with inferred genre IDs as preference signal; fetch extra slots to account for seed filtering
   const recs = await rankRecommendations(profileId, {
-    positiveMediaIds: seedMediaIds.map((s) => s.mediaId),
+    preferGenreIds: inferredGenreIds,
     mediaType: opts.mediaType,
     availableToMe: opts.availableToMe,
     includeSeen: false,
@@ -171,8 +171,8 @@ export async function generateShelfFromSeeds(
 ): Promise<GenerateShelfResponse> {
   const { title, seedMediaIds, mediaType, availableToMe, limit: rawLimit } = body
 
-  if (!Array.isArray(seedMediaIds) || seedMediaIds.length < 2 || seedMediaIds.length > 10) {
-    throw new ValidationError('seedMediaIds must have between 2 and 10 entries')
+  if (!Array.isArray(seedMediaIds) || seedMediaIds.length < 3 || seedMediaIds.length > 10) {
+    throw new ValidationError('seedMediaIds must have between 3 and 10 entries')
   }
 
   const limit = Math.min(Math.max(rawLimit ?? 20, 1), 100)
@@ -238,6 +238,9 @@ export async function refreshGeneratedShelf(
   if (shelf.type !== 'GENERATED') throw new ValidationError('Shelf is not a GENERATED shelf')
 
   const rules = shelf.rules as GeneratedShelfRules
+  if (!rules?.seedMediaIds || !Array.isArray(rules.seedMediaIds) || !rules.limit) {
+    throw new ValidationError('Shelf has invalid or missing generation rules')
+  }
 
   const { members, inferredGenreIds, seedTitles } = await resolveGeneratedMembers(
     profileId,
@@ -245,17 +248,20 @@ export async function refreshGeneratedShelf(
     { mediaType: rules.mediaType, availableToMe: rules.availableToMe, limit: rules.limit },
   )
 
-  await db.delete(shelfMembers).where(eq(shelfMembers.shelfId, shelfId))
-
-  if (members.length > 0) {
-    await db
-      .insert(shelfMembers)
-      .values(members.map((m, idx) => ({ shelfId, mediaType: m.mediaType, mediaId: m.mediaId, position: idx })))
-      .onConflictDoNothing()
-  }
-
   const updatedRules: GeneratedShelfRules = { ...rules, generatedAt: new Date().toISOString() }
-  await db.update(shelves).set({ rules: updatedRules, updatedAt: new Date() }).where(eq(shelves.id, shelfId))
+
+  await db.transaction(async (tx) => {
+    await tx.delete(shelfMembers).where(eq(shelfMembers.shelfId, shelfId))
+
+    if (members.length > 0) {
+      await tx
+        .insert(shelfMembers)
+        .values(members.map((m, idx) => ({ shelfId, mediaType: m.mediaType, mediaId: m.mediaId, position: idx })))
+        .onConflictDoNothing()
+    }
+
+    await tx.update(shelves).set({ rules: updatedRules, updatedAt: new Date() }).where(eq(shelves.id, shelfId))
+  })
 
   return {
     shelf: {

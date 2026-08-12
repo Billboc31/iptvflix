@@ -5,6 +5,7 @@ const mockDb = vi.hoisted(() => ({
   insert: vi.fn(),
   update: vi.fn(),
   delete: vi.fn(),
+  transaction: vi.fn(),
 }))
 
 vi.mock('../../db/client.js', () => ({ db: mockDb }))
@@ -26,10 +27,18 @@ const MOVIE_ID_A = 'aaaaaaaa-0000-0000-0000-000000000001'
 const MOVIE_ID_B = 'aaaaaaaa-0000-0000-0000-000000000002'
 const MOVIE_ID_C = 'aaaaaaaa-0000-0000-0000-000000000003'
 const MOVIE_ID_D = 'aaaaaaaa-0000-0000-0000-000000000004'
+const MOVIE_ID_E = 'aaaaaaaa-0000-0000-0000-000000000005'
 const SERIES_ID_A = 'bbbbbbbb-0000-0000-0000-000000000001'
 const DISCOVERY_ID_1 = 'dddddddd-0000-0000-0000-000000000001'
 const CANONICAL_FROM_DISCOVERY = 'cccccccc-0000-0000-0000-000000000001'
 const GENRE_ID_ACTION = 'gggggggg-0000-0000-0000-000000000001'
+
+// Three seed refs used in most tests
+const THREE_MOVIE_SEEDS = [
+  { mediaType: 'MOVIE' as const, mediaId: MOVIE_ID_A },
+  { mediaType: 'MOVIE' as const, mediaId: MOVIE_ID_B },
+  { mediaType: 'MOVIE' as const, mediaId: MOVIE_ID_E },
+]
 
 // ---------------------------------------------------------------------------
 // Mock helpers
@@ -91,16 +100,15 @@ function setupDeleteWhere() {
   })
 }
 
-// Standard setup for generateShelfFromSeeds with local-only recommendations:
-// 1. selectWhere — movie seed validation (inArray movies)
-// 2. selectWhere — series seed validation (inArray series) — skipped if no series seeds
-// 3. selectWhere — movieGenres for seeds
-// 4. selectWhere — seriesGenres for seeds — skipped if no series seeds
-// 5. selectWhere — max position
-// 6. insert shelf returning
-// 7. insert members onConflictDoNothing (only if members.length > 0)
+// Standard setup for generateShelfFromSeeds with local-only recommendations.
+// Default seeds: MOVIE_ID_A, MOVIE_ID_B, MOVIE_ID_E (3 movies).
+// Default recommendation candidate: MOVIE_ID_C.
 function setupGenerate({
-  seedMovieRows = [{ id: MOVIE_ID_A, title: 'Movie A' }, { id: MOVIE_ID_B, title: 'Movie B' }],
+  seedMovieRows = [
+    { id: MOVIE_ID_A, title: 'Movie A' },
+    { id: MOVIE_ID_B, title: 'Movie B' },
+    { id: MOVIE_ID_E, title: 'Movie E' },
+  ],
   seedSeriesRows = null as unknown[] | null,
   movieGenreRows = [] as unknown[],
   seriesGenreRows = null as unknown[] | null,
@@ -151,6 +159,8 @@ function setupGenerate({
 
 beforeEach(() => {
   vi.resetAllMocks()
+  // refresh uses db.transaction — pass mockDb as tx so delete/insert/update mocks are reused
+  mockDb.transaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => fn(mockDb))
 })
 
 // ---------------------------------------------------------------------------
@@ -158,30 +168,39 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('seed count validation', () => {
-  it('rejects fewer than 2 seeds', async () => {
+  it('rejects fewer than 3 seeds', async () => {
+    await expect(
+      generateShelfFromSeeds(PROFILE_ID, {
+        title: 'Test',
+        seedMediaIds: [
+          { mediaType: 'MOVIE', mediaId: MOVIE_ID_A },
+          { mediaType: 'MOVIE', mediaId: MOVIE_ID_B },
+        ],
+      }),
+    ).rejects.toThrow('seedMediaIds must have between 3 and 10 entries')
+  })
+
+  it('rejects exactly 1 seed', async () => {
     await expect(
       generateShelfFromSeeds(PROFILE_ID, {
         title: 'Test',
         seedMediaIds: [{ mediaType: 'MOVIE', mediaId: MOVIE_ID_A }],
       }),
-    ).rejects.toThrow('seedMediaIds must have between 2 and 10 entries')
+    ).rejects.toThrow('seedMediaIds must have between 3 and 10 entries')
   })
 
   it('rejects more than 10 seeds', async () => {
     const seeds = Array.from({ length: 11 }, (_, i) => ({ mediaType: 'MOVIE' as const, mediaId: `id-${i}` }))
     await expect(
       generateShelfFromSeeds(PROFILE_ID, { title: 'Test', seedMediaIds: seeds }),
-    ).rejects.toThrow('seedMediaIds must have between 2 and 10 entries')
+    ).rejects.toThrow('seedMediaIds must have between 3 and 10 entries')
   })
 
-  it('accepts exactly 2 seeds', async () => {
+  it('accepts exactly 3 seeds', async () => {
     setupGenerate()
     const result = await generateShelfFromSeeds(PROFILE_ID, {
       title: 'My Shelf',
-      seedMediaIds: [
-        { mediaType: 'MOVIE', mediaId: MOVIE_ID_A },
-        { mediaType: 'MOVIE', mediaId: MOVIE_ID_B },
-      ],
+      seedMediaIds: THREE_MOVIE_SEEDS,
     })
     expect(result.shelf.type).toBe('GENERATED')
   })
@@ -193,16 +212,13 @@ describe('seed count validation', () => {
 
 describe('unknown seed rejection', () => {
   it('rejects if a seed movie does not exist', async () => {
-    // Only MOVIE_ID_A found, MOVIE_ID_B is unknown
-    selectFromWhereInArray([{ id: MOVIE_ID_A, title: 'Movie A' }])
+    // MOVIE_ID_A and MOVIE_ID_E found; MOVIE_ID_B is unknown
+    selectFromWhereInArray([{ id: MOVIE_ID_A, title: 'Movie A' }, { id: MOVIE_ID_E, title: 'Movie E' }])
 
     await expect(
       generateShelfFromSeeds(PROFILE_ID, {
         title: 'Test',
-        seedMediaIds: [
-          { mediaType: 'MOVIE', mediaId: MOVIE_ID_A },
-          { mediaType: 'MOVIE', mediaId: MOVIE_ID_B },
-        ],
+        seedMediaIds: THREE_MOVIE_SEEDS,
       }),
     ).rejects.toThrow(`Seed media not found: ${MOVIE_ID_B}`)
   })
@@ -223,17 +239,15 @@ describe('deterministic generation', () => {
     setupGenerate({ rankResult: fixedRankResult })
     const result1 = await generateShelfFromSeeds(PROFILE_ID, {
       title: 'Shelf',
-      seedMediaIds: [
-        { mediaType: 'MOVIE', mediaId: MOVIE_ID_A },
-        { mediaType: 'MOVIE', mediaId: MOVIE_ID_B },
-      ],
+      seedMediaIds: THREE_MOVIE_SEEDS,
     })
 
-    // Check insert was called with members in score order (positions 0 and 1)
-    const insertCall = mockDb.insert.mock.calls[1] // second insert = members
-    const valuesCall = insertCall ? mockDb.insert.mock.results[1]?.value?.values : null
-    // The members are inserted at positions 0, 1 in rank order
     expect(result1.shelf.type).toBe('GENERATED')
+    // Members are MOVIE_ID_C and MOVIE_ID_D in score order (positions 0 and 1)
+    const valuesCall = mockDb.insert.mock.results[1]?.value
+    const members = valuesCall?.values.mock.calls[0][0] as Array<{ mediaId: string; position: number }>
+    expect(members[0]?.mediaId).toBe(MOVIE_ID_C)
+    expect(members[1]?.mediaId).toBe(MOVIE_ID_D)
   })
 })
 
@@ -256,16 +270,12 @@ describe('seed exclusion', () => {
 
     await generateShelfFromSeeds(PROFILE_ID, {
       title: 'Shelf',
-      seedMediaIds: [
-        { mediaType: 'MOVIE', mediaId: MOVIE_ID_A },
-        { mediaType: 'MOVIE', mediaId: MOVIE_ID_B },
-      ],
+      seedMediaIds: THREE_MOVIE_SEEDS,
     })
 
-    // The insert for members should only contain MOVIE_ID_C, not MOVIE_ID_A
+    // Members insert should only contain MOVIE_ID_C, not MOVIE_ID_A
     const insertValues = mockDb.insert.mock.results[1]?.value
     expect(insertValues).toBeDefined()
-    // values() was called — check what was passed
     const valuesArg = insertValues?.values.mock.calls[0][0]
     const memberIds = valuesArg?.map((m: { mediaId: string }) => m.mediaId) ?? []
     expect(memberIds).not.toContain(MOVIE_ID_A)
@@ -298,8 +308,8 @@ describe('deduplication', () => {
       ],
     }
 
-    // movie seeds
-    selectFromWhereInArray([{ id: MOVIE_ID_A, title: 'A' }, { id: MOVIE_ID_B, title: 'B' }])
+    // movie seeds (3)
+    selectFromWhereInArray([{ id: MOVIE_ID_A, title: 'A' }, { id: MOVIE_ID_B, title: 'B' }, { id: MOVIE_ID_E, title: 'E' }])
     // movie genres
     selectFromWhereInArray([])
     // rank
@@ -315,10 +325,7 @@ describe('deduplication', () => {
 
     await generateShelfFromSeeds(PROFILE_ID, {
       title: 'Shelf',
-      seedMediaIds: [
-        { mediaType: 'MOVIE', mediaId: MOVIE_ID_A },
-        { mediaType: 'MOVIE', mediaId: MOVIE_ID_B },
-      ],
+      seedMediaIds: THREE_MOVIE_SEEDS,
     })
 
     // No new movie was inserted (insert only called for shelf + members, not for a canonical movie)
@@ -352,8 +359,8 @@ describe('materialization', () => {
       ],
     }
 
-    // movie seeds
-    selectFromWhereInArray([{ id: MOVIE_ID_A, title: 'A' }, { id: MOVIE_ID_B, title: 'B' }])
+    // movie seeds (3)
+    selectFromWhereInArray([{ id: MOVIE_ID_A, title: 'A' }, { id: MOVIE_ID_B, title: 'B' }, { id: MOVIE_ID_E, title: 'E' }])
     // movie genres
     selectFromWhereInArray([])
     // rank
@@ -373,10 +380,7 @@ describe('materialization', () => {
 
     await generateShelfFromSeeds(PROFILE_ID, {
       title: 'Shelf',
-      seedMediaIds: [
-        { mediaType: 'MOVIE', mediaId: MOVIE_ID_A },
-        { mediaType: 'MOVIE', mediaId: MOVIE_ID_B },
-      ],
+      seedMediaIds: THREE_MOVIE_SEEDS,
     })
 
     // insert was called for: canonical movie, shelf, members = 3 inserts
@@ -396,16 +400,31 @@ describe('availableToMe constraint', () => {
 
     await generateShelfFromSeeds(PROFILE_ID, {
       title: 'Shelf',
-      seedMediaIds: [
-        { mediaType: 'MOVIE', mediaId: MOVIE_ID_A },
-        { mediaType: 'MOVIE', mediaId: MOVIE_ID_B },
-      ],
+      seedMediaIds: THREE_MOVIE_SEEDS,
       availableToMe: true,
     })
 
     expect(mockRankRecommendations).toHaveBeenCalledWith(
       PROFILE_ID,
       expect.objectContaining({ availableToMe: true }),
+    )
+  })
+
+  it('passes preferGenreIds derived from seeds to rankRecommendations', async () => {
+    setupGenerate({
+      movieGenreRows: [{ genreId: GENRE_ID_ACTION }],
+      rankResult: { profileId: PROFILE_ID, coldStart: false, candidates: [] },
+      withMembers: false,
+    })
+
+    await generateShelfFromSeeds(PROFILE_ID, {
+      title: 'Shelf',
+      seedMediaIds: THREE_MOVIE_SEEDS,
+    })
+
+    expect(mockRankRecommendations).toHaveBeenCalledWith(
+      PROFILE_ID,
+      expect.objectContaining({ preferGenreIds: [GENRE_ID_ACTION] }),
     )
   })
 })
@@ -416,24 +435,20 @@ describe('availableToMe constraint', () => {
 
 describe('persistence', () => {
   it('created shelf has type GENERATED, seedMediaIds in rules, and generatedAt set', async () => {
-    const seeds = [
-      { mediaType: 'MOVIE' as const, mediaId: MOVIE_ID_A },
-      { mediaType: 'MOVIE' as const, mediaId: MOVIE_ID_B },
-    ]
     setupGenerate({
       movieGenreRows: [{ genreId: GENRE_ID_ACTION }],
     })
 
     await generateShelfFromSeeds(PROFILE_ID, {
       title: 'My Shelf',
-      seedMediaIds: seeds,
+      seedMediaIds: THREE_MOVIE_SEEDS,
     })
 
     const insertShelfCall = mockDb.insert.mock.results[0]?.value
     const valuesArg = insertShelfCall?.values.mock.calls[0][0]
 
     expect(valuesArg.type).toBe('GENERATED')
-    expect(valuesArg.rules.seedMediaIds).toEqual(seeds)
+    expect(valuesArg.rules.seedMediaIds).toEqual(THREE_MOVIE_SEEDS)
     expect(valuesArg.rules.inferredGenreIds).toContain(GENRE_ID_ACTION)
     expect(typeof valuesArg.rules.generatedAt).toBe('string')
     expect(new Date(valuesArg.rules.generatedAt).getTime()).toBeGreaterThan(0)
@@ -447,7 +462,7 @@ describe('persistence', () => {
 describe('refresh', () => {
   it('replaces members and updates generatedAt for a GENERATED shelf', async () => {
     const storedRules = {
-      seedMediaIds: [{ mediaType: 'MOVIE', mediaId: MOVIE_ID_A }, { mediaType: 'MOVIE', mediaId: MOVIE_ID_B }],
+      seedMediaIds: THREE_MOVIE_SEEDS,
       mediaType: undefined,
       availableToMe: undefined,
       limit: 20,
@@ -459,8 +474,8 @@ describe('refresh', () => {
     selectFromWhere([{ id: SHELF_ID, profileId: PROFILE_ID, type: 'GENERATED', title: 'My Shelf', layoutHint: 'ROW', position: 0, rules: storedRules }])
 
     // resolveGeneratedMembers:
-    // movie seed validation
-    selectFromWhereInArray([{ id: MOVIE_ID_A, title: 'A' }, { id: MOVIE_ID_B, title: 'B' }])
+    // movie seed validation (3 seeds)
+    selectFromWhereInArray([{ id: MOVIE_ID_A, title: 'A' }, { id: MOVIE_ID_B, title: 'B' }, { id: MOVIE_ID_E, title: 'E' }])
     // movie genres
     selectFromWhereInArray([{ genreId: GENRE_ID_ACTION }])
     // rank
@@ -472,16 +487,15 @@ describe('refresh', () => {
       ],
     })
 
-    // delete existing members
+    // transaction internals (delete, insert, update via tx = mockDb)
     setupDeleteWhere()
-    // insert new members
     setupInsertOnConflict()
-    // update shelf rules
     setupUpdateWhere()
 
     const result = await refreshGeneratedShelf(SHELF_ID, PROFILE_ID)
 
     expect(result.shelf.type).toBe('GENERATED')
+    expect(mockDb.transaction).toHaveBeenCalledOnce()
     expect(mockDb.delete).toHaveBeenCalledOnce()
     expect(mockDb.update).toHaveBeenCalledOnce()
 
@@ -501,6 +515,12 @@ describe('refresh', () => {
     selectFromWhere([])
     await expect(refreshGeneratedShelf('nonexistent-id', PROFILE_ID)).rejects.toThrow('nonexistent-id not found')
   })
+
+  it('rejects refresh when rules are missing or malformed', async () => {
+    selectFromWhere([{ id: SHELF_ID, profileId: PROFILE_ID, type: 'GENERATED', title: 'Bad', layoutHint: 'ROW', position: 0, rules: {} }])
+
+    await expect(refreshGeneratedShelf(SHELF_ID, PROFILE_ID)).rejects.toThrow('Shelf has invalid or missing generation rules')
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -510,19 +530,20 @@ describe('refresh', () => {
 describe('explanation metadata', () => {
   it('returns inferredGenreIds and seedTitles in explanation', async () => {
     setupGenerate({
-      seedMovieRows: [{ id: MOVIE_ID_A, title: 'Film A' }, { id: MOVIE_ID_B, title: 'Film B' }],
+      seedMovieRows: [
+        { id: MOVIE_ID_A, title: 'Film A' },
+        { id: MOVIE_ID_B, title: 'Film B' },
+        { id: MOVIE_ID_E, title: 'Film E' },
+      ],
       movieGenreRows: [{ genreId: GENRE_ID_ACTION }],
     })
 
     const result = await generateShelfFromSeeds(PROFILE_ID, {
       title: 'Shelf',
-      seedMediaIds: [
-        { mediaType: 'MOVIE', mediaId: MOVIE_ID_A },
-        { mediaType: 'MOVIE', mediaId: MOVIE_ID_B },
-      ],
+      seedMediaIds: THREE_MOVIE_SEEDS,
     })
 
-    expect(result.explanation.seedTitles).toEqual(['Film A', 'Film B'])
+    expect(result.explanation.seedTitles).toEqual(['Film A', 'Film B', 'Film E'])
     expect(result.explanation.inferredGenreIds).toContain(GENRE_ID_ACTION)
   })
 })

@@ -1,21 +1,24 @@
-All tasks complete. Here is a summary of every file created or modified:
+All four fixes are in place and all tests pass. Here's a summary of what changed:
 
----
+**Files modified:**
 
-## Summary
+1. **`apps/api/src/services/shelf-generation-service.ts`**
+   - Min seeds: `< 2` → `< 3`, error message updated to "between 3 and 10 entries"
+   - Ranking call: replaced `positiveMediaIds: seedIds` (useless, seeds are filtered out anyway) with `preferGenreIds: inferredGenreIds` (actually influences scores for non-seed candidates)
+   - `refreshGeneratedShelf`: added defensive validation of `rules` schema, wrapped delete/insert/update in a `db.transaction` to prevent partial-state on failure
 
-### Files created
-- **`apps/api/migrations/0019_generated_shelf.sql`** — Drizzle-generated migration: `ALTER TYPE "public"."shelf_type" ADD VALUE 'GENERATED'`
-- **`apps/api/migrations/meta/0019_snapshot.json`** — Drizzle snapshot (auto-generated)
-- **`apps/api/src/services/shelf-generation-service.ts`** — New service with:
-  - `generateShelfFromSeeds(profileId, body)` — validates 2–10 seeds, infers genres, ranks via existing engine, filters seeds, materializes discovery candidates, persists shelf + members + rules intent
-  - `materializeDiscoveryCandidate(candidateId, mediaType)` — private helper: checks for existing canonical link, otherwise creates canonical Movie/Series with zero availability and writes FK back
-  - `refreshGeneratedShelf(shelfId, profileId)` — replaces members and updates `generatedAt` in rules
-- **`apps/api/src/services/__tests__/shelf-generation-service.test.ts`** — 14 tests covering all plan scenarios: seed count validation, unknown seed rejection, determinism, seed exclusion, deduplication, materialization, `availableToMe` constraint, persistence, refresh, and explanation metadata
+2. **`apps/api/src/services/recommendation-ranking-service.ts`**
+   - Added `preferGenreIds?: string[]` to `RankOpts`
+   - Computes `preferGenreBonus` (+3.0 if candidate shares any preferred genre); applied in both cold-start and warm scoring paths so seed-genre signals work for new profiles too
 
-### Files modified
-- **`packages/api-contracts/src/shelves.ts`** — Added `GENERATED` to `ShelfType`; added `SeedMediaRef`, `GeneratedShelfRules`, `GenerateShelfBody`, `GenerateShelfResponse` types
-- **`apps/api/src/db/schema/shelves.ts`** — Added `'GENERATED'` to `shelfTypeEnum`
-- **`apps/api/src/services/recommendation-ranking-service.ts`** — Added `positiveMediaIds?: string[]` to `RankOpts`; merged with taste `positiveMediaIds` for scoring
-- **`apps/api/src/services/shelf-service.ts`** — `getShelf` resolves `GENERATED` shelves via stored `shelfMembers` (same as MANUAL); updated type casts throughout
-- **`apps/api/src/routes/shelves.ts`** — Added `POST /shelves/generate` (creates generated shelf, 201) and `POST /shelves/:id/refresh` (refreshes existing GENERATED shelf); server-side validation of seed count, mediaType, and each seed entry
+3. **`apps/api/src/routes/shelves.ts`**
+   - Route validation: `< 2` → `< 3`, error message updated to match
+
+4. **`apps/api/src/services/__tests__/shelf-generation-service.test.ts`**
+   - All flows updated to use 3 seeds (added `MOVIE_ID_E`, `THREE_MOVIE_SEEDS` constant)
+   - `'rejects fewer than 2 seeds'` → `'rejects fewer than 3 seeds'` (now uses 2 seeds which are rejected)
+   - `'accepts exactly 2 seeds'` → `'rejects exactly 2 seeds'` + `'accepts exactly 3 seeds'`
+   - Added `mockDb.transaction` mock (passes `mockDb` as `tx` so existing delete/insert/update mocks still work)
+   - Added test: `'rejects refresh when rules are missing or malformed'`
+   - Added test: `'passes preferGenreIds derived from seeds to rankRecommendations'`
+   - 17 tests total (was 14), all passing

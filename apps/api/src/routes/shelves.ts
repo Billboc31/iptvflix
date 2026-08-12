@@ -129,8 +129,8 @@ export async function shelvesRoutes(app: FastifyInstance): Promise<void> {
     if (!title || typeof title !== 'string') {
       return reply.status(400).send({ error: 'title is required' })
     }
-    if (!Array.isArray(seedMediaIds) || seedMediaIds.length < 2 || seedMediaIds.length > 10) {
-      return reply.status(400).send({ error: 'seedMediaIds must have between 2 and 10 entries', validationError: true })
+    if (!Array.isArray(seedMediaIds) || seedMediaIds.length < 3 || seedMediaIds.length > 10) {
+      return reply.status(400).send({ error: 'seedMediaIds must have between 3 and 10 entries', validationError: true })
     }
     for (const seed of seedMediaIds) {
       if (!seed?.mediaType || !seed?.mediaId) {
