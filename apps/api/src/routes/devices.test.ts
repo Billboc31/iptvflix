@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
+import type { FastifyReply, FastifyRequest } from 'fastify'
 
 vi.mock('../services/device.service.js', () => ({
   listDevices: vi.fn(),
@@ -13,12 +14,17 @@ vi.mock('../services/device.service.js', () => ({
   },
 }))
 
+vi.mock('../middleware/authenticateWeb.js', () => ({
+  authenticateWeb: vi.fn().mockResolvedValue(true),
+}))
+
 import {
   listDevices,
   renameDevice,
   revokeDevice,
   DeviceNotFoundError,
 } from '../services/device.service.js'
+import { authenticateWeb } from '../middleware/authenticateWeb.js'
 import { devicesRoutes } from './devices.js'
 
 const app = Fastify({ logger: false })
@@ -34,7 +40,17 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(authenticateWeb).mockResolvedValue(true)
 })
+
+function mockWebAuthFail() {
+  vi.mocked(authenticateWeb).mockImplementationOnce(
+    async (_req: FastifyRequest, reply: FastifyReply) => {
+      void reply.status(401).send({ error: 'Web authentication required' })
+      return false
+    },
+  )
+}
 
 const DEVICE = {
   id: 'dev-uuid',
@@ -45,6 +61,12 @@ const DEVICE = {
 }
 
 describe('GET /devices', () => {
+  it('returns 401 without Web auth', async () => {
+    mockWebAuthFail()
+    const res = await app.inject({ method: 'GET', url: '/devices' })
+    expect(res.statusCode).toBe(401)
+  })
+
   it('returns list of devices', async () => {
     vi.mocked(listDevices).mockResolvedValueOnce([DEVICE])
     const res = await app.inject({ method: 'GET', url: '/devices' })

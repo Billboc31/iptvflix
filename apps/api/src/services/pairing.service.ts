@@ -57,7 +57,7 @@ export async function getPairingStatus(code: string): Promise<PairingStatusRespo
   if (row.status === 'approved' && row.deviceId) {
     const [device] = await db.select().from(devices).where(eq(devices.id, row.deviceId))
     if (device && !device.revokedAt) {
-      return { status: 'approved', deviceToken: undefined }
+      return { status: 'approved', deviceToken: row.deviceToken ?? undefined }
     }
   }
   return { status: 'pending' }
@@ -92,7 +92,7 @@ export async function approvePairingCode(
 
   await db
     .update(pairingCodes)
-    .set({ status: 'approved', deviceId: device.id })
+    .set({ status: 'approved', deviceId: device.id, deviceToken: token })
     .where(eq(pairingCodes.id, row.id))
 
   return { device, deviceToken: token }

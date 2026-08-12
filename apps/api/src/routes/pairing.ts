@@ -6,6 +6,7 @@ import {
   approvePairingCode,
   PairingCodeNotFoundError,
 } from '../services/pairing.service.js'
+import { authenticateWeb } from '../middleware/authenticateWeb.js'
 
 const LONG_POLL_TIMEOUT_MS = 30_000
 const LONG_POLL_INTERVAL_MS = 1_000
@@ -43,6 +44,7 @@ export async function pairingRoutes(app: FastifyInstance): Promise<void> {
 
   // Web — inspect a pending code
   app.get<{ Params: { code: string } }>('/pairing/codes/:code', async (request, reply) => {
+    if (!(await authenticateWeb(request, reply))) return
     try {
       return await getPairingCodeDetail(request.params.code)
     } catch (err) {
@@ -57,6 +59,7 @@ export async function pairingRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { code: string }; Body: { name?: string } }>(
     '/pairing/codes/:code/approve',
     async (request, reply) => {
+      if (!(await authenticateWeb(request, reply))) return
       try {
         const { device, deviceToken } = await approvePairingCode(
           request.params.code,

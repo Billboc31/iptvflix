@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { PlaybackCommandRequest } from '@iptvflix/api-contracts'
 import { authenticateDevice } from '../middleware/authenticateDevice.js'
+import { authenticateWeb } from '../middleware/authenticateWeb.js'
 import {
   createCommand,
   getPendingCommands,
@@ -21,6 +22,7 @@ export async function commandsRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string }; Body: PlaybackCommandRequest }>(
     '/devices/:id/commands',
     async (request, reply) => {
+      if (!(await authenticateWeb(request, reply))) return
       const { mediaType, mediaId, availabilityId, startPositionMs } = request.body
       if (!mediaType || !mediaId) {
         return reply.status(400).send({ error: 'mediaType and mediaId are required' })

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
+import type { FastifyReply, FastifyRequest } from 'fastify'
 
 vi.mock('../services/pairing.service.js', () => ({
   createPairingCode: vi.fn(),
@@ -14,6 +15,10 @@ vi.mock('../services/pairing.service.js', () => ({
   },
 }))
 
+vi.mock('../middleware/authenticateWeb.js', () => ({
+  authenticateWeb: vi.fn().mockResolvedValue(true),
+}))
+
 import {
   createPairingCode,
   getPairingCodeDetail,
@@ -21,6 +26,7 @@ import {
   approvePairingCode,
   PairingCodeNotFoundError,
 } from '../services/pairing.service.js'
+import { authenticateWeb } from '../middleware/authenticateWeb.js'
 import { pairingRoutes } from './pairing.js'
 
 const app = Fastify({ logger: false })
@@ -36,7 +42,17 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(authenticateWeb).mockResolvedValue(true)
 })
+
+function mockWebAuthFail() {
+  vi.mocked(authenticateWeb).mockImplementationOnce(
+    async (_req: FastifyRequest, reply: FastifyReply) => {
+      void reply.status(401).send({ error: 'Web authentication required' })
+      return false
+    },
+  )
+}
 
 const FUTURE = new Date(Date.now() + 300_000).toISOString()
 
@@ -50,11 +66,12 @@ describe('POST /pairing/codes', () => {
 })
 
 describe('GET /pairing/codes/:code/status', () => {
-  it('returns approved status immediately when approved', async () => {
-    vi.mocked(getPairingStatus).mockResolvedValueOnce({ status: 'approved' })
+  it('returns approved status with deviceToken when approved', async () => {
+    vi.mocked(getPairingStatus).mockResolvedValueOnce({ status: 'approved', deviceToken: 'tok' })
     const res = await app.inject({ method: 'GET', url: '/pairing/codes/ABCD1234/status' })
     expect(res.statusCode).toBe(200)
     expect(res.json().status).toBe('approved')
+    expect(res.json().deviceToken).toBe('tok')
   })
 
   it('returns pending when still waiting (exits loop after second poll)', async () => {
@@ -75,6 +92,12 @@ describe('GET /pairing/codes/:code/status', () => {
 })
 
 describe('GET /pairing/codes/:code', () => {
+  it('returns 401 without Web auth', async () => {
+    mockWebAuthFail()
+    const res = await app.inject({ method: 'GET', url: '/pairing/codes/ABCD1234' })
+    expect(res.statusCode).toBe(401)
+  })
+
   it('returns code detail for a pending code', async () => {
     vi.mocked(getPairingCodeDetail).mockResolvedValueOnce({
       code: 'ABCD1234',
@@ -94,6 +117,16 @@ describe('GET /pairing/codes/:code', () => {
 })
 
 describe('POST /pairing/codes/:code/approve', () => {
+  it('returns 401 without Web auth', async () => {
+    mockWebAuthFail()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/pairing/codes/ABCD1234/approve',
+      payload: {},
+    })
+    expect(res.statusCode).toBe(401)
+  })
+
   const device = {
     id: 'dev-uuid',
     name: 'TV',

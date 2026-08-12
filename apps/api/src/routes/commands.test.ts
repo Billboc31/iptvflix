@@ -8,6 +8,10 @@ vi.mock('../middleware/authenticateDevice.js', () => ({
   authenticateDevice: vi.fn(),
 }))
 
+vi.mock('../middleware/authenticateWeb.js', () => ({
+  authenticateWeb: vi.fn().mockResolvedValue(true),
+}))
+
 vi.mock('../services/command.service.js', () => ({
   createCommand: vi.fn(),
   getPendingCommands: vi.fn(),
@@ -39,6 +43,7 @@ vi.mock('../lib/device-events.js', () => ({
 
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { authenticateDevice } from '../middleware/authenticateDevice.js'
+import { authenticateWeb } from '../middleware/authenticateWeb.js'
 import {
   createCommand,
   getPendingCommands,
@@ -95,9 +100,29 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(authenticateWeb).mockResolvedValue(true)
 })
 
+function mockWebAuthFail() {
+  vi.mocked(authenticateWeb).mockImplementationOnce(
+    async (_req: FastifyRequest, reply: FastifyReply) => {
+      void reply.status(401).send({ error: 'Web authentication required' })
+      return false
+    },
+  )
+}
+
 describe('POST /devices/:id/commands', () => {
+  it('returns 401 without Web auth', async () => {
+    mockWebAuthFail()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/devices/dev-uuid/commands',
+      payload: { mediaType: 'movie', mediaId: 'media-uuid' },
+    })
+    expect(res.statusCode).toBe(401)
+  })
+
   it('creates a playback command', async () => {
     vi.mocked(createCommand).mockResolvedValueOnce(CMD)
     const res = await app.inject({

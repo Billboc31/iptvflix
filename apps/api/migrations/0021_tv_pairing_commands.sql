@@ -16,6 +16,7 @@ CREATE TABLE "pairing_codes" (
 	"code" varchar(8) NOT NULL,
 	"status" "pairing_code_status" DEFAULT 'pending' NOT NULL,
 	"device_id" uuid,
+	"device_token" varchar(64),
 	"expires_at" timestamp with time zone NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "pairing_codes_code_unique" UNIQUE("code")
