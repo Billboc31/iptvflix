@@ -11,3 +11,25 @@
 [2026-08-12T10:05:27Z] compose: task (canonical prompt)
 [2026-08-12T10:05:27Z] snapshot: runtime-prompt=runs/T036/prompts/planner-attempt-1.md
 [2026-08-12T10:08:21Z] auto-run: step=planner done rc=0
+[2026-08-12T10:17:16Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-12T10:17:16Z] auto-run: running step=tester
+[2026-08-12T10:17:17Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-12T10:17:17Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-12T10:17:17Z] prompt: generic fallback — injecting runs/T036/ticket.md
+[2026-08-12T10:17:17Z] compose: global-context=docs/ai/global-context.md
+[2026-08-12T10:17:17Z] compose: role=ai/roles/tester.md
+[2026-08-12T10:17:17Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-12T10:17:17Z] compose: skill=ai/skills/testing.md
+[2026-08-12T10:17:17Z] compose: skill=ai/skills/debugging.md
+[2026-08-12T10:17:17Z] compose: task (canonical prompt)
+[2026-08-12T10:17:17Z] snapshot: runtime-prompt=runs/T036/prompts/tester-attempt-1.md
+[2026-08-12T10:19:33Z] auto-run: step=tester done rc=0
+[2026-08-12T10:19:33Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-12T10:19:33Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-12T10:19:33Z] commit-checkpoint: unstaged runtime garbage: ['runs/T036/daemon.lock', 'runs/T036/runtime.log', 'runs/T036/workflow-status.md']
+[2026-08-12T10:19:33Z] commit-checkpoint: sha=5b86368 files=3 title='test(T036/workflow): tester — update 3 file(s)'
+[2026-08-12T10:19:33Z] auto-run: auto-push triggered
+[2026-08-12T10:19:33Z] push: tolerating runtime dirty files (not blocking): ['runs/T036/daemon.lock', 'runs/T036/runtime.log', 'runs/T036/workflow-status.md']
+[2026-08-12T10:19:33Z] push: pushing branch=ticket/T036-repair-drizzle-migration-snapshot-chain-after-epis
+[2026-08-12T10:19:35Z] push: done branch=ticket/T036-repair-drizzle-migration-snapshot-chain-after-epis
+[2026-08-12T10:19:35Z] auto-run: TEST_COMPLETE — running PR lifecycle
