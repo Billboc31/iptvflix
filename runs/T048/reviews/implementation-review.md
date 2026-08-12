@@ -1,98 +1,67 @@
-Now I have the full picture. Let me write the structured review.
+Now I have enough information for a complete review. Let me write it.
 
 ---
 
-## PR Review — T048 — Restore full green validation
+## PR Review — T048 — Restore full green validation across build, typecheck and tests
 
 ### Résumé
 
-L'implémentation livre les 6 correctifs fonctionnels attendus (scripts `validate`, CI, doc, 3 fix TypeScript dans les tests API), mais le commit inclut accidentellement **306 fichiers compilés** du frontend web (`apps/web/src/**/*.js`, `*.d.ts`, `*.js.map`, `*.d.ts.map`) qui n'ont rien à faire dans le dépôt.
+L'implémentation livre l'ensemble des correctifs demandés : script `pnpm validate`, documentation de validation, durcissement du `.gitignore`, correction des fixtures de type dans les tests, et gates CI séquentiels. Le problème bloquant de la première review (304 artefacts web générés commités par accident) est résolu par le commit `031290e`.
 
 ---
 
 ### Vérifications effectuées
 
-- Diff complet du commit `3b04eca` vs `main`
-- Vérification de l'existence des artefacts dans `main` (absents → introduits par T048)
-- Vérification du `.gitignore` (ne couvre pas les `.js`/`.d.ts` dans `src/`)
-- Vérification de `apps/api/tsconfig.build.json` (exclu les tests ✅, pré-existant)
-- Vérification de `packages/api-contracts/src/sources.ts` (`SourceType = 'XTREAM' | 'M3U' | 'PLEX'`)
-- Vérification du `MockSource` local dans `sources.test.ts`
+- Diff complet `main...HEAD` (692 fichiers dont ~560 dans `runs/` et migrations/services d'autres tickets déjà fusionnés)
+- Vérification de l'absence d'artefacts web générés dans le diff actuel (grep `apps/web/src/**/*.js` → aucun résultat)
+- Lecture de `.gitignore` — règles `apps/web/src/**/*.{js,d.ts,js.map,d.ts.map}` + négation `!apps/web/src/vite-env.d.ts` ✅
+- Lecture de `apps/api/tsconfig.build.json` — exclut `src/**/*.test.ts` et `src/**/__tests__/**` ✅
+- Lecture de `package.json` root — script `"validate": "pnpm build && pnpm typecheck && pnpm test"` ✅
+- Lecture de `docs/validation.md` — table individuelle + règle `TEST_COMPLETE` explicite ✅
+- Lecture du workflow CI — 3 steps séquentiels `Build → Typecheck → Run unit & integration tests` avec service PostgreSQL ✅
+- Diff de `sources.test.ts` — `SourceType` importé de `@iptvflix/api-contracts` ✅
+- Diff de `catalog-sync-service.test.ts` — doublons supprimés, `XtreamSeriesInfo` et `PlexCatalogSnapshot` intégrés ✅
+- Diff de `vertical-slice.test.ts` — `FastifyInstance` typé, handler `get_series_info` ajouté ✅
+- Diff de `title-normalizer.test.ts` — assertions `variantAttributes` ajoutées à chaque cas existant ✅
+- Vérification que `feedback.test.ts` est un nouveau fichier (pas un test supprimé/déplacé)
 
 ---
 
 ### Points validés
 
-| Livrable | Statut |
+| Critère d'acceptance | Statut |
 |---|---|
-| `package.json` → script `"validate"` | ✅ |
-| `docs/validation.md` | ✅ Conforme au plan |
-| `.github/workflows/ci.yml` → étape `pnpm build` | ✅ |
-| `catalog-sync-service.test.ts` → suppression doublons TS2783 | ✅ |
-| `feedback.test.ts` → élargissement type `setupUpsert` TS2322 | ✅ |
-| `vertical-slice.test.ts` → import `FastifyInstance` TS2347 | ✅ |
-| `apps/api/tsconfig.build.json` exclut bien `*.test.ts` | ✅ (pré-existant, non cassé) |
+| Root production build vert sur checkout propre | ✅ `tsconfig.build.json` exclut les tests |
+| API et Web typecheck incluent les sources test | ✅ `tsconfig.json` (sans exclusion) utilisé pour `pnpm typecheck` |
+| Suite de tests complète verte (507 tests) | ✅ rapporté dans `implementation-output.md` |
+| Fixtures PLEX/M3U/XTREAM utilisent `SourceType` partagé | ✅ `sources.test.ts` importe `@iptvflix/api-contracts` |
+| Failures title-matching/catalog-sync traitées | ✅ mises à jour justifiées (nouvelles assertions `variantAttributes`) |
+| Aucun test supprimé ou skippé sans justification | ✅ toutes les modifications sont des ajouts/corrections |
+| Commande full-validation avec exit code non-zéro | ✅ `pnpm validate` documenté, retourne non-zéro si un gate échoue |
 
 ---
 
 ### Problèmes détectés
 
-#### 🔴 BLOQUANT — 306 artefacts de build web commités
+#### 🟡 MINEUR — CI n'appelle pas `pnpm validate`
 
-Le commit `3b04eca` introduit 306 fichiers générés par `tsc --declaration` dans `apps/web/src/` :
+Le workflow `.github/workflows/ci.yml` exécute les trois gates en steps séparés (`Build`, `Typecheck`, `Run unit & integration tests`) plutôt que via `pnpm validate`. Fonctionnellement équivalent et plus lisible dans les logs CI. Pas de régression, mais une légère incohérence entre la commande documentée et ce qu'exécute le CI.
 
-```
-apps/web/src/App.js
-apps/web/src/App.d.ts
-apps/web/src/App.js.map
-apps/web/src/App.d.ts.map
-apps/web/src/components/content/ContinueWatchingRow.js
-apps/web/vite.config.js
-… (302 autres)
-```
+#### 🟡 MINEUR — Table de triage Phase 1 non archivée
 
-Ces fichiers **n'existent pas dans `main`**. Ils ont été générés comme effet de bord de `pnpm build` et commités par accident (le `.gitignore` racine ne couvre que `dist/`, `build/`, `out/` — pas les `.js`/`.d.ts` produits en place dans `src/`).
-
-Conséquences :
-- Pollution de l'historique git avec des fichiers binaires/générés
-- Sur un `git clone` suivi de `pnpm build`, conflit entre les fichiers déjà présents (committés) et la sortie freshement générée
-- Les 306 fichiers masquent les vrais changements dans toute future diff
-
-**Correction requise :** Retirer ces fichiers du commit et ajouter les règles `.gitignore` appropriées (`apps/web/src/**/*.js`, `apps/web/src/**/*.d.ts`, `apps/web/src/**/*.js.map`, `apps/web/src/**/*.d.ts.map`, `apps/web/vite.config.js`, etc.) — en préservant `apps/web/src/vite-env.d.ts` qui est un vrai fichier source Vite.
-
-#### 🟡 MINEUR — `MockSource` dans `sources.test.ts` toujours hand-rolled
-
-Le plan (Phase 2) demandait de remplacer le type local :
-```ts
-// apps/api/src/routes/sources.test.ts:38
-type MockSource = Omit<typeof mockSource, 'type' | 'username'> & {
-  type: 'XTREAM' | 'PLEX' | 'M3U'
-```
-par le `SourceType` partagé de `packages/api-contracts`. Ce fichier n'est pas dans le commit. Le type local est fonctionnellement identique à `SourceType` (`'XTREAM' | 'M3U' | 'PLEX'`) donc il n'y a pas d'erreur TypeScript, mais c'est un critère d'acceptance explicite du ticket. Non-bloquant car aucune régression produite.
-
-#### 🟡 MINEUR — Absence de la triage table Phase 1
-
-Le plan demandait une table de triage `fichier / erreur / verdict`. L'`implementation-output.md` ne la documente pas. L'inventaire des erreurs a été effectué mais non archivé.
+Le plan (Phase 1) demandait une table inventaire `fichier / erreur / verdict`. L'`implementation-output.md` documente le résultat final mais pas la triage initiale. Traçabilité réduite, non-bloquant.
 
 ---
 
 ### Risques éventuels
 
-- Si les fichiers web générés ne sont pas retirés **avant** le merge, tout futur `pnpm build` dans un checkout propre générera des conflits de fichiers déjà trackés.
-- Le `.gitignore` actuel est insuffisant pour une monorepo avec `"declaration": true` dans `tsconfig.base.json` — risque de récurrence sur d'autres tickets.
+- La négation `!apps/web/src/vite-env.d.ts` dans `.gitignore` est correcte mais fragile si d'autres fichiers `.d.ts` source légitimes sont ajoutés dans `apps/web/src/`. Acceptable pour l'instant.
+- Les tests d'intégration (`src/__tests__/integration/`, `src/db/__tests__/`) nécessitent PostgreSQL — documenté dans `docs/validation.md`, pas de risque de faux-positif.
 
 ---
 
 ### Décision
 
-- REQUEST_CHANGES
+Le problème bloquant identifié lors de la première review a été résolu. Tous les critères d'acceptance du ticket sont satisfaits. Les deux observations mineures ne constituent pas des régressions.
 
-### Actions demandées
-
-1. **[Bloquant]** Retirer du commit les 306 fichiers `apps/web/src/**/*.js`, `*.d.ts`, `*.js.map`, `*.d.ts.map` et les fichiers `apps/web/vite.config.{js,d.ts,js.map,d.ts.map}`. Ajouter des règles `.gitignore` pour les couvrir. Re-vérifier que `pnpm validate` passe toujours après nettoyage.
-
-2. **[Mineur / optionnel]** Remplacer le `MockSource` hand-rolled dans `apps/api/src/routes/sources.test.ts` par `import type { SourceType } from '@iptvflix/api-contracts'` pour respecter l'acceptance criterion du ticket.
-
----
-
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
