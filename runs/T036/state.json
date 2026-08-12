@@ -1,7 +1,7 @@
 {
   "ticket_id": "T036",
-  "state": "IMPLEMENTATION_APPROVED",
+  "state": "TEST_COMPLETE",
   "branch": "ticket/T036-repair-drizzle-migration-snapshot-chain-after-epis",
   "issue_number": 75,
-  "updated_at": "2026-08-12T10:16:43Z"
+  "updated_at": "2026-08-12T10:19:33Z"
 }
