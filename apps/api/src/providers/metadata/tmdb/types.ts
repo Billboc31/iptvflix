@@ -41,6 +41,8 @@ export interface TmdbSearchResultItem {
   first_air_date?: string
   poster_path?: string | null
   overview?: string
+  popularity?: number
+  vote_average?: number
 }
 
 export interface TmdbSearchResponse {

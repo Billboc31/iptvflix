@@ -20,6 +20,8 @@ function makeProvider(
     getSeriesMetadata: async () => null,
     searchMovies: searchMoviesFn,
     searchSeries: searchSeriesFn,
+    fetchMovieFeed: async () => [],
+    fetchSeriesFeed: async () => [],
   }
 }
 

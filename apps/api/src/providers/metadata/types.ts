@@ -29,6 +29,8 @@ export interface ExternalSeriesMetadata {
   firstAirDate?: string | null
 }
 
+export type DiscoveryFeed = 'popular' | 'trending' | 'upcoming'
+
 export interface MetadataCandidate {
   externalId: string
   title: string
@@ -39,6 +41,8 @@ export interface MetadataCandidate {
   releaseStatus?: string | null
   releaseDate?: string | null
   firstAirDate?: string | null
+  popularity?: number | null
+  voteAverage?: number | null
 }
 
 export interface MetadataProvider {
@@ -46,6 +50,8 @@ export interface MetadataProvider {
   getSeriesMetadata(tmdbId: number): Promise<ExternalSeriesMetadata | null>
   searchMovies(query: string, year?: number | null): Promise<MetadataCandidate[]>
   searchSeries(query: string, year?: number | null): Promise<MetadataCandidate[]>
+  fetchMovieFeed(feed: DiscoveryFeed, page: number): Promise<MetadataCandidate[]>
+  fetchSeriesFeed(feed: DiscoveryFeed, page: number): Promise<MetadataCandidate[]>
 }
 
 export class NoopMetadataProvider implements MetadataProvider {
@@ -62,6 +68,14 @@ export class NoopMetadataProvider implements MetadataProvider {
   }
 
   async searchSeries(_query: string, _year?: number | null): Promise<MetadataCandidate[]> {
+    return []
+  }
+
+  async fetchMovieFeed(_feed: DiscoveryFeed, _page: number): Promise<MetadataCandidate[]> {
+    return []
+  }
+
+  async fetchSeriesFeed(_feed: DiscoveryFeed, _page: number): Promise<MetadataCandidate[]> {
     return []
   }
 }
