@@ -3,8 +3,8 @@
   "state": "IMPLEMENTATION_APPROVED",
   "branch": "ticket/T030-bound-and-harden-xtream-per-series-episode-metadat",
   "issue_number": 65,
-  "updated_at": "2026-08-12T09:38:36Z",
+  "updated_at": "2026-08-12T09:39:49Z",
   "pre_conflict_state": "IMPLEMENTATION_APPROVED",
-  "conflict_detected_at": "2026-08-12T09:38:00Z",
+  "conflict_detected_at": "2026-08-12T09:39:12Z",
   "conflicted_files": []
 }
