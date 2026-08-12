@@ -217,6 +217,7 @@ export default function ProfileSettingsPage() {
     preferredSubtitleLanguages: [],
     preferredSourceIds: [],
     maxVideoQuality: null,
+    autoplayPreviews: true,
   })
   const [sources, setSources] = useState<SourceResponse[]>([])
   const [loading, setLoading] = useState(true)
@@ -309,6 +310,23 @@ export default function ProfileSettingsPage() {
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="mb-6">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={prefs.autoplayPreviews}
+              onChange={(e) => setPrefs((p) => ({ ...p, autoplayPreviews: e.target.checked }))}
+              className="w-4 h-4 accent-[#e50914]"
+            />
+            <span className="text-sm font-medium text-gray-300">
+              Activer les aperçus automatiques
+            </span>
+          </label>
+          <p className="text-xs text-gray-500 mt-1 ml-7">
+            Aperçu vidéo muet après un court délai au survol ou à la sélection d'un contenu.
+          </p>
         </div>
 
         {error && <p className="text-red-400 text-sm mb-4">{error}</p>}

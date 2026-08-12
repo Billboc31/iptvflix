@@ -23,7 +23,12 @@ export default function ShelfRow({ shelf }: ShelfRowProps) {
 
           return (
             <div key={`${item.mediaType}-${item.mediaId}`} className="relative flex-shrink-0 w-36">
-              <PosterCard title={item.title} posterUrl={item.posterUrl} />
+              <PosterCard
+                title={item.title}
+                posterUrl={item.posterUrl}
+                mediaId={item.mediaId}
+                trailerKey={item.trailerKey}
+              />
               {hasProgress && (
                 <div
                   className="absolute bottom-6 left-0 right-0 h-1 bg-gray-700 mx-0.5"

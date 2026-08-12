@@ -7,6 +7,7 @@ import type {
   SeriesFilters,
   SeriesResponse,
 } from '@iptvflix/api-contracts'
+import { mediaVideos } from '../db/schema/media-videos.js'
 
 const QUALITY_ORDER: Record<string, number> = { '4K': 3, '1080p': 2, '720p': 1, '480p': 0 }
 
@@ -99,7 +100,7 @@ export async function listMovies(filters: MovieFilters): Promise<PaginatedList<M
 
   const ids = rows.map((r) => r.id)
 
-  const [genreRows, availCountRows, qualityRows] = await Promise.all([
+  const [genreRows, availCountRows, qualityRows, trailerRows] = await Promise.all([
     db
       .select({ movieId: movieGenres.movieId, name: genres.name })
       .from(movieGenres)
@@ -124,6 +125,10 @@ export async function listMovies(filters: MovieFilters): Promise<PaginatedList<M
           eq(movieAvailabilities.status, 'AVAILABLE'),
         ),
       ),
+    db
+      .select({ mediaId: mediaVideos.mediaId, youtubeKey: mediaVideos.youtubeKey })
+      .from(mediaVideos)
+      .where(and(eq(mediaVideos.mediaType, 'movie'), inArray(mediaVideos.mediaId, ids))),
   ])
 
   const genreMap = new Map<string, string[]>()
@@ -145,6 +150,11 @@ export async function listMovies(filters: MovieFilters): Promise<PaginatedList<M
     qualityBuckets.set(movieId, bucket)
   }
 
+  const trailerKeyMap = new Map<string, string>()
+  for (const { mediaId, youtubeKey } of trailerRows) {
+    if (!trailerKeyMap.has(mediaId)) trailerKeyMap.set(mediaId, youtubeKey)
+  }
+
   const items: MovieResponse[] = rows.map((m) => {
     const availabilityCount = availCountMap.get(m.id) ?? 0
     return {
@@ -159,6 +169,7 @@ export async function listMovies(filters: MovieFilters): Promise<PaginatedList<M
       quality: bestQuality(qualityBuckets.get(m.id) ?? []),
       availabilityCount,
       availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
+      trailerKey: trailerKeyMap.get(m.id) ?? null,
     }
   })
 
@@ -169,7 +180,7 @@ export async function getMovie(id: string): Promise<MovieResponse | null> {
   const [row] = await db.select().from(movies).where(eq(movies.id, id))
   if (!row) return null
 
-  const [genreRows, availCountRows] = await Promise.all([
+  const [genreRows, availCountRows, trailerRow] = await Promise.all([
     db
       .select({ name: genres.name })
       .from(movieGenres)
@@ -179,6 +190,11 @@ export async function getMovie(id: string): Promise<MovieResponse | null> {
       .select({ cnt: count() })
       .from(movieAvailabilities)
       .where(and(eq(movieAvailabilities.movieId, id), eq(movieAvailabilities.status, 'AVAILABLE'))),
+    db
+      .select({ youtubeKey: mediaVideos.youtubeKey })
+      .from(mediaVideos)
+      .where(and(eq(mediaVideos.mediaType, 'movie'), eq(mediaVideos.mediaId, id)))
+      .limit(1),
   ])
 
   const availabilityCount = Number(availCountRows[0]?.cnt ?? 0)
@@ -195,6 +211,7 @@ export async function getMovie(id: string): Promise<MovieResponse | null> {
     quality: null,
     availabilityCount,
     availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
+    trailerKey: trailerRow[0]?.youtubeKey ?? null,
   }
 }
 
@@ -373,7 +390,7 @@ export async function searchContent(
   const movieIds = movieRows.map((m) => m.id)
   const seriesIds = seriesRows.map((s) => s.id)
 
-  const [mGenreRows, mAvailCountRows, mQualityRows, sGenreRows, sAvailCountRows, sSeasonCounts] =
+  const [mGenreRows, mAvailCountRows, mQualityRows, sGenreRows, sAvailCountRows, sSeasonCounts, mTrailerRows] =
     await Promise.all([
       movieIds.length > 0
         ? db
@@ -431,6 +448,12 @@ export async function searchContent(
             .where(inArray(seasons.seriesId, seriesIds))
             .groupBy(seasons.seriesId)
         : Promise.resolve([]),
+      movieIds.length > 0
+        ? db
+            .select({ mediaId: mediaVideos.mediaId, youtubeKey: mediaVideos.youtubeKey })
+            .from(mediaVideos)
+            .where(and(eq(mediaVideos.mediaType, 'movie'), inArray(mediaVideos.mediaId, movieIds)))
+        : Promise.resolve([]),
     ])
 
   const mGenreMap = new Map<string, string[]>()
@@ -469,6 +492,11 @@ export async function searchContent(
     sSeasonMap.set(seriesId, Number(cnt))
   }
 
+  const mTrailerKeyMap = new Map<string, string>()
+  for (const { mediaId, youtubeKey } of mTrailerRows) {
+    mTrailerKeyMap.set(mediaId, youtubeKey)
+  }
+
   return {
     movies: movieRows.map((m) => {
       const availabilityCount = mAvailCountMap.get(m.id) ?? 0
@@ -484,6 +512,7 @@ export async function searchContent(
         quality: bestQuality(mQualityBuckets.get(m.id) ?? []),
         availabilityCount,
         availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
+        trailerKey: mTrailerKeyMap.get(m.id) ?? null,
       }
     }),
     series: seriesRows.map((s) => {

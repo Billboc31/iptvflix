@@ -18,6 +18,7 @@ export async function getDefaultProfilePreferences(): Promise<ProfilePreferences
     preferredSubtitleLanguages: profile.preferredSubtitleLanguages ?? [],
     preferredSourceIds: profile.preferredSourceIds ?? [],
     maxVideoQuality: profile.maxVideoQuality ?? null,
+    autoplayPreviews: profile.autoplayPreviews ?? true,
   }
 }
 
@@ -34,6 +35,8 @@ export async function updateDefaultProfilePreferences(
     preferredSourceIds: patch.preferredSourceIds ?? current.preferredSourceIds ?? [],
     maxVideoQuality:
       'maxVideoQuality' in patch ? (patch.maxVideoQuality ?? null) : (current.maxVideoQuality ?? null),
+    autoplayPreviews:
+      'autoplayPreviews' in patch ? (patch.autoplayPreviews ?? true) : (current.autoplayPreviews ?? true),
   }
 
   await db
@@ -43,6 +46,7 @@ export async function updateDefaultProfilePreferences(
       preferredSubtitleLanguages: updated.preferredSubtitleLanguages,
       preferredSourceIds: updated.preferredSourceIds,
       maxVideoQuality: updated.maxVideoQuality,
+      autoplayPreviews: updated.autoplayPreviews,
     })
     .where(eq(profiles.id, DEFAULT_PROFILE_ID))
 

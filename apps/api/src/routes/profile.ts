@@ -60,6 +60,10 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: 'maxVideoQuality must be 4K, 1080p, 720p, 480p, or null' })
     }
 
+    if (body.autoplayPreviews !== undefined && typeof body.autoplayPreviews !== 'boolean') {
+      return reply.status(400).send({ error: 'autoplayPreviews must be a boolean' })
+    }
+
     const preferences = await updateDefaultProfilePreferences(body)
     return reply.send({
       id: DEFAULT_PROFILE_ID,

@@ -1,9 +1,20 @@
+import { useEffect, useRef } from 'react'
 import Button from '../ui/Button.js'
+import PreviewPlayer from './PreviewPlayer.js'
+import { usePreview } from '../../contexts/PreviewContext.js'
+
+function isPointerCoarse() {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(pointer: coarse)').matches
+    : false
+}
 
 type HeroSectionProps = {
   title: string
   synopsis?: string | null
   backdropUrl?: string | null
+  mediaId?: string
+  trailerKey?: string | null
   onDetails?: () => void
   onAddToList?: () => void
 }
@@ -12,9 +23,24 @@ export default function HeroSection({
   title,
   synopsis,
   backdropUrl,
+  mediaId,
+  trailerKey,
   onDetails,
   onAddToList,
 }: HeroSectionProps) {
+  const { activeId, activate, deactivate } = usePreview()
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isActive = !!mediaId && activeId === mediaId
+
+  useEffect(() => {
+    if (!mediaId || !trailerKey || isPointerCoarse()) return
+    timerRef.current = setTimeout(() => activate(mediaId, trailerKey), 2000)
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+      deactivate()
+    }
+  }, [mediaId, trailerKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="relative h-[56vh] min-h-80 overflow-hidden">
       {/* Backdrop */}
@@ -27,6 +53,11 @@ export default function HeroSection({
         />
       ) : (
         <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a24] to-[#0a0a0f]" />
+      )}
+
+      {/* Preview player — mounts only when active */}
+      {trailerKey && (
+        <PreviewPlayer trailerKey={trailerKey} active={isActive} />
       )}
 
       {/* Gradient overlays */}

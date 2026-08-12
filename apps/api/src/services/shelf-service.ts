@@ -10,6 +10,7 @@ import {
   viewingProgress,
   movieGenres,
   seriesGenres,
+  mediaVideos,
 } from '../db/schema/index.js'
 import { NotFoundError, ForbiddenError, ValidationError } from '../errors.js'
 import { listContinueWatching } from './viewing-progress-service.js'
@@ -24,6 +25,23 @@ import type {
   UpdateShelfBody,
   AddShelfMemberBody,
 } from '@iptvflix/api-contracts'
+
+// ---------------------------------------------------------------------------
+// Trailer key helpers
+// ---------------------------------------------------------------------------
+
+async function fetchTrailerKeys(mediaType: 'movie' | 'series', ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map()
+  const rows = await db
+    .select({ mediaId: mediaVideos.mediaId, youtubeKey: mediaVideos.youtubeKey })
+    .from(mediaVideos)
+    .where(and(eq(mediaVideos.mediaType, mediaType), inArray(mediaVideos.mediaId, ids)))
+  const map = new Map<string, string>()
+  for (const r of rows) {
+    if (!map.has(r.mediaId)) map.set(r.mediaId, r.youtubeKey)
+  }
+  return map
+}
 
 // ---------------------------------------------------------------------------
 // System shelf definitions (no DB rows — resolved at runtime)
@@ -49,6 +67,8 @@ function isSystemId(id: string): boolean {
 async function resolveSystemShelf(id: string, profileId: string): Promise<ShelfItem[]> {
   if (id === 'sys_continue_watching') {
     const items = await listContinueWatching(profileId)
+    const movieIds = items.filter((i) => i.mediaType === 'MOVIE').map((i) => i.mediaId)
+    const movieTrailers = await fetchTrailerKeys('movie', movieIds)
     return items.map((item) => ({
       mediaType: item.mediaType === 'MOVIE' ? 'MOVIE' : ('SERIES' as const),
       mediaId: item.mediaId,
@@ -56,16 +76,25 @@ async function resolveSystemShelf(id: string, profileId: string): Promise<ShelfI
       posterUrl: item.posterUrl,
       progressSeconds: item.progressSeconds,
       durationSeconds: item.durationSeconds,
+      // Episodes in continue-watching don't carry the parent series ID, so trailerKey is null for them
+      trailerKey: item.mediaType === 'MOVIE' ? (movieTrailers.get(item.mediaId) ?? null) : null,
     }))
   }
 
   if (id === 'sys_my_list') {
     const entries = await listWatchlist(profileId)
+    const movieIds = entries.filter((e) => e.mediaType === 'MOVIE').map((e) => e.mediaId)
+    const seriesIds = entries.filter((e) => e.mediaType === 'SERIES').map((e) => e.mediaId)
+    const [movieTrailers, seriesTrailers] = await Promise.all([
+      fetchTrailerKeys('movie', movieIds),
+      fetchTrailerKeys('series', seriesIds),
+    ])
     return entries.map((e) => ({
       mediaType: e.mediaType,
       mediaId: e.mediaId,
       title: e.title,
       posterUrl: e.posterUrl,
+      trailerKey: (e.mediaType === 'MOVIE' ? movieTrailers : seriesTrailers).get(e.mediaId) ?? null,
     }))
   }
 
@@ -75,7 +104,14 @@ async function resolveSystemShelf(id: string, profileId: string): Promise<ShelfI
       .from(movies)
       .orderBy(desc(movies.createdAt))
       .limit(20)
-    return rows.map((r) => ({ mediaType: 'MOVIE' as const, mediaId: r.id, title: r.title, posterUrl: r.posterPath }))
+    const trailerMap = await fetchTrailerKeys('movie', rows.map((r) => r.id))
+    return rows.map((r) => ({
+      mediaType: 'MOVIE' as const,
+      mediaId: r.id,
+      title: r.title,
+      posterUrl: r.posterPath,
+      trailerKey: trailerMap.get(r.id) ?? null,
+    }))
   }
 
   if (id === 'sys_recently_added_series') {
@@ -84,7 +120,14 @@ async function resolveSystemShelf(id: string, profileId: string): Promise<ShelfI
       .from(series)
       .orderBy(desc(series.createdAt))
       .limit(20)
-    return rows.map((r) => ({ mediaType: 'SERIES' as const, mediaId: r.id, title: r.title, posterUrl: r.posterPath }))
+    const trailerMap = await fetchTrailerKeys('series', rows.map((r) => r.id))
+    return rows.map((r) => ({
+      mediaType: 'SERIES' as const,
+      mediaId: r.id,
+      title: r.title,
+      posterUrl: r.posterPath,
+      trailerKey: trailerMap.get(r.id) ?? null,
+    }))
   }
 
   return []
@@ -245,7 +288,14 @@ async function evaluateMovies(rules: ShelfRuleDefinition, profileId: string): Pr
     .orderBy(desc(movies.createdAt))
     .limit(50)
 
-  return rows.map((r) => ({ mediaType: 'MOVIE' as const, mediaId: r.id, title: r.title, posterUrl: r.posterPath }))
+  const trailerMap = await fetchTrailerKeys('movie', rows.map((r) => r.id))
+  return rows.map((r) => ({
+    mediaType: 'MOVIE' as const,
+    mediaId: r.id,
+    title: r.title,
+    posterUrl: r.posterPath,
+    trailerKey: trailerMap.get(r.id) ?? null,
+  }))
 }
 
 async function evaluateSeries(rules: ShelfRuleDefinition): Promise<ShelfItem[]> {
@@ -287,7 +337,14 @@ async function evaluateSeries(rules: ShelfRuleDefinition): Promise<ShelfItem[]> 
     .orderBy(desc(series.createdAt))
     .limit(50)
 
-  return rows.map((r) => ({ mediaType: 'SERIES' as const, mediaId: r.id, title: r.title, posterUrl: r.posterPath }))
+  const trailerMap = await fetchTrailerKeys('series', rows.map((r) => r.id))
+  return rows.map((r) => ({
+    mediaType: 'SERIES' as const,
+    mediaId: r.id,
+    title: r.title,
+    posterUrl: r.posterPath,
+    trailerKey: trailerMap.get(r.id) ?? null,
+  }))
 }
 
 export async function evaluateDynamicShelf(rules: ShelfRuleDefinition, profileId: string): Promise<ShelfItem[]> {
@@ -317,13 +374,15 @@ async function resolveManualItems(shelfId: string): Promise<ShelfItem[]> {
   const movieIds = members.filter((m) => m.mediaType === 'MOVIE').map((m) => m.mediaId)
   const seriesIds = members.filter((m) => m.mediaType === 'SERIES').map((m) => m.mediaId)
 
-  const [movieRows, seriesRows] = await Promise.all([
+  const [movieRows, seriesRows, movieTrailers, seriesTrailers] = await Promise.all([
     movieIds.length > 0
       ? db.select({ id: movies.id, title: movies.title, posterPath: movies.posterPath }).from(movies).where(inArray(movies.id, movieIds))
       : Promise.resolve([]),
     seriesIds.length > 0
       ? db.select({ id: series.id, title: series.title, posterPath: series.posterPath }).from(series).where(inArray(series.id, seriesIds))
       : Promise.resolve([]),
+    fetchTrailerKeys('movie', movieIds),
+    fetchTrailerKeys('series', seriesIds),
   ])
 
   const movieMap = new Map(movieRows.map((r) => [r.id, r]))
@@ -332,10 +391,22 @@ async function resolveManualItems(shelfId: string): Promise<ShelfItem[]> {
   return members.map((m) => {
     if (m.mediaType === 'MOVIE') {
       const meta = movieMap.get(m.mediaId)
-      return { mediaType: 'MOVIE' as const, mediaId: m.mediaId, title: meta?.title ?? m.mediaId, posterUrl: meta?.posterPath ?? null }
+      return {
+        mediaType: 'MOVIE' as const,
+        mediaId: m.mediaId,
+        title: meta?.title ?? m.mediaId,
+        posterUrl: meta?.posterPath ?? null,
+        trailerKey: movieTrailers.get(m.mediaId) ?? null,
+      }
     } else {
       const meta = seriesMap.get(m.mediaId)
-      return { mediaType: 'SERIES' as const, mediaId: m.mediaId, title: meta?.title ?? m.mediaId, posterUrl: meta?.posterPath ?? null }
+      return {
+        mediaType: 'SERIES' as const,
+        mediaId: m.mediaId,
+        title: meta?.title ?? m.mediaId,
+        posterUrl: meta?.posterPath ?? null,
+        trailerKey: seriesTrailers.get(m.mediaId) ?? null,
+      }
     }
   })
 }
