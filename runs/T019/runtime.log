@@ -1,0 +1,27 @@
+[2026-08-11T17:26:55Z] auto-run start: state=INIT
+[2026-08-11T17:26:55Z] auto-run: running step=planner
+[2026-08-11T17:27:00Z] auto-run: pre-planner rebase onto integration ok
+[2026-08-11T17:27:01Z] prompt: resolved=prompts/generic/planner.md source=generic
+[2026-08-11T17:27:01Z] prompt: generic fallback — injecting runs/T019/ticket.md
+[2026-08-11T17:27:01Z] compose: global-context=docs/ai/global-context.md
+[2026-08-11T17:27:01Z] compose: role=ai/roles/planner.md
+[2026-08-11T17:27:01Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-11T17:27:01Z] compose: skill=ai/skills/architecture-discipline.md
+[2026-08-11T17:27:01Z] compose: skill=ai/skills/documentation.md
+[2026-08-11T17:27:01Z] compose: task (canonical prompt)
+[2026-08-11T17:27:01Z] snapshot: runtime-prompt=runs/T019/prompts/planner-attempt-1.md
+[2026-08-11T17:31:09Z] auto-run: step=planner done rc=0
+[2026-08-11T20:10:31Z] auto-run start: state=PLAN_APPROVED
+[2026-08-11T20:10:32Z] auto-run: running step=coder
+[2026-08-11T20:10:33Z] auto-run: pre-coder rebase onto integration ok
+[2026-08-11T20:10:33Z] prompt: resolved=prompts/generic/coder.md source=generic
+[2026-08-11T20:10:33Z] prompt: generic fallback — injecting runs/T019/ticket.md
+[2026-08-11T20:10:33Z] compose: global-context=docs/ai/global-context.md
+[2026-08-11T20:10:33Z] compose: role=ai/roles/coder.md
+[2026-08-11T20:10:33Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-11T20:10:33Z] compose: skill=ai/skills/git-discipline.md
+[2026-08-11T20:10:33Z] compose: skill=ai/skills/code-quality.md
+[2026-08-11T20:10:33Z] compose: skill=ai/skills/refactor-safety.md
+[2026-08-11T20:10:33Z] compose: skill=ai/skills/security.md
+[2026-08-11T20:10:33Z] compose: task (canonical prompt)
+[2026-08-11T20:10:33Z] snapshot: runtime-prompt=runs/T019/prompts/coder-attempt-2.md

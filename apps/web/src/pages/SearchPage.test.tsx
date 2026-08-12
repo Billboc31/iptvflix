@@ -53,7 +53,7 @@ describe('SearchPage', () => {
     const { server } = await import('../test/handlers.js')
     const { http, HttpResponse } = await import('msw')
     server.use(
-      http.get('/api/search', () => HttpResponse.json({ movies: [], series: [] })),
+      http.get('/api/search', () => HttpResponse.json({ movies: [], series: [], externalMovies: [], externalSeries: [] })),
     )
     renderPage()
     await userEvent.type(screen.getByPlaceholderText('Rechercher films, séries…'), 'xyz')
@@ -93,7 +93,7 @@ describe('SearchPage', () => {
         if (callCount === 1) {
           return HttpResponse.json({ error: 'Server error' }, { status: 500 })
         }
-        return HttpResponse.json({ movies: [], series: [] })
+        return HttpResponse.json({ movies: [], series: [], externalMovies: [], externalSeries: [] })
       }),
     )
     renderPage()

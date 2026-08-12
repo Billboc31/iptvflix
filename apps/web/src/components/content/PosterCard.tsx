@@ -5,10 +5,11 @@ type PosterCardProps = {
   year?: number | null
   posterUrl?: string | null
   quality?: string | null
+  badge?: { label: string; variant: 'unavailable' | 'upcoming' }
   onClick?: () => void
 }
 
-export default function PosterCard({ title, year, posterUrl, quality, onClick }: PosterCardProps) {
+export default function PosterCard({ title, year, posterUrl, quality, badge, onClick }: PosterCardProps) {
   return (
     <div
       onClick={onClick}
@@ -32,6 +33,13 @@ export default function PosterCard({ title, year, posterUrl, quality, onClick }:
         {quality && (
           <div className="absolute top-1.5 right-1.5">
             <Badge variant="quality">{quality}</Badge>
+          </div>
+        )}
+
+        {/* Availability/upcoming badge */}
+        {badge && (
+          <div className="absolute bottom-1.5 left-1.5 right-1.5 flex justify-center">
+            <Badge variant={badge.variant}>{badge.label}</Badge>
           </div>
         )}
 

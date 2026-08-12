@@ -8,6 +8,7 @@ import type {
   PaginatedList,
   MovieFilters,
   SeriesFilters,
+  SearchResponse,
   SourceResponse,
   CreateSourceBody,
   UpdateSourceBody,
@@ -96,10 +97,16 @@ export function getSeriesSeasonEpisodes(
   return request(`/series/${seriesId}/seasons/${seasonNumber}/episodes`)
 }
 
-export function searchContent(
-  q: string,
-): Promise<{ movies: MovieResponse[]; series: SeriesResponse[] }> {
+export function searchContent(q: string): Promise<SearchResponse> {
   return request(`/search${toQuery({ q })}`)
+}
+
+export function materializeMovie(tmdbId: string): Promise<{ id: string }> {
+  return request('/discovery/movies', { method: 'POST', body: JSON.stringify({ tmdbId }) })
+}
+
+export function materializeSeries(tmdbId: string): Promise<{ id: string }> {
+  return request('/discovery/series', { method: 'POST', body: JSON.stringify({ tmdbId }) })
 }
 
 export function listGenres(): Promise<GenreResponse[]> {

@@ -7,6 +7,7 @@ import { enrichmentRoutes } from './routes/enrichment.js'
 import { moviesRoutes } from './routes/movies.js'
 import { seriesRoutes } from './routes/series.js'
 import { searchRoutes } from './routes/search.js'
+import { discoveryRoutes } from './routes/discovery.js'
 import { genresRoutes } from './routes/genres.js'
 import { syncRunsRoutes } from './routes/sync-runs.js'
 import { watchlistRoutes } from './routes/watchlist.js'
@@ -17,6 +18,7 @@ import { PORT, CORS_ORIGIN, TMDB_API_KEY } from './config/env.js'
 import { db } from './db/client.js'
 import { TmdbClient } from './providers/metadata/tmdb/client.js'
 import { MetadataEnrichmentService } from './services/metadata-enrichment-service.js'
+import { ExternalDiscoveryService } from './services/external-discovery-service.js'
 
 const app = Fastify({ logger: true })
 
@@ -32,7 +34,12 @@ await app.register(sourcesRoutes)
 await app.register(syncRunsRoutes)
 await app.register(moviesRoutes)
 await app.register(seriesRoutes)
-await app.register(searchRoutes)
+const discoveryService = TMDB_API_KEY
+  ? new ExternalDiscoveryService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
+  : null
+
+await app.register(searchRoutes, { discoveryService: discoveryService ?? undefined })
+await app.register(discoveryRoutes, { discoveryService })
 await app.register(genresRoutes)
 await app.register(watchlistRoutes)
 await app.register(viewingProgressRoutes)

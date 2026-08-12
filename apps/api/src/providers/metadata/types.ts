@@ -10,6 +10,8 @@ export interface ExternalMovieMetadata {
   imdbId: string | null
   popularity: number | null
   voteAverage: number | null
+  releaseStatus?: string | null
+  releaseDate?: string | null
 }
 
 export interface ExternalSeriesMetadata {
@@ -23,6 +25,8 @@ export interface ExternalSeriesMetadata {
   imdbId: string | null
   popularity: number | null
   voteAverage: number | null
+  releaseStatus?: string | null
+  firstAirDate?: string | null
 }
 
 export interface MetadataCandidate {
@@ -30,6 +34,11 @@ export interface MetadataCandidate {
   title: string
   year: number | null
   mediaType: 'MOVIE' | 'SERIES'
+  posterPath?: string | null
+  synopsis?: string | null
+  releaseStatus?: string | null
+  releaseDate?: string | null
+  firstAirDate?: string | null
 }
 
 export interface MetadataProvider {
