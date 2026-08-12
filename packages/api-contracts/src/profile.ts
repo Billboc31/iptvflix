@@ -3,6 +3,7 @@ export type ProfilePreferences = {
   preferredSubtitleLanguages: string[]
   preferredSourceIds: string[]
   maxVideoQuality: string | null
+  autoplayPreviews: boolean
 }
 
 export type UpdateProfilePreferencesBody = Partial<ProfilePreferences>

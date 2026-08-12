@@ -8,6 +8,7 @@ export type ShelfItem = {
   posterUrl: string | null
   progressSeconds?: number
   durationSeconds?: number
+  trailerKey?: string | null
 }
 
 export type ShelfResponse = {
