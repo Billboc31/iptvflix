@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveVariant } from '../availability-resolver.js'
+import { resolveVariant, isAboveCap } from '../availability-resolver.js'
 import type { ResolvableVariant } from '../availability-resolver.js'
 import type { ProfilePreferences } from '@iptvflix/api-contracts'
 
@@ -130,33 +130,106 @@ describe('source priority overrides quality', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Quality ranking within cap
+// isAboveCap unit tests
+// ---------------------------------------------------------------------------
+describe('isAboveCap', () => {
+  it('returns true for known quality above cap', () => {
+    expect(isAboveCap('4K', '1080p')).toBe(true)
+  })
+
+  it('returns false for known quality at cap', () => {
+    expect(isAboveCap('1080p', '1080p')).toBe(false)
+  })
+
+  it('returns false for known quality below cap', () => {
+    expect(isAboveCap('720p', '1080p')).toBe(false)
+  })
+
+  it('returns false for null quality', () => {
+    expect(isAboveCap(null, '1080p')).toBe(false)
+  })
+
+  it('returns false when cap is null', () => {
+    expect(isAboveCap('4K', null)).toBe(false)
+  })
+
+  it('returns false for unknown quality string', () => {
+    expect(isAboveCap('HDR', '1080p')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// maxVideoQuality as hard pre-filter cap
 // ---------------------------------------------------------------------------
 describe('maxVideoQuality cap', () => {
-  it('4K variant scored at 1080p cap when maxVideoQuality is 1080p', () => {
+  it('1080p wins over 4K when cap is 1080p; 4K absent from result', () => {
     const variants = [
       makeVariant({ id: 'v-4k', videoQuality: '4K' }),
       makeVariant({ id: 'v-1080', videoQuality: '1080p' }),
     ]
-    // With cap at 1080p, 4K is scored as 1080p. Tiebreak by id ascending: v-1080 < v-4k alphabetically.
     const prefs: ProfilePreferences = { ...EMPTY_PREFS, maxVideoQuality: '1080p' }
     const result = resolveVariant(variants, prefs)
-    // Both score equally after cap; tiebreak: 'v-1080' < 'v-4k'
     expect(result.selectedVariantId).toBe('v-1080')
-    // 4K is NOT excluded — it's still in alternatives
-    expect(result.alternativeVariantIds).toContain('v-4k')
+    expect(result.alternativeVariantIds).not.toContain('v-4k')
   })
 
-  it('4K variant is not excluded, only capped', () => {
+  it('returns null when only candidate is above cap', () => {
+    const variants = [makeVariant({ id: 'v-4k', videoQuality: '4K' })]
+    const prefs: ProfilePreferences = { ...EMPTY_PREFS, maxVideoQuality: '1080p' }
+    const result = resolveVariant(variants, prefs)
+    expect(result.selectedVariantId).toBeNull()
+    expect(result.reason).toBe('no_available_variant')
+  })
+
+  it('unknown-quality variant wins as fallback when only 4K exceeds cap', () => {
     const variants = [
       makeVariant({ id: 'v-4k', videoQuality: '4K' }),
-      makeVariant({ id: 'v-480', videoQuality: '480p' }),
+      makeVariant({ id: 'v-unknown', videoQuality: null }),
     ]
     const prefs: ProfilePreferences = { ...EMPTY_PREFS, maxVideoQuality: '1080p' }
     const result = resolveVariant(variants, prefs)
-    // 4K scored at cap (1080p rank=2) vs 480p (rank=0) — 4K wins
+    expect(result.selectedVariantId).toBe('v-unknown')
+  })
+
+  it('720p wins over 4K and 1080p when cap is 720p', () => {
+    const variants = [
+      makeVariant({ id: 'v-4k', videoQuality: '4K' }),
+      makeVariant({ id: 'v-1080', videoQuality: '1080p' }),
+      makeVariant({ id: 'v-720', videoQuality: '720p' }),
+    ]
+    const prefs: ProfilePreferences = { ...EMPTY_PREFS, maxVideoQuality: '720p' }
+    const result = resolveVariant(variants, prefs)
+    expect(result.selectedVariantId).toBe('v-720')
+  })
+
+  it('4K wins when cap is null (no-limit behavior)', () => {
+    const variants = [
+      makeVariant({ id: 'v-4k', videoQuality: '4K' }),
+      makeVariant({ id: 'v-1080', videoQuality: '1080p' }),
+    ]
+    const prefs: ProfilePreferences = { ...EMPTY_PREFS, maxVideoQuality: null }
+    const result = resolveVariant(variants, prefs)
     expect(result.selectedVariantId).toBe('v-4k')
-    expect(result.alternativeVariantIds).toContain('v-480')
+  })
+
+  it('1080p wins over 720p when both are at or below 1080p cap', () => {
+    const variants = [
+      makeVariant({ id: 'v-1080', videoQuality: '1080p' }),
+      makeVariant({ id: 'v-720', videoQuality: '720p' }),
+    ]
+    const prefs: ProfilePreferences = { ...EMPTY_PREFS, maxVideoQuality: '1080p' }
+    const result = resolveVariant(variants, prefs)
+    expect(result.selectedVariantId).toBe('v-1080')
+  })
+
+  it('unknown cap string is treated as no-limit — no variants filtered', () => {
+    const variants = [
+      makeVariant({ id: 'v-4k', videoQuality: '4K' }),
+      makeVariant({ id: 'v-1080', videoQuality: '1080p' }),
+    ]
+    const prefs: ProfilePreferences = { ...EMPTY_PREFS, maxVideoQuality: 'HDR' }
+    const result = resolveVariant(variants, prefs)
+    expect(result.selectedVariantId).toBe('v-4k')
   })
 })
 

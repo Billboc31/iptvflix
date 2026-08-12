@@ -17,11 +17,15 @@ export type ResolveResult = {
 
 const QUALITY_ORDER: Record<string, number> = { '4K': 3, '1080p': 2, '720p': 1, '480p': 0 }
 
-function qualityRank(quality: string | null, maxVideoQuality: string | null): number {
-  const rank = quality !== null ? (QUALITY_ORDER[quality] ?? -1) : -1
-  if (maxVideoQuality === null) return rank
-  const cap = QUALITY_ORDER[maxVideoQuality] ?? Infinity
-  return Math.min(rank, cap)
+function qualityRank(quality: string | null): number {
+  return quality !== null ? (QUALITY_ORDER[quality] ?? -1) : -1
+}
+
+export function isAboveCap(quality: string | null, maxVideoQuality: string | null): boolean {
+  if (maxVideoQuality === null) return false
+  if (quality === null || !(quality in QUALITY_ORDER)) return false
+  const capRank = QUALITY_ORDER[maxVideoQuality] ?? Infinity
+  return (QUALITY_ORDER[quality] as number) > capRank
 }
 
 function scoreTuple(
@@ -41,7 +45,7 @@ function scoreTuple(
   const srcIdx = prefs.preferredSourceIds.indexOf(variant.providerId)
   const sourceScore = srcIdx >= 0 ? srcIdx : prefs.preferredSourceIds.length
 
-  const qualityScore = -qualityRank(variant.videoQuality, prefs.maxVideoQuality)
+  const qualityScore = -qualityRank(variant.videoQuality)
 
   return [audioScore, subtitleScore, sourceScore, qualityScore, variant.id]
 }
@@ -86,7 +90,8 @@ export function resolveVariant(
   variants: ResolvableVariant[],
   prefs: ProfilePreferences,
 ): ResolveResult {
-  const candidates = variants.filter((v) => v.status === 'AVAILABLE')
+  const available = variants.filter((v) => v.status === 'AVAILABLE')
+  const candidates = available.filter((v) => !isAboveCap(v.videoQuality, prefs.maxVideoQuality))
 
   if (candidates.length === 0) {
     return { selectedVariantId: null, alternativeVariantIds: [], reason: 'no_available_variant' }
