@@ -9,6 +9,7 @@ import { movieAvailabilities, seriesAvailabilities, episodeAvailabilities } from
 import { syncRuns } from '../../db/schema/sync-runs.js'
 import { CatalogSyncService, SyncAlreadyRunningError } from '../catalog-sync-service.js'
 import type { XtreamCatalogSnapshot, XtreamVodStream, XtreamSeries, XtreamSeriesInfo } from '../../providers/xtream/types.js'
+import type { PlexCatalogSnapshot } from '../../providers/plex/types.js'
 
 let testSourceId: string
 
@@ -630,6 +631,197 @@ describe('CatalogSyncService', () => {
         await db.delete(syncRuns).where(eq(syncRuns.sourceId, secondSource.id))
         await db.delete(sources).where(eq(sources.id, secondSource.id))
         // canonicalSeries is cleaned up by afterEach via testSourceId's seriesAvailabilities cascade
+      }
+    })
+  })
+
+  describe('canonical Series identity resolution', () => {
+    it('reuses an existing canonical series row when Xtream and Plex share the same TMDB ID', async () => {
+      const fetchedAt = new Date('2026-03-01T10:00:00Z')
+      const sharedTmdbId = 77001
+
+      const xtreamSeriesInfo: Record<number, XtreamSeriesInfo> = {
+        200: {
+          ...makeSeriesInfo({}),
+          info: { ...makeSeriesInfo({}).info, tmdb_id: String(sharedTmdbId) },
+        },
+      }
+      await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot([], [makeSeriesEntry({ series_id: 200, name: 'Breaking Bad' })], fetchedAt, xtreamSeriesInfo),
+      )
+
+      const [plexSource] = await db
+        .insert(sources)
+        .values({ name: 'Plex Cross Source', type: 'PLEX', baseUrl: 'http://plex.test' })
+        .returning()
+
+      try {
+        const plexSnapshot: PlexCatalogSnapshot = {
+          sourceId: plexSource.id,
+          fetchedAt,
+          movies: [],
+          shows: [{ ratingKey: 'plex-200', title: 'Breaking Bad', Guid: [{ id: `tmdb://${sharedTmdbId}` }] }],
+          episodes: [],
+        }
+        await CatalogSyncService.syncPlexCatalog(plexSource.id, plexSnapshot)
+
+        const canonicalRows = await db
+          .select()
+          .from(seriesTable)
+          .where(eq(seriesTable.tmdbId, sharedTmdbId))
+        expect(canonicalRows).toHaveLength(1)
+
+        const xtreamAvRows = await db
+          .select()
+          .from(seriesAvailabilities)
+          .where(eq(seriesAvailabilities.providerId, testSourceId))
+        const plexAvRows = await db
+          .select()
+          .from(seriesAvailabilities)
+          .where(eq(seriesAvailabilities.providerId, plexSource.id))
+
+        expect(xtreamAvRows).toHaveLength(1)
+        expect(plexAvRows).toHaveLength(1)
+        expect(xtreamAvRows[0].seriesId).toBe(plexAvRows[0].seriesId)
+      } finally {
+        await db.delete(seriesAvailabilities).where(eq(seriesAvailabilities.providerId, plexSource.id))
+        await db.delete(syncRuns).where(eq(syncRuns.sourceId, plexSource.id))
+        await db.delete(sources).where(eq(sources.id, plexSource.id))
+        // canonical series cleaned up by afterEach via testSourceId availability
+      }
+    })
+
+    it('creates a new canonical series when Plex-only and no existing match', async () => {
+      const fetchedAt = new Date('2026-03-01T10:00:00Z')
+      const [plexSource] = await db
+        .insert(sources)
+        .values({ name: 'Plex Only Source', type: 'PLEX', baseUrl: 'http://plex2.test' })
+        .returning()
+
+      try {
+        const plexSnapshot: PlexCatalogSnapshot = {
+          sourceId: plexSource.id,
+          fetchedAt,
+          movies: [],
+          shows: [{ ratingKey: 'plex-300', title: 'Plex Only Series', Guid: [{ id: 'tmdb://88002' }] }],
+          episodes: [],
+        }
+        await CatalogSyncService.syncPlexCatalog(plexSource.id, plexSnapshot)
+
+        const canonicalRows = await db
+          .select()
+          .from(seriesTable)
+          .where(eq(seriesTable.tmdbId, 88002))
+        expect(canonicalRows).toHaveLength(1)
+        expect(canonicalRows[0].title).toBe('Plex Only Series')
+
+        const avRows = await db
+          .select()
+          .from(seriesAvailabilities)
+          .where(eq(seriesAvailabilities.providerId, plexSource.id))
+        expect(avRows).toHaveLength(1)
+        expect(avRows[0].seriesId).toBe(canonicalRows[0].id)
+      } finally {
+        const plexAvRows = await db
+          .select({ seriesId: seriesAvailabilities.seriesId })
+          .from(seriesAvailabilities)
+          .where(eq(seriesAvailabilities.providerId, plexSource.id))
+        if (plexAvRows.length > 0) {
+          await db.delete(seriesTable).where(inArray(seriesTable.id, plexAvRows.map((r) => r.seriesId)))
+        }
+        await db.delete(syncRuns).where(eq(syncRuns.sourceId, plexSource.id))
+        await db.delete(sources).where(eq(sources.id, plexSource.id))
+      }
+    })
+
+    it('does not merge same-title series from two providers when no TMDB ID is present', async () => {
+      const fetchedAt = new Date('2026-03-01T10:00:00Z')
+      const [plexSource] = await db
+        .insert(sources)
+        .values({ name: 'Plex Ambiguous Source', type: 'PLEX', baseUrl: 'http://plex3.test' })
+        .returning()
+
+      try {
+        await CatalogSyncService.syncCatalog(
+          testSourceId,
+          makeSnapshot([], [makeSeriesEntry({ series_id: 400, name: 'Alias' })], fetchedAt),
+        )
+
+        const plexSnapshot: PlexCatalogSnapshot = {
+          sourceId: plexSource.id,
+          fetchedAt,
+          movies: [],
+          shows: [{ ratingKey: 'plex-alias', title: 'Alias' }],
+          episodes: [],
+        }
+        await CatalogSyncService.syncPlexCatalog(plexSource.id, plexSnapshot)
+
+        const xtreamAvRows = await db
+          .select({ seriesId: seriesAvailabilities.seriesId })
+          .from(seriesAvailabilities)
+          .where(eq(seriesAvailabilities.providerId, testSourceId))
+        const plexAvRows = await db
+          .select({ seriesId: seriesAvailabilities.seriesId })
+          .from(seriesAvailabilities)
+          .where(eq(seriesAvailabilities.providerId, plexSource.id))
+
+        expect(xtreamAvRows).toHaveLength(1)
+        expect(plexAvRows).toHaveLength(1)
+        expect(xtreamAvRows[0].seriesId).not.toBe(plexAvRows[0].seriesId)
+      } finally {
+        const plexAvRows = await db
+          .select({ seriesId: seriesAvailabilities.seriesId })
+          .from(seriesAvailabilities)
+          .where(eq(seriesAvailabilities.providerId, plexSource.id))
+        if (plexAvRows.length > 0) {
+          await db.delete(seriesTable).where(inArray(seriesTable.id, plexAvRows.map((r) => r.seriesId)))
+        }
+        await db.delete(syncRuns).where(eq(syncRuns.sourceId, plexSource.id))
+        await db.delete(sources).where(eq(sources.id, plexSource.id))
+      }
+    })
+
+    it('does not create duplicate series or availability rows when the same Plex snapshot is synced twice', async () => {
+      const fetchedAt1 = new Date('2026-03-01T10:00:00Z')
+      const fetchedAt2 = new Date('2026-03-02T10:00:00Z')
+      const [plexSource] = await db
+        .insert(sources)
+        .values({ name: 'Plex Repeat Source', type: 'PLEX', baseUrl: 'http://plex4.test' })
+        .returning()
+
+      try {
+        const plexSnapshot: PlexCatalogSnapshot = {
+          sourceId: plexSource.id,
+          fetchedAt: fetchedAt1,
+          movies: [],
+          shows: [{ ratingKey: 'plex-500', title: 'Idempotent Show', Guid: [{ id: 'tmdb://99999' }] }],
+          episodes: [],
+        }
+        await CatalogSyncService.syncPlexCatalog(plexSource.id, plexSnapshot)
+        await CatalogSyncService.syncPlexCatalog(plexSource.id, { ...plexSnapshot, fetchedAt: fetchedAt2 })
+
+        const canonicalRows = await db
+          .select()
+          .from(seriesTable)
+          .where(eq(seriesTable.tmdbId, 99999))
+        expect(canonicalRows).toHaveLength(1)
+
+        const avRows = await db
+          .select()
+          .from(seriesAvailabilities)
+          .where(eq(seriesAvailabilities.providerId, plexSource.id))
+        expect(avRows).toHaveLength(1)
+      } finally {
+        const plexAvRows = await db
+          .select({ seriesId: seriesAvailabilities.seriesId })
+          .from(seriesAvailabilities)
+          .where(eq(seriesAvailabilities.providerId, plexSource.id))
+        if (plexAvRows.length > 0) {
+          await db.delete(seriesTable).where(inArray(seriesTable.id, plexAvRows.map((r) => r.seriesId)))
+        }
+        await db.delete(syncRuns).where(eq(syncRuns.sourceId, plexSource.id))
+        await db.delete(sources).where(eq(sources.id, plexSource.id))
       }
     })
   })

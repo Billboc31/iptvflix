@@ -52,6 +52,7 @@ interface NormalizedSeriesItem {
   title: string
   posterPath?: string | null
   synopsis?: string | null
+  tmdb?: string
   firstAirYear?: number | null
   rawTitle?: string | null
   audioLanguage?: string | null
@@ -162,6 +163,56 @@ async function resolveMovieId(
       tmdbId: null,
     })
     .returning({ id: movies.id })
+  return inserted.id
+}
+
+async function resolveSeriesId(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  item: NormalizedSeriesItem,
+): Promise<string> {
+  const tmdbId = parseTmdbId(item.tmdb)
+
+  if (tmdbId != null) {
+    const [existingByTmdb] = await tx
+      .select({ id: series.id })
+      .from(series)
+      .where(eq(series.tmdbId, tmdbId))
+      .limit(1)
+    if (existingByTmdb) return existingByTmdb.id
+
+    const inserted = await tx
+      .insert(series)
+      .values({
+        title: item.title,
+        posterPath: item.posterPath ?? null,
+        synopsis: item.synopsis ?? null,
+        firstAirYear: item.firstAirYear ?? null,
+        tmdbId,
+      })
+      .onConflictDoNothing({ target: series.tmdbId })
+      .returning({ id: series.id })
+
+    if (inserted[0]) return inserted[0].id
+
+    const [row] = await tx
+      .select({ id: series.id })
+      .from(series)
+      .where(eq(series.tmdbId, tmdbId))
+      .limit(1)
+    if (row) return row.id
+    throw new Error(`Failed to resolve series for tmdbId=${tmdbId}`)
+  }
+
+  const [inserted] = await tx
+    .insert(series)
+    .values({
+      title: item.title,
+      posterPath: item.posterPath ?? null,
+      synopsis: item.synopsis ?? null,
+      firstAirYear: item.firstAirYear ?? null,
+      tmdbId: null,
+    })
+    .returning({ id: series.id })
   return inserted.id
 }
 
@@ -354,17 +405,9 @@ async function syncNormalized(sourceId: string, snapshot: NormalizedSnapshot): P
           )
 
         if (!existing) {
-          const [seriesRow] = await tx
-            .insert(series)
-            .values({
-              title: s.title,
-              posterPath: s.posterPath ?? null,
-              synopsis: s.synopsis ?? null,
-              firstAirYear: s.firstAirYear ?? null,
-            })
-            .returning()
+          const seriesId = await resolveSeriesId(tx, s)
           await tx.insert(seriesAvailabilities).values({
-            seriesId: seriesRow.id,
+            seriesId,
             providerId: sourceId,
             providerItemId,
             firstSeenAt: snapshot.fetchedAt,
@@ -600,6 +643,7 @@ export const CatalogSyncService = {
           title: s.name,
           posterPath: s.cover,
           synopsis: s.plot,
+          tmdb: snapshot.seriesInfo?.[s.series_id]?.info.tmdb_id,
           firstAirYear: parseYear(s.releaseDate),
           rawTitle: s.name,
           audioLanguage: variantAttributes.audioLanguage,
@@ -627,6 +671,7 @@ export const CatalogSyncService = {
         title: s.title,
         posterPath: s.thumb,
         synopsis: s.summary,
+        tmdb: extractPlexTmdbId(s.Guid),
         firstAirYear: s.year ?? null,
       })),
       episodes: snapshot.episodes.map((ep) => ({
