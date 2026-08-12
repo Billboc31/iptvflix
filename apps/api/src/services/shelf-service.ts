@@ -149,6 +149,9 @@ export function validateDynamicRules(rawRules: unknown): ShelfRuleDefinition {
     if (input.watchState !== 'UNWATCHED' && input.watchState !== 'IN_PROGRESS' && input.watchState !== 'COMPLETED') {
       throw new ValidationError('watchState must be "UNWATCHED", "IN_PROGRESS", or "COMPLETED"')
     }
+    if (result.mediaType !== 'MOVIE') {
+      throw new ValidationError("watchState is only supported when mediaType is 'MOVIE'")
+    }
     result.watchState = input.watchState
   }
 
@@ -169,7 +172,7 @@ async function evaluateMovies(rules: ShelfRuleDefinition, profileId: string): Pr
           db.select({ id: movieGenres.movieId }).from(movieGenres).where(inArray(movieGenres.genreId, rules.genreIds)),
         )
       : undefined,
-    rules.availableToMe
+    rules.availableToMe === true
       ? inArray(
           movies.id,
           db
@@ -177,7 +180,15 @@ async function evaluateMovies(rules: ShelfRuleDefinition, profileId: string): Pr
             .from(movieAvailabilities)
             .where(eq(movieAvailabilities.status, 'AVAILABLE')),
         )
-      : undefined,
+      : rules.availableToMe === false
+        ? notInArray(
+            movies.id,
+            db
+              .select({ id: movieAvailabilities.movieId })
+              .from(movieAvailabilities)
+              .where(eq(movieAvailabilities.status, 'AVAILABLE')),
+          )
+        : undefined,
     rules.watchState === 'IN_PROGRESS'
       ? inArray(
           movies.id,
@@ -249,7 +260,7 @@ async function evaluateSeries(rules: ShelfRuleDefinition): Promise<ShelfItem[]> 
             .where(inArray(seriesGenres.genreId, rules.genreIds)),
         )
       : undefined,
-    rules.availableToMe
+    rules.availableToMe === true
       ? inArray(
           series.id,
           db
@@ -257,8 +268,15 @@ async function evaluateSeries(rules: ShelfRuleDefinition): Promise<ShelfItem[]> 
             .from(seriesAvailabilities)
             .where(eq(seriesAvailabilities.status, 'AVAILABLE')),
         )
-      : undefined,
-    // watchState is not supported for series — gracefully ignored
+      : rules.availableToMe === false
+        ? notInArray(
+            series.id,
+            db
+              .select({ id: seriesAvailabilities.seriesId })
+              .from(seriesAvailabilities)
+              .where(eq(seriesAvailabilities.status, 'AVAILABLE')),
+          )
+        : undefined,
   ].filter(Boolean) as Parameters<typeof and>
 
   const rows = await db
