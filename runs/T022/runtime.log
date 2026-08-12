@@ -44,3 +44,8 @@
 [2026-08-12T06:31:08Z] push: pushing branch=ticket/T022-build-unified-series-season-and-episode-availabili
 [2026-08-12T06:31:10Z] push: done branch=ticket/T022-build-unified-series-season-and-episode-availabili
 [2026-08-12T06:31:10Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-12T06:35:02Z] conflict-resolver: [pass 2/3] conflicted=['apps/api/src/routes/catalog.test.ts'] | staged=['apps/api/src/routes/catalog.test.ts'] | unresolved=[] | continue_rc=1 | next_source=[]
+[2026-08-12T06:35:02Z] conflict-resolver: all conflicts resolved after 2 pass(es)
+[2026-08-12T06:35:02Z] conflict-resolver: running tests
+[2026-08-12T06:35:02Z] conflict-resolver: test-report written: runs/T022/conflict/test-report.md
+[2026-08-12T06:35:02Z] conflict-resolver: staging and committing resolution artifacts
