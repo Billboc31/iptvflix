@@ -3,5 +3,7 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T033-add-source-priority-controls-to-playback-preferenc",
   "issue_number": 63,
-  "updated_at": "2026-08-12T09:57:42Z"
+  "updated_at": "2026-08-12T09:57:52Z",
+  "pr_number": 74,
+  "pr_synced": true
 }
