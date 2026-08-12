@@ -16,6 +16,7 @@ export type ShelfResponse = {
   type: ShelfType
   layoutHint: LayoutHint
   items: ShelfItem[]
+  generatedAt?: string
 }
 
 export type ShelfSummaryResponse = {
@@ -83,5 +84,6 @@ export type GenerateShelfResponse = {
   explanation: {
     inferredGenreIds: string[]
     seedTitles: string[]
+    generatedAt: string
   }
 }

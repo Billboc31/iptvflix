@@ -527,6 +527,146 @@ describe('refresh', () => {
 // Scenario 10: Explanation metadata
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Scenario 11: Refresh — semantic scenarios
+// ---------------------------------------------------------------------------
+
+const BASE_SHELF_RULES = {
+  seedMediaIds: THREE_MOVIE_SEEDS,
+  limit: 20,
+  inferredGenreIds: [GENRE_ID_ACTION],
+  generatedAt: '2024-01-01T00:00:00.000Z',
+}
+
+const BASE_SHELF_ROW = {
+  id: SHELF_ID,
+  profileId: PROFILE_ID,
+  type: 'GENERATED',
+  title: 'My Shelf',
+  layoutHint: 'ROW',
+  position: 0,
+  rules: BASE_SHELF_RULES,
+}
+
+function setupRefresh({
+  shelfRow = BASE_SHELF_ROW as object,
+  seedMovieRows = [
+    { id: MOVIE_ID_A, title: 'A' },
+    { id: MOVIE_ID_B, title: 'B' },
+    { id: MOVIE_ID_E, title: 'E' },
+  ] as unknown[],
+  movieGenreRows = [] as unknown[],
+  rankResult,
+  withMembers = true,
+}: {
+  shelfRow?: object
+  seedMovieRows?: unknown[]
+  movieGenreRows?: unknown[]
+  rankResult: object
+  withMembers?: boolean
+}) {
+  selectFromWhere([shelfRow])
+  selectFromWhereInArray(seedMovieRows)
+  selectFromWhereInArray(movieGenreRows)
+  mockRankRecommendations.mockResolvedValueOnce(rankResult)
+  setupDeleteWhere()
+  if (withMembers) setupInsertOnConflict()
+  setupUpdateWhere()
+}
+
+describe('refresh — semantic scenarios', () => {
+  it('unchanged refresh: member IDs and positions are identical, generatedAt is updated each time', async () => {
+    const candidates = [
+      { mediaType: 'MOVIE', mediaId: MOVIE_ID_C, title: 'C', year: 2021, posterPath: null, score: 5, reasons: [], source: 'LOCAL', available: true },
+    ]
+    const rankResult = { profileId: PROFILE_ID, coldStart: false, candidates }
+
+    setupRefresh({ rankResult })
+    await refreshGeneratedShelf(SHELF_ID, PROFILE_ID)
+
+    setupRefresh({ rankResult })
+    await refreshGeneratedShelf(SHELF_ID, PROFILE_ID)
+
+    const firstMembers = mockDb.insert.mock.results[0]?.value?.values.mock.calls[0][0] as Array<{ mediaId: string; position: number }>
+    const secondMembers = mockDb.insert.mock.results[1]?.value?.values.mock.calls[0][0] as Array<{ mediaId: string; position: number }>
+
+    expect(firstMembers.map((m) => m.mediaId)).toEqual(secondMembers.map((m) => m.mediaId))
+    expect(firstMembers.map((m) => m.position)).toEqual(secondMembers.map((m) => m.position))
+
+    const firstGenAt = mockDb.update.mock.results[0]?.value?.set.mock.calls[0][0]?.rules?.generatedAt
+    const secondGenAt = mockDb.update.mock.results[1]?.value?.set.mock.calls[0][0]?.rules?.generatedAt
+    expect(firstGenAt).not.toBe(BASE_SHELF_RULES.generatedAt)
+    expect(secondGenAt).not.toBe(BASE_SHELF_RULES.generatedAt)
+  })
+
+  it('changed candidate pool: newly entered candidate appears in second refresh', async () => {
+    const firstCandidates = [
+      { mediaType: 'MOVIE', mediaId: MOVIE_ID_C, title: 'C', year: 2021, posterPath: null, score: 5, reasons: [], source: 'LOCAL', available: true },
+    ]
+    const secondCandidates = [
+      { mediaType: 'MOVIE', mediaId: MOVIE_ID_C, title: 'C', year: 2021, posterPath: null, score: 5, reasons: [], source: 'LOCAL', available: true },
+      { mediaType: 'MOVIE', mediaId: MOVIE_ID_D, title: 'D', year: 2022, posterPath: null, score: 3, reasons: [], source: 'LOCAL', available: true },
+    ]
+
+    setupRefresh({ rankResult: { profileId: PROFILE_ID, coldStart: false, candidates: firstCandidates } })
+    await refreshGeneratedShelf(SHELF_ID, PROFILE_ID)
+
+    setupRefresh({ rankResult: { profileId: PROFILE_ID, coldStart: false, candidates: secondCandidates } })
+    await refreshGeneratedShelf(SHELF_ID, PROFILE_ID)
+
+    const secondMembers = mockDb.insert.mock.results[1]?.value?.values.mock.calls[0][0] as Array<{ mediaId: string; position: number }>
+    expect(secondMembers).toHaveLength(2)
+    expect(secondMembers[1].mediaId).toBe(MOVIE_ID_D)
+    expect(secondMembers[1].position).toBe(1)
+  })
+
+  it('changed availability: second refresh writes zero members when no candidates are available', async () => {
+    const shelfRow = { ...BASE_SHELF_ROW, rules: { ...BASE_SHELF_RULES, availableToMe: true } }
+    const firstCandidates = [
+      { mediaType: 'MOVIE', mediaId: MOVIE_ID_C, title: 'C', year: 2021, posterPath: null, score: 5, reasons: [], source: 'LOCAL', available: true },
+    ]
+
+    setupRefresh({ shelfRow, rankResult: { profileId: PROFILE_ID, coldStart: false, candidates: firstCandidates } })
+    await refreshGeneratedShelf(SHELF_ID, PROFILE_ID)
+
+    setupRefresh({ shelfRow, rankResult: { profileId: PROFILE_ID, coldStart: false, candidates: [] }, withMembers: false })
+    await refreshGeneratedShelf(SHELF_ID, PROFILE_ID)
+
+    // insert was only called once (first refresh with one member); second refresh had no members
+    expect(mockDb.insert).toHaveBeenCalledTimes(1)
+    // update was called for both refreshes (rules.generatedAt updated each time)
+    expect(mockDb.update).toHaveBeenCalledTimes(2)
+  })
+
+  it('changed taste: member order flips when ranking scores are inverted', async () => {
+    const firstCandidates = [
+      { mediaType: 'MOVIE', mediaId: MOVIE_ID_C, title: 'C', year: 2021, posterPath: null, score: 10, reasons: [], source: 'LOCAL', available: true },
+      { mediaType: 'MOVIE', mediaId: MOVIE_ID_D, title: 'D', year: 2022, posterPath: null, score: 5, reasons: [], source: 'LOCAL', available: true },
+    ]
+    const secondCandidates = [
+      { mediaType: 'MOVIE', mediaId: MOVIE_ID_D, title: 'D', year: 2022, posterPath: null, score: 10, reasons: [], source: 'LOCAL', available: true },
+      { mediaType: 'MOVIE', mediaId: MOVIE_ID_C, title: 'C', year: 2021, posterPath: null, score: 5, reasons: [], source: 'LOCAL', available: true },
+    ]
+
+    setupRefresh({ rankResult: { profileId: PROFILE_ID, coldStart: false, candidates: firstCandidates } })
+    await refreshGeneratedShelf(SHELF_ID, PROFILE_ID)
+
+    setupRefresh({ rankResult: { profileId: PROFILE_ID, coldStart: false, candidates: secondCandidates } })
+    await refreshGeneratedShelf(SHELF_ID, PROFILE_ID)
+
+    const firstMembers = mockDb.insert.mock.results[0]?.value?.values.mock.calls[0][0] as Array<{ mediaId: string; position: number }>
+    const secondMembers = mockDb.insert.mock.results[1]?.value?.values.mock.calls[0][0] as Array<{ mediaId: string; position: number }>
+
+    // First refresh: C at 0, D at 1
+    expect(firstMembers[0].mediaId).toBe(MOVIE_ID_C)
+    expect(firstMembers[1].mediaId).toBe(MOVIE_ID_D)
+
+    // Second refresh: D at 0, C at 1
+    expect(secondMembers[0].mediaId).toBe(MOVIE_ID_D)
+    expect(secondMembers[1].mediaId).toBe(MOVIE_ID_C)
+  })
+})
+
 describe('explanation metadata', () => {
   it('returns inferredGenreIds and seedTitles in explanation', async () => {
     setupGenerate({

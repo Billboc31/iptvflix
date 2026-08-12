@@ -19,6 +19,7 @@ import type {
   ShelfSummaryResponse,
   ShelfItem,
   ShelfRuleDefinition,
+  GeneratedShelfRules,
   CreateShelfBody,
   UpdateShelfBody,
   AddShelfMemberBody,
@@ -389,6 +390,9 @@ export async function getShelf(shelfId: string, profileId: string): Promise<Shel
     type: shelf.type as 'MANUAL' | 'DYNAMIC' | 'GENERATED',
     layoutHint: shelf.layoutHint as 'ROW' | 'GRID',
     items,
+    ...(shelf.type === 'GENERATED'
+      ? { generatedAt: (shelf.rules as GeneratedShelfRules).generatedAt }
+      : {}),
   }
 }
 
