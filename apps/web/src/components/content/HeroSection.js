@@ -1,0 +1,6 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import Button from '../ui/Button.js';
+export default function HeroSection({ title, synopsis, backdropUrl, onDetails, onAddToList, }) {
+    return (_jsxs("div", { className: "relative h-[56vh] min-h-80 overflow-hidden", children: [backdropUrl ? (_jsx("img", { src: backdropUrl, alt: "", "aria-hidden": "true", className: "absolute inset-0 w-full h-full object-cover" })) : (_jsx("div", { className: "absolute inset-0 bg-gradient-to-br from-[#1a1a24] to-[#0a0a0f]" })), _jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-[#0a0a0f] via-[#0a0a0f]/70 to-transparent" }), _jsx("div", { className: "absolute inset-0 bg-gradient-to-t from-[#0a0a0f] via-transparent to-transparent" }), _jsxs("div", { className: "relative h-full flex flex-col justify-end px-8 pb-10 max-w-2xl", children: [_jsx("h1", { className: "text-4xl font-bold text-white mb-3 drop-shadow-lg", children: title }), synopsis && (_jsx("p", { className: "text-gray-300 text-sm leading-relaxed mb-6 line-clamp-3", children: synopsis })), _jsxs("div", { className: "flex gap-3", children: [onDetails && _jsx(Button, { onClick: onDetails, children: "D\u00E9tails" }), onAddToList && (_jsx(Button, { variant: "secondary", onClick: onAddToList, children: "+ Ma Liste" }))] })] })] }));
+}
+//# sourceMappingURL=HeroSection.js.map
