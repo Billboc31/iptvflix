@@ -83,6 +83,113 @@ describe('SearchPage', () => {
     )
   })
 
+  it('shows external results section with upcoming badge when external movies are returned', async () => {
+    const { server } = await import('../test/handlers.js')
+    const { http, HttpResponse } = await import('msw')
+    server.use(
+      http.get('/api/search', () =>
+        HttpResponse.json({
+          movies: [],
+          series: [],
+          externalMovies: [
+            {
+              tmdbId: '999',
+              title: 'Upcoming Film',
+              year: 2027,
+              posterUrl: null,
+              releaseStatus: 'In Production',
+              releaseDate: null,
+            },
+          ],
+          externalSeries: [],
+        }),
+      ),
+    )
+    renderPage()
+    await userEvent.type(screen.getByPlaceholderText('Rechercher films, séries…'), 'upcoming')
+    await waitFor(
+      () => {
+        expect(screen.getByText('Aussi trouvé en dehors de votre catalogue')).toBeInTheDocument()
+        expect(screen.getByText('À venir')).toBeInTheDocument()
+      },
+      { timeout: 2000 },
+    )
+  })
+
+  it('shows "Non disponible" badge for released external movies (not available vs not found)', async () => {
+    const { server } = await import('../test/handlers.js')
+    const { http, HttpResponse } = await import('msw')
+    server.use(
+      http.get('/api/search', () =>
+        HttpResponse.json({
+          movies: [],
+          series: [],
+          externalMovies: [
+            {
+              tmdbId: '888',
+              title: 'Unavailable Film',
+              year: 2020,
+              posterUrl: null,
+              releaseStatus: 'Released',
+              releaseDate: '2020-01-01',
+            },
+          ],
+          externalSeries: [],
+        }),
+      ),
+    )
+    renderPage()
+    await userEvent.type(screen.getByPlaceholderText('Rechercher films, séries…'), 'unavailable')
+    await waitFor(
+      () => {
+        expect(screen.getByText('Aussi trouvé en dehors de votre catalogue')).toBeInTheDocument()
+        expect(screen.getByText('Non disponible')).toBeInTheDocument()
+      },
+      { timeout: 2000 },
+    )
+  })
+
+  it('shows inline error when materialize fails on external movie click', async () => {
+    const { server } = await import('../test/handlers.js')
+    const { http, HttpResponse } = await import('msw')
+    server.use(
+      http.get('/api/search', () =>
+        HttpResponse.json({
+          movies: [],
+          series: [],
+          externalMovies: [
+            {
+              tmdbId: '777',
+              title: 'Error Film',
+              year: 2024,
+              posterUrl: null,
+              releaseStatus: 'Released',
+              releaseDate: null,
+            },
+          ],
+          externalSeries: [],
+        }),
+      ),
+      http.post('/api/discovery/movies', () =>
+        HttpResponse.json({ error: 'Service unavailable' }, { status: 503 }),
+      ),
+    )
+    renderPage()
+    await userEvent.type(screen.getByPlaceholderText('Rechercher films, séries…'), 'error')
+    await waitFor(
+      () => expect(screen.getAllByRole('button').length).toBeGreaterThanOrEqual(1),
+      { timeout: 2000 },
+    )
+    await userEvent.click(screen.getAllByRole('button')[0])
+    await waitFor(
+      () => {
+        expect(screen.getByRole('alert')).toBeInTheDocument()
+        expect(screen.getByText("Impossible d'ouvrir ce titre. Veuillez réessayer.")).toBeInTheDocument()
+      },
+      { timeout: 2000 },
+    )
+  })
+
   it('retry button re-triggers the search', async () => {
     const { server } = await import('../test/handlers.js')
     const { http, HttpResponse } = await import('msw')
