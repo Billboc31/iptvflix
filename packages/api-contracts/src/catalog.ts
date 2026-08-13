@@ -31,16 +31,6 @@ export type MovieResponse = {
   availabilityCount: number
   availabilityStatus: AvailabilityStatus
   trailerKey: string | null
-  popularity: number | null
-  voteCount: number | null
-  originalLanguage: string | null
-  spokenLanguages: Array<{ iso639_1: string; name: string }> | null
-  productionCountries: Array<{ iso3166_1: string; name: string }> | null
-  tagline: string | null
-  status: string | null
-  keywords: string[] | null
-  collection: { tmdbId: number; name: string; posterPath: string | null; backdropPath: string | null } | null
-  externalIds: Record<string, string | number | null> | null
 }
 
 export type MovieDetailResponse = MovieResponse & {
@@ -67,19 +57,6 @@ export type SeriesResponse = {
   seasonCount: number
   availabilityCount: number
   availabilityStatus: AvailabilityStatus
-  popularity: number | null
-  voteCount: number | null
-  originalLanguage: string | null
-  spokenLanguages: Array<{ iso639_1: string; name: string }> | null
-  productionCountries: Array<{ iso3166_1: string; name: string }> | null
-  tagline: string | null
-  keywords: string[] | null
-  externalIds: Record<string, string | number | null> | null
-  inProduction: boolean | null
-  networks: Array<{ id: number; name: string; logoPath: string | null; originCountry: string }> | null
-  createdBy: Array<{ id: number; name: string; profilePath: string | null }> | null
-  numberOfSeasons: number | null
-  numberOfEpisodes: number | null
 }
 
 export type SeasonSummary = {
@@ -118,10 +95,6 @@ export type EpisodeResponse = {
   selectedVariantId: string | null
   variants: AvailabilityVariantResponse[]
   watchState: 'unwatched' | 'in_progress' | 'watched' | null
-  tmdbId: number | null
-  posterPath: string | null
-  voteAverage: number | null
-  voteCount: number | null
 }
 
 export type GenreResponse = {
@@ -159,6 +132,9 @@ export type ExternalSeriesCandidate = {
 export type SearchResponse = {
   movies: MovieResponse[]
   series: SeriesResponse[]
+}
+
+export type DiscoverResponse = {
   externalMovies: ExternalMovieCandidate[]
   externalSeries: ExternalSeriesCandidate[]
 }
