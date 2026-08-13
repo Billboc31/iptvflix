@@ -17,3 +17,25 @@
 [2026-08-13T10:30:04Z] conflict-resolver: running tests
 [2026-08-13T10:30:04Z] conflict-resolver: test-report written: runs/T061/conflict/test-report.md
 [2026-08-13T10:30:04Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-13T10:50:48Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-13T10:50:48Z] auto-run: running step=tester
+[2026-08-13T10:50:50Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-13T10:50:50Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-13T10:50:50Z] prompt: generic fallback — injecting runs/T061/ticket.md
+[2026-08-13T10:50:50Z] compose: global-context=docs/ai/global-context.md
+[2026-08-13T10:50:50Z] compose: role=ai/roles/tester.md
+[2026-08-13T10:50:50Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-13T10:50:50Z] compose: skill=ai/skills/testing.md
+[2026-08-13T10:50:50Z] compose: skill=ai/skills/debugging.md
+[2026-08-13T10:50:50Z] compose: task (canonical prompt)
+[2026-08-13T10:50:50Z] snapshot: runtime-prompt=runs/T061/prompts/tester-attempt-1.md
+[2026-08-13T11:01:43Z] auto-run: step=tester done rc=0
+[2026-08-13T11:01:43Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-13T11:01:43Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-13T11:01:43Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T061/daemon.lock', 'runs/T061/runtime.log', 'runs/T061/workflow-status.md']
+[2026-08-13T11:01:43Z] commit-checkpoint: sha=e7b1ff7 files=3 title='test(T061/workflow): tester — update 3 file(s)'
+[2026-08-13T11:01:43Z] auto-run: auto-push triggered
+[2026-08-13T11:01:43Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T061/daemon.lock', 'runs/T061/runtime.log', 'runs/T061/workflow-status.md']
+[2026-08-13T11:01:43Z] push: pushing branch=ticket/T061-backfill-and-reconcile-already-synced-media-withou
+[2026-08-13T11:01:45Z] push: done branch=ticket/T061-backfill-and-reconcile-already-synced-media-withou
+[2026-08-13T11:01:46Z] auto-run: TEST_COMPLETE — running PR lifecycle
