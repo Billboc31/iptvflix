@@ -3,5 +3,23 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T070-drive-movies-and-series-discovery-shelves-from-the",
   "issue_number": 137,
-  "updated_at": "2026-08-13T19:42:01Z"
+  "updated_at": "2026-08-13T19:46:24Z",
+  "pr_number": 145,
+  "pr_synced": true,
+  "pre_conflict_state": "TEST_COMPLETE",
+  "conflict_detected_at": "2026-08-13T19:44:31Z",
+  "conflict_pr_number": 145,
+  "conflicted_files": [
+    "apps/api/migrations/0033_t070_discovery_indexes.sql",
+    "apps/api/migrations/meta/_journal.json",
+    "apps/api/src/db/schema/movies.ts",
+    "apps/api/src/db/schema/series.ts",
+    "apps/api/src/routes/movies.ts",
+    "apps/api/src/routes/series.ts",
+    "apps/api/src/services/catalog-service.ts",
+    "apps/web/src/lib/api.ts",
+    "apps/web/src/pages/MoviesPage.tsx",
+    "apps/web/src/pages/SeriesPage.tsx",
+    "packages/api-contracts/src/catalog.ts"
+  ]
 }
