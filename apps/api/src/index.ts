@@ -32,6 +32,7 @@ import { authRoutes } from './routes/auth.js'
 import { schedulerRoutes } from './routes/scheduler.js'
 import { arrivalsRoutes } from './routes/arrivals.js'
 import { reconcileRoutes, episodeBackfillRoutes } from './routes/reconcile.js'
+import { catalogBootstrapRoutes } from './routes/catalog-bootstrap.js'
 import { authenticate } from './plugins/auth.js'
 import {
   PORT,
@@ -44,6 +45,7 @@ import {
   SOURCE_SYNC_CONCURRENCY,
   SCHEDULER_STARTUP_DELAY_MS,
 } from './config/env.js'
+
 import { db } from './db/client.js'
 import { TmdbClient } from './providers/metadata/tmdb/client.js'
 import { MetadataEnrichmentService } from './services/metadata-enrichment-service.js'
@@ -53,6 +55,7 @@ import { SchedulerService } from './services/scheduler-service.js'
 import { TitleMatchingService } from './services/title-matching-service.js'
 import { MediaReconciliationService } from './services/media-reconciliation-service.js'
 import { EpisodeBackfillService } from './services/episode-backfill-service.js'
+import { CatalogBootstrapService } from './services/catalog-bootstrap-service.js'
 import { triggerSync } from './services/sync-runs-service.js'
 
 const app = Fastify({ logger: true })
@@ -118,6 +121,11 @@ await app.register(async function protectedScope(protectedApp) {
 
   const backfillService = new EpisodeBackfillService()
   await protectedApp.register(episodeBackfillRoutes, { backfillService })
+
+  if (TMDB_API_KEY) {
+    const bootstrapService = new CatalogBootstrapService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
+    await protectedApp.register(catalogBootstrapRoutes, { service: bootstrapService })
+  }
 })
 
 if (process.env.NODE_ENV !== 'production') {

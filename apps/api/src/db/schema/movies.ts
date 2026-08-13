@@ -6,6 +6,7 @@ export const matchStatusEnum = pgEnum('match_status', ['PENDING', 'MATCHED', 'UN
 
 type SpokenLanguage = { iso639_1: string; name: string }
 type ProductionCountry = { iso3166_1: string; name: string }
+type Localizations = { fr?: { title?: string; synopsis?: string; tagline?: string } }
 
 export const movies = pgTable('movies', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -40,6 +41,7 @@ export const movies = pgTable('movies', {
   collectionId: uuid('collection_id').references(() => collections.id),
   externalIds: jsonb('external_ids').$type<Record<string, string | number | null>>(),
   tmdbSyncedAt: timestamp('tmdb_synced_at', { withTimezone: true }),
+  localizations: jsonb('localizations').$type<Localizations>(),
 })
 
 export const movieGenres = pgTable(

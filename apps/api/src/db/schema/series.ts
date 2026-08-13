@@ -6,6 +6,7 @@ type SpokenLanguage = { iso639_1: string; name: string }
 type ProductionCountry = { iso3166_1: string; name: string }
 type Network = { id: number; name: string; logoPath: string | null; originCountry: string }
 type CreatedBy = { id: number; name: string; profilePath: string | null }
+type Localizations = { fr?: { title?: string; synopsis?: string; tagline?: string } }
 
 export const series = pgTable('series', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -43,6 +44,7 @@ export const series = pgTable('series', {
   keywords: jsonb('keywords').$type<string[]>(),
   externalIds: jsonb('external_ids').$type<Record<string, string | number | null>>(),
   tmdbSyncedAt: timestamp('tmdb_synced_at', { withTimezone: true }),
+  localizations: jsonb('localizations').$type<Localizations>(),
 })
 
 export const seriesGenres = pgTable(
