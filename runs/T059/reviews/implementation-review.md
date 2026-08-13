@@ -1,98 +1,108 @@
-I have a complete view of the implementation. Here is my structured review.
+I have all the information needed to write the final review.
 
 ---
 
-# PR Review — T059: Web Browsing Redesign
+# PR Review — T059 : Redesign web browsing with top navigation, immersive hero and shelf-first media pages
 
 ## Résumé
 
-L'implémentation livre les composants structurels demandés : `TopNav`, refonte de `AppShell`, `HeroSection` augmentée, `GenreChips`, et pages `MoviesPage`/`SeriesPage` reconstruites autour du modèle Hero + shelves. L'architecture est cohérente avec le ticket et les 183 tests unitaires passent. Cependant, deux tests E2E sont cassés (un faux-négatif et un faux-positif silencieux), et `SeriesPage` n'a aucun test unitaire malgré l'AC explicite sur la couverture.
+This is a **third-pass review** following two prior `IMPLEMENTATION_FIX_REQUIRED` decisions. The fix commit (`2a56f82`) addressed all three blockers and two notables that were identified. The implementation is now structurally correct, test-covered and aligned with the ticket acceptance criteria.
+
+---
 
 ## Vérifications effectuées
 
-- Structure de `AppShell.tsx` — suppression de `LeftNav`/`TopBar`, adoption de `TopNav` ✓
-- `TopNav.tsx` — navigation horizontale sticky, responsive `hidden md:flex`, search/settings ✓
-- `TopNav.test.tsx` — 9 tests, couverture correcte ✓
-- `HeroSection.tsx` — gating du bouton Play sur `availabilityStatus === 'AVAILABLE' && onPlay` ✓
-- `HeroSection.test.tsx` — +4 tests couvrant les états d'availability ✓
-- `GenreChips.tsx` — import correct depuis `@iptvflix/api-contracts` ✓
-- `MoviesPage.tsx` — Hero + GenreChips + shelves, fallback double-fetch pour la hero ✓
-- `MoviesPage.test.tsx` — 6 tests MSW, bonne couverture ✓
-- `SeriesPage.tsx` — structure miroir de Movies, correct ✓
-- `SeriesPage.test.tsx` — **inexistant** ✗
-- `e2e/tests/smoke.spec.ts` — assertions empty-state **invalides** après refonte ✗
-- `e2e/tests/mobile-nav.spec.ts` — sélecteur stale **faux-positif** ✗
-- Pas de branding Netflix, identité IPTVFlix préservée ✓
+- `AppShell.tsx` — structure flex-col, TopNav en tête, BottomNav préservé
+- `TopNav.tsx` / `TopNav.test.tsx` — navigation horizontale, 9 tests
+- `HeroSection.tsx` / `HeroSection.test.tsx` — contrat Play/availability, import type contrat
+- `GenreChips.tsx` — scrollable pill row, import depuis api-contracts
+- `MoviesPage.tsx` / `MoviesPage.test.tsx` — Hero + GenreChips + shelves, 6 tests MSW
+- `SeriesPage.tsx` / `SeriesPage.test.tsx` — structure miroir, 5 tests
+- `e2e/tests/smoke.spec.ts` — assertions mises à jour (état vide)
+- `e2e/tests/mobile-nav.spec.ts` — sélecteur stale remplacé
+- `App.tsx` — routes disponibles pour toutes les destinations TopNav
+- `BottomNav.tsx` — label et responsive vérifiés
+- Confirmation suppression `LeftNav.tsx` et `TopBar.tsx` via `git diff --stat`
+
+---
 
 ## Points validés
 
-- La sidebar gauche est correctement supprimée ; `AppShell` passe à une structure `flex-col` propre.
-- `TopNav` couvre les 5 destinations primaires (Accueil, Films, Séries, Ma Liste, Nouveautés) avec search et settings à droite.
-- Le fallback responsive `hidden md:flex` est correct et `BottomNav` mobile est préservé.
-- Le bouton "Lire" est strictement conditionnel à `availabilityStatus === 'AVAILABLE'` **et** la présence de `onPlay` — le contenu non-disponible ne génère pas de fausse action de lecture.
-- `SeriesPage` supprime intentionnellement `onPlay` (playabilité épisode-driven) — justifié.
-- `HorizontalRow` est réutilisé comme shelf primitive sans duplication de logique.
-- Les gradients (`from-[#0a0a0f]` latéral + `from-[#0a0a0f]` vertical) assurent un contraste lisible sur les backdrops variés.
-- `GenreChips` importe correctement `GenreResponse` depuis les contrats API.
+- ✅ `LeftNav.tsx` et `TopBar.tsx` effectivement supprimés (-69 / -28 lignes)
+- ✅ `AppShell.tsx` : TopNav sticky en tête, `main` flex-1, BottomNav mobile-only
+- ✅ `TopNav` : 5 destinations primaires (`/`, `/movies`, `/series`, `/my-list`, `/arrivals`), search desktop + bouton search mobile, lien settings — responsive `hidden md:flex` correct
+- ✅ `HeroSection` : bouton "Lire" conditionnel sur `availabilityStatus === 'AVAILABLE' && onPlay`; bouton "Plus d'infos" toujours présent si `onDetails` fourni; fallback backdrop gracieux
+- ✅ `HeroSection.tsx:2` : `import type { AvailabilityStatus } from '@iptvflix/api-contracts'` — plus de literal union inline
+- ✅ `MoviesPage` : double-fetch hero (AVAILABLE-first → fallback), GenreChips, rayons "Disponibles" + "Tous les films", genre shelf quand filtre sélectionné
+- ✅ `SeriesPage` : aligné sur MoviesPage — double-fetch hero, pas de `onPlay` (épisode-driven, justifié), même structure de rayons
+- ✅ `SeriesPage.test.tsx` créé : 5 tests couvrant hero, absence Play, genre chips, rayons par défaut, hero absent si API vide
+- ✅ `smoke.spec.ts` : assertions obsolètes (`Aucun film trouvé` / `Aucune série trouvée`) remplacées par vérifications sur heading `'Disponibles'` et absence du bouton `'Lire'` — conformes à l'UX redessinée
+- ✅ `mobile-nav.spec.ts` : stale locator `page.locator('nav').filter({ hasText: 'IPTVFlix' })` remplacé par assertion positive sur `page.getByRole('banner')` + vérification `aside nav` count = 0
+- ✅ Gradients horizontaux et verticaux `from-[#0a0a0f]` assurent le contraste sur backdrops variés
+- ✅ Aucun branding Netflix introduit — identité IPTVFlix conservée
+- ✅ Toutes les routes TopNav (`/arrivals`, `/my-list`, `/movies`, `/series`, `/`) ont une Route correspondante dans `App.tsx`
+- ✅ `BottomNav` : `aria-label="Navigation principale"` visible uniquement sur mobile (`block md:hidden`) — pas de collision avec le `<nav>` desktop de TopNav (`hidden md:flex`) pour les requêtes par rôle Playwright
+
+---
 
 ## Problèmes détectés
 
-### Bloquants
+### Mineurs (acceptables en l'état)
 
-**1. `smoke.spec.ts` — assertions empty-state invalides**
-`e2e/tests/smoke.spec.ts:30,63`
+**1. `shelfBData` fetchée inconditionnellement**
+`MoviesPage.tsx:29`, `SeriesPage.tsx:29`
+
 ```ts
-await expect(page.getByText('Aucun film trouvé')).toBeVisible()
-await expect(page.getByText('Aucune série trouvée')).toBeVisible()
+const { data: shelfBData, loading: shelfBLoading } = useMovies({ pageSize: 20, sortBy: 'title' })
 ```
-Les pages réécrites ne produisent plus ces chaînes — elles affichent des `HorizontalRow` vides sans message d'état. Ces assertions **échoueront en CI E2E**. Correction requise : soit ajouter un état vide aux pages, soit mettre à jour les assertions E2E pour refléter le comportement actuel (shelves sans contenu visibles).
 
-**2. `mobile-nav.spec.ts` — sélecteur stale, faux-positif silencieux**
-`e2e/tests/mobile-nav.spec.ts:8`
-```ts
-const leftNav = page.locator('nav').filter({ hasText: 'IPTVFlix' })
-await expect(leftNav).toBeHidden()
-```
-Le logo "IPTVFlix" est maintenant dans un `<header>`, pas dans un `<nav>`. Le locator ne matche plus rien, et `toBeHidden()` passe vacuously sur un élément absent — **le test valide en se trompant**. Il ne vérifie plus que la sidebar a disparu. Correction : remplacer par une assertion positive sur le `<header>` TopNav (ex. `page.getByRole('banner')`) et/ou vérifier l'absence d'un `<nav>` sidebar explicitement identifiable.
+Le hook "Tous les films"/"Toutes les séries" s'exécute même quand un genre est sélectionné et que ce rayon n'est pas rendu. Requête gaspillée, impact silencieux faible. Flaggué par les deux reviews précédentes — non bloquant.
 
-**3. `SeriesPage.test.tsx` manquant**
-AC du ticket : *"Automated frontend tests cover navigation, Hero availability states, shelf rendering and responsive-critical behavior where practical."* `MoviesPage` a 6 tests couvrant hero states, genre chips, shelves et états d'erreur. `SeriesPage` n'a aucun test. La structure `SeriesPage` est différente sur un point fonctionnel clé (pas de double-fetch hero, pas de `onPlay`) qui mérite une couverture explicite.
+**2. Emoji comme icônes dans `TopNav`**
+`TopNav.tsx:71,79` — `🔍` et `⚙️` cohérents avec `BottomNav` mais hors d'une stratégie icônes formelle. Acceptable pour ce ticket.
 
-### Notable (à corriger)
+**3. Trois routes `BottomNav` non enregistrées dans `App.tsx`**
+`BottomNav.tsx` (non modifié par ce ticket) liens `/library`, `/activity`, `/profile` n'ont pas de `<Route>` dans `App.tsx`. Régression pré-existante hors scope T059 — à corriger dans un ticket dédié.
 
-**4. `AvailabilityStatus` inline dans `HeroSection.tsx:18`**
-```ts
-availabilityStatus?: 'AVAILABLE' | 'UNAVAILABLE'
-```
-Le plan spécifiait explicitement d'importer `AvailabilityStatus` depuis `@iptvflix/api-contracts`. Si le contrat ajoute `'COMING_SOON'` ou autre valeur, la Hero ne le reflétera pas sans mise à jour manuelle. Correction : `import type { AvailabilityStatus } from '@iptvflix/api-contracts'`.
+---
 
-**5. Asymétrie hero fallback Movies vs Series**
-`MoviesPage` effectue deux appels parallèles (`availability: 'AVAILABLE'` puis fallback sans filtre) pour présenter un film disponible en priorité. `SeriesPage` n'a qu'un seul appel sans filtre `availability`, risquant de featured une série indisponible quand des disponibles existent. À aligner si la cohérence fonctionnelle est attendue.
+## Conformité aux critères d'acceptation
 
-### Mineur
+| Critère | Statut |
+|---|---|
+| Desktop sans sidebar gauche | ✅ |
+| Top nav persistante : destinations, search, profil | ✅ |
+| Movies : Hero immersif + rayons horizontaux | ✅ |
+| Series : même structure adaptée | ✅ |
+| Sélecteur genre compact (GenreChips) | ✅ |
+| Hero utilise données Media canoniques, Play si AVAILABLE | ✅ |
+| Hero utile pour contenu indisponible (Plus d'infos) | ✅ |
+| Shelf rows réutilisent HorizontalRow (en attente #38) | ✅ |
+| Layout desktop/tablet, fallback narrow screens | ✅ |
+| Contraste backdrop/texte | ✅ |
+| Navigation existante (Home/Search/MyList/Detail) accessible | ✅ |
+| Tests automatisés (navigation, Hero states, shelves) | ✅ |
+| Pas de branding Netflix | ✅ |
 
-**6. `shelfBData` fetchée inconditionnellement** (`MoviesPage.tsx:29`, `SeriesPage.tsx:24`)
-Le hook "Tous les films"/"Toutes les séries" s'exécute même quand un genre est sélectionné et que cette shelf n'est pas rendue. Ajouter `enabled: !selectedGenreId` élimine la requête gaspillée.
+---
 
-**7. Icônes emoji dans TopNav**
-`🔍` et `⚙️` sont cohérents avec `BottomNav` mais pas avec une stratégie d'icônes SVG. Acceptable pour ce ticket, point à traiter si une librairie d'icônes est adoptée.
+## Risques résiduels
 
-## Risques éventuels
+- Les routes BottomNav invalides (`/library`, `/activity`, `/profile`) produiront des pages vides en production — pré-existant, hors scope de ce ticket.
+- Le fetch `shelfBData` inconditionnelle est une micro-inefficacité silencieuse sans impact utilisateur.
 
-- Les tests E2E cassés masquent une régression réelle (pages sans empty-state) et un test devenu inutile (mobile-nav). Sans correction, CI E2E ne peut pas jouer son rôle de garde-fou pour les refactos suivants.
-- L'absence de tests `SeriesPage` laisse les comportements spécifiques séries (pas de Play, hero fallback simple) sans filet.
+---
 
 ## Décision
 
-REQUEST_CHANGES — Les deux problèmes E2E (faux-négatif sur empty-state, faux-positif sur mobile-nav) et l'absence de `SeriesPage.test.tsx` doivent être corrigés avant merge. Les autres points sont des améliorations ciblées sans bloquer la livraison si adressées dans le même patch.
+Tous les blockers identifiés lors des deux reviews précédentes ont été corrigés dans le commit `2a56f82` :
 
-## Actions demandées
+1. ✅ `smoke.spec.ts` — assertions empty-state corrigées
+2. ✅ `mobile-nav.spec.ts` — sélecteur stale remplacé par assertion propre
+3. ✅ `SeriesPage.test.tsx` — créé avec couverture adéquate
+4. ✅ `HeroSection.tsx` — `AvailabilityStatus` importé depuis les contrats
+5. ✅ `SeriesPage.tsx` — double-fetch hero aligné sur MoviesPage
 
-1. **`e2e/tests/smoke.spec.ts`** — Ajouter un état vide aux pages Movies/Series **ou** mettre à jour les assertions pour refléter le comportement réel (shelves vides sans message).
-2. **`e2e/tests/mobile-nav.spec.ts`** — Corriger le sélecteur stale pour vérifier positivement la présence du `TopNav` header et l'absence de la sidebar.
-3. **`apps/web/src/pages/SeriesPage.test.tsx`** — Créer avec au minimum : hero rendu, bouton Lire absent (Series), genre chips, shelves par défaut, héro absent si API vide.
-4. **`apps/web/src/components/content/HeroSection.tsx:18`** — Remplacer le literal union par `import type { AvailabilityStatus } from '@iptvflix/api-contracts'`.
-5. *(Recommandé)* **`SeriesPage.tsx`** — Aligner la stratégie hero avec `MoviesPage` (double-fetch available-first + fallback).
-6. *(Optionnel)* **`MoviesPage.tsx:29`, `SeriesPage.tsx:24`** — Ajouter `enabled: !selectedGenreId` sur le hook shelfB.
+L'implémentation est structurellement solide, conforme au ticket, et ne présente aucun problème bloquant restant.
 
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
