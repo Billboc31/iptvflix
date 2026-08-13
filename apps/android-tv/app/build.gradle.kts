@@ -1,6 +1,8 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
@@ -9,16 +11,22 @@ android {
 
     defaultConfig {
         applicationId = "com.iptvflix.androidtv"
-        minSdk = 21
+        minSdk = 23
         targetSdk = 34
         versionCode = 1
         versionName = "0.0.1"
+        buildConfigField("String", "API_BASE_URL", "\"https://api.iptvflix.example.com\"")
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
         }
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
     }
 
     compileOptions {
@@ -30,24 +38,40 @@ android {
         jvmTarget = "17"
     }
 
-    // Uncomment to enable Jetpack Compose for TV
-    // buildFeatures {
-    //     compose = true
-    // }
-    // composeOptions {
-    //     kotlinCompilerExtensionVersion = "1.5.14"
-    // }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.appcompat)
-
-    // Uncomment for Jetpack Compose for TV
-    // implementation("androidx.tv:tv-foundation:1.0.0-alpha11")
-    // implementation("androidx.tv:tv-material:1.0.0-alpha11")
-
-    // Uncomment for Media3
-    // implementation("androidx.media3:media3-exoplayer:1.4.0")
-    // implementation("androidx.media3:media3-ui:1.4.0")
+    // Compose
+    implementation(libs.compose.runtime)
+    implementation(libs.compose.ui)
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.activity)
+    implementation(libs.compose.tv.foundation)
+    implementation(libs.compose.tv.material)
+    // Lifecycle / ViewModel
+    implementation(libs.lifecycle.viewmodel.compose)
+    implementation(libs.lifecycle.runtime.ktx)
+    // Media3
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
+    implementation(libs.media3.session)
+    // Coroutines
+    implementation(libs.kotlinx.coroutines.android)
+    // Networking
+    implementation(libs.okhttp)
+    // Serialization
+    implementation(libs.kotlinx.serialization.json)
+    // Storage
+    implementation(libs.datastore.preferences)
+    implementation(libs.security.crypto)
+    // QR code generation
+    implementation(libs.zxing.core)
+    // Tests
+    testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
