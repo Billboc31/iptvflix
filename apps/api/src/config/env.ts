@@ -56,3 +56,20 @@ export const CATALOG_BOOTSTRAP_GENRE_IDS_TV = (
   .split(',')
   .map(Number)
   .filter(Boolean)
+export const CATALOG_REFRESH_ENABLED =
+  process.env.CATALOG_REFRESH_ENABLED !== undefined
+    ? process.env.CATALOG_REFRESH_ENABLED === 'true'
+    : true
+export const CATALOG_REFRESH_CADENCE_HOURS = Number(process.env.CATALOG_REFRESH_CADENCE_HOURS ?? 24)
+export const CATALOG_REFRESH_UPCOMING_STALE_HOURS = Number(
+  process.env.CATALOG_REFRESH_UPCOMING_STALE_HOURS ?? 12,
+)
+export const CATALOG_REFRESH_RECENT_STALE_DAYS = Number(
+  process.env.CATALOG_REFRESH_RECENT_STALE_DAYS ?? 3,
+)
+export const CATALOG_REFRESH_STABLE_STALE_DAYS = Number(
+  process.env.CATALOG_REFRESH_STABLE_STALE_DAYS ?? 30,
+)
+export const CATALOG_REFRESH_DISCOVERY_MAX_PAGES = Number(
+  process.env.CATALOG_REFRESH_DISCOVERY_MAX_PAGES ?? 5,
+)

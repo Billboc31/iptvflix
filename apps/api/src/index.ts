@@ -33,6 +33,7 @@ import { schedulerRoutes } from './routes/scheduler.js'
 import { arrivalsRoutes } from './routes/arrivals.js'
 import { reconcileRoutes, episodeBackfillRoutes } from './routes/reconcile.js'
 import { catalogBootstrapRoutes } from './routes/catalog-bootstrap.js'
+import { catalogRefreshRoutes } from './routes/catalog-refresh.js'
 import { authenticate } from './plugins/auth.js'
 import {
   PORT,
@@ -44,6 +45,8 @@ import {
   DISCOVERY_CADENCE_MINUTES,
   SOURCE_SYNC_CONCURRENCY,
   SCHEDULER_STARTUP_DELAY_MS,
+  CATALOG_REFRESH_ENABLED,
+  CATALOG_REFRESH_CADENCE_HOURS,
 } from './config/env.js'
 
 import { db } from './db/client.js'
@@ -56,6 +59,7 @@ import { TitleMatchingService } from './services/title-matching-service.js'
 import { MediaReconciliationService } from './services/media-reconciliation-service.js'
 import { EpisodeBackfillService } from './services/episode-backfill-service.js'
 import { CatalogBootstrapService } from './services/catalog-bootstrap-service.js'
+import { CatalogRefreshService } from './services/catalog-refresh-service.js'
 import { triggerSync } from './services/sync-runs-service.js'
 
 const app = Fastify({ logger: true })
@@ -87,6 +91,8 @@ await app.register(searchRoutes, { discoveryService: discoveryService ?? undefin
 await app.register(pairingRoutes)
 await app.register(devicesRoutes)
 await app.register(commandsRoutes)
+
+let catalogRefreshServiceRef: CatalogRefreshService | null = null
 
 // Protected routes
 await app.register(async function protectedScope(protectedApp) {
@@ -125,6 +131,15 @@ await app.register(async function protectedScope(protectedApp) {
   if (TMDB_API_KEY) {
     const bootstrapService = new CatalogBootstrapService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
     await protectedApp.register(catalogBootstrapRoutes, { service: bootstrapService })
+
+    const refreshEnrichmentService = new MetadataEnrichmentService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
+    const refreshService = new CatalogRefreshService(
+      db,
+      new TmdbClient({ apiKey: TMDB_API_KEY }),
+      refreshEnrichmentService,
+    )
+    await protectedApp.register(catalogRefreshRoutes, { service: refreshService })
+    catalogRefreshServiceRef = refreshService
   }
 })
 
@@ -147,13 +162,21 @@ const discoveryPoolService =
       )
     : null
 
-const scheduler = new SchedulerService(db, triggerSync, discoveryPoolService, {
-  enabled: SYNC_SCHEDULER_ENABLED,
-  sourceSyncCadenceMinutes: SOURCE_SYNC_CADENCE_MINUTES,
-  discoveryCadenceMinutes: DISCOVERY_CADENCE_MINUTES,
-  sourceSyncConcurrency: SOURCE_SYNC_CONCURRENCY,
-  startupDelayMs: SCHEDULER_STARTUP_DELAY_MS,
-})
+const scheduler = new SchedulerService(
+  db,
+  triggerSync,
+  discoveryPoolService,
+  {
+    enabled: SYNC_SCHEDULER_ENABLED,
+    sourceSyncCadenceMinutes: SOURCE_SYNC_CADENCE_MINUTES,
+    discoveryCadenceMinutes: DISCOVERY_CADENCE_MINUTES,
+    sourceSyncConcurrency: SOURCE_SYNC_CONCURRENCY,
+    startupDelayMs: SCHEDULER_STARTUP_DELAY_MS,
+    catalogRefreshEnabled: CATALOG_REFRESH_ENABLED,
+    catalogRefreshCadenceHours: CATALOG_REFRESH_CADENCE_HOURS,
+  },
+  catalogRefreshServiceRef,
+)
 scheduler.start()
 
 try {

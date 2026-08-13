@@ -5,6 +5,7 @@ import { sources } from '../db/schema/sources.js'
 import { syncRuns } from '../db/schema/sync-runs.js'
 import type { TriggerSyncBody } from '@iptvflix/api-contracts'
 import type { DiscoveryCandidatePoolService } from './discovery-candidate-pool-service.js'
+import { type CatalogRefreshService, CatalogRefreshAlreadyRunningError } from './catalog-refresh-service.js'
 
 async function withBoundedConcurrency<T>(
   tasks: (() => Promise<T>)[],
@@ -37,18 +38,22 @@ interface SchedulerConfig {
   discoveryCadenceMinutes: number
   sourceSyncConcurrency: number
   startupDelayMs: number
+  catalogRefreshEnabled?: boolean
+  catalogRefreshCadenceHours?: number
 }
 
 export class SchedulerService {
   private startupTimer: ReturnType<typeof setTimeout> | null = null
   private sourceSyncTimer: ReturnType<typeof setInterval> | null = null
   private discoveryTimer: ReturnType<typeof setInterval> | null = null
+  private catalogRefreshTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(
     private readonly db: Db,
     private readonly triggerSync: (body: TriggerSyncBody) => Promise<unknown>,
     private readonly discoveryPoolService: DiscoveryCandidatePoolService | null,
     private readonly config: SchedulerConfig,
+    private readonly catalogRefreshService: CatalogRefreshService | null = null,
   ) {}
 
   start(): void {
@@ -69,6 +74,14 @@ export class SchedulerService {
         () => void this.runDiscoveryTick(),
         this.config.discoveryCadenceMinutes * 60_000,
       )
+
+      if ((this.config.catalogRefreshEnabled ?? true) && this.catalogRefreshService) {
+        void this.runCatalogRefreshTick()
+        this.catalogRefreshTimer = setInterval(
+          () => void this.runCatalogRefreshTick(),
+          (this.config.catalogRefreshCadenceHours ?? 24) * 3_600_000,
+        )
+      }
     }, this.config.startupDelayMs)
   }
 
@@ -84,6 +97,10 @@ export class SchedulerService {
     if (this.discoveryTimer !== null) {
       clearInterval(this.discoveryTimer)
       this.discoveryTimer = null
+    }
+    if (this.catalogRefreshTimer !== null) {
+      clearInterval(this.catalogRefreshTimer)
+      this.catalogRefreshTimer = null
     }
   }
 
@@ -132,6 +149,22 @@ export class SchedulerService {
       await this.discoveryPoolService.refreshPool([...ALL_FEEDS], [...ALL_MEDIA_TYPES])
     } catch (err) {
       console.error('[scheduler] Discovery tick error:', err)
+    }
+  }
+
+  private async runCatalogRefreshTick(): Promise<void> {
+    if (!this.catalogRefreshService) return
+    try {
+      const last = await this.catalogRefreshService.getLastCompletedRun()
+      const cadenceMs = (this.config.catalogRefreshCadenceHours ?? 24) * 3_600_000
+      if (last?.completedAt && Date.now() - last.completedAt.getTime() < cadenceMs) return
+      await this.catalogRefreshService.run()
+    } catch (err) {
+      if (err instanceof CatalogRefreshAlreadyRunningError) {
+        console.debug('[scheduler] Catalog refresh already running, skipping')
+        return
+      }
+      console.error('[scheduler] Catalog refresh tick error:', err)
     }
   }
 }
