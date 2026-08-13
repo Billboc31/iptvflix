@@ -1,0 +1,29 @@
+-- Heal: production drifted without media metadata columns from 0020 while later
+-- migrations (e.g. match_status) were applied. Drizzle inserts reference these columns.
+ALTER TABLE "movies" ADD COLUMN IF NOT EXISTS "vote_average" real;--> statement-breakpoint
+ALTER TABLE "movies" ADD COLUMN IF NOT EXISTS "certification" text;--> statement-breakpoint
+ALTER TABLE "series" ADD COLUMN IF NOT EXISTS "vote_average" real;--> statement-breakpoint
+ALTER TABLE "series" ADD COLUMN IF NOT EXISTS "certification" text;--> statement-breakpoint
+ALTER TABLE "series" ADD COLUMN IF NOT EXISTS "status" text;--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "media_videos" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"media_type" text NOT NULL,
+	"media_id" uuid NOT NULL,
+	"youtube_key" text NOT NULL,
+	"video_type" text NOT NULL,
+	"official" boolean DEFAULT false NOT NULL,
+	"published_at" timestamp with time zone,
+	"fetched_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "media_credits" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"media_type" text NOT NULL,
+	"media_id" uuid NOT NULL,
+	"role" text NOT NULL,
+	"name" text NOT NULL,
+	"character" text,
+	"credit_order" integer NOT NULL,
+	"profile_path" text,
+	"fetched_at" timestamp with time zone DEFAULT now() NOT NULL
+);
