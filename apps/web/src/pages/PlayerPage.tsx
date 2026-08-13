@@ -30,24 +30,29 @@ export default function PlayerPage() {
     const video = videoRef.current
     if (!video || !streamUrl) return
 
+    let hlsInstance: import('hls.js').default | null = null
+    let cancelled = false
+
     if (streamUrl.includes('.m3u8')) {
       import('hls.js').then(({ default: Hls }) => {
+        if (cancelled) return
         if (Hls.isSupported()) {
-          const hls = new Hls()
-          hls.loadSource(streamUrl)
-          hls.attachMedia(video)
-          // cleanup returned to caller below
+          hlsInstance = new Hls()
+          hlsInstance.loadSource(streamUrl)
+          hlsInstance.attachMedia(video)
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
           video.src = streamUrl
         }
       }).catch(() => {
-        if (video) video.src = streamUrl
+        if (!cancelled && video) video.src = streamUrl
       })
     } else {
       video.src = streamUrl
     }
 
     return () => {
+      cancelled = true
+      hlsInstance?.destroy()
       video.src = ''
     }
   }, [streamUrl])

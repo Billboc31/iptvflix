@@ -135,9 +135,10 @@ export async function resolvePlayback(
       source.password ?? '',
       selected.providerItemId,
     )
-  } else {
-    // M3U: providerItemId stores the direct stream URL
+  } else if (source.type === 'M3U') {
     streamUrl = buildM3UStreamUrl(selected.providerItemId)
+  } else {
+    throw new ValidationError('Variant not available')
   }
 
   const alternatives: AvailabilityVariantResponse[] = candidates
