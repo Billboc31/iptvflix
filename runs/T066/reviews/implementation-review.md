@@ -1,95 +1,77 @@
+I have all the information I need. Let me write the final review.
+
 ---
 
-## PR Review — T066: Add scheduled refreshes for the canonical catalog
+## PR Review — T066: Add scheduled refreshes for the canonical catalog (re-review after fix)
 
 ### Résumé
 
-L'implémentation couvre correctement le périmètre du ticket : migration, service de refresh avec bucket segmentation, discovery, checkpoints, scheduler integration, routes, config et tests. Le scope est bien respecté. Un bug est identifié dans la gestion d'erreur du scheduler tick.
+La review précédente avait identifié un seul bug bloquant dans `runCatalogRefreshTick` : l'utilisation de `statusCode === 409` au lieu de `instanceof CatalogRefreshAlreadyRunningError`. Le fix a été correctement appliqué. L'implémentation est complète et conforme au plan et au ticket.
 
 ---
 
 ### Vérifications effectuées
 
-- Migration SQL et schema Drizzle vs plan
-- Logique de bucket segmentation (movies + series)
-- Mécanisme de lock / stale-lock
-- Idempotence et resumabilité des checkpoints
-- Discovery feeds (upsert avec `onConflictDoUpdate`)
-- Intégration scheduler (`SchedulerService`)
-- Route `POST /catalog-refresh` et `GET /catalog-refresh/status`
-- Variables d'environnement et config
+- Correction du bug `scheduler-service.ts:163`
+- Migration SQL vs schema Drizzle
+- Logique de bucket segmentation movies + series (JS + DB)
+- Mécanisme lock / stale-lock
+- Checkpoints et idempotence
+- Discovery upsert idempotent
+- Routes `POST /catalog-refresh` et `GET /catalog-refresh/status`
+- Authentification (protectedScope)
+- Variables d'environnement (6 vars)
+- Wiring `index.ts`
 - Tests unitaires (12 cas)
-- Authentification des routes
+- Résultats de test (706 tests passent)
 
 ---
 
-### Points validés
+### Fix confirmé
 
-- **Migration** : table `catalog_refresh_runs` avec toutes les colonnes prévues, index partiel `WHERE status = 'RUNNING'` ✅
-- **Schema Drizzle** : correspond exactement à la migration ✅
-- **Bucket movies** : classification `upcoming / recent / stable` correcte côté JS (`classifyMovieBucket`) et côté DB (`fetchStaleMovies`), bornes 60/90 jours respectées ✅
-- **Bucket series** : la requête `fetchStaleSeries` couvre bien les 3 buckets au niveau DB, exclusions statuts correctes ✅
-- **Stale-lock** : RUNNING rows > 2h passées à FAILED avant tentative de lock ✅
-- **Async execution** : `void this.execute(run.id)` — run() retourne immédiatement, execute() gère ses propres erreurs ✅
-- **Checkpoints** : chaque step sauvegarde son `offset` et son flag `done`, reprise sans re-traitement ✅
-- **Discovery** : feeds `upcoming` + `trending`, upsert idempotent via `onConflictDoUpdate` sur `tmdbId`, déduplication intra-batch ✅
-- **Route POST 202/409** : gestion correcte de `CatalogRefreshAlreadyRunningError` ✅
-- **Route GET /status** : dernier run trié par `startedAt desc` ✅
-- **Authentification** : routes enregistrées dans `protectedScope` ✅
-- **Env vars** : 6 variables ajoutées avec bonnes valeurs par défaut ✅
-- **Scheduler** : `catalogRefreshEnabled`/`cadenceHours` câblés, `runCatalogRefreshTick` vérifie la cadence avant de lancer, `stop()` nettoie le timer ✅
-- **Tests** : classification buckets, idempotence lock, async run, staleDays par bucket, checkpoint done skipping ✅
-
----
-
-### Problèmes détectés
-
-#### 🔴 Bug — `runCatalogRefreshTick` : mauvaise détection de l'erreur "déjà en cours"
-
-**Fichier** : `apps/api/src/services/scheduler-service.ts:157-168`
+**`apps/api/src/services/scheduler-service.ts:163`**
 
 ```typescript
-} catch (err) {
-  const statusCode = (err as Error & { statusCode?: number }).statusCode
-  if (statusCode === 409) {          // ← ne matche jamais
-    console.debug('[scheduler] Catalog refresh already running, skipping')
-    return
-  }
-  console.error('[scheduler] Catalog refresh tick error:', err)
-}
+// AVANT (bug)
+const statusCode = (err as Error & { statusCode?: number }).statusCode
+if (statusCode === 409) { ... }
+
+// APRÈS (correct)
+if (err instanceof CatalogRefreshAlreadyRunningError) { ... }
 ```
 
-`CatalogRefreshAlreadyRunningError` étend `Error` sans propriété `statusCode`. Quand le scheduler tire pendant qu'un refresh manuel est en cours, `statusCode` est `undefined`, la branche 409 ne correspond pas, et une erreur est loguée (`console.error`) au lieu d'un message de debug silencieux. Ce n'est pas catastrophique mais c'est un faux-positif permanent dans les logs.
-
-**Correction attendue** — importer et utiliser `instanceof` :
-```typescript
-import { CatalogRefreshService, CatalogRefreshAlreadyRunningError } from './catalog-refresh-service.js'
-// ...
-} catch (err) {
-  if (err instanceof CatalogRefreshAlreadyRunningError) {
-    console.debug('[scheduler] Catalog refresh already running, skipping')
-    return
-  }
-  console.error('[scheduler] Catalog refresh tick error:', err)
-}
-```
+L'import `CatalogRefreshAlreadyRunningError` est présent à la ligne 8. Le fix est exact et minimal. ✅
 
 ---
 
-### Risques éventuels (observations mineures, non bloquantes)
+### Points validés (inchangés depuis review-1)
 
-- **Race condition lock** : la séquence check-then-insert n'est pas atomique. Deux `run()` simultanés pourraient tous deux passer le `SELECT ... WHERE status='RUNNING'` et le second INSERT échouerait en 500 (violation de l'index unique) plutôt qu'en 409. Acceptable pour un déploiement single-instance.
-- **`THROTTLE_MS = 250` local** : le plan prévoyait de réutiliser `ENRICH_THROTTLE_MS` depuis `metadata-enrichment-service.ts` — ce constant n'est pas exporté, donc une constante locale est définie avec la même valeur. Fonctionnellement identique, juste une divergence du plan.
-- **`classifySeriesBucket` ne retourne pas `recent`** : la fonction utilitaire JS (utilisée dans les tests) ne couvre que `upcoming | stable` pour les séries. La requête DB couvre bien un bucket `recent` pour les séries. Pas de bug en production mais les tests de classification series ne couvrent pas `recent`.
+- **Migration** : `catalog_refresh_runs` avec toutes les colonnes, index partiel `WHERE status = 'RUNNING'` ✅
+- **Schema Drizzle** : correspond à la migration ✅
+- **Bucket movies** : `classifyMovieBucket` et `fetchStaleMovies` alignés, bornes 60/90 jours correctes ✅
+- **Bucket series** : `fetchStaleSeries` couvre les 3 buckets côté DB ✅
+- **Stale-lock** : RUNNING rows > 2 h → FAILED avant tentative d'insertion ✅
+- **Async execution** : `void this.execute(run.id)`, erreurs capturées dans `execute()` ✅
+- **Checkpoints** : `done: true` empêche le re-traitement lors d'une reprise ✅
+- **Discovery** : feeds `upcoming` + `trending`, upsert idempotent sur `tmdbId`, déduplication intra-batch ✅
+- **Routes** : POST 202/409 correct, GET retourne le dernier run trié par `startedAt desc` ✅
+- **Authentification** : routes dans `protectedScope` ✅
+- **Env vars** : 6 variables avec valeurs par défaut conformes au plan ✅
+- **Scheduler** : cadence vérifiée avant lancement, timer nettoyé dans `stop()` ✅
+- **Tests** : 12 cas couvrant classification, lock, async, staleDays par bucket, skip checkpoint ✅
+
+---
+
+### Observations mineures (non bloquantes, inchangées)
+
+- **Race condition lock** : séquence non atomique ; second `run()` simultané échouerait en 500 au lieu de 409. Acceptable en single-instance.
+- **`THROTTLE_MS = 250` local** : diverge du plan (qui prévoyait de réutiliser `ENRICH_THROTTLE_MS`), mais la constante n'est pas exportée depuis `metadata-enrichment-service.ts`. Valeur identique, comportement inchangé.
+- **`classifySeriesBucket`** : ne retourne jamais `'recent'` (seulement `upcoming` | `stable`). La requête DB couvre bien `recent` pour les series. Pas de bug en production ; les tests de classification series ne couvrent pas ce cas.
 
 ---
 
 ### Décision
 
-Un bug réel est présent dans `scheduler-service.ts` : le log `console.error` sera émis à chaque tick du scheduler quand un refresh est déjà en cours, au lieu d'un `console.debug`. La correction est triviale (1 ligne) et ne touche pas au comportement fonctionnel.
+Le seul bug bloquant identifié a été corrigé correctement. Tous les critères d'acceptance du ticket sont couverts. Aucun nouveau problème détecté.
 
-## Actions demandées
-
-1. Corriger `runCatalogRefreshTick` dans `scheduler-service.ts` : remplacer la vérification `statusCode === 409` par `err instanceof CatalogRefreshAlreadyRunningError`.
-
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
