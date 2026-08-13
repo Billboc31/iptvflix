@@ -11,7 +11,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Accueil', to: '/', icon: '🏠' },
   { label: 'Films', to: '/movies', icon: '🎬' },
   { label: 'Séries', to: '/series', icon: '📺' },
-  { label: 'Radar Cinéma', to: '/radar', icon: '🎭', disabled: true },
+  { label: 'Nouveautés', to: '/arrivals', icon: '🔔' },
   { label: 'Ma Liste', to: '/list', icon: '❤️', disabled: true },
   { label: 'Historique', to: '/history', icon: '🕐', disabled: true },
   { label: 'Recherche', to: '/search', icon: '🔍' },

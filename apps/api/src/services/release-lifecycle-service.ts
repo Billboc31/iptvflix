@@ -4,6 +4,7 @@ import { movies } from '../db/schema/movies.js'
 import { series } from '../db/schema/series.js'
 import { releaseEvents } from '../db/schema/release-lifecycle.js'
 import type { ReleaseEventType, ReleaseLifecycle } from '@iptvflix/api-contracts'
+import { recordArrivalsForFollowers } from './arrival-service.js'
 
 export async function upsertReleaseFields(
   mediaType: 'MOVIE' | 'SERIES',
@@ -30,10 +31,19 @@ export async function recordReleaseEvent(
   occurredAt: Date,
   sourceId?: string | null,
 ): Promise<void> {
-  await db
+  const inserted = await db
     .insert(releaseEvents)
     .values({ mediaType, mediaId, eventType, occurredAt, sourceId: sourceId ?? null })
     .onConflictDoNothing()
+    .returning({ id: releaseEvents.id })
+
+  if (
+    inserted.length > 0 &&
+    eventType === 'SOURCE_APPEARED' &&
+    (mediaType === 'MOVIE' || mediaType === 'SERIES')
+  ) {
+    await recordArrivalsForFollowers(mediaType, mediaId, sourceId ?? null, inserted[0].id, occurredAt)
+  }
 }
 
 export async function getTimeline(

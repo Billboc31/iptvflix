@@ -14,6 +14,7 @@ import MyListPage from './pages/MyListPage.js'
 import ProfileSettingsPage from './pages/ProfileSettingsPage.js'
 import LoginPage from './pages/LoginPage.js'
 import PlayerPage from './pages/PlayerPage.js'
+import ArrivalsPage from './pages/ArrivalsPage.js'
 import { AuthProvider } from './context/AuthContext.js'
 import ProtectedRoute from './components/ProtectedRoute.js'
 
@@ -46,6 +47,7 @@ export default function App() {
                 <Route path="/sources" element={<SourcesPage />} />
                 <Route path="/my-list" element={<MyListPage />} />
                 <Route path="/settings/playback" element={<ProfileSettingsPage />} />
+                <Route path="/arrivals" element={<ArrivalsPage />} />
               </Route>
             </Route>
           </Routes>

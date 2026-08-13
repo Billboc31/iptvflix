@@ -30,6 +30,7 @@ import { playbackRoutes } from './routes/playback.js'
 import { testHelpersRoutes } from './routes/test-helpers.js'
 import { authRoutes } from './routes/auth.js'
 import { schedulerRoutes } from './routes/scheduler.js'
+import { arrivalsRoutes } from './routes/arrivals.js'
 import { authenticate } from './plugins/auth.js'
 import {
   PORT,
@@ -96,6 +97,7 @@ await app.register(async function protectedScope(protectedApp) {
   await protectedApp.register(tasteRoutes)
   await protectedApp.register(recommendationRoutes)
   await protectedApp.register(homeRoutes)
+  await protectedApp.register(arrivalsRoutes)
   await protectedApp.register(discoveryRoutes, { discoveryService })
 
   const enrichmentService = TMDB_API_KEY

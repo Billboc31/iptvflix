@@ -1,4 +1,5 @@
 import type {
+  ArrivalItem,
   MovieResponse,
   MovieDetailResponse,
   SeriesResponse,
@@ -253,6 +254,14 @@ export function logout(): Promise<{ ok: true }> {
 
 export function getMe(): Promise<MeResponse> {
   return request('/auth/me')
+}
+
+export function fetchArrivals(filter: 'unread' | 'all' = 'unread'): Promise<ArrivalItem[]> {
+  return request(`/arrivals${toQuery({ filter })}`)
+}
+
+export function markArrivalRead(id: string): Promise<void> {
+  return request(`/arrivals/${id}/read`, { method: 'PATCH' })
 }
 
 export function resolvePlayback(

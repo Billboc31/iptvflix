@@ -3,11 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import HeroSection from '../components/content/HeroSection.js'
 import ShelfRow from '../components/content/ShelfRow.js'
 import GenerateShelfDialog from '../components/content/GenerateShelfDialog.js'
+import ArrivalCard from '../components/content/ArrivalCard.js'
+import HorizontalRow from '../components/content/HorizontalRow.js'
 import EmptyState from '../components/ui/EmptyState.js'
 import Spinner from '../components/ui/Spinner.js'
 import Button from '../components/ui/Button.js'
 import { useMovies } from '../hooks/useMovies.js'
 import { useHome } from '../hooks/useHome.js'
+import { useArrivals } from '../hooks/useArrivals.js'
 
 const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -15,6 +18,7 @@ export default function HomePage() {
   const navigate = useNavigate()
   const { data: movies, loading: moviesLoading } = useMovies({ pageSize: 1 })
   const { data: homeData, isLoading: homeLoading } = useHome(DEFAULT_PROFILE_ID)
+  const { arrivals, refresh: refreshArrivals } = useArrivals('unread')
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false)
 
   const shelves = homeData?.shelves ?? []
@@ -53,6 +57,21 @@ export default function HomePage() {
       )}
 
       {isLoading && <Spinner />}
+
+      {/* New arrivals shelf */}
+      {arrivals.length > 0 && (
+        <div className="px-8 mt-8">
+          <HorizontalRow title="Nouveautés disponibles">
+            {arrivals.map((arrival) => (
+              <ArrivalCard
+                key={arrival.id}
+                arrival={arrival}
+                onDismiss={refreshArrivals}
+              />
+            ))}
+          </HorizontalRow>
+        </div>
+      )}
 
       {/* Shelf rows */}
       {!homeLoading && (
