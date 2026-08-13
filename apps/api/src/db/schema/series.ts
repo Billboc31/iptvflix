@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, integer, timestamp, date, primaryKey, real, jsonb, varchar, boolean } from 'drizzle-orm/pg-core'
+import { pgTable, text, uuid, integer, timestamp, date, primaryKey, real, jsonb, varchar, boolean, index } from 'drizzle-orm/pg-core'
 import { genres } from './genres.js'
 import { matchStatusEnum } from './movies.js'
 
@@ -45,7 +45,10 @@ export const series = pgTable('series', {
   externalIds: jsonb('external_ids').$type<Record<string, string | number | null>>(),
   tmdbSyncedAt: timestamp('tmdb_synced_at', { withTimezone: true }),
   localizations: jsonb('localizations').$type<Localizations>(),
-})
+}, (t) => [
+  index('series_popularity_idx').on(t.popularity),
+  index('series_vote_average_idx').on(t.voteAverage),
+])
 
 export const seriesGenres = pgTable(
   'series_genres',

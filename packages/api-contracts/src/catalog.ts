@@ -169,7 +169,8 @@ export type MovieFilters = {
   quality?: string
   q?: string
   availability?: AvailabilityStatus
-  sortBy?: 'title' | 'year' | 'recentAvailability'
+  sortBy?: 'title' | 'year' | 'recentAvailability' | 'popularity' | 'voteAverage'
+  upcoming?: boolean
   page?: number
   pageSize?: number
 }
@@ -179,7 +180,8 @@ export type SeriesFilters = {
   year?: number
   q?: string
   availability?: AvailabilityStatus
-  sortBy?: 'title' | 'year' | 'recentAvailability'
+  sortBy?: 'title' | 'year' | 'recentAvailability' | 'popularity' | 'voteAverage'
+  upcoming?: boolean
   page?: number
   pageSize?: number
 }

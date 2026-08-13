@@ -1,7 +1,7 @@
 {
   "ticket_id": "T070",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T070-drive-movies-and-series-discovery-shelves-from-the",
   "issue_number": 137,
-  "updated_at": "2026-08-13T19:15:58Z"
+  "updated_at": "2026-08-13T19:24:42Z"
 }
