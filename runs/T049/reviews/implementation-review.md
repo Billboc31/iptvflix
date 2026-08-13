@@ -1,44 +1,59 @@
+All 594 tests pass. Here is the full review.
+
 ---
 
-# PR Review — T049: M3U Catalog Ingestion
+# PR Review — T049: M3U Catalog Ingestion (Attempt 2)
 
 ## Résumé
 
-L'implémentation est globalement solide (architecture conforme à la frontière provider-indépendante, sécurité credentials correcte, tests unitaires complets), mais deux écarts bloquants par rapport au plan sont identifiés.
+Les deux problèmes bloquants identifiés lors de la review précédente ont été corrigés. L'implémentation est complète, correcte et conforme au ticket et au plan.
+
+## Vérifications effectuées
+
+- Présence et contenu de `e2e/fixtures/m3u-server.ts`
+- Mise à jour de `e2e/global-setup.ts` et `e2e/fixtures/index.ts`
+- Tests e2e dans `e2e/tests/m3u-sync.spec.ts`
+- Gestion des erreurs dans `sync-runs-service.ts` (`triggerSync`)
+- Sanitisation des messages d'erreur dans le run record `FAILED`
+- Vérification de la chaîne HTTP 201 pour un run `FAILED` (triggerSync retourne, ne throw pas)
+- Schéma `sync-runs` — champ `startedAt` avec `.defaultNow()` (insert FAILED sans startedAt est valide)
+- Cohérence des types et interfaces M3U (`types.ts`, `errors.ts`, `parser.ts`, `client.ts`)
+- Tous les 594 tests unitaires passent
+
+## Corrections apportées par rapport à la review précédente
+
+### Fix #1 — `e2e/fixtures/m3u-server.ts` créé ✅
+
+Le fichier implémente les 4 modes demandés : `happy` (2 movies + 1 épisode), `auth-fail` (HTTP 401), `empty` (header M3U valide, pas d'entrées), `malformed` (body HTML non-M3U).
+
+`e2e/global-setup.ts` démarre 4 serveurs M3U (ports 9995–9992) et écrit les URLs dans `.fake-servers.json`. `e2e/fixtures/index.ts` expose `m3uHappy`, `m3uAuthFail`, `m3uEmpty`, `m3uMalformed`.
+
+3 tests e2e dans `m3u-sync.spec.ts` couvrent :
+- happy path → `status: DONE`, `moviesAdded > 0`
+- idempotence → second sync avec `moviesAdded === 0`
+- malformed → `status: FAILED`, `error` non nul (et le route retourne bien HTTP 201 puisque `triggerSync` retourne un run FAILED sans throw)
+
+### Fix #2 — Run record `FAILED` créé lors des erreurs de fetch ✅
+
+`triggerSync` encapsule `fetchM3USnapshot` dans un try/catch qui, en cas de `M3UAuthError | M3UNetworkError | M3UParseError`, insère un run record `FAILED` en base et retourne immédiatement. Le champ `errorMessage` reçoit `(fetchErr as Error).message` qui est déjà sanitisé : `M3UNetworkError` utilise `sanitizeUrl()`, `M3UAuthError` ne contient que le status HTTP, `M3UParseError` un message statique.
 
 ## Points validés
 
-- **Architecture** : `M3UClient → M3UCatalogSnapshot → syncM3UCatalog → syncNormalized` respecte strictement la frontière provider-indépendante ; aucune donnée M3U dans le domaine canonique.
-- **Parsing** (`parser.ts`) : validation header `#EXTM3U`, extraction des attributs par regex, rawTitle extrait de la queue comma, pairs orphelines silencieusement ignorées.
-- **Classification conservatrice** : `movie|film|vod` sans `SxxExx` → movie ; `series|show|episode` ET `SxxExx` → episode ; tout le reste → unclassified non persisté. Live TV et entrées ambiguës ne créent aucune donnée canonique.
-- **Idempotence** : les contraintes unique `(providerId, providerItemId)` de `syncNormalized` garantissent le comportement re-sync. Les series sont dédupliquées par `seriesKey`.
-- **Cohérence IDs** : `seriesMap.key` === `NormalizedSeriesItem.providerItemId` === `NormalizedEpisodeItem.seriesProviderItemId` — liaison stable.
-- **Sécurité credentials** : substitution `{username}/{password}` à la construction, `sanitizeUrl()` rédige les params sensibles, credentials jamais dans les messages d'erreur (vérifié par 4 tests dédiés).
-- **Tous les 594 tests passent.**
+- **Architecture** : `M3UClient → M3UCatalogSnapshot → syncM3UCatalog → syncNormalized` — aucune donnée M3U dans le domaine canonique ✅
+- **Classification conservatrice** : `movie|film|vod` sans SxxExx → movie ; `series|show|episode` + SxxExx → episode ; tout le reste → unclassified non persisté ✅
+- **Idempotence** : contraintes unique `(providerId, providerItemId)` garantissent le comportement re-sync ✅
+- **Sécurité credentials** : `sanitizeUrl()` rédige `username=`, `password=`, `token=` et HTTP Basic auth ; credentials jamais dans les logs ni dans les messages d'erreur ✅
+- **Tous les 594 tests unitaires passent** ✅
+- **Tests e2e** : 3 nouveaux tests couvrant les AC critiques ✅
 
-## Problèmes bloquants
+## Observations mineures (non bloquantes, inchangées)
 
-### #1 — `e2e/fixtures/m3u-server.ts` absent
+- Double timeout possible dans `testConnection()` (range + fallback full fetch = jusqu'à 2 × 60 s)
+- `source-service.ts` instancie `M3UClient` sans `timeoutMs`, ignorant `M3U_FETCH_TIMEOUT_MS`
+- Le `HAPPY_PLAYLIST` du fixture a 1 épisode (au lieu de 2 mentionnés dans le plan) ; les tests passent correctement
 
-Le plan liste ce fichier comme nouvelle livraison (modes `happy`, `auth-fail`, `empty`, `malformed`). Le répertoire `e2e/fixtures/` ne contient que `index.ts` et `xtream-server.ts`. Aucun test e2e M3U n'existe, donc les acceptance criteria suivants ne sont pas couverts au niveau intégration : sync COMPLETED avec `moviesCreated > 0`, idempotence, body non-M3U → run FAILED.
+## Décision
 
-### #2 — Erreurs de fetch M3U ne produisent pas de run record FAILED
+Les deux livrables manquants sont implémentés et corrects. Aucun nouveau problème bloquant détecté.
 
-Le plan AC est explicite : _"Fetching a URL that returns non-M3U content does not crash the sync run; the run record ends with status FAILED and a sanitized error message."_
-
-Chemin actuel : `fetchM3USnapshot` → `M3UClient.fetchSnapshot` → `parseM3U` lève `M3UParseError` → propagée sans être interceptée dans `triggerSync` → Fastify retourne HTTP 500 brut, aucune trace en base. `syncNormalized` (qui crée le run record et gère FAILED) n'est jamais atteinte. Même comportement pour `M3UNetworkError` et `M3UAuthError`.
-
-**Correction recommandée** : dans `triggerSync`, encapsuler `fetchM3USnapshot` dans un try/catch qui crée un run record `FAILED` avec message sanitisé avant de retourner.
-
-## Risques mineurs
-
-- Double timeout possible dans `testConnection()` (range + fallback = jusqu'à 2 × 60 s).
-- Attributs variants de série extraits du premier épisode rencontré seulement.
-- `testConnection` dans `source-service.ts` ignore `M3U_FETCH_TIMEOUT_MS` (timeout hardcodé à 60 s par défaut).
-
-## Actions demandées
-
-1. Créer `e2e/fixtures/m3u-server.ts` et au moins un test e2e couvrant sync COMPLETED + idempotence.
-2. Corriger `triggerSync` pour que les erreurs de fetch M3U créent un run record `FAILED` en base.
-
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
