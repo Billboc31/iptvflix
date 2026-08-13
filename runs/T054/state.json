@@ -1,9 +1,9 @@
 {
   "ticket_id": "T054",
-  "state": "IMPLEMENTATION_REVIEW_NEEDED",
+  "state": "IMPLEMENTATION_FIX_REQUIRED",
   "branch": "ticket/T054-add-netflix-style-autoplay-previews-on-home-and-ca",
   "issue_number": 103,
-  "updated_at": "2026-08-13T01:27:19Z",
+  "updated_at": "2026-08-13T01:31:07Z",
   "pre_conflict_state": "IMPLEMENTATION_FIX_REQUIRED",
   "conflict_detected_at": "2026-08-12T23:57:27Z",
   "conflicted_files": []

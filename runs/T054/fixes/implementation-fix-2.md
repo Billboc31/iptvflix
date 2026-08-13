@@ -1,3 +1,11 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T054/reviews/implementation-review.md
+- generated at: 2026-08-13T01:31:07Z
+
+---
+
 ---
 
 # PR Review — T054: Netflix-style Autoplay Previews
