@@ -131,12 +131,20 @@ export function getMovie(id: string): Promise<MovieDetailResponse> {
   return request(`/movies/${id}`)
 }
 
+export function getSimilarMovies(id: string): Promise<MovieResponse[]> {
+  return request(`/movies/${id}/similar`)
+}
+
 export function listSeries(filters: SeriesFilters = {}): Promise<PaginatedList<SeriesResponse>> {
   return request(`/series${toQuery(filters)}`)
 }
 
 export function getSeries(id: string): Promise<SeriesDetailResponse> {
   return request(`/series/${id}`)
+}
+
+export function getSimilarSeries(id: string): Promise<SeriesResponse[]> {
+  return request(`/series/${id}/similar`)
 }
 
 export function getSeriesSeasonEpisodes(

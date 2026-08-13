@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import type { MovieDetailResponse, AvailabilityVariantResponse } from '@iptvflix/api-contracts'
+import type { MovieDetailResponse } from '@iptvflix/api-contracts'
 import { getMovie, fetchContinueWatching, ApiError } from '../lib/api.js'
 import { useDevices } from '../hooks/useDevices.js'
 import { useToast } from '../components/ui/Toast.js'
@@ -8,31 +8,27 @@ import Badge from '../components/ui/Badge.js'
 import Button from '../components/ui/Button.js'
 import Skeleton from '../components/ui/Skeleton.js'
 import ErrorState from '../components/ui/ErrorState.js'
-import WatchlistButton from '../components/content/WatchlistButton.js'
-import FeedbackButtons from '../components/content/FeedbackButtons.js'
-import TrailerPlayer from '../components/detail/TrailerPlayer.js'
 import CastRow from '../components/detail/CastRow.js'
 import DevicePickerModal from '../components/devices/DevicePickerModal.js'
+import MediaHero from '../components/detail/MediaHero.js'
+import MediaMetadata from '../components/detail/MediaMetadata.js'
+import MediaActions from '../components/detail/MediaActions.js'
+import AvailabilityPanel from '../components/detail/AvailabilityPanel.js'
+import SimilarTitlesShelf from '../components/detail/SimilarTitlesShelf.js'
 
 function DetailSkeleton() {
   return (
-    <div>
-      <div className="relative h-[50vh] min-h-72 overflow-hidden">
-        <Skeleton className="absolute inset-0 w-full h-full rounded-none" />
-      </div>
-      <div className="px-4 py-4 md:px-8 md:py-6 -mt-24 relative">
+    <div className="bg-[#0a0a0f] min-h-screen">
+      <Skeleton className="w-full rounded-none" style={{ height: 'clamp(300px, 56.25vw, 70vh)' }} />
+      <div className="px-4 py-6 md:px-8 md:py-8 max-w-5xl mx-auto">
         <div className="flex gap-6 items-start">
-          <div className="hidden md:block flex-shrink-0 w-40 rounded-xl overflow-hidden">
-            <Skeleton height="240px" />
+          <div className="hidden md:block flex-shrink-0 w-44 rounded-xl overflow-hidden">
+            <Skeleton height="264px" />
           </div>
           <div className="flex-1 min-w-0">
             <Skeleton className="w-64 h-10 mb-3" />
             <div className="flex gap-2 mb-4">
               <Skeleton className="w-12 h-5" />
-              <Skeleton className="w-16 h-5" />
-              <Skeleton className="w-20 h-5" />
-            </div>
-            <div className="flex gap-2 mb-4">
               <Skeleton className="w-16 h-5" />
               <Skeleton className="w-20 h-5" />
             </div>
@@ -43,24 +39,6 @@ function DetailSkeleton() {
         </div>
       </div>
     </div>
-  )
-}
-
-function VariantBadge({ variant }: { variant: AvailabilityVariantResponse }) {
-  const parts = []
-  if (variant.audioLanguage) parts.push(variant.audioLanguage.toUpperCase())
-  if (variant.subtitleLanguage) parts.push(`sub:${variant.subtitleLanguage}`)
-  if (variant.videoQuality) parts.push(variant.videoQuality)
-  return (
-    <span
-      className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded border ${
-        variant.status === 'AVAILABLE'
-          ? 'border-white/20 text-gray-300'
-          : 'border-white/10 text-gray-600 line-through'
-      }`}
-    >
-      {parts.length > 0 ? parts.join(' · ') : 'Inconnu'}
-    </span>
   )
 }
 
@@ -118,164 +96,90 @@ export default function MovieDetailPage() {
   if (error) return <ErrorState message={error.message} onRetry={() => navigate(-1)} />
   if (!movie) return null
 
-  const showOriginalTitle = movie.originalTitle && movie.originalTitle !== movie.title
+  const playRoute = `/player/movie/${movie.id}${selectedVariantId ? `?availabilityId=${selectedVariantId}` : ''}`
 
   return (
-    <div>
-      {/* Backdrop */}
-      <div className="relative h-[50vh] min-h-72 overflow-hidden">
-        {movie.backdropUrl ? (
-          <img
-            src={movie.backdropUrl}
-            alt=""
-            aria-hidden="true"
-            className="absolute inset-0 w-full h-full object-cover"
-          />
-        ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a24] to-[#0a0a0f]" />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/40 to-transparent" />
-      </div>
+    <div className="bg-[#0a0a0f] min-h-screen">
+      <MediaHero
+        backdropUrl={movie.backdropUrl}
+        posterUrl={movie.posterUrl}
+        trailerKey={movie.trailerKey}
+        title={movie.title}
+      />
 
-      {/* Content */}
-      <div className="px-4 py-4 md:px-8 md:py-6 -mt-24 relative">
+      <div className="px-4 py-6 md:px-8 md:py-8 max-w-5xl mx-auto">
         <div className="flex gap-6 items-start">
-          {/* Poster */}
+          {/* Poster sidebar — desktop only, overlaps hero */}
           {movie.posterUrl && (
-            <div className="hidden md:block flex-shrink-0 w-40 rounded-xl overflow-hidden border border-white/10 shadow-2xl">
+            <div className="hidden md:block flex-shrink-0 w-44 -mt-24 relative z-10 rounded-xl overflow-hidden border border-white/10 shadow-2xl">
               <img src={movie.posterUrl} alt={movie.title} className="w-full" />
             </div>
           )}
 
-          {/* Info */}
           <div className="flex-1 min-w-0">
-            <h1 className="text-2xl md:text-4xl font-bold text-white mb-1">{movie.title}</h1>
-            {showOriginalTitle && (
-              <p className="text-gray-400 text-base mb-3">{movie.originalTitle}</p>
-            )}
-
-            <div className="flex flex-wrap items-center gap-2 mb-4">
-              {movie.year && (
-                <span className="text-gray-400 text-sm">{movie.year}</span>
-              )}
-              {movie.runtime && (
-                <span className="text-gray-400 text-sm">{movie.runtime} min</span>
-              )}
-              {movie.certification && (
-                <Badge variant="default">{movie.certification}</Badge>
-              )}
-              {movie.voteAverage !== null && (
-                <span className="text-yellow-400 text-sm font-medium">★ {movie.voteAverage.toFixed(1)}</span>
-              )}
-              {movie.quality && <Badge variant="quality">{movie.quality}</Badge>}
-              <Badge variant={movie.availabilityStatus === 'AVAILABLE' ? 'available' : 'unavailable'}>
-                {movie.availabilityStatus === 'AVAILABLE' ? 'Disponible' : 'Indisponible'}
-              </Badge>
-              {movie.enrichmentStatus === 'unmatched' && (
+            {/* Enrichment badges */}
+            {movie.enrichmentStatus === 'unmatched' && (
+              <div className="mb-3">
                 <Badge variant="unavailable">Données manquantes</Badge>
-              )}
-              {movie.enrichmentStatus === 'partial' && (
+              </div>
+            )}
+            {movie.enrichmentStatus === 'partial' && (
+              <div className="mb-3">
                 <Badge variant="default">Données partielles</Badge>
-              )}
-            </div>
-
-            {/* Genres */}
-            {movie.genres.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-4">
-                {movie.genres.map((g) => (
-                  <Badge key={g} variant="info">{g}</Badge>
-                ))}
               </div>
             )}
 
-            {/* Primary actions — placed before synopsis so they are above the fold on mobile */}
-            <div className="flex flex-wrap gap-3 mb-6">
-              <Button variant="ghost" className="min-h-[44px]" onClick={() => navigate(-1)}>
-                ← Retour
-              </Button>
-              {movie.availabilityStatus === 'AVAILABLE' && (
-                <Button
-                  className="min-h-[44px]"
-                  onClick={() =>
-                    navigate(
-                      `/player/movie/${movie.id}${
-                        selectedVariantId ? `?availabilityId=${selectedVariantId}` : ''
-                      }`,
-                    )
-                  }
-                >
-                  ▶ Lecture
-                </Button>
-              )}
-              {devices.length > 0 && (
-                <Button variant="secondary" className="min-h-[44px]" onClick={() => setPickerOpen(true)}>
-                  📺 Lire sur TV
-                </Button>
-              )}
-              <WatchlistButton mediaType="MOVIE" mediaId={movie.id} />
-              <FeedbackButtons mediaType="MOVIE" mediaId={movie.id} />
-            </div>
-
-            {/* Synopsis */}
-            {movie.synopsis && (
-              <p className="text-gray-300 text-sm leading-relaxed mb-6 max-w-2xl line-clamp-4 md:line-clamp-none">
-                {movie.synopsis}
-              </p>
-            )}
-
-            {/* Trailer */}
-            <TrailerPlayer trailerKey={movie.trailerKey} title={movie.title} />
-
-            {/* Variant selector */}
-            {movie.variants.length > 0 && (
-              <div className="mb-6">
-                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">
-                  Version disponible
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {movie.variants.map((v) => (
-                    <button
-                      key={v.id}
-                      type="button"
-                      onClick={() => v.status === 'AVAILABLE' && setSelectedVariantId(v.id)}
-                      className={`cursor-pointer transition-opacity ${
-                        v.status !== 'AVAILABLE' ? 'opacity-40 cursor-not-allowed' : ''
-                      } ${
-                        selectedVariantId === v.id
-                          ? 'ring-2 ring-[#e50914] rounded'
-                          : ''
-                      }`}
-                    >
-                      <VariantBadge variant={v} />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Cast */}
-            <CastRow cast={movie.cast} director={movie.director} />
-            <DevicePickerModal
-              open={pickerOpen}
-              onClose={() => setPickerOpen(false)}
-              devices={devices}
-              mediaType="movie"
-              mediaId={movie.id}
-              availabilityId={selectedVariantId}
-              progressMs={progressMs}
-              onFastPath={(name, state) => {
-                if (state === 'delivered') {
-                  toast.show(`Lecture lancée sur ${name}`, 'success')
-                } else if (state === 'device-offline') {
-                  toast.show(`${name} est hors ligne`, 'error')
-                } else {
-                  toast.show('Erreur lors de l\'envoi de la commande', 'error')
-                }
-              }}
+            <MediaMetadata
+              title={movie.title}
+              originalTitle={movie.originalTitle}
+              year={movie.year}
+              runtime={movie.runtime}
+              genres={movie.genres}
+              certification={movie.certification}
+              voteAverage={movie.voteAverage}
+              synopsis={movie.synopsis}
             />
+
+            <MediaActions
+              mediaType="MOVIE"
+              mediaId={movie.id}
+              availabilityStatus={movie.availabilityStatus}
+              playRoute={playRoute}
+              onPlayOnTv={() => setPickerOpen(true)}
+              showPlayOnTv={devices.length > 0}
+            />
+
+            <AvailabilityPanel
+              variants={movie.variants}
+              selectedVariantId={selectedVariantId}
+              onSelectVariant={setSelectedVariantId}
+            />
+
+            <CastRow cast={movie.cast} director={movie.director} />
           </div>
         </div>
       </div>
+
+      <SimilarTitlesShelf mediaType="MOVIE" mediaId={movie.id} />
+
+      <DevicePickerModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        devices={devices}
+        mediaType="movie"
+        mediaId={movie.id}
+        availabilityId={selectedVariantId}
+        progressMs={progressMs}
+        onFastPath={(name, state) => {
+          if (state === 'delivered') {
+            toast.show(`Lecture lancée sur ${name}`, 'success')
+          } else if (state === 'device-offline') {
+            toast.show(`${name} est hors ligne`, 'error')
+          } else {
+            toast.show('Erreur lors de l\'envoi de la commande', 'error')
+          }
+        }}
+      />
     </div>
   )
 }

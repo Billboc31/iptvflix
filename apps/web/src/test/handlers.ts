@@ -20,6 +20,34 @@ import type {
   PlaybackCommandResponse,
 } from '@iptvflix/api-contracts'
 
+export const MOCK_SIMILAR_MOVIE: MovieResponse = {
+  id: 'movie-similar-1',
+  title: 'Similar Movie',
+  year: 2022,
+  synopsis: 'A catalog-only similar movie with no sources.',
+  posterUrl: null,
+  backdropUrl: null,
+  runtime: 90,
+  genres: ['Action'],
+  quality: null,
+  availabilityCount: 0,
+  availabilityStatus: 'UNAVAILABLE',
+  trailerKey: null,
+}
+
+export const MOCK_SIMILAR_SERIES: SeriesResponse = {
+  id: 'series-similar-1',
+  title: 'Similar Series',
+  year: 2021,
+  synopsis: 'A similar series.',
+  posterUrl: null,
+  backdropUrl: null,
+  genres: ['Drama'],
+  seasonCount: 1,
+  availabilityCount: 0,
+  availabilityStatus: 'UNAVAILABLE',
+}
+
 export const MOCK_MOVIE: MovieDetailResponse = {
   id: 'movie-1',
   title: 'The Test Movie',
@@ -293,8 +321,10 @@ export const handlers = [
     return HttpResponse.json({ ...defaultProfile, preferences: { ...MOCK_PROFILE_PREFERENCES, ...body } })
   }),
   http.get('/api/movies', () => HttpResponse.json(moviesList)),
+  http.get('/api/movies/:id/similar', () => HttpResponse.json([MOCK_SIMILAR_MOVIE])),
   http.get('/api/movies/:id', () => HttpResponse.json(MOCK_MOVIE)),
   http.get('/api/series', () => HttpResponse.json(seriesList)),
+  http.get('/api/series/:id/similar', () => HttpResponse.json([MOCK_SIMILAR_SERIES])),
   http.get('/api/series/:id', () => HttpResponse.json(MOCK_SERIES)),
   http.get('/api/series/:id/seasons/:seasonNumber/episodes', () =>
     HttpResponse.json(MOCK_EPISODES),

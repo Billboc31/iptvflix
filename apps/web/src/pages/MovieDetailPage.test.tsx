@@ -95,14 +95,14 @@ describe('MovieDetailPage', () => {
     expect(screen.getByText('PG-13')).toBeInTheDocument()
   })
 
-  it('shows trailer play button when trailerKey is present', async () => {
+  it('shows bande-annonce button when trailerKey is present', async () => {
     renderPage()
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /bande-annonce/i })).toBeInTheDocument()
     })
   })
 
-  it('does not show trailer button when trailerKey is null', async () => {
+  it('does not show bande-annonce button when trailerKey is null', async () => {
     server.use(
       http.get('/api/movies/:id', () => HttpResponse.json(MOCK_MOVIE_NO_TRAILER)),
     )
@@ -140,7 +140,7 @@ describe('MovieDetailPage', () => {
     expect(screen.queryByText(/Réalisateur/i)).not.toBeInTheDocument()
   })
 
-  it('loads trailer iframe on play button click', async () => {
+  it('loads trailer iframe on bande-annonce button click', async () => {
     const user = userEvent.setup()
     renderPage()
     await waitFor(() => {
@@ -148,5 +148,33 @@ describe('MovieDetailPage', () => {
     })
     await user.click(screen.getByRole('button', { name: /bande-annonce/i }))
     expect(screen.getByTitle(/trailer/i)).toHaveAttribute('src', expect.stringContaining('abc123'))
+  })
+
+  it('play button is enabled when movie is AVAILABLE', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: MOCK_MOVIE.title })).toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: /lecture/i })).not.toBeDisabled()
+  })
+
+  it('play button is disabled and labelled "Non disponible" when movie is UNAVAILABLE', async () => {
+    server.use(
+      http.get('/api/movies/:id', () => HttpResponse.json(MOCK_UNMATCHED_MOVIE)),
+    )
+    renderPage('movie-2')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /non disponible/i })).toBeDisabled()
+    })
+  })
+
+  it('renders Titres similaires section', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: MOCK_MOVIE.title })).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Titres similaires')).toBeInTheDocument()
+    })
   })
 })
