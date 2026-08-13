@@ -1,4 +1,4 @@
-import { eq, and, ne, sql } from 'drizzle-orm'
+import { eq, and, ne } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { titleMatchResults } from '../db/schema/title-match-results.js'
 import { movies } from '../db/schema/movies.js'
@@ -53,37 +53,61 @@ function toMatchResult(row: MatchRow): MatchResult {
   }
 }
 
+/**
+ * Find or create a canonical movies row for the given TMDB candidate.
+ * When not found by tmdbId, inserts a skeleton with matchStatus='MATCHED'
+ * so that enrichment picks it up on its next run.
+ */
 async function resolveMovieId(candidate: MetadataCandidate): Promise<string | null> {
   const tmdbId = parseInt(candidate.externalId, 10)
-  if (!isNaN(tmdbId)) {
-    const [row] = await db.select({ id: movies.id }).from(movies).where(eq(movies.tmdbId, tmdbId))
-    if (row) return row.id
-  }
-  // Title+year fallback
-  const titleLower = candidate.title.toLocaleLowerCase('fr')
-  const conditions = [sql`lower(${movies.title}) = ${titleLower}`]
-  if (candidate.year !== null) conditions.push(eq(movies.year, candidate.year))
-  const [row] = await db
-    .select({ id: movies.id })
-    .from(movies)
-    .where(conditions.length > 1 ? and(...conditions) : conditions[0])
+  if (isNaN(tmdbId)) return null
+
+  const [existing] = await db.select({ id: movies.id }).from(movies).where(eq(movies.tmdbId, tmdbId))
+  if (existing) return existing.id
+
+  // Not in DB — insert canonical skeleton so enrichment can populate full metadata
+  const [inserted] = await db
+    .insert(movies)
+    .values({
+      title: candidate.title,
+      year: candidate.year ?? null,
+      tmdbId,
+      matchStatus: 'MATCHED',
+    })
+    .onConflictDoNothing({ target: movies.tmdbId })
+    .returning({ id: movies.id })
+
+  if (inserted) return inserted.id
+
+  // Concurrent insert — re-query
+  const [row] = await db.select({ id: movies.id }).from(movies).where(eq(movies.tmdbId, tmdbId))
   return row?.id ?? null
 }
 
+/**
+ * Find or create a canonical series row for the given TMDB candidate.
+ */
 async function resolveSeriesId(candidate: MetadataCandidate): Promise<string | null> {
   const tmdbId = parseInt(candidate.externalId, 10)
-  if (!isNaN(tmdbId)) {
-    const [row] = await db.select({ id: series.id }).from(series).where(eq(series.tmdbId, tmdbId))
-    if (row) return row.id
-  }
-  // Title+year fallback
-  const titleLower = candidate.title.toLocaleLowerCase('fr')
-  const conditions = [sql`lower(${series.title}) = ${titleLower}`]
-  if (candidate.year !== null) conditions.push(eq(series.firstAirYear, candidate.year))
-  const [row] = await db
-    .select({ id: series.id })
-    .from(series)
-    .where(conditions.length > 1 ? and(...conditions) : conditions[0])
+  if (isNaN(tmdbId)) return null
+
+  const [existing] = await db.select({ id: series.id }).from(series).where(eq(series.tmdbId, tmdbId))
+  if (existing) return existing.id
+
+  const [inserted] = await db
+    .insert(series)
+    .values({
+      title: candidate.title,
+      firstAirYear: candidate.year ?? null,
+      tmdbId,
+      matchStatus: 'MATCHED',
+    })
+    .onConflictDoNothing({ target: series.tmdbId })
+    .returning({ id: series.id })
+
+  if (inserted) return inserted.id
+
+  const [row] = await db.select({ id: series.id }).from(series).where(eq(series.tmdbId, tmdbId))
   return row?.id ?? null
 }
 
@@ -216,11 +240,33 @@ export class TitleMatchingService {
     return toMatchResult(result)
   }
 
-  async matchBatch(inputs: MatchItemInput[]): Promise<MatchResult[]> {
-    const results: MatchResult[] = []
-    for (const input of inputs) {
-      results.push(await this.matchItem(input))
+  /**
+   * Match a batch of items using a bounded-concurrency sliding window.
+   * When opts is omitted, runs sequentially (preserves test isolation).
+   * throttleMs introduces a delay between calls within each worker slot.
+   */
+  async matchBatch(
+    inputs: MatchItemInput[],
+    opts?: { concurrency?: number; throttleMs?: number },
+  ): Promise<MatchResult[]> {
+    if (inputs.length === 0) return []
+
+    const limit = opts?.concurrency ?? 1
+    const throttleMs = opts?.throttleMs ?? 0
+    const results: MatchResult[] = new Array(inputs.length)
+    const queue = inputs.map((input, i) => ({ input, i }))
+
+    const worker = async (): Promise<void> => {
+      while (queue.length > 0) {
+        const item = queue.shift()!
+        results[item.i] = await this.matchItem(item.input)
+        if (throttleMs > 0 && queue.length > 0) {
+          await new Promise<void>((resolve) => setTimeout(resolve, throttleMs))
+        }
+      }
     }
+
+    await Promise.all(Array.from({ length: Math.min(limit, inputs.length) }, worker))
     return results
   }
 }
