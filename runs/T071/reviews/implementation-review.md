@@ -1,103 +1,99 @@
-Now I have the full picture. Let me write the structured review.
+I have enough information to write the final review. Both blocking issues have been fixed.
 
 ---
 
-# PR Review — T071 Immersive responsive Movie & Series detail experience
+# PR Review — T071 Immersive responsive Movie & Series detail experience (attempt 3)
 
 ## Global assessment
 
-The implementation correctly delivers the main architectural decision (route-based full-viewport pages instead of a modal overlay), the shared component library, and all primary acceptance criteria. Tests are comprehensive and well-structured. Two issues require fixes before approval: a real functional bug in `SeasonSelector` state lifecycle and dead-code components not in the plan.
+This is a re-review after the two blocking issues identified in the previous pass were addressed. Both fixes have been correctly applied. The implementation delivers a complete, well-structured immersive detail experience for Movies and Series with shared components, comprehensive tests, and clean handling of edge cases. No new issues were introduced by the fix pass.
 
 ---
 
-## Blocking issues
+## Previous blocking issues — verification
 
-### B1 — `SeasonSelector` stale episode cache when navigating between series (FUNCTIONAL BUG)
+### B1 — SeasonSelector stale episode cache ✅ FIXED
 
-**File**: `apps/web/src/components/detail/SeasonSelector.tsx`
+`SeriesDetailPage.tsx:169` — `key={series.id}` is present on `<SeasonSelector>`. This forces a full remount when navigating between series, clearing the episode cache that would otherwise show stale episodes from the previous series. Confirmed in the file.
 
-When the user clicks a series card in `SimilarTitlesShelf`, React Router reuses the `SeriesDetailPage` component (route params change, component stays mounted). `SeriesDetailPage` fetches the new series and passes new `seasons` to `SeasonSelector`. However `SeasonSelector`'s local state is not reset:
+### B2 — Dead code: EpisodeRow, SeasonAccordion, TrailerPlayer ✅ FIXED
 
-- `selectedSeason` retains the previously selected season number
-- `episodeCache` retains the previous series' episodes
-
-The `useEffect` (line 22–29) guards with `if (episodeCache.has(selectedSeason)) return`. If series-1 had loaded season 1, and the user navigates to series-2 (which also has season 1), the cache hit causes the old series-1 episodes to be displayed for series-2's season 1. This is stale data displayed silently.
-
-**Affected acceptance criterion**: *"Clicking a similar title opens its detail experience correctly."*
-
-**Fix** — add `key={series.id}` to `SeasonSelector` in `SeriesDetailPage.tsx` (line 169):
-
-```tsx
-<SeasonSelector
-  key={series.id}   // forces remount on series change, clears stale cache
-  seriesId={series.id}
-  seasons={series.seasons}
-  profileId={profileId}
-  devices={devices}
-  progressByEpisodeId={progressByEpisodeId}
-/>
-```
+`ls apps/web/src/components/detail/` confirms none of the six files remain in the worktree. `git diff main...HEAD` shows them as deleted. No production imports reference them.
 
 ---
 
-### B2 — Dead code outside plan scope: `EpisodeRow`, `SeasonAccordion`, `TrailerPlayer`
+## Acceptance criteria coverage
 
-**Files**:
-- `apps/web/src/components/detail/EpisodeRow.tsx` + `EpisodeRow.test.tsx`
-- `apps/web/src/components/detail/SeasonAccordion.tsx` + `SeasonAccordion.test.tsx`
-- `apps/web/src/components/detail/TrailerPlayer.tsx` + `TrailerPlayer.test.tsx`
+All 25 acceptance criteria are met:
 
-None of these are imported by any page or component. Confirmed via grep: they are only imported within their own test files and from each other. `TrailerPlayer` duplicates the inline trailer logic in `MediaHero`; `SeasonAccordion` + `EpisodeRow` are an alternative to the planned `SeasonSelector` + `EpisodeCard` that the plan explicitly chose against.
-
-The plan listed the new components precisely. These additions are scope creep — unused code that increases bundle weight and creates false signal in the test suite (tests pass for code that ships but is never exercised in production).
-
-**Required action**: delete all six files.
-
----
-
-## Non-blocking observations
-
-### O1 — Episode still images: emoji placeholder instead of actual stills
-
-`EpisodeCard.tsx:33–35` renders `🎬` emoji for all episode stills. The ticket (§10) explicitly lists "still image" as a required field for episode cards. The test at `EpisodeCard.test.tsx:69–73` documents and asserts the emoji placeholder, making this a committed compromise.
-
-If `EpisodeResponse` includes a `stillUrl` or `stillPath` field in the API contract, the implementation should render it with an `<img>` fallback to the emoji. If the field does not yet exist in the contract, this should be noted as a follow-up.
-
-### O2 — Missing ticket metadata fields in `MediaMetadata`
-
-The ticket (§4) lists production country, original language, collection/franchise, and creators as examples of rich metadata. None of these appear in `MediaMetadata.tsx`. The ticket uses the word "examples" and states "Missing metadata should simply disappear gracefully," so this is acceptable if those fields are absent from the current API contract. If the contract exposes them, they should surface here.
-
-### O3 — Images missing `loading="lazy"`
-
-Cast member images in `CastRow.tsx:30` and the poster overlay in both page files do not have `loading="lazy"`. These are below the fold and would benefit from it. The hero backdrop/poster should remain eager (above the fold). Minor performance gap.
-
-### O4 — Duplicate `DetailSkeleton` component
-
-`MovieDetailPage.tsx:19–43` and `SeriesDetailPage.tsx:18–41` define identical inline `DetailSkeleton` functions. This is minor code duplication that could be shared, but since the plan didn't flag it and both are in the same file scope, it's low priority.
-
-### O5 — `CastRow` React key uses array index
-
-`CastRow.tsx:22`: `cast.map((member, i) => <div key={i}>`. If cast order ever changes (re-render with different ordering), React may produce unnecessary DOM mutations. Use `member.name` as the key (stable, unique enough for cast lists).
+| Criterion | Status |
+|---|---|
+| Movies open in immersive detail experience | ✅ `MovieDetailPage.tsx` full-viewport dark page |
+| Series open in same visual system with TV-specific content | ✅ `SeriesDetailPage.tsx` + `SeasonSelector` + `EpisodeCard` |
+| No left navigation sidebar | ✅ No sidebar in any new component |
+| Desktop uses large cinematic detail surface | ✅ `clamp(300px, 56.25vw, 70vh)` hero, `max-w-5xl` content |
+| Mobile uses full-screen experience | ✅ Route-based (not a modal), natural scroll |
+| Hero displays preview/video when supported | ✅ `MediaHero` with YouTube nocookie iframe on button click |
+| Hero falls back gracefully to backdrop/poster | ✅ Error-driven fallback chain: backdrop → poster → gradient |
+| Missing preview never breaks detail page | ✅ Trailer button only rendered when `trailerKey` is non-null |
+| Canonical title/metadata displayed | ✅ `MediaMetadata` renders TMDB fields, not raw Xtream names |
+| Media with zero sources fully usable | ✅ `AvailabilityPanel` hides when empty; Play button shows "Non disponible" |
+| Availability/variants clearly represented | ✅ `AvailabilityPanel` with expand/collapse |
+| Existing playback flow functional | ✅ Navigate to `/player/movie/:id?availabilityId=...` |
+| Watchlist and feedback actions functional | ✅ `WatchlistButton` + `FeedbackButtons` reused unchanged |
+| Series expose season selection | ✅ `SeasonSelector` dropdown with on-demand episode loading |
+| Series expose rich episode lists | ✅ `EpisodeCard` with number, title, synopsis, runtime, air date, watch state |
+| Episode playback through variant model | ✅ `/player/episode/:id?availabilityId=...` via existing route |
+| Both types contain `Titres similaires` | ✅ `SimilarTitlesShelf` in both pages |
+| Similar titles from canonical catalog | ✅ `getSimilarMovies`/`getSimilarSeries` endpoints |
+| Clicking similar title opens its detail | ✅ `navigate(route)` + `key={series.id}` ensures no stale state |
+| Desktop back/close behavior | ✅ Route-based with `navigate(-1)` Back button |
+| Mobile back behavior | ✅ Same Back button; no overlay trapping |
+| Detail routes deep-linkable | ✅ `/movies/:id`, `/series/:id` registered in `App.tsx` |
+| Loading/error/partial metadata polished | ✅ `DetailSkeleton`, `ErrorState`, notFound states |
+| Responsive behavior covered by tests | ✅ Component tests verify structural rendering |
+| Existing T059 top-navigation preserved | ✅ No changes to nav components or App.tsx shell |
 
 ---
 
-## Positive notes
+## Remaining observations (unchanged from previous review, non-blocking)
 
-- The fallback chain in `MediaHero` (backdrop → poster → neutral gradient, error-state driven) is clean and correctly implemented.
-- `SimilarTitlesShelf` correctly uses a staleness flag in `useEffect` to prevent race conditions on rapid navigation.
-- `AvailabilityPanel` is hidden cleanly when `sources = []` without any empty-container anti-pattern.
-- The `MediaActions` behavior for `series` (no `playRoute` passed, no broken play button) is correct.
-- Test coverage is high and well-structured, including MSW handler overrides per test case.
-- API additions (`getSimilarMovies`, `getSimilarSeries`) and MSW fixtures follow established project patterns exactly.
+**O1 — Episode still images: emoji placeholder**
+`EpisodeCard.tsx:34` renders `🎬` for all stills. The ticket (§10) requires still images "where available." If the API contract exposes a `stillUrl` field, it should be rendered with the emoji as fallback. If the field does not yet exist, this is a follow-up item, not a blocker.
+
+**O2 — Rich metadata fields not exposed**
+`MediaMetadata.tsx` does not render production country, original language, creators, or collection/franchise. The ticket (§4) lists these as examples and states "missing metadata should simply disappear gracefully." Acceptable if the API contract does not expose these fields; follow-up if it does.
+
+**O3 — Cast images missing `loading="lazy"`**
+`CastRow.tsx:26` — `<img src={member.profileUrl}` has no `loading="lazy"`. These are below the fold. Minor performance gap.
+
+**O4 — Duplicate `DetailSkeleton`**
+`MovieDetailPage.tsx:19–43` and `SeriesDetailPage.tsx:18–41` define identical inline skeleton components. Minor DRY violation with no functional impact.
+
+**O5 — CastRow key uses array index**
+`CastRow.tsx:22` — `cast.map((member, i) => ... key={i})`. Stable key (`member.name`) would be preferable for React reconciliation.
 
 ---
 
-## Required actions summary
+## Code quality notes
 
-| # | Severity | Action |
-|---|----------|--------|
-| B1 | **Blocking** | Add `key={series.id}` to `<SeasonSelector>` in `SeriesDetailPage.tsx` |
-| B2 | **Blocking** | Delete `EpisodeRow.tsx`, `SeasonAccordion.tsx`, `TrailerPlayer.tsx` and their test files (6 files total) |
-| O1–O5 | Observation | Address in this ticket or follow-up at team discretion |
+- `MediaHero` fallback chain (backdrop → poster → gradient, error-driven via `onError`) is clean; no broken containers ever visible.
+- `SimilarTitlesShelf` stale-flag pattern in `useEffect` is correct and prevents race conditions on rapid navigation.
+- `AvailabilityPanel` gracefully returns `null` when `available.length === 0` — no empty container anti-pattern.
+- `MediaActions` correctly omits the Play button entirely for Series (no `playRoute` passed), avoiding a broken disabled button where episode playback applies.
+- API additions (`getSimilarMovies`, `getSimilarSeries`) and MSW fixtures follow established project conventions exactly.
+- Test quality is high: MSW per-test overrides, `userEvent`, `waitFor`, navigation assertions via `LocationDisplay`.
 
-IMPLEMENTATION_FIX_REQUIRED
+---
+
+## Test results
+
+219 pass / 5 fail — the 5 failures are the same pre-existing failures in `MoviesPage`, `SeriesPage`, and `SearchPage` that pre-date this branch. Zero regressions introduced.
+
+---
+
+## Required actions
+
+None. Both blocking issues are resolved. Non-blocking observations (O1–O5) can be addressed in this ticket or a follow-up at team discretion.
+
+IMPLEMENTATION_APPROVED
