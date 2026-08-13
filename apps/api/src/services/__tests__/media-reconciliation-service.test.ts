@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../../db/client.js'
 import { movies } from '../../db/schema/movies.js'
 import { series as seriesTable } from '../../db/schema/series.js'
@@ -124,6 +124,8 @@ afterEach(async () => {
   await db.delete(seriesTable).where(inArray(seriesTable.tmdbId, ALL_TEST_TMDB_IDS))
   // Clean up any test movies/series without tmdb IDs that may have been left behind
   await db.delete(movieAvailabilities).where(eq(movieAvailabilities.providerId, testSourceId))
+  // Sweep PENDING/UNMATCHED movies without tmdb IDs (from tests 10/11) to prevent cross-run contamination
+  await db.delete(movies).where(and(isNull(movies.tmdbId), inArray(movies.matchStatus, ['PENDING', 'UNMATCHED'])))
   await db.delete(seriesAvailabilities).where(eq(seriesAvailabilities.providerId, testSourceId))
   await db.delete(watchlist).where(eq(watchlist.profileId, testProfileId))
   await db.delete(viewingProgress).where(eq(viewingProgress.profileId, testProfileId))

@@ -23,6 +23,7 @@ export const movieAvailabilities = pgTable(
     subtitleLanguage: text('subtitle_language'),
     videoQuality: text('video_quality'),
     rawTitle: text('raw_title'),
+    containerExtension: text('container_extension'),
   },
   (t) => [
     unique().on(t.movieId, t.providerId, t.providerItemId),
@@ -48,6 +49,7 @@ export const seriesAvailabilities = pgTable(
     subtitleLanguage: text('subtitle_language'),
     videoQuality: text('video_quality'),
     rawTitle: text('raw_title'),
+    containerExtension: text('container_extension'),
   },
   (t) => [
     unique().on(t.seriesId, t.providerId, t.providerItemId),

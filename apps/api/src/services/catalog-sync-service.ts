@@ -14,10 +14,11 @@ import { syncRuns } from '../db/schema/sync-runs.js'
 import { titleMatchResults } from '../db/schema/title-match-results.js'
 import { releaseEvents } from '../db/schema/release-lifecycle.js'
 import type { XtreamCatalogSnapshot } from '../providers/xtream/types.js'
-import { normalizeTitle, toCanonicalDisplayTitle } from '../matching/title-normalizer.js'
+import { normalizeTitle } from '../matching/title-normalizer.js'
 import type { PlexCatalogSnapshot, PlexGuid } from '../providers/plex/types.js'
 import type { M3UCatalogSnapshot } from '../providers/m3u/types.js'
 import { TitleMatchingService, type MatchItemInput } from './title-matching-service.js'
+import type { CanonicalResolver } from './canonical-resolver.js'
 
 const MATCH_CONCURRENCY = parseInt(process.env.MATCH_CONCURRENCY ?? '5', 10) || 5
 const MATCH_THROTTLE_MS = parseInt(process.env.MATCH_THROTTLE_MS ?? '250', 10) || 0
@@ -34,6 +35,9 @@ export interface CatalogSyncResult {
     failedCount: number
     titleMatchedCount: number
     titleUnmatchedCount: number
+    resolvedCount: number
+    ambiguousCount: number
+    unresolvedCount: number
   }
   error?: string
 }
@@ -130,16 +134,6 @@ function sanitizeText(value: string | null | undefined): string | null {
   if (value == null) return null
   const cleaned = String(value).replace(/\u0000/g, '').trim()
   return cleaned.length > 0 ? cleaned : null
-}
-
-function resolveDisplayTitle(
-  title: string | null | undefined,
-  rawTitle: string | null | undefined,
-  fallbackId: string,
-): string {
-  const preferred = sanitizeText(title) ?? sanitizeText(rawTitle)
-  if (!preferred) return `Untitled (${fallbackId})`
-  return toCanonicalDisplayTitle(preferred) ?? preferred
 }
 
 function localTitleDedupeKey(raw: string): string {
@@ -242,134 +236,84 @@ function extractPlexTmdbId(guids: PlexGuid[] | undefined): string | undefined {
   return found ? found.id.slice('tmdb://'.length) : undefined
 }
 
-async function resolveMovieId(
-  tx: DbTx,
-  item: NormalizedMovieItem,
-  tmdbCache?: Map<number, string>,
-): Promise<string> {
-  const tmdbId = parseTmdbId(item.tmdb)
+/**
+ * Ensures a canonical movie exists for the given TMDB ID without using any provider
+ * metadata. Creates a placeholder title when the movie is absent locally; enrichment
+ * overwrites it with real TMDB data on its next run.
+ */
+async function importMovieFallback(
+  tmdbId: number,
+  tmdbCache: Map<number, string>,
+): Promise<{ id: string } | null> {
+  const cached = tmdbCache.get(tmdbId)
+  if (cached) return { id: cached }
 
-  if (tmdbId != null) {
-    const cached = tmdbCache?.get(tmdbId)
-    if (cached) return cached
-
-    const [existingByTmdb] = await tx
-      .select({ id: movies.id })
-      .from(movies)
-      .where(eq(movies.tmdbId, tmdbId))
-      .limit(1)
-    if (existingByTmdb) {
-      tmdbCache?.set(tmdbId, existingByTmdb.id)
-      return existingByTmdb.id
-    }
-
-    const inserted = await tx
-      .insert(movies)
-      .values({
-        title: resolveDisplayTitle(item.title, item.rawTitle, item.providerItemId),
-        posterPath: sanitizeText(item.posterPath),
-        synopsis: sanitizeText(item.synopsis),
-        year: null,
-        tmdbId,
-        matchStatus: 'MATCHED',
-      })
-      .onConflictDoNothing({ target: movies.tmdbId })
-      .returning({ id: movies.id })
-
-    if (inserted[0]) {
-      tmdbCache?.set(tmdbId, inserted[0].id)
-      return inserted[0].id
-    }
-
-    const [row] = await tx
-      .select({ id: movies.id })
-      .from(movies)
-      .where(eq(movies.tmdbId, tmdbId))
-      .limit(1)
-    if (row) {
-      tmdbCache?.set(tmdbId, row.id)
-      return row.id
-    }
-    throw new Error(`Failed to resolve movie for tmdbId=${tmdbId}`)
+  const [existing] = await db
+    .select({ id: movies.id })
+    .from(movies)
+    .where(eq(movies.tmdbId, tmdbId))
+    .limit(1)
+  if (existing) {
+    tmdbCache.set(tmdbId, existing.id)
+    return existing
   }
 
-  const [inserted] = await tx
+  const [inserted] = await db
     .insert(movies)
-    .values({
-      title: resolveDisplayTitle(item.title, item.rawTitle, item.providerItemId),
-      posterPath: sanitizeText(item.posterPath),
-      synopsis: sanitizeText(item.synopsis),
-      year: null,
-      tmdbId: null,
-      matchStatus: 'UNMATCHED',
-    })
+    .values({ title: `[TMDB #${tmdbId}]`, tmdbId, matchStatus: 'MATCHED' })
+    .onConflictDoNothing({ target: movies.tmdbId })
     .returning({ id: movies.id })
-  return inserted.id
+
+  if (inserted) {
+    tmdbCache.set(tmdbId, inserted.id)
+    return inserted
+  }
+
+  const [row] = await db
+    .select({ id: movies.id })
+    .from(movies)
+    .where(eq(movies.tmdbId, tmdbId))
+    .limit(1)
+  if (row) tmdbCache.set(tmdbId, row.id)
+  return row ?? null
 }
 
-async function resolveSeriesId(
-  tx: DbTx,
-  item: NormalizedSeriesItem,
-  tmdbCache?: Map<number, string>,
-): Promise<string> {
-  const tmdbId = parseTmdbId(item.tmdb)
+/** Same as importMovieFallback but for series. */
+async function importSeriesFallback(
+  tmdbId: number,
+  tmdbCache: Map<number, string>,
+): Promise<{ id: string } | null> {
+  const cached = tmdbCache.get(tmdbId)
+  if (cached) return { id: cached }
 
-  if (tmdbId != null) {
-    const cached = tmdbCache?.get(tmdbId)
-    if (cached) return cached
-
-    const [existingByTmdb] = await tx
-      .select({ id: series.id })
-      .from(series)
-      .where(eq(series.tmdbId, tmdbId))
-      .limit(1)
-    if (existingByTmdb) {
-      tmdbCache?.set(tmdbId, existingByTmdb.id)
-      return existingByTmdb.id
-    }
-
-    const inserted = await tx
-      .insert(series)
-      .values({
-        title: resolveDisplayTitle(item.title, item.rawTitle, item.providerItemId),
-        posterPath: sanitizeText(item.posterPath),
-        synopsis: sanitizeText(item.synopsis),
-        firstAirYear: item.firstAirYear ?? null,
-        tmdbId,
-        matchStatus: 'MATCHED',
-      })
-      .onConflictDoNothing({ target: series.tmdbId })
-      .returning({ id: series.id })
-
-    if (inserted[0]) {
-      tmdbCache?.set(tmdbId, inserted[0].id)
-      return inserted[0].id
-    }
-
-    const [row] = await tx
-      .select({ id: series.id })
-      .from(series)
-      .where(eq(series.tmdbId, tmdbId))
-      .limit(1)
-    if (row) {
-      tmdbCache?.set(tmdbId, row.id)
-      return row.id
-    }
-    throw new Error(`Failed to resolve series for tmdbId=${tmdbId}`)
+  const [existing] = await db
+    .select({ id: series.id })
+    .from(series)
+    .where(eq(series.tmdbId, tmdbId))
+    .limit(1)
+  if (existing) {
+    tmdbCache.set(tmdbId, existing.id)
+    return existing
   }
 
-  const [inserted] = await tx
+  const [inserted] = await db
     .insert(series)
-    .values({
-      title: resolveDisplayTitle(item.title, item.rawTitle, item.providerItemId),
-      posterPath: sanitizeText(item.posterPath),
-      synopsis: sanitizeText(item.synopsis),
-      firstAirYear: item.firstAirYear ?? null,
-      tmdbId: null,
-      matchStatus: 'UNMATCHED',
-    })
+    .values({ title: `[TMDB #${tmdbId}]`, tmdbId, matchStatus: 'MATCHED' })
+    .onConflictDoNothing({ target: series.tmdbId })
     .returning({ id: series.id })
-  return inserted.id
+
+  if (inserted) {
+    tmdbCache.set(tmdbId, inserted.id)
+    return inserted
+  }
+
+  const [row] = await db
+    .select({ id: series.id })
+    .from(series)
+    .where(eq(series.tmdbId, tmdbId))
+    .limit(1)
+  if (row) tmdbCache.set(tmdbId, row.id)
+  return row ?? null
 }
 
 async function resolveEpisodeId(
@@ -467,6 +411,9 @@ async function persistSyncRunProgress(
       failedCount: counts.failedCount,
       titleMatchedCount: counts.titleMatchedCount,
       titleUnmatchedCount: counts.titleUnmatchedCount,
+      resolvedCount: counts.resolvedCount,
+      ambiguousCount: counts.ambiguousCount,
+      unresolvedCount: counts.unresolvedCount,
     })
     .where(eq(syncRuns.id, runId))
 }
@@ -475,9 +422,9 @@ async function runTitleMatchPrePass(
   sourceId: string,
   items: Array<{ providerItemId: string; rawTitle: string; mediaType: 'MOVIE' | 'SERIES' }>,
   matchingService: TitleMatchingService,
-): Promise<{ prePassMap: Map<string, string | null>; matchedCount: number; unmatchedCount: number }> {
+): Promise<{ prePassMap: Map<string, string | null>; matchStateMap: Map<string, 'AMBIGUOUS' | 'UNMATCHED'>; matchedCount: number; unmatchedCount: number; ambiguousCount: number }> {
   if (items.length === 0) {
-    return { prePassMap: new Map(), matchedCount: 0, unmatchedCount: 0 }
+    return { prePassMap: new Map(), matchStateMap: new Map(), matchedCount: 0, unmatchedCount: 0, ambiguousCount: 0 }
   }
 
   const mediaType = items[0].mediaType
@@ -502,6 +449,7 @@ async function runTitleMatchPrePass(
     )
 
   const prePassMap = new Map<string, string | null>()
+  const matchStateMap = new Map<string, 'AMBIGUOUS' | 'UNMATCHED'>()
   const alreadyMatchedIds = new Set<string>()
   for (const row of existingMatched) {
     const canonicalId = mediaType === 'MOVIE' ? row.movieId ?? null : row.seriesId ?? null
@@ -528,6 +476,7 @@ async function runTitleMatchPrePass(
     mediaType === 'MOVIE' ? r.movieId != null : r.seriesId != null,
   ).length
   let unmatchedCount = 0
+  let ambiguousCount = 0
 
   const results = await matchingService.matchBatch(inputs, {
     concurrency: MATCH_CONCURRENCY,
@@ -553,12 +502,18 @@ async function runTitleMatchPrePass(
         matchedCount++
       } else {
         prePassMap.set(item.providerItemId, null)
-        unmatchedCount++
+        if (result.matchState === 'AMBIGUOUS') {
+          matchStateMap.set(item.providerItemId, 'AMBIGUOUS')
+          ambiguousCount++
+        } else {
+          matchStateMap.set(item.providerItemId, 'UNMATCHED')
+          unmatchedCount++
+        }
       }
     }
   }
 
-  return { prePassMap, matchedCount, unmatchedCount }
+  return { prePassMap, matchStateMap, matchedCount, unmatchedCount, ambiguousCount }
 }
 
 async function syncNormalized(
@@ -566,6 +521,7 @@ async function syncNormalized(
   snapshot: NormalizedSnapshot,
   existingRunId?: string,
   matchingService?: TitleMatchingService,
+  canonicalResolver?: CanonicalResolver,
 ): Promise<CatalogSyncResult> {
   // Acquire lock by inserting a RUNNING run record (unless caller already did).
   let runId: string
@@ -584,6 +540,9 @@ async function syncNormalized(
     failedCount: snapshot.failedSeriesProviderIds?.length ?? 0,
     titleMatchedCount: 0,
     titleUnmatchedCount: 0,
+    resolvedCount: 0,
+    ambiguousCount: 0,
+    unresolvedCount: 0,
   }
   let syncError: Error | undefined
 
@@ -674,8 +633,10 @@ async function syncNormalized(
           console.error('[catalog-sync] movie title-match pre-pass failed:', err)
           return {
             prePassMap: new Map<string, string | null>(),
+            matchStateMap: new Map<string, 'AMBIGUOUS' | 'UNMATCHED'>(),
             matchedCount: 0,
             unmatchedCount: moviesWithoutTmdb.length,
+            ambiguousCount: 0,
           }
         },
       )
@@ -684,8 +645,10 @@ async function syncNormalized(
           console.error('[catalog-sync] series title-match pre-pass failed:', err)
           return {
             prePassMap: new Map<string, string | null>(),
+            matchStateMap: new Map<string, 'AMBIGUOUS' | 'UNMATCHED'>(),
             matchedCount: 0,
             unmatchedCount: seriesWithoutTmdb.length,
+            ambiguousCount: 0,
           }
         },
       )
@@ -693,13 +656,58 @@ async function syncNormalized(
       seriesPrePassMap = seriesPass.prePassMap
       counts.titleMatchedCount += moviePass.matchedCount + seriesPass.matchedCount
       counts.titleUnmatchedCount += moviePass.unmatchedCount + seriesPass.unmatchedCount
+      counts.ambiguousCount += moviePass.ambiguousCount + seriesPass.ambiguousCount
+      counts.unresolvedCount += moviePass.unmatchedCount + seriesPass.unmatchedCount
       await persistSyncRunProgress(runId, counts)
     } else {
       console.info('[catalog-sync] title-match pre-pass skipped (no matchingService / TMDB_API_KEY)')
     }
 
-    // Local name consolidation within this sync (same normalized title+year → one movie/series)
+    // Pre-resolution phase: build a providerItemId → canonicalId map for all NEW movie items.
+    // Runs outside transactions so TMDB API calls (via CanonicalResolver) don't hold DB locks.
+    const movieResolutionMap = new Map<string, string>()
     const movieLocalTitleCache = new Map<string, string>()
+
+    for (const movie of snapshot.movies) {
+      const providerItemId = movie.providerItemId
+      if (movieAvByProviderItemId.has(providerItemId)) continue // existing availability — no resolution needed
+
+      const tmdbId = parseTmdbId(movie.tmdb)
+      const titleKey = localTitleDedupeKey(movie.rawTitle ?? movie.title)
+      let resolved: { id: string } | null = null
+
+      if (tmdbId != null) {
+        // TMDB ID path: prefer CanonicalResolver (real TMDB fetch); fallback to local placeholder
+        resolved = canonicalResolver
+          ? await canonicalResolver.resolveMovieCanonical({ tmdbId, tmdbCache: movieTmdbCache })
+          : await importMovieFallback(tmdbId, movieTmdbCache)
+        if (resolved) counts.resolvedCount++
+        else counts.unresolvedCount++
+      } else {
+        // No TMDB ID: use title-match pre-pass result or local dedup within this sync
+        const prePassId = moviePrePassMap.get(providerItemId)
+        const localId = movieLocalTitleCache.get(titleKey)
+        if (prePassId != null) {
+          resolved = { id: prePassId }
+          counts.resolvedCount++
+        } else if (localId != null) {
+          resolved = { id: localId }
+          counts.titleMatchedCount++
+          counts.resolvedCount++
+        } else if (moviePrePassMap.has(providerItemId)) {
+          // prePassMap returned null → AMBIGUOUS or UNMATCHED; already counted in pre-pass
+        } else {
+          // No matchingService ran or item was not in pre-pass scope; skip without creating skeleton
+          counts.unresolvedCount++
+        }
+      }
+
+      if (resolved) {
+        movieResolutionMap.set(providerItemId, resolved.id)
+        if (titleKey !== '::') movieLocalTitleCache.set(titleKey, resolved.id)
+      }
+    }
+
     const seriesLocalTitleCache = new Map<string, string>()
 
     const seenMovieProviderItemIds = new Set<string>()
@@ -716,7 +724,6 @@ async function syncNormalized(
     for (let offset = 0; offset < totalMovies; offset += SYNC_CHUNK_SIZE) {
       const chunk = snapshot.movies.slice(offset, offset + SYNC_CHUNK_SIZE)
       await db.transaction(async (tx) => {
-        const moviesToInsert: (typeof movies.$inferInsert)[] = []
         const newAvails: (typeof movieAvailabilities.$inferInsert)[] = []
         const appearEvents: (typeof releaseEvents.$inferInsert)[] = []
 
@@ -725,36 +732,12 @@ async function syncNormalized(
           const existing = movieAvByProviderItemId.get(providerItemId)
 
           if (!existing) {
-            const tmdbId = parseTmdbId(movie.tmdb)
-            const titleKey = localTitleDedupeKey(movie.rawTitle ?? movie.title)
-            let movieId: string
-            if (tmdbId != null) {
-              movieId = await resolveMovieId(tx, movie, movieTmdbCache)
-            } else {
-              const prePassId = moviePrePassMap.get(providerItemId)
-              const localId = movieLocalTitleCache.get(titleKey)
-              if (prePassId != null) {
-                // Title match found a canonical movie for this item
-                movieId = prePassId
-              } else if (localId != null) {
-                // Same cleaned title already created earlier in this sync
-                movieId = localId
-                counts.titleMatchedCount++
-              } else {
-                // No TMDB ID and no title match — create an UNMATCHED local skeleton
-                movieId = randomUUID()
-                moviesToInsert.push({
-                  id: movieId,
-                  title: resolveDisplayTitle(movie.title, movie.rawTitle, providerItemId),
-                  posterPath: sanitizeText(movie.posterPath),
-                  synopsis: sanitizeText(movie.synopsis),
-                  year: null,
-                  tmdbId: null,
-                  matchStatus: 'UNMATCHED',
-                })
-              }
+            const movieId = movieResolutionMap.get(providerItemId)
+            if (!movieId) {
+              // AMBIGUOUS or UNMATCHED — skip; no canonical, no availability
+              seenMovieProviderItemIds.add(providerItemId)
+              continue
             }
-            if (titleKey !== '::') movieLocalTitleCache.set(titleKey, movieId)
             const avId = randomUUID()
             newAvails.push({
               id: avId,
@@ -811,9 +794,6 @@ async function syncNormalized(
           seenMovieProviderItemIds.add(providerItemId)
         }
 
-        if (moviesToInsert.length > 0) {
-          await tx.insert(movies).values(moviesToInsert)
-        }
         if (newAvails.length > 0) {
           await tx
             .insert(movieAvailabilities)
@@ -838,12 +818,51 @@ async function syncNormalized(
       }
     }
 
+    // Pre-resolution phase for series
+    const seriesResolutionMap = new Map<string, string>()
+
+    for (const s of snapshot.series) {
+      const providerItemId = s.providerItemId
+      if (seriesAvByProviderItemId.has(providerItemId)) continue
+
+      const tmdbId = parseTmdbId(s.tmdb)
+      const titleKey = localTitleDedupeKey(s.rawTitle ?? s.title)
+      let resolved: { id: string } | null = null
+
+      if (tmdbId != null) {
+        resolved = canonicalResolver
+          ? await canonicalResolver.resolveSeriesCanonical({ tmdbId, tmdbCache: seriesTmdbCache })
+          : await importSeriesFallback(tmdbId, seriesTmdbCache)
+        if (resolved) counts.resolvedCount++
+        else counts.unresolvedCount++
+      } else {
+        const prePassId = seriesPrePassMap.get(providerItemId)
+        const localId = seriesLocalTitleCache.get(titleKey)
+        if (prePassId != null) {
+          resolved = { id: prePassId }
+          counts.resolvedCount++
+        } else if (localId != null) {
+          resolved = { id: localId }
+          counts.titleMatchedCount++
+          counts.resolvedCount++
+        } else if (seriesPrePassMap.has(providerItemId)) {
+          // prePassMap returned null → AMBIGUOUS or UNMATCHED; already counted in pre-pass
+        } else {
+          counts.unresolvedCount++
+        }
+      }
+
+      if (resolved) {
+        seriesResolutionMap.set(providerItemId, resolved.id)
+        if (titleKey !== '::') seriesLocalTitleCache.set(titleKey, resolved.id)
+      }
+    }
+
     const seenSeriesProviderItemIds = new Set<string>()
     const totalSeries = snapshot.series.length
     for (let offset = 0; offset < totalSeries; offset += SYNC_CHUNK_SIZE) {
       const chunk = snapshot.series.slice(offset, offset + SYNC_CHUNK_SIZE)
       await db.transaction(async (tx) => {
-        const seriesToInsert: (typeof series.$inferInsert)[] = []
         const newAvails: (typeof seriesAvailabilities.$inferInsert)[] = []
         const appearEvents: (typeof releaseEvents.$inferInsert)[] = []
 
@@ -852,35 +871,12 @@ async function syncNormalized(
           const existing = seriesAvByProviderItemId.get(providerItemId)
 
           if (!existing) {
-            const tmdbId = parseTmdbId(s.tmdb)
-            const titleKey = localTitleDedupeKey(s.rawTitle ?? s.title)
-            let seriesId: string
-            if (tmdbId != null) {
-              seriesId = await resolveSeriesId(tx, s, seriesTmdbCache)
-            } else {
-              const prePassId = seriesPrePassMap.get(providerItemId)
-              const localId = seriesLocalTitleCache.get(titleKey)
-              if (prePassId != null) {
-                // Title match found a canonical series for this item
-                seriesId = prePassId
-              } else if (localId != null) {
-                seriesId = localId
-                counts.titleMatchedCount++
-              } else {
-                // No TMDB ID and no title match — create an UNMATCHED local skeleton
-                seriesId = randomUUID()
-                seriesToInsert.push({
-                  id: seriesId,
-                  title: resolveDisplayTitle(s.title, s.rawTitle, providerItemId),
-                  posterPath: sanitizeText(s.posterPath),
-                  synopsis: sanitizeText(s.synopsis),
-                  firstAirYear: s.firstAirYear ?? null,
-                  tmdbId: null,
-                  matchStatus: 'UNMATCHED',
-                })
-              }
+            const seriesId = seriesResolutionMap.get(providerItemId)
+            if (!seriesId) {
+              // AMBIGUOUS or UNMATCHED — skip; no canonical, no availability
+              seenSeriesProviderItemIds.add(providerItemId)
+              continue
             }
-            if (titleKey !== '::') seriesLocalTitleCache.set(titleKey, seriesId)
             const avId = randomUUID()
             newAvails.push({
               id: avId,
@@ -937,9 +933,6 @@ async function syncNormalized(
           seenSeriesProviderItemIds.add(providerItemId)
         }
 
-        if (seriesToInsert.length > 0) {
-          await tx.insert(series).values(seriesToInsert)
-        }
         if (newAvails.length > 0) {
           await tx
             .insert(seriesAvailabilities)
@@ -1061,13 +1054,22 @@ async function syncNormalized(
             .limit(1)
           if (!seriesAv) continue
 
-          const episodeId = await resolveEpisodeId(
-            tx,
-            seriesAv.seriesId,
-            ep.seasonNumber,
-            ep.episodeNumber,
-            { title: ep.title, synopsis: ep.synopsis, durationMinutes: ep.durationMinutes, airDate: ep.airDate },
-          )
+          const episodeCanonical = canonicalResolver
+            ? await canonicalResolver.resolveEpisodeCanonical({
+                seriesId: seriesAv.seriesId,
+                seasonNumber: ep.seasonNumber,
+                episodeNumber: ep.episodeNumber,
+                episodeMeta: { title: ep.title, synopsis: ep.synopsis, durationMinutes: ep.durationMinutes, airDate: ep.airDate },
+              })
+            : await resolveEpisodeId(
+                tx,
+                seriesAv.seriesId,
+                ep.seasonNumber,
+                ep.episodeNumber,
+                { title: ep.title, synopsis: ep.synopsis, durationMinutes: ep.durationMinutes, airDate: ep.airDate },
+              ).then((id) => ({ id }))
+          if (!episodeCanonical) continue
+          const episodeId = episodeCanonical.id
 
           const [existing] = await tx
             .select({
@@ -1232,6 +1234,9 @@ async function syncNormalized(
       failedCount: counts.failedCount,
       titleMatchedCount: counts.titleMatchedCount,
       titleUnmatchedCount: counts.titleUnmatchedCount,
+      resolvedCount: counts.resolvedCount,
+      ambiguousCount: counts.ambiguousCount,
+      unresolvedCount: counts.unresolvedCount,
       errorMessage: null,
     })
     .where(eq(syncRuns.id, runId))
@@ -1243,7 +1248,7 @@ export const CatalogSyncService = {
   async syncCatalog(
     sourceId: string,
     snapshot: XtreamCatalogSnapshot,
-    options?: { runId?: string; matchingService?: TitleMatchingService; skipLifecycle?: boolean },
+    options?: { runId?: string; matchingService?: TitleMatchingService; canonicalResolver?: CanonicalResolver; skipLifecycle?: boolean },
   ): Promise<CatalogSyncResult> {
     const normalizedEpisodes: NormalizedEpisodeItem[] | undefined = snapshot.seriesInfo
       ? Object.entries(snapshot.seriesInfo).flatMap(([seriesIdStr, info]) =>
@@ -1314,13 +1319,14 @@ export const CatalogSyncService = {
       },
       options?.runId,
       options?.matchingService,
+      options?.canonicalResolver,
     )
   },
 
   async syncPlexCatalog(
     sourceId: string,
     snapshot: PlexCatalogSnapshot,
-    options?: { runId?: string; matchingService?: TitleMatchingService; skipLifecycle?: boolean },
+    options?: { runId?: string; matchingService?: TitleMatchingService; canonicalResolver?: CanonicalResolver; skipLifecycle?: boolean },
   ): Promise<CatalogSyncResult> {
     return syncNormalized(
       sourceId,
@@ -1355,13 +1361,14 @@ export const CatalogSyncService = {
       },
       options?.runId,
       options?.matchingService,
+      options?.canonicalResolver,
     )
   },
 
   async syncM3UCatalog(
     sourceId: string,
     snapshot: M3UCatalogSnapshot,
-    options?: { runId?: string; matchingService?: TitleMatchingService; skipLifecycle?: boolean },
+    options?: { runId?: string; matchingService?: TitleMatchingService; canonicalResolver?: CanonicalResolver; skipLifecycle?: boolean },
   ): Promise<CatalogSyncResult> {
     // Derive unique series entries from episode seriesKeys
     const seriesMap = new Map<string, NormalizedSeriesItem>()
@@ -1413,6 +1420,7 @@ export const CatalogSyncService = {
       },
       options?.runId,
       options?.matchingService,
+      options?.canonicalResolver,
     )
   },
 }

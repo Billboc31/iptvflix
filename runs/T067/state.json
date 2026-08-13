@@ -1,7 +1,7 @@
 {
   "ticket_id": "T067",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T067-attach-xtream-availability-to-canonical-catalog-en",
   "issue_number": 134,
-  "updated_at": "2026-08-13T16:31:48Z"
+  "updated_at": "2026-08-13T17:38:30Z"
 }
