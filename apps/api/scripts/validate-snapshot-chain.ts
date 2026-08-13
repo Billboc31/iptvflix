@@ -16,19 +16,33 @@ function fail(msg: string): never {
 
 const journal = JSON.parse(
   readFileSync(join(metaDir, "_journal.json"), "utf-8")
-) as { entries: Array<{ idx: number; tag: string }> };
+) as { entries: Array<{ idx: number; tag: string; when: number }> };
 
 const journalIdxs = new Set(journal.entries.map((e) => e.idx));
+
+// Journal `when` must be strictly increasing with idx — drizzle-kit migrate
+// uses a high-water mark on these timestamps and will skip/reorder otherwise.
+const byIdx = [...journal.entries].sort((a, b) => a.idx - b.idx);
+for (let i = 1; i < byIdx.length; i++) {
+  if (!(byIdx[i - 1].when < byIdx[i].when)) {
+    fail(
+      `Journal when not monotonic at idx ${byIdx[i].idx} (${byIdx[i].tag}): ` +
+        `${byIdx[i - 1].when} >= ${byIdx[i].when}`,
+    );
+  }
+}
 
 const snapshotFiles = readdirSync(metaDir)
   .filter((f) => /^\d{4}_snapshot\.json$/.test(f))
   .sort();
 
-// Every journal entry must have a snapshot file
+// Hand-written SQL migrations may omit snapshots; warn only.
 for (const entry of journal.entries) {
   const expected = `${String(entry.idx).padStart(4, "0")}_snapshot.json`;
   if (!snapshotFiles.includes(expected)) {
-    fail(`Missing snapshot file for journal entry ${entry.idx} (${entry.tag}): expected ${expected}`);
+    console.warn(
+      `WARN: No snapshot for journal entry ${entry.idx} (${entry.tag}) — OK for hand-written SQL`,
+    );
   }
 }
 
