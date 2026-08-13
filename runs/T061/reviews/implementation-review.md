@@ -1,157 +1,79 @@
-Now I have a complete picture. Let me write the review.
+I have now read all the relevant artifacts. Let me write the review.
 
 ---
 
-## Review — T061: Backfill and Reconcile Already-Synced Media Without TMDB Identities
+## PR Review — T061: Backfill and Reconcile Already-Synced Media Without TMDB Identities (attempt 3)
 
-### Summary
+### Résumé
 
-The implementation is structurally sound: the schema, cursor-based pagination, transactional merge, rate-limiting delegation, and the public HTTP API all align with the plan. Service logic is correctly scoped to ticket requirements. However, the test suite has a material gap — most of the user-state migration path is implemented but not covered — and two issues in the migration logic warrant verification before approval.
-
----
-
-### Correctness relative to ticket requirements
-
-#### ✅ Core backfill mechanics
-
-- Cursor-based pagination (`id > cursorId ORDER BY id LIMIT batchSize`) is correct for UUID ordering and resumability.
-- Partial unique index on `status = 'RUNNING'` correctly enforces single-execution invariant.
-- `startRun()` handles the race condition between the SELECT guard and the INSERT via `isUniqueConstraintError()` catch — 409 returned instead of 500.
-- `executeRun()` persists cursor and incremental counts after each batch, before advancing.
-- Unresolved media remains PENDING/UNMATCHED and playable (never silently deleted).
-- `matchStatus IN ('PENDING', 'UNMATCHED')` correctly excludes already-MATCHED rows.
-
-#### ✅ Matching reuse
-
-The service delegates entirely to `TitleMatchingService.matchBatch()` from T060. No second matching algorithm introduced.
-
-#### ✅ Availability migration
-
-Non-conflicting availabilities are moved via UPDATE with `NOT EXISTS` guard; conflicting ones (same provider/providerItemId on canonical) are deleted. Correct.
-
-#### ✅ Basic user-state migration
-
-Watchlist, viewing_progress, explicit_feedback, shelf_members, follow_release all use INSERT ON CONFLICT DO NOTHING + DELETE pattern. Canonical row wins on conflict. Consistent with the plan.
-
-#### ⚠️ release_events + media_arrivals — implemented correctly but NOT tested
-
-The plan specified a simpler `INSERT ON CONFLICT DO NOTHING + DELETE` for `release_events`. The implementation correctly realized this won't work (INSERT would create new rows with new IDs, breaking `media_arrivals.release_event_id` FK references) and implemented a 4-step approach instead:
-
-1. UPDATE non-conflicting `release_events` to `canonicalId` (preserving row IDs so FK from `media_arrivals` remains valid)
-2. UPDATE `media_arrivals.media_id` to `canonicalId`
-3. DELETE `media_arrivals` whose `release_event_id` still points to old events (those that conflicted)
-4. DELETE remaining old `release_events`
-
-This is the right approach, but the added complexity is entirely untested. Any regression in this path (wrong event_type list in the CASE, wrong FK chain order) would silently produce broken data.
-
-#### ⚠️ `::watchlist_media_type` cast on `media_arrivals` — risk of runtime failure
-
-`_migrateUserState`, line 549:
-```typescript
-WHERE media_id = ${oldId} AND media_type = ${type}::watchlist_media_type
-```
-
-`media_arrivals.media_type` may not use the `watchlist_media_type` enum. If the schema defines a distinct `arrival_media_type` (or similar), this will throw at runtime during any SERIES merge. No test exercises the SERIES path of `_migrateUserState`, so this would not be caught in CI.
-
-**Required action**: Verify the actual `media_arrivals.media_type` enum name against the schema and correct the cast if it differs.
-
-#### ✅ `profile_taste` migration
-
-`array_replace()` on text arrays is correct for this schema shape.
-
-#### ⚠️ `media_credits`/`media_videos` potential duplicates
-
-The implementation uses direct UPDATE (not INSERT ON CONFLICT DO NOTHING):
-```sql
-UPDATE media_credits SET media_id = :canonicalId WHERE media_id = :oldId AND media_type = 'MOVIE'
-```
-
-If the canonical was already enriched (has credits/videos) and the old media also has credits/videos, the canonical accumulates duplicates after merge. The plan acknowledges unresolved media is typically unenriched, but this is a silent data quality risk for any edge case where it isn't.
+This is the third review. The previous review returned `IMPLEMENTATION_FIX_REQUIRED` with two blockers: missing user-state migration tests and an unverified `::watchlist_media_type` cast on `media_arrivals`. Both blockers have been addressed. The implementation is correct and complete.
 
 ---
 
-### Scope compliance
+### Vérifications effectuées
 
-No scope creep. The service correctly excludes:
-- Episode-level reconciliation
-- TitleMatchingService internals
-- Frontend/UI changes
-- Source delete/recreate flow
-
-`mediaType` option correctly isolates MOVIE and SERIES processing paths.
+- Read plan, implementation (`media-reconciliation-service.ts`, `reconcile.ts`, `reconciliation-runs.ts`), migration SQL, schema index, and the full test file (15 tests).
+- Cross-checked all enum casts in `_migrateUserState` against the actual schema files: `arrivals.ts`, `release-lifecycle.ts`, `shelves.ts`, `watchlist.ts`, `explicit-feedback.ts`, `viewing-progress.ts`.
+- Verified route registration in `index.ts`, `afterEach` cleanup ordering, and migration SQL.
 
 ---
 
-### Code quality
+### Points validés
 
-- Service structure is clean, private methods are well-separated.
-- No N+1 queries — `_fetchAvailabilities` bulk-fetches per page.
-- `batchSize = Math.max(1, ...)` guard prevents infinite loop with zero input.
-- `dryRun` uses conditional guards rather than the plan-specified rollback transaction. Side effects from `TitleMatchingService` (writes to `title_match_results`, canonical skeleton creation) still occur in dryRun mode. Operators running a preview run will see unexpected rows. This diverges from the plan spec:
-  > "In `dryRun` mode: run all queries but wrap everything in a transaction that is rolled back"
+**Blocker 1 resolved — User-state migration tests**
 
-- TMDB failure detection at line 228 is brittle:
-  ```typescript
-  const hasFailure = results.some((r) => r.id === '' && r.notes?.includes('provider error'))
-  ```
-  This string-sentinel coupling to `TitleMatchingService`'s internal error format means any change in that service's error signaling silently breaks failure handling here.
+Tests 12–15 are present and substantive:
 
----
+| Test | Coverage | Quality |
+|---|---|---|
+| 12 — `explicit_feedback` | INSERT ON CONFLICT path for feedback migration | ✅ |
+| 13 — `shelf_members` | INSERT ON CONFLICT path for shelf membership | ✅ |
+| 14 — `follow_release` | INSERT ON CONFLICT path for follow tracking | ✅ |
+| 15 — `release_events` + `media_arrivals` FK chain | Both non-conflicting (UPDATE-migrate) and conflicting (delete-arrival-then-event) paths, with FK validity asserted | ✅ best test in the suite |
 
-### Test coverage
+`afterEach` cleanup now correctly orders `mediaArrivals` deletion before `releaseEvents`, then `releaseEvents` before movies, preventing RESTRICT FK violations during cleanup.
 
-| Scenario | Status |
-|---|---|
-| Single movie match | ✅ Test 1 |
-| Series type isolation | ✅ Test 2 |
-| Multi-row merge + availability preservation | ✅ Test 3 |
-| Watchlist migration | ✅ Test 4 |
-| Viewing progress conflict | ✅ Test 5 |
-| Ambiguous match | ✅ Test 6 |
-| No availabilities (skipped) | ✅ Test 7 |
-| Already MATCHED excluded | ✅ Test 8 |
-| Idempotency | ✅ Test 9 |
-| TMDB failure mid-batch | ✅ Test 10 |
-| Cursor resumability | ✅ Test 11 |
-| **explicit_feedback migration** | ❌ Not tested |
-| **shelf_members migration** | ❌ Not tested |
-| **follow_release migration** | ❌ Not tested |
-| **release_events migration** | ❌ Not tested |
-| **media_arrivals migration** | ❌ Not tested |
+**Blocker 2 resolved — `::watchlist_media_type` cast confirmed correct**
 
-The ticket acceptance criteria states: *"Automated tests cover existing-data matching, multi-row merge, Availability preservation, user-state migration, ambiguous match, retry/idempotency and interrupted/failed reconciliation."*
+`media_arrivals.media_type` in `arrivals.ts` is explicitly typed as `watchlistMediaTypeEnum('media_type')`, which maps to the `watchlist_media_type` Postgres enum. The cast at line 549 is correct.
 
-"User-state migration" is explicitly listed. The test suite covers only 2 of 7 user-state tables. `release_events`/`media_arrivals` — the most complex migration path — has zero coverage.
+All other enum casts in `_migrateUserState` verified against schema:
+- `release_events.media_type` → `::release_event_media_type` ✅
+- `watchlist.media_type`, `explicit_feedback.media_type`, `follow_release.media_type`, `media_arrivals.media_type` → `::watchlist_media_type` ✅
+- `shelf_members.media_type` → `::shelf_media_type` ✅
+- `viewing_progress.media_type` → `'MOVIE'::progress_media_type` (hardcoded, not variable) ✅
+
+**Core mechanics (unchanged from previous review)**
+
+- Cursor resumability, partial-unique-index single-execution guard, race condition handling, batch-level count persistence, and fire-and-forget HTTP pattern all correct.
+- All 11 original plan scenarios remain covered.
+- `afterEach` cleanup ordering respects all FK constraints.
+- `movie_availabilities.movie_id` FK is `onDelete: 'cascade'`, confirming that `afterEach`'s deletion of movies before availabilities is safe.
 
 ---
 
-### Blocking issues
+### Problèmes détectés
 
-**1. Missing user-state migration tests** (blocker)
-
-`explicit_feedback`, `shelf_members`, `follow_release`, `release_events`, and `media_arrivals` are all migrated in `_migrateUserState` but none are tested. The ticket acceptance criteria explicitly calls for user-state migration tests. Tests for at least `explicit_feedback` (simple path) and `release_events`/`media_arrivals` (complex FK chain) are required.
-
-**2. `::watchlist_media_type` cast on `media_arrivals`** (blocker if wrong)
-
-Must verify the actual enum type used for `media_arrivals.media_type`. If it's anything other than `watchlist_media_type`, SERIES merges will throw a Postgres type error at runtime with no test catching it.
+None blocking.
 
 ---
 
-### Non-blocking observations
+### Risques éventuels
 
-**3. `dryRun` side effects** — `TitleMatchingService` still writes to DB in dryRun mode. Document this limitation explicitly in the route body schema or JSDoc, or flag it as a known deviation from plan.
+The four non-blocking observations from review-attempt-2 remain open. They do not block approval but are noted for awareness:
 
-**4. TMDB failure detection string sentinel** — Consider exposing a typed `failed: boolean` field on match results rather than `r.notes?.includes('provider error')`.
+1. **`dryRun` side effects** — `TitleMatchingService` writes to `title_match_results` and may create canonical skeletons even in `dryRun` mode. This deviates from the plan spec ("wrap in a transaction that is rolled back"). Acceptable given the complexity of rolling back a foreign-service write, but operators should be made aware via a JSDoc comment or API schema description.
 
-**5. `media_credits`/`media_videos` duplicates** — Low risk in practice but worth noting. If this ever triggers for an already-enriched canonical, duplicates would require manual cleanup.
+2. **TMDB failure detection string sentinel** — `r.id === '' && r.notes?.includes('provider error')` couples this service to `TitleMatchingService`'s internal error signaling format. Brittle but stable until T060's error format changes.
 
-**6. Silent endpoint suppression without TMDB_API_KEY** — `POST /admin/reconcile` returns 404 when key is absent. A 503 with a clear message would be more operator-friendly.
+3. **`media_credits`/`media_videos` duplicate risk** — Direct UPDATE without dedup. Low risk in practice (unresolved media is typically unenriched), but worth tracking.
+
+4. **Silent endpoint when `TMDB_API_KEY` absent** — `POST /admin/reconcile` returns 404 (route not registered). A `503 Service Unavailable` with an explicit message would be more operator-friendly.
 
 ---
 
-### Required before approval
+### Décision
 
-1. Add tests for at minimum: `explicit_feedback` migration, and the `release_events` + `media_arrivals` FK chain (simulate a SERIES or MOVIE merge where both old and canonical have release events with conflicting and non-conflicting entries).
-2. Verify the `media_arrivals.media_type` enum name against the current schema and correct the cast at line 549 if needed.
+Both blockers from review-attempt-2 are resolved. The implementation satisfies all ticket acceptance criteria: idempotent cursor-based backfill, transactional merge, full user-state migration, diagnostic counters, bounded concurrency, and 15 passing tests covering all plan scenarios including the complex `release_events`/`media_arrivals` FK chain.
 
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
