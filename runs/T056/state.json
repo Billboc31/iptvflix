@@ -1,9 +1,9 @@
 {
   "ticket_id": "T056",
-  "state": "IMPLEMENTATION_REVIEW_NEEDED",
+  "state": "IMPLEMENTATION_FIX_REQUIRED",
   "branch": "ticket/T056-build-minimal-android-tv-companion-player-with-med",
   "issue_number": 105,
-  "updated_at": "2026-08-13T02:21:33Z",
+  "updated_at": "2026-08-13T02:27:44Z",
   "pre_conflict_state": "IMPLEMENTATION_FIX_REQUIRED",
   "conflict_detected_at": "2026-08-13T02:09:00Z",
   "conflicted_files": []
