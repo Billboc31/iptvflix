@@ -1,7 +1,7 @@
 {
   "ticket_id": "T061",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T061-backfill-and-reconcile-already-synced-media-withou",
   "issue_number": 123,
-  "updated_at": "2026-08-13T07:52:10Z"
+  "updated_at": "2026-08-13T09:56:01Z"
 }
