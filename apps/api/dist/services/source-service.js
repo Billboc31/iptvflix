@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { sources } from '../db/schema/index.js';
 import { PlexClient } from '../providers/plex/client.js';
+import { M3UClient } from '../providers/m3u/client.js';
 export class NotFoundError extends Error {
     statusCode = 404;
     constructor(id) {
@@ -55,7 +56,16 @@ export async function testSourceConnection(id) {
     if (!row)
         throw new NotFoundError(id);
     if (row.type === 'M3U') {
-        return { ok: false, message: 'M3U connection test not yet implemented' };
+        const client = new M3UClient({
+            playlistUrl: row.baseUrl,
+            username: row.username ?? undefined,
+            password: row.password ?? undefined,
+        });
+        const result = await client.testConnection();
+        return {
+            ok: result.ok,
+            message: result.message ?? (result.ok ? 'Connection successful' : 'Connection failed'),
+        };
     }
     if (row.type === 'PLEX') {
         const client = new PlexClient(row.baseUrl, row.password ?? '');

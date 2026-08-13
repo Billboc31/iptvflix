@@ -566,5 +566,52 @@ export const CatalogSyncService = {
             })),
         });
     },
+    async syncM3UCatalog(sourceId, snapshot) {
+        // Derive unique series entries from episode seriesKeys
+        const seriesMap = new Map();
+        for (const ep of snapshot.episodes) {
+            const key = ep.seriesKey ?? ep.streamUrl;
+            if (!seriesMap.has(key)) {
+                const { variantAttributes } = normalizeTitle(ep.rawTitle);
+                seriesMap.set(key, {
+                    providerItemId: key,
+                    title: ep.tvgName ?? ep.rawTitle,
+                    posterPath: ep.tvgLogo ?? null,
+                    synopsis: null,
+                    tmdb: undefined,
+                    firstAirYear: null,
+                    rawTitle: ep.rawTitle,
+                    audioLanguage: variantAttributes.audioLanguage,
+                    subtitleLanguage: variantAttributes.subtitleLanguage,
+                    videoQuality: variantAttributes.videoQuality,
+                });
+            }
+        }
+        return syncNormalized(sourceId, {
+            sourceId: snapshot.sourceId,
+            fetchedAt: snapshot.fetchedAt,
+            movies: snapshot.movies.map((entry) => {
+                const { variantAttributes } = normalizeTitle(entry.rawTitle);
+                return {
+                    providerItemId: entry.tvgId ?? entry.streamUrl,
+                    title: entry.tvgName ?? entry.rawTitle,
+                    posterPath: entry.tvgLogo ?? null,
+                    synopsis: null,
+                    tmdb: undefined,
+                    rawTitle: entry.rawTitle,
+                    audioLanguage: variantAttributes.audioLanguage,
+                    subtitleLanguage: variantAttributes.subtitleLanguage,
+                    videoQuality: variantAttributes.videoQuality,
+                };
+            }),
+            series: [...seriesMap.values()],
+            episodes: snapshot.episodes.map((entry) => ({
+                providerItemId: entry.tvgId ?? entry.streamUrl,
+                seriesProviderItemId: entry.seriesKey ?? entry.streamUrl,
+                seasonNumber: entry.seasonNumber ?? 1,
+                episodeNumber: entry.episodeNumber ?? 1,
+            })),
+        });
+    },
 };
 //# sourceMappingURL=catalog-sync-service.js.map

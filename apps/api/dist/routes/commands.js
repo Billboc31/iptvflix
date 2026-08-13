@@ -1,4 +1,5 @@
 import { authenticateDevice } from '../middleware/authenticateDevice.js';
+import { authenticateWeb } from '../middleware/authenticateWeb.js';
 import { createCommand, getPendingCommands, acknowledgeCommand, CommandDeviceNotFoundError, CommandDeviceRevokedError, CommandNotFoundError, } from '../services/command.service.js';
 import { onCommandForDevice } from '../lib/device-events.js';
 import { db } from '../db/client.js';
@@ -8,6 +9,8 @@ const SSE_HEARTBEAT_INTERVAL_MS = 25_000;
 export async function commandsRoutes(app) {
     // Web — send a playback command to a specific paired device
     app.post('/devices/:id/commands', async (request, reply) => {
+        if (!(await authenticateWeb(request, reply)))
+            return;
         const { mediaType, mediaId, availabilityId, startPositionMs } = request.body;
         if (!mediaType || !mediaId) {
             return reply.status(400).send({ error: 'mediaType and mediaId are required' });

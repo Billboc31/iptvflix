@@ -4,6 +4,8 @@ import { sources } from '../db/schema/sources.js';
 import { syncRuns } from '../db/schema/sync-runs.js';
 import { XtreamCodesClient } from '../providers/xtream/client.js';
 import { PlexClient } from '../providers/plex/client.js';
+import { M3UClient } from '../providers/m3u/client.js';
+import { M3UAuthError, M3UNetworkError, M3UParseError } from '../providers/m3u/errors.js';
 import { CatalogSyncService, SyncAlreadyRunningError, } from './catalog-sync-service.js';
 import { NotFoundError } from './source-service.js';
 function toResponse(row) {
@@ -84,6 +86,16 @@ async function fetchXtreamSnapshot(source) {
         failedSeriesIds: failedSeriesIds.length > 0 ? failedSeriesIds : undefined,
     };
 }
+async function fetchM3USnapshot(source) {
+    const timeoutMs = parseInt(process.env.M3U_FETCH_TIMEOUT_MS ?? '60000', 10);
+    const client = new M3UClient({
+        playlistUrl: source.baseUrl,
+        username: source.username ?? undefined,
+        password: source.password ?? undefined,
+        timeoutMs,
+    });
+    return client.fetchSnapshot(source.id);
+}
 async function fetchPlexSnapshot(source) {
     const client = new PlexClient(source.baseUrl, source.password ?? '', 60_000);
     const sections = await client.fetchLibrarySections();
@@ -116,8 +128,8 @@ export async function triggerSync(body) {
         err.statusCode = 400;
         throw err;
     }
-    if (source.type !== 'XTREAM' && source.type !== 'PLEX') {
-        const err = new Error('Only XTREAM and PLEX sources can be synchronized');
+    if (source.type !== 'XTREAM' && source.type !== 'PLEX' && source.type !== 'M3U') {
+        const err = new Error('Only XTREAM, PLEX, and M3U sources can be synchronized');
         err.statusCode = 400;
         throw err;
     }
@@ -126,6 +138,30 @@ export async function triggerSync(body) {
         if (source.type === 'PLEX') {
             const snapshot = await fetchPlexSnapshot(source);
             result = await CatalogSyncService.syncPlexCatalog(source.id, snapshot);
+        }
+        else if (source.type === 'M3U') {
+            let snapshot;
+            try {
+                snapshot = await fetchM3USnapshot(source);
+            }
+            catch (fetchErr) {
+                if (fetchErr instanceof M3UAuthError ||
+                    fetchErr instanceof M3UNetworkError ||
+                    fetchErr instanceof M3UParseError) {
+                    const [failedRun] = await db
+                        .insert(syncRuns)
+                        .values({
+                        sourceId: source.id,
+                        status: 'FAILED',
+                        completedAt: new Date(),
+                        errorMessage: fetchErr.message,
+                    })
+                        .returning();
+                    return toResponse(failedRun);
+                }
+                throw fetchErr;
+            }
+            result = await CatalogSyncService.syncM3UCatalog(source.id, snapshot);
         }
         else {
             const snapshot = await fetchXtreamSnapshot(source);
