@@ -16,3 +16,25 @@
 [2026-08-13T19:47:04Z] conflict-resolver: running tests
 [2026-08-13T19:47:04Z] conflict-resolver: test-report written: runs/T068/conflict/test-report.md
 [2026-08-13T19:47:04Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-13T19:51:59Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-13T19:51:59Z] auto-run: running step=tester
+[2026-08-13T19:52:00Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-13T19:52:00Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-13T19:52:00Z] prompt: generic fallback — injecting runs/T068/ticket.md
+[2026-08-13T19:52:00Z] compose: global-context=docs/ai/global-context.md
+[2026-08-13T19:52:00Z] compose: role=ai/roles/tester.md
+[2026-08-13T19:52:00Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-13T19:52:00Z] compose: skill=ai/skills/testing.md
+[2026-08-13T19:52:00Z] compose: skill=ai/skills/debugging.md
+[2026-08-13T19:52:00Z] compose: task (canonical prompt)
+[2026-08-13T19:52:00Z] snapshot: runtime-prompt=runs/T068/prompts/tester-attempt-2.md
+[2026-08-13T19:53:23Z] auto-run: step=tester done rc=0
+[2026-08-13T19:53:23Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-13T19:53:23Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-13T19:53:23Z] commit-checkpoint: unstaged runtime garbage: ['runs/T068/daemon.lock', 'runs/T068/runtime.log', 'runs/T068/workflow-status.md']
+[2026-08-13T19:53:23Z] commit-checkpoint: sha=40915e2 files=3 title='test(T068/workflow): tester — update 3 file(s)'
+[2026-08-13T19:53:23Z] auto-run: auto-push triggered
+[2026-08-13T19:53:23Z] push: tolerating runtime dirty files (not blocking): ['runs/T068/daemon.lock', 'runs/T068/runtime.log', 'runs/T068/workflow-status.md']
+[2026-08-13T19:53:23Z] push: pushing branch=ticket/T068-implement-hybrid-local-tmdb-search-with-automatic
+[2026-08-13T19:53:25Z] push: done branch=ticket/T068-implement-hybrid-local-tmdb-search-with-automatic
+[2026-08-13T19:53:26Z] auto-run: TEST_COMPLETE — running PR lifecycle
