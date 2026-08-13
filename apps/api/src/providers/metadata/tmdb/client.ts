@@ -7,6 +7,7 @@ import type {
   ExternalSeasonEpisode,
   MetadataCandidate,
   DiscoveryFeed,
+  DiscoverParams,
 } from '../types.js'
 import type {
   TmdbMovieDetail,
@@ -172,10 +173,10 @@ export class TmdbClient implements MetadataProvider {
     return retried
   }
 
-  async getMovieMetadata(tmdbId: number): Promise<ExternalMovieMetadata | null> {
-    const response = await this.fetchWithRetry(
-      `${BASE_URL}/movie/${tmdbId}?append_to_response=keywords,external_ids`,
-    )
+  async getMovieMetadata(tmdbId: number, opts?: { language?: string }): Promise<ExternalMovieMetadata | null> {
+    const params = new URLSearchParams({ append_to_response: 'keywords,external_ids' })
+    if (opts?.language) params.set('language', opts.language)
+    const response = await this.fetchWithRetry(`${BASE_URL}/movie/${tmdbId}?${params}`)
     if (response.status === 404) return null
     if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
     try {
@@ -186,10 +187,10 @@ export class TmdbClient implements MetadataProvider {
     }
   }
 
-  async getSeriesMetadata(tmdbId: number): Promise<ExternalSeriesMetadata | null> {
-    const response = await this.fetchWithRetry(
-      `${BASE_URL}/tv/${tmdbId}?append_to_response=keywords,external_ids`,
-    )
+  async getSeriesMetadata(tmdbId: number, opts?: { language?: string }): Promise<ExternalSeriesMetadata | null> {
+    const params = new URLSearchParams({ append_to_response: 'keywords,external_ids' })
+    if (opts?.language) params.set('language', opts.language)
+    const response = await this.fetchWithRetry(`${BASE_URL}/tv/${tmdbId}?${params}`)
     if (response.status === 404) return null
     if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
     try {
@@ -461,6 +462,106 @@ export class TmdbClient implements MetadataProvider {
     } catch (err) {
       if (err instanceof TmdbNetworkError) throw err
       throw new TmdbNetworkError('Could not parse TMDB series feed response')
+    }
+  }
+
+  async fetchMovieTopRated(page: number): Promise<MetadataCandidate[]> {
+    const params = new URLSearchParams({ page: String(page) })
+    const response = await this.fetchWithRetry(`${BASE_URL}/movie/top_rated?${params}`)
+    if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
+    try {
+      const raw = (await response.json()) as TmdbSearchResponse
+      return (raw.results ?? []).map((item) => ({
+        externalId: String(item.id),
+        title: item.title ?? item.name ?? '',
+        year: parseYear(item.release_date ?? item.first_air_date),
+        mediaType: 'MOVIE' as const,
+        posterPath: item.poster_path ?? null,
+        synopsis: item.overview || null,
+        releaseStatus: deriveReleaseStatus(item.release_date),
+        releaseDate: item.release_date || null,
+        popularity: item.popularity ?? null,
+        voteAverage: item.vote_average ?? null,
+      }))
+    } catch (err) {
+      if (err instanceof TmdbNetworkError) throw err
+      throw new TmdbNetworkError('Could not parse TMDB movie top_rated response')
+    }
+  }
+
+  async fetchSeriesTopRated(page: number): Promise<MetadataCandidate[]> {
+    const params = new URLSearchParams({ page: String(page) })
+    const response = await this.fetchWithRetry(`${BASE_URL}/tv/top_rated?${params}`)
+    if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
+    try {
+      const raw = (await response.json()) as TmdbSearchResponse
+      return (raw.results ?? []).map((item) => ({
+        externalId: String(item.id),
+        title: item.name ?? item.title ?? '',
+        year: parseYear(item.first_air_date ?? item.release_date),
+        mediaType: 'SERIES' as const,
+        posterPath: item.poster_path ?? null,
+        synopsis: item.overview || null,
+        releaseStatus: deriveReleaseStatus(item.first_air_date),
+        firstAirDate: item.first_air_date || null,
+        popularity: item.popularity ?? null,
+        voteAverage: item.vote_average ?? null,
+      }))
+    } catch (err) {
+      if (err instanceof TmdbNetworkError) throw err
+      throw new TmdbNetworkError('Could not parse TMDB series top_rated response')
+    }
+  }
+
+  async fetchMovieDiscover(discoverParams: DiscoverParams, page: number): Promise<MetadataCandidate[]> {
+    const params = new URLSearchParams({ sort_by: 'popularity.desc', page: String(page) })
+    if (discoverParams.genreId != null) params.set('with_genres', String(discoverParams.genreId))
+    if (discoverParams.language) params.set('with_original_language', discoverParams.language)
+    const response = await this.fetchWithRetry(`${BASE_URL}/discover/movie?${params}`)
+    if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
+    try {
+      const raw = (await response.json()) as TmdbSearchResponse
+      return (raw.results ?? []).map((item) => ({
+        externalId: String(item.id),
+        title: item.title ?? item.name ?? '',
+        year: parseYear(item.release_date ?? item.first_air_date),
+        mediaType: 'MOVIE' as const,
+        posterPath: item.poster_path ?? null,
+        synopsis: item.overview || null,
+        releaseStatus: deriveReleaseStatus(item.release_date),
+        releaseDate: item.release_date || null,
+        popularity: item.popularity ?? null,
+        voteAverage: item.vote_average ?? null,
+      }))
+    } catch (err) {
+      if (err instanceof TmdbNetworkError) throw err
+      throw new TmdbNetworkError('Could not parse TMDB movie discover response')
+    }
+  }
+
+  async fetchSeriesDiscover(discoverParams: DiscoverParams, page: number): Promise<MetadataCandidate[]> {
+    const params = new URLSearchParams({ sort_by: 'popularity.desc', page: String(page) })
+    if (discoverParams.genreId != null) params.set('with_genres', String(discoverParams.genreId))
+    if (discoverParams.language) params.set('with_original_language', discoverParams.language)
+    const response = await this.fetchWithRetry(`${BASE_URL}/discover/tv?${params}`)
+    if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
+    try {
+      const raw = (await response.json()) as TmdbSearchResponse
+      return (raw.results ?? []).map((item) => ({
+        externalId: String(item.id),
+        title: item.name ?? item.title ?? '',
+        year: parseYear(item.first_air_date ?? item.release_date),
+        mediaType: 'SERIES' as const,
+        posterPath: item.poster_path ?? null,
+        synopsis: item.overview || null,
+        releaseStatus: deriveReleaseStatus(item.first_air_date),
+        firstAirDate: item.first_air_date || null,
+        popularity: item.popularity ?? null,
+        voteAverage: item.vote_average ?? null,
+      }))
+    } catch (err) {
+      if (err instanceof TmdbNetworkError) throw err
+      throw new TmdbNetworkError('Could not parse TMDB series discover response')
     }
   }
 }

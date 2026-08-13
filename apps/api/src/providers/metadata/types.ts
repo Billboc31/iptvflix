@@ -96,6 +96,8 @@ export interface ExternalSeasonEpisode {
 
 export type DiscoveryFeed = 'popular' | 'trending' | 'upcoming'
 
+export type DiscoverParams = { genreId?: number; language?: string }
+
 export interface MetadataCandidate {
   externalId: string
   title: string
@@ -111,12 +113,16 @@ export interface MetadataCandidate {
 }
 
 export interface MetadataProvider {
-  getMovieMetadata(tmdbId: number): Promise<ExternalMovieMetadata | null>
-  getSeriesMetadata(tmdbId: number): Promise<ExternalSeriesMetadata | null>
+  getMovieMetadata(tmdbId: number, opts?: { language?: string }): Promise<ExternalMovieMetadata | null>
+  getSeriesMetadata(tmdbId: number, opts?: { language?: string }): Promise<ExternalSeriesMetadata | null>
   searchMovies(query: string, year?: number | null): Promise<MetadataCandidate[]>
   searchSeries(query: string, year?: number | null): Promise<MetadataCandidate[]>
   fetchMovieFeed(feed: DiscoveryFeed, page: number): Promise<MetadataCandidate[]>
   fetchSeriesFeed(feed: DiscoveryFeed, page: number): Promise<MetadataCandidate[]>
+  fetchMovieTopRated(page: number): Promise<MetadataCandidate[]>
+  fetchSeriesTopRated(page: number): Promise<MetadataCandidate[]>
+  fetchMovieDiscover(params: DiscoverParams, page: number): Promise<MetadataCandidate[]>
+  fetchSeriesDiscover(params: DiscoverParams, page: number): Promise<MetadataCandidate[]>
   getMovieVideos(tmdbId: number): Promise<ExternalVideo[]>
   getSeriesVideos(tmdbId: number): Promise<ExternalVideo[]>
   getMovieCredits(tmdbId: number): Promise<ExternalCreditPerson[]>
@@ -127,11 +133,11 @@ export interface MetadataProvider {
 }
 
 export class NoopMetadataProvider implements MetadataProvider {
-  async getMovieMetadata(_tmdbId: number): Promise<ExternalMovieMetadata | null> {
+  async getMovieMetadata(_tmdbId: number, _opts?: { language?: string }): Promise<ExternalMovieMetadata | null> {
     return null
   }
 
-  async getSeriesMetadata(_tmdbId: number): Promise<ExternalSeriesMetadata | null> {
+  async getSeriesMetadata(_tmdbId: number, _opts?: { language?: string }): Promise<ExternalSeriesMetadata | null> {
     return null
   }
 
@@ -148,6 +154,22 @@ export class NoopMetadataProvider implements MetadataProvider {
   }
 
   async fetchSeriesFeed(_feed: DiscoveryFeed, _page: number): Promise<MetadataCandidate[]> {
+    return []
+  }
+
+  async fetchMovieTopRated(_page: number): Promise<MetadataCandidate[]> {
+    return []
+  }
+
+  async fetchSeriesTopRated(_page: number): Promise<MetadataCandidate[]> {
+    return []
+  }
+
+  async fetchMovieDiscover(_params: DiscoverParams, _page: number): Promise<MetadataCandidate[]> {
+    return []
+  }
+
+  async fetchSeriesDiscover(_params: DiscoverParams, _page: number): Promise<MetadataCandidate[]> {
     return []
   }
 

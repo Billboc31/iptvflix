@@ -9,7 +9,7 @@ import { genres } from '../db/schema/genres.js'
 import { collections } from '../db/schema/collections.js'
 import { mediaVideos } from '../db/schema/media-videos.js'
 import { mediaCredits } from '../db/schema/media-credits.js'
-import type { MetadataProvider, ExternalVideo, ExternalCreditPerson, ExternalSeasonEpisode } from '../providers/metadata/types.js'
+import type { MetadataProvider, ExternalVideo, ExternalCreditPerson, ExternalSeasonEpisode, ExternalMovieMetadata, ExternalSeriesMetadata } from '../providers/metadata/types.js'
 
 type Db = PostgresJsDatabase<typeof schema>
 
@@ -156,6 +156,7 @@ export class MetadataEnrichmentService {
 
     await this.persistVideos('movie', movieId, videos)
     await this.persistCredits('movie', movieId, credits)
+    await this.persistFrenchLocalization('movie', movieId, movie.tmdbId, metadata.title, metadata.synopsis ?? null, metadata.tagline ?? null)
 
     return 'enriched'
   }
@@ -239,6 +240,7 @@ export class MetadataEnrichmentService {
 
     await this.persistVideos('series', seriesId, videos)
     await this.persistCredits('series', seriesId, credits)
+    await this.persistFrenchLocalization('series', seriesId, seriesRow.tmdbId, metadata.title, metadata.synopsis ?? null, metadata.tagline ?? null)
 
     // Update seasons with TMDB season-level data (tmdbId, posterPath, episodeCount)
     if (metadata.seasons && metadata.seasons.length > 0) {
@@ -445,6 +447,41 @@ export class MetadataEnrichmentService {
         profilePath: c.profilePath,
       })),
     )
+  }
+
+  private async persistFrenchLocalization(
+    mediaType: 'movie' | 'series',
+    mediaId: string,
+    tmdbId: number,
+    defaultTitle: string,
+    defaultSynopsis: string | null,
+    defaultTagline: string | null,
+  ): Promise<void> {
+    let frMetadata: ExternalMovieMetadata | ExternalSeriesMetadata | null
+    try {
+      frMetadata =
+        mediaType === 'movie'
+          ? await this.provider.getMovieMetadata(tmdbId, { language: 'fr-FR' })
+          : await this.provider.getSeriesMetadata(tmdbId, { language: 'fr-FR' })
+    } catch {
+      return
+    }
+    if (!frMetadata) return
+
+    const fr: { title?: string; synopsis?: string; tagline?: string } = {}
+    if (frMetadata.title && frMetadata.title !== defaultTitle) fr.title = frMetadata.title
+    const frSynopsis = frMetadata.synopsis ?? null
+    if (frSynopsis && frSynopsis !== defaultSynopsis) fr.synopsis = frSynopsis
+    const frTagline = frMetadata.tagline ?? null
+    if (frTagline && frTagline !== defaultTagline) fr.tagline = frTagline
+
+    if (Object.keys(fr).length === 0) return
+
+    if (mediaType === 'movie') {
+      await this.db.update(movies).set({ localizations: { fr } }).where(eq(movies.id, mediaId))
+    } else {
+      await this.db.update(series).set({ localizations: { fr } }).where(eq(series.id, mediaId))
+    }
   }
 
   private async upsertGenres(
