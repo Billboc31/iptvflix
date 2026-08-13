@@ -142,7 +142,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun seekBack() = player.seekTo(maxOf(0L, player.currentPosition - SEEK_STEP_MS))
 
     fun stop() {
-        viewModelScope.launch { progressReporter?.reportNow() }
+        viewModelScope.launch(NonCancellable) { progressReporter?.reportNow() }
         reporterJob?.cancel()
         player.stop()
         _uiState.value = PlayerUiState.Idle
@@ -152,7 +152,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val ref = exoTracksMap[trackId] ?: return
         player.trackSelectionParameters = player.trackSelectionParameters
             .buildUpon()
-            .clearOverrides()
+            .clearOverridesOfType(ref.group.type)
             .addOverride(TrackSelectionOverride(ref.group.mediaTrackGroup, listOf(ref.trackIndex)))
             .build()
     }
