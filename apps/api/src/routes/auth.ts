@@ -20,6 +20,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(401).send({ error: 'Invalid credentials' } as never)
     }
     const token = app.jwt.sign({ username }, { expiresIn: '1h' })
+    // Cookie for same-site / desktop; body token for Safari/iOS (third-party cookies blocked).
     return reply
       .setCookie('token', token, {
         httpOnly: true,
@@ -27,7 +28,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         sameSite: IS_PRODUCTION ? 'none' : 'lax',
         path: '/',
       })
-      .send({ ok: true })
+      .send({ ok: true, token })
   })
 
   app.get<{ Reply: MeResponse }>('/auth/me', { preHandler: authenticate }, async (request) => {
@@ -35,6 +36,12 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   })
 
   app.post('/auth/logout', { preHandler: authenticate }, async (_request, reply) => {
-    return reply.clearCookie('token', { path: '/' }).send({ ok: true })
+    return reply
+      .clearCookie('token', {
+        path: '/',
+        secure: IS_PRODUCTION,
+        sameSite: IS_PRODUCTION ? 'none' : 'lax',
+      })
+      .send({ ok: true })
   })
 }

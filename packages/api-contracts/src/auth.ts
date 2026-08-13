@@ -1,3 +1,4 @@
 export type LoginRequest = { username: string; password: string }
-export type LoginResponse = { ok: true }
+/** `token` is required for mobile / Safari where cross-site cookies are blocked. */
+export type LoginResponse = { ok: true; token: string }
 export type MeResponse = { username: string }

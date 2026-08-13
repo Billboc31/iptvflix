@@ -62,7 +62,7 @@ describe('POST /auth/login', () => {
     })
 
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ ok: true })
+    expect(res.json()).toEqual({ ok: true, token: expect.any(String) })
     const setCookie = res.headers['set-cookie']
     expect(setCookie).toBeDefined()
     expect(String(setCookie)).toContain('token=')
