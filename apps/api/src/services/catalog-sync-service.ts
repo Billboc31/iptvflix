@@ -198,6 +198,14 @@ export async function failSyncRun(runId: string, errorMessage: string): Promise<
     .where(eq(syncRuns.id, runId))
 }
 
+/** Stores a human-readable phase in error_message while the run is still RUNNING. */
+export async function setSyncRunProgress(runId: string, progress: string): Promise<void> {
+  await db
+    .update(syncRuns)
+    .set({ errorMessage: progress.slice(0, 500) })
+    .where(and(eq(syncRuns.id, runId), eq(syncRuns.status, 'RUNNING')))
+}
+
 /** Postgres `integer` / Drizzle `integer()` range (signed int4). */
 const PG_INT4_MAX = 2_147_483_647
 
@@ -634,6 +642,10 @@ async function syncNormalized(
         `[catalog-sync] title-match pre-pass: ${moviesWithoutTmdb.length} movies + ` +
           `${seriesWithoutTmdb.length} series without provider TMDB id`,
       )
+      await setSyncRunProgress(
+        runId,
+        `Matching TMDB : ${moviesWithoutTmdb.length} films + ${seriesWithoutTmdb.length} séries sans id…`,
+      )
 
       const [moviePass, seriesPass] = await Promise.all([
         runTitleMatchPrePass(sourceId, moviesWithoutTmdb, matchingService).catch((err) => {
@@ -657,6 +669,7 @@ async function syncNormalized(
       seriesPrePassMap = seriesPass.prePassMap
       counts.titleMatchedCount += moviePass.matchedCount + seriesPass.matchedCount
       counts.titleUnmatchedCount += moviePass.unmatchedCount + seriesPass.unmatchedCount
+      await persistSyncRunProgress(runId, counts)
     } else {
       console.info('[catalog-sync] title-match pre-pass skipped (no matchingService / TMDB_API_KEY)')
     }
@@ -670,6 +683,10 @@ async function syncNormalized(
     console.info(
       `[catalog-sync] upserting ${totalMovies} movies + ${snapshot.series.length} series ` +
         `(chunk=${SYNC_CHUNK_SIZE})`,
+    )
+    await setSyncRunProgress(
+      runId,
+      `Import en base : 0/${totalMovies} films…`,
     )
 
     for (let offset = 0; offset < totalMovies; offset += SYNC_CHUNK_SIZE) {
@@ -784,6 +801,10 @@ async function syncNormalized(
       const done = Math.min(offset + SYNC_CHUNK_SIZE, totalMovies)
       if (done === totalMovies || done % (SYNC_CHUNK_SIZE * 4) === 0 || offset === 0) {
         await persistSyncRunProgress(runId, counts)
+        await setSyncRunProgress(
+          runId,
+          `Import en base : ${done}/${totalMovies} films (+${counts.moviesCreated} créés)…`,
+        )
         console.info(`[catalog-sync] movies ${done}/${totalMovies} (created=${counts.moviesCreated})`)
       }
     }
@@ -901,6 +922,10 @@ async function syncNormalized(
       const done = Math.min(offset + SYNC_CHUNK_SIZE, totalSeries)
       if (totalSeries > 0 && (done === totalSeries || done % (SYNC_CHUNK_SIZE * 4) === 0 || offset === 0)) {
         await persistSyncRunProgress(runId, counts)
+        await setSyncRunProgress(
+          runId,
+          `Import en base : ${done}/${totalSeries} séries (+${counts.seriesCreated} créées)…`,
+        )
         console.info(`[catalog-sync] series ${done}/${totalSeries} (created=${counts.seriesCreated})`)
       }
     }
@@ -1173,6 +1198,7 @@ async function syncNormalized(
       failedCount: counts.failedCount,
       titleMatchedCount: counts.titleMatchedCount,
       titleUnmatchedCount: counts.titleUnmatchedCount,
+      errorMessage: null,
     })
     .where(eq(syncRuns.id, runId))
 

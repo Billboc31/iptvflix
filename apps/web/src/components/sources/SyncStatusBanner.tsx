@@ -50,9 +50,17 @@ export default function SyncStatusBanner({
             <span className="text-gray-400 text-sm">
               Dernière synchro : {formatDate(latestRun.startedAt)}
             </span>
-            {latestRun.status === 'DONE' && (
+            {(latestRun.status === 'DONE' || latestRun.status === 'RUNNING') && (
               <span className="text-gray-500 text-xs">
                 +{latestRun.moviesAdded} films · +{latestRun.seriesAdded} séries
+                {typeof latestRun.titleMatched === 'number' && latestRun.titleMatched > 0
+                  ? ` · ${latestRun.titleMatched} consolidés`
+                  : ''}
+              </span>
+            )}
+            {latestRun.status === 'RUNNING' && latestRun.progress && (
+              <span className="text-sky-400/90 text-xs max-w-md truncate" title={latestRun.progress}>
+                {latestRun.progress}
               </span>
             )}
           </>

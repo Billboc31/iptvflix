@@ -15,6 +15,7 @@ import {
   SyncAlreadyRunningError,
   acquireSyncRunLock,
   failSyncRun,
+  setSyncRunProgress,
 } from './catalog-sync-service.js'
 import { NotFoundError } from './source-service.js'
 import { TMDB_API_KEY } from '../config/env.js'
@@ -31,6 +32,7 @@ type SyncRunRow = typeof syncRuns.$inferSelect
 function toResponse(row: SyncRunRow): SyncRunResponse {
   const status =
     row.status === 'COMPLETED' ? 'DONE' : (row.status as SyncRunResponse['status'])
+  const isRunning = row.status === 'RUNNING'
   return {
     id: row.id,
     sourceId: row.sourceId,
@@ -40,7 +42,9 @@ function toResponse(row: SyncRunRow): SyncRunResponse {
     moviesAdded: row.moviesCreated,
     seriesAdded: row.seriesCreated,
     seriesInfoFailed: row.failedCount,
-    error: row.errorMessage ?? null,
+    titleMatched: row.titleMatchedCount,
+    progress: isRunning ? (row.errorMessage ?? null) : null,
+    error: isRunning ? null : (row.errorMessage ?? null),
   }
 }
 
@@ -71,7 +75,10 @@ export async function listSyncRuns(): Promise<SyncRunResponse[]> {
   return rows.map(toResponse)
 }
 
-async function fetchXtreamSnapshot(source: typeof sources.$inferSelect): Promise<XtreamCatalogSnapshot> {
+async function fetchXtreamSnapshot(
+  source: typeof sources.$inferSelect,
+  runId?: string,
+): Promise<XtreamCatalogSnapshot> {
   // 60s is too short for 100k+ VOD payloads; allow longer list downloads.
   const listTimeoutMs = parseInt(process.env.XTREAM_LIST_TIMEOUT_MS ?? '180000', 10)
   const client = new XtreamCodesClient({
@@ -81,7 +88,11 @@ async function fetchXtreamSnapshot(source: typeof sources.$inferSelect): Promise
     timeoutMs: listTimeoutMs,
   })
 
+  if (runId) await setSyncRunProgress(runId, 'Authentification Xtream…')
   await client.authenticate()
+  if (runId) {
+    await setSyncRunProgress(runId, 'Téléchargement du catalogue Xtream (films + séries)…')
+  }
   const [vodCategories, vodStreams, seriesCategories, series] = await Promise.all([
     client.getVodCategories(),
     client.getVodStreams(),
@@ -98,6 +109,12 @@ async function fetchXtreamSnapshot(source: typeof sources.$inferSelect): Promise
       `[xtream-snapshot] skipping getSeriesInfo for ${series.length} series ` +
         `(set XTREAM_FETCH_SERIES_INFO=true to enable)`,
     )
+    if (runId) {
+      await setSyncRunProgress(
+        runId,
+        `Catalogue reçu : ${vodStreams.length} films, ${series.length} séries — import en base…`,
+      )
+    }
     return {
       sourceId: source.id,
       fetchedAt: new Date(),
@@ -251,7 +268,7 @@ export async function triggerSync(body: TriggerSyncBody): Promise<SyncRunRespons
         }
         await CatalogSyncService.syncM3UCatalog(source.id, snapshot, { runId, matchingService })
       } else {
-        const snapshot = await fetchXtreamSnapshot(source)
+        const snapshot = await fetchXtreamSnapshot(source, runId)
         await CatalogSyncService.syncCatalog(source.id, snapshot, { runId, matchingService })
       }
     } catch (err) {

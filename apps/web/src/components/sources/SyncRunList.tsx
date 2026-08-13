@@ -37,7 +37,7 @@ export default function SyncRunList({ runs }: SyncRunListProps) {
             <th className="px-4 py-3 font-medium">Fin</th>
             <th className="px-4 py-3 font-medium text-right">Films</th>
             <th className="px-4 py-3 font-medium text-right">Séries</th>
-            <th className="px-4 py-3 font-medium">Erreur</th>
+            <th className="px-4 py-3 font-medium">Progression / erreur</th>
           </tr>
         </thead>
         <tbody>
@@ -50,8 +50,13 @@ export default function SyncRunList({ runs }: SyncRunListProps) {
               <td className="px-4 py-3 text-gray-300">{fmt(run.finishedAt)}</td>
               <td className="px-4 py-3 text-right text-gray-300">+{run.moviesAdded}</td>
               <td className="px-4 py-3 text-right text-gray-300">+{run.seriesAdded}</td>
-              <td className="px-4 py-3 text-red-400 text-xs max-w-xs truncate">
-                {run.error ?? '—'}
+              <td
+                className={`px-4 py-3 text-xs max-w-sm truncate ${
+                  run.error ? 'text-red-400' : 'text-sky-400/90'
+                }`}
+                title={run.progress ?? run.error ?? undefined}
+              >
+                {run.progress ?? run.error ?? '—'}
               </td>
             </tr>
           ))}

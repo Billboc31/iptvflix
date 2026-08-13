@@ -9,6 +9,10 @@ export type SyncRunResponse = {
   moviesAdded: number
   seriesAdded: number
   seriesInfoFailed?: number
+  /** Title matches / local consolidations so far (useful while RUNNING). */
+  titleMatched?: number
+  /** Human-readable phase while status is RUNNING (fetch / match / upsert). */
+  progress?: string | null
   error?: string | null
 }
 
