@@ -49,6 +49,7 @@ On each deploy Railway will:
    - `buildCommand`: `pnpm --filter web build`
    - `outputDirectory`: `apps/web/dist`
    - `framework`: `vite`
+   - `git.deploymentEnabled`: only `main` triggers deployments (`*` / `**` are disabled) so ticket/feature branches do not consume Preview build quota
 3. Set `VITE_API_BASE` to the Railway API URL (e.g. `https://your-api.railway.app`) in the Vercel dashboard under **Environment Variables**.
 4. Trigger a deploy. Vercel injects `VITE_API_BASE` at build time via Vite's env handling.
 
