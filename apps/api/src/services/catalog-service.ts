@@ -88,9 +88,9 @@ export async function listMovies(filters: MovieFilters): Promise<PaginatedList<M
       asc(movies.title),
     ]
   } else if (sortBy === 'popularity') {
-    orderByClause = [desc(sql`${movies.popularity} NULLS LAST`), asc(movies.title)]
+    orderByClause = [sql`${movies.popularity} DESC NULLS LAST`, asc(movies.title)]
   } else if (sortBy === 'voteAverage') {
-    orderByClause = [desc(sql`${movies.voteAverage} NULLS LAST`), asc(movies.title)]
+    orderByClause = [sql`${movies.voteAverage} DESC NULLS LAST`, asc(movies.title)]
   } else {
     orderByClause = [asc(movies.title)]
   }
@@ -290,9 +290,9 @@ export async function listSeries(filters: SeriesFilters): Promise<PaginatedList<
       asc(series.title),
     ]
   } else if (sortBy === 'popularity') {
-    orderByClause = [desc(sql`${series.popularity} NULLS LAST`), asc(series.title)]
+    orderByClause = [sql`${series.popularity} DESC NULLS LAST`, asc(series.title)]
   } else if (sortBy === 'voteAverage') {
-    orderByClause = [desc(sql`${series.voteAverage} NULLS LAST`), asc(series.title)]
+    orderByClause = [sql`${series.voteAverage} DESC NULLS LAST`, asc(series.title)]
   } else {
     orderByClause = [asc(series.title)]
   }
