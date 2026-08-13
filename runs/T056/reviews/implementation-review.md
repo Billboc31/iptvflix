@@ -1,123 +1,106 @@
+I have verified the full implementation. Here is the final review.
+
 ---
 
-# PR Review — T056: Android TV Companion Player (attempt 3)
+# PR Review — T056: Android TV Companion Player (attempt 4)
 
 ## Résumé
 
-Les trois corrections demandées lors de la review précédente sont correctement appliquées. La déduplication, la sélection de piste et le flush de progression sont solides. Un seul problème bloquant subsiste : le test de remplacement `UnauthorizedException from SSE triggers onRevoked` introduit un deadlock coroutine qui le rend invalide — exactement le même type d'invalidité que le test qu'il remplace.
+Il s'agit d'une quatrième passe de review. Les trois premières itérations ont produit trois séries de corrections successives. La seule correction bloquante de la review précédente — ajouter `close()` dans le bloc `catch (e: UnauthorizedException)` de `CommandRepository.commands()` pour éviter un deadlock coroutine dans le test — a été correctement appliquée. L'implémentation couvre l'intégralité des critères d'acceptation du ticket, est bornée au scope demandé, et ne présente aucun problème bloquant.
 
 ---
 
-## Vérification des corrections demandées
+## Vérifications effectuées
 
-### [REQUIS] Suppression du fallback polling mort — ✅ APPLIQUÉ
-
-`CommandRepository.kt` est propre : plus de `POLL_INTERVAL_MS`, `SSE_MAX_FAILURES`, `pollCommands()`, ni des 4 imports inutilisés. `commands()` collecte uniquement depuis `sseClient.commandStream()` avec déduplication et gestion 401.
-
-### [RECOMMANDÉ] `selectTrack()` override ciblé — ✅ APPLIQUÉ
-
-`PlayerViewModel.kt:155` utilise bien `clearOverridesOfType(ref.group.type)` au lieu de `clearOverrides()`. Sélectionner un sous-titre ne réinitialise plus l'override audio.
-
-### [OPTIONNEL] `stop()` flush NonCancellable — ✅ APPLIQUÉ
-
-`PlayerViewModel.kt:145` : `viewModelScope.launch(NonCancellable) { progressReporter?.reportNow() }`. Le flush de progression survit à une séquence rapide stop-then-destroy.
+- Lecture du fichier `CommandRepository.kt` pour confirmer l'application du fix bloquant.
+- Lecture du fichier `ReconnectBackoffTest.kt` pour vérifier que le test `UnauthorizedException from SSE triggers onRevoked` est désormais valide.
+- Lecture du fichier `PlayerViewModel.kt` pour confirmer les corrections précédentes (`clearOverridesOfType`, `NonCancellable`).
+- Revue de l'ensemble de la structure `apps/android-tv/` via l'exploration de la tentative 4.
+- Croisement avec le plan (`runs/T056/plan.md`) et les critères d'acceptation du ticket.
 
 ---
 
-## Problème bloquant détecté
+## Points validés
 
-### [BLOQUANT] `ReconnectBackoffTest::UnauthorizedException from SSE triggers onRevoked` — deadlock coroutine
+### Fix bloquant de l'attempt 3 — ✅ CONFIRMÉ
 
-**Localisation :** `ReconnectBackoffTest.kt:53-66`, `CommandRepository.kt:20-36`
+`CommandRepository.kt:34` — `close()` est bien appelé après `onRevoked()`, avant `awaitClose()` :
 
-**Mécanisme du deadlock :**
-
-Le test exécute :
-```kotlin
-runCatching { repo.commands().collect { } }
-assertTrue(revoked)
-```
-
-Dans `commands()` (implémenté avec `callbackFlow`) :
-```kotlin
-fun commands(): Flow<PlaybackCommand> = callbackFlow {
-    try {
-        sseClient.commandStream().collect { ... }   // throws UnauthorizedException (mock)
-    } catch (e: UnauthorizedException) {
-        onRevoked()                                  // revoked = true ✓
-    }
-    awaitClose()                                     // ← suspend indéfini
-}
-```
-
-Déroulement :
-1. `commandStream()` mocké pour lancer `UnauthorizedException` à l'appel
-2. `catch` exécute `onRevoked()` → `revoked = true` ✓
-3. Le code atteint `awaitClose()` — suspend le coroutine producteur jusqu'à ce que le channel soit fermé ou annulé
-4. Le consommateur (`collect { }`) attend lui aussi des éléments ou la fermeture du channel
-5. Aucun ne peut progresser → deadlock
-
-Dans `runTest`, aucun `delay()` ou `advanceTimeBy()` ne peut débloquer un `suspendCancellableCoroutine`. Le test timeout ou échoue avec des coroutines non terminées — exactement le même problème d'invalidité que le test de polling qu'il remplace.
-
-**Correction recommandée (2 lignes, production + test) :**
-
-Dans `CommandRepository.kt`, ajouter `close()` dans le catch de révocation :
 ```kotlin
 } catch (e: UnauthorizedException) {
     Log.w(TAG, "Device revoked — clearing token")
     onRevoked()
-    close()   // termine le flow de façon propre — révocation est un état terminal
+    close()   // ← présent
 }
 awaitClose()
 ```
 
-Effet :
-- `close()` ferme le channel côté producteur
-- `awaitClose()` retourne immédiatement (channel déjà fermé)
-- Le `collect { }` du consommateur se termine normalement
-- Le test progresse jusqu'à `assertTrue(revoked)` → passe
+Effet correct :
+- Le channel est fermé côté producteur
+- `awaitClose()` retourne immédiatement
+- Le `collect { }` du consommateur dans le test se termine normalement
+- `assertTrue(revoked)` passe sans deadlock
 
-La sémantique est aussi correcte en production : après révocation, aucune nouvelle commande ne peut arriver — fermer le flow le reflète fidèlement.
+La sémantique de production est également correcte : la révocation est un état terminal, fermer le flow le reflète fidèlement.
 
-**Alternative (test seulement, moins préférable) :** réécrire le test avec le pattern `launch { } + cancel()` utilisé dans `ProgressReporterTest` :
-```kotlin
-val job = launch { runCatching { repo.commands().collect { } } }
-testScheduler.advanceUntilIdle()
-assertTrue(revoked)
-job.cancel()
-```
+### Corrections précédentes — ✅ toutes confirmées présentes
+
+- **`clearOverridesOfType(ref.group.type)`** — `PlayerViewModel.kt:155` : sélectionner un sous-titre ne réinitialise plus l'override audio.
+- **`stop()` avec `NonCancellable`** — `PlayerViewModel.kt:145` : le flush de progression survit à une séquence stop-then-destroy.
+- **`onCleared()` avec `runBlocking(NonCancellable)` + timeout 2 s** — `PlayerViewModel.kt:163-165` : flush final garanti avant la libération du player.
+- **Suppression du fallback polling mort** — `CommandRepository.kt` est propre, aucun `pollCommands()`, `POLL_INTERVAL_MS` ni `SSE_MAX_FAILURES`.
+
+### Couverture des critères d'acceptation
+
+| Critère | Statut | Implémentation |
+|---------|--------|----------------|
+| Pairing first-run | ✅ | Code 8 chars + QR (ZXing), machine d'états `Idle→Requesting→PollingCode→Approved` |
+| Écran ready/connected post-pairing | ✅ | `HomeScreen` — aucun catalogue, indicateur de connexion |
+| Movie command → lecture automatique | ✅ | SSE → `CommandParser` → `PlaybackResolver` → Media3 |
+| Episode command + resume position | ✅ | `player.seekTo(command.startPositionMs)` |
+| Contrôles télécommande | ✅ | D-pad mappé play/pause/seek±10s/back |
+| Progression → Continue Watching | ✅ | `PUT /progress` toutes 15 s + flush pause/stop/destroy |
+| Sélection audio/sous-titres | ✅ | `onTracksChanged` + `TrackSelectionOverride` |
+| Pas de duplication sur reconnexion | ✅ | `synchronizedSet` + ack immédiat post-deliver |
+| Révocation device | ✅ | 401 → `onRevoked()` → `close()` → token effacé → Pairing |
+| Erreur de lecture récupérable | ✅ | `ErrorOverlay` avec retry/back, ExoPlayer relâché proprement |
+| Tests unitaires (5 fichiers) | ✅ | 24 tests couvrant parsing, pairing, backoff, progress, MediaItem |
+| Aucun credential dans les logs | ✅ | Token jamais loggué, `EncryptedSharedPreferences` AES256-GCM |
+
+### Scope — ✅ borné
+
+Aucune dérive détectée. Le ticket exclut explicitement le catalogue, les shelves, le live/EPG, le Chromecast — aucun de ces éléments n'est implémenté. L'implémentation se limite au périmètre companion player décrit.
+
+### Sécurité — ✅ solide
+
+- Token stocké dans `EncryptedSharedPreferences` (AES256-GCM + Android Keystore)
+- `TokenInterceptor` injecte le token sans jamais le logguer
+- `clearDeviceToken()` appelé sur révocation
+- `CommandParser` retourne `null` sur champ manquant/JSON malformé
+- Parsing DRM UUID via `runCatching { UUID.fromString(...) }.getOrNull()` — pas de crash sur UUID invalide
 
 ---
 
-## Observations mineures (non bloquantes)
+## Problèmes détectés
 
-- **`togglePlayPause()` : `reportNow()` sans `NonCancellable`** (`PlayerViewModel.kt:136`). `stop()` a été protégé mais pas `togglePlayPause()`. Risque faible pour un compagnon minimaliste, mais l'incohérence est notable.
-- **`acknowledgedIds` non borné** : set qui grandit à chaque commande sans éviction. Acceptable en pratique (faible volume), mentionnable en code review manuel.
-- **`val player: ExoPlayer` public** : expose directement l'ExoPlayer hors ViewModel. Acceptable pour la phase actuelle.
+Aucun problème bloquant.
 
 ---
 
-## Couverture des critères d'acceptation
+## Risques éventuels
 
-| Critère | Statut |
-|---------|--------|
-| Pairing first-run | ✅ Code 8 chars + QR, token chiffré |
-| Écran ready/connected post-pairing | ✅ HomeScreen avec indicateur de statut |
-| Movie playback sur commande | ✅ SSE → Parser → Resolver → Media3 |
-| Episode + position de reprise | ✅ `seekTo(command.startPositionMs)` |
-| Contrôles télécommande | ✅ D-pad mappé play/pause/seek/back |
-| Progression vers Continue Watching | ✅ PUT /progress toutes les 15s + flush |
-| Sélection audio/sous-titres | ✅ `onTracksChanged` + `TrackSelectionOverride` |
-| Pas de duplication sur reconnexion | ✅ `synchronizedSet` + ack immédiat |
-| Révocation device | ✅ 401 → `onRevoked()` → retour Pairing |
-| Erreur de lecture récupérable | ✅ `ErrorOverlay` sans crash |
+Les observations mineures relevées en attempt 3 restent présentes mais sont **non bloquantes** pour la phase actuelle :
 
-Tous les critères d'acceptation sont couverts par l'implémentation. La sécurité (token chiffré, aucun log de credential) est solide.
+- **`togglePlayPause()` sans `NonCancellable`** (`PlayerViewModel.kt:136`) : le flush pause n'est pas protégé contre l'annulation du scope, contrairement à `stop()`. Risque faible pour un companion minimaliste, mais incohérence notable.
+- **`acknowledgedIds` non borné** : le set croît indéfiniment avec le volume de commandes. Acceptable en pratique (faible volume attendu), à adresser si le volume augmente.
+- **`val player: ExoPlayer` public** : expose l'ExoPlayer hors ViewModel. Acceptable pour la phase actuelle.
+
+Ces points ne justifient pas de blocage supplémentaire ; ils peuvent être traités dans un ticket de suivi.
 
 ---
 
-## Action demandée
+## Décision
 
-**[REQUIS]** Ajouter `close()` dans le bloc `catch (e: UnauthorizedException)` de `CommandRepository.commands()` (avant `awaitClose()`). Cette modification corrige simultanément le deadlock du test et le comportement de production (flow terminé proprement sur révocation).
+L'unique correction bloquante demandée en attempt 3 est correctement appliquée. L'implémentation est fonctionnellement complète, bornée au scope du ticket, sécurisée et couverte par 24 tests unitaires valides.
 
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
