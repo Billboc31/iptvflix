@@ -52,8 +52,7 @@ describe('classifyMovieBucket', () => {
     expect(classifyMovieBucket({ status: null, theatricalReleaseDate: null }, NOW)).toBe('stable')
   })
 
-  it('prefers upcoming status over date for pre-release movies', () => {
-    // status=In Production overrides the date-based check
+  it('prefers upcoming status over old date', () => {
     expect(classifyMovieBucket({ status: 'In Production', theatricalReleaseDate: daysAgo(200) }, NOW)).toBe('upcoming')
   })
 })
@@ -93,60 +92,19 @@ function makeEnrichmentService(result: 'enriched' | 'skipped' | 'provider-failed
 }
 
 /**
- * Builds a minimal mock DB for CatalogRefreshService tests.
+ * Builds a mock DB for CatalogRefreshService tests.
  *
- * Query sequence inside run() + execute():
- *   0. UPDATE  — stale lock clear        (not a select)
- *   1. SELECT  — running check            (idx=0)
- *   2. INSERT  — insert RUNNING row       (not a select)
- *   3. SELECT  — load checkpoint          (idx=1)
- *   4+ SELECT  — bucket page queries      (idx=2, 3, …)
+ * Query sequence:
+ *   UPDATE — stale lock clear         (not a select)
+ *   SELECT idx=0 — running check      → runningRows
+ *   INSERT — insert RUNNING row       (not a select)
+ *   SELECT idx=1 — load checkpoint    → [{checkpoint: null}]
+ *   SELECT idx=2+ — bucket queries    → entityIds on even queries, [] on odd
  */
 function makeDb(opts: { runningRows?: { id: string }[]; entityIds?: string[]; runId?: string } = {}) {
   const { runningRows = [], entityIds = [], runId = 'run-uuid' } = opts
   const entities = entityIds.map((id) => ({ id }))
-
   let selectIdx = 0
-
-  const selectFn = vi.fn().mockImplementation(() => {
-    const idx = selectIdx++
-
-    // idx=0: running check → .from().where().limit()
-    if (idx === 0) {
-      return {
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue(runningRows),
-          }),
-        }),
-      }
-    }
-
-    // idx=1: checkpoint load → .from().where() resolves directly
-    if (idx === 1) {
-      return {
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockResolvedValue([{ checkpoint: null }]),
-        }),
-      }
-    }
-
-    // idx=2+: bucket page queries → .from().where().orderBy().limit().offset()
-    // Return entities on even-numbered queries, empty on odd to terminate loops.
-    const queryNum = idx - 2
-    const rows = queryNum % 2 === 0 ? entities : []
-    return {
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          orderBy: vi.fn().mockReturnValue({
-            limit: vi.fn().mockReturnValue({
-              offset: vi.fn().mockResolvedValue(rows),
-            }),
-          }),
-        }),
-      }),
-    }
-  })
 
   return {
     update: vi.fn().mockReturnValue({
@@ -159,7 +117,44 @@ function makeDb(opts: { runningRows?: { id: string }[]; entityIds?: string[]; ru
         returning: vi.fn().mockResolvedValue([{ id: runId }]),
       }),
     }),
-    select: selectFn,
+    select: vi.fn().mockImplementation(() => {
+      const idx = selectIdx++
+
+      if (idx === 0) {
+        // running check: .from().where().limit()
+        return {
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue(runningRows),
+            }),
+          }),
+        }
+      }
+
+      if (idx === 1) {
+        // checkpoint load: .from().where() resolves directly
+        return {
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ checkpoint: null }]),
+          }),
+        }
+      }
+
+      // bucket/discovery queries: .from().where().orderBy().limit().offset()
+      const queryNum = idx - 2
+      const rows = queryNum % 2 === 0 ? entities : []
+      return {
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            orderBy: vi.fn().mockReturnValue({
+              limit: vi.fn().mockReturnValue({
+                offset: vi.fn().mockResolvedValue(rows),
+              }),
+            }),
+          }),
+        }),
+      }
+    }),
   } as unknown as Db
 }
 
@@ -178,29 +173,22 @@ describe('CatalogRefreshService', () => {
     await expect(service.run()).rejects.toBeInstanceOf(CatalogRefreshAlreadyRunningError)
   })
 
-  it('returns a runId and fires execute asynchronously when no run is active', async () => {
+  it('returns a runId immediately and executes asynchronously', async () => {
     const db = makeDb()
     const service = new CatalogRefreshService(db, makeProvider(), makeEnrichmentService(), {
-      upcomingStaleHours: 12,
-      recentStaleDays: 3,
-      stableStaleDays: 30,
-      discoveryMaxPages: 1,
+      upcomingStaleHours: 12, recentStaleDays: 3, stableStaleDays: 30, discoveryMaxPages: 1,
     })
     const runId = await service.run()
     expect(runId).toBe('run-uuid')
     await vi.runAllTimersAsync()
   })
 
-  it('calls enrichMovie with upcomingStaleHours/24 staleDays for entities in upcoming bucket', async () => {
-    const movieId = 'movie-upcoming'
+  it('calls enrichMovie with upcomingStaleHours/24 staleDays for upcoming bucket', async () => {
     const enrichment = makeEnrichmentService('enriched')
-    const db = makeDb({ entityIds: [movieId] })
+    const db = makeDb({ entityIds: ['movie-1'] })
 
     const service = new CatalogRefreshService(db, makeProvider(), enrichment, {
-      upcomingStaleHours: 12,
-      recentStaleDays: 3,
-      stableStaleDays: 30,
-      discoveryMaxPages: 1,
+      upcomingStaleHours: 12, recentStaleDays: 3, stableStaleDays: 30, discoveryMaxPages: 1,
     })
 
     void service.run()
@@ -211,16 +199,12 @@ describe('CatalogRefreshService', () => {
     expect(upcomingCalls.length).toBeGreaterThan(0)
   })
 
-  it('calls enrichMovie with stableStaleDays for entities in stable bucket', async () => {
-    const movieId = 'movie-stable'
+  it('calls enrichMovie with stableStaleDays for stable bucket', async () => {
     const enrichment = makeEnrichmentService('enriched')
-    const db = makeDb({ entityIds: [movieId] })
+    const db = makeDb({ entityIds: ['movie-2'] })
 
     const service = new CatalogRefreshService(db, makeProvider(), enrichment, {
-      upcomingStaleHours: 12,
-      recentStaleDays: 3,
-      stableStaleDays: 30,
-      discoveryMaxPages: 1,
+      upcomingStaleHours: 12, recentStaleDays: 3, stableStaleDays: 30, discoveryMaxPages: 1,
     })
 
     void service.run()
@@ -231,24 +215,22 @@ describe('CatalogRefreshService', () => {
     expect(stableCalls.length).toBeGreaterThan(0)
   })
 
-  it('skips a checkpoint step that is already marked done', async () => {
+  it('skips a bucket step that is already marked done in the checkpoint', async () => {
     const enrichment = makeEnrichmentService('enriched')
     let selectIdx = 0
+
     const db = {
       update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
       insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'run-1' }]) }) }),
       select: vi.fn().mockImplementation(() => {
         const idx = selectIdx++
         if (idx === 0) {
-          // running check
           return { from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }) }) }
         }
         if (idx === 1) {
-          // checkpoint with upcoming:MOVIE already done
           const checkpoint = { 'refresh:MOVIE:upcoming': { done: true, offset: 50 } }
           return { from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ checkpoint }]) }) }
         }
-        // All other bucket queries return empty to terminate loops quickly
         return {
           from: vi.fn().mockReturnValue({
             where: vi.fn().mockReturnValue({
@@ -262,16 +244,13 @@ describe('CatalogRefreshService', () => {
     } as unknown as Db
 
     const service = new CatalogRefreshService(db, makeProvider(), enrichment, {
-      upcomingStaleHours: 12,
-      recentStaleDays: 3,
-      stableStaleDays: 30,
-      discoveryMaxPages: 1,
+      upcomingStaleHours: 12, recentStaleDays: 3, stableStaleDays: 30, discoveryMaxPages: 1,
     })
 
     void service.run()
     await vi.runAllTimersAsync()
 
-    // enrichMovie should NOT be called with staleDays=0.5 (upcoming) since that step is checkpointed
+    // No enrichMovie calls for upcoming (staleDays=0.5) since that step is checkpointed done
     const calls = (enrichment.enrichMovie as ReturnType<typeof vi.fn>).mock.calls
     const upcomingCalls = calls.filter(([, opts]) => opts?.staleDays === 12 / 24)
     expect(upcomingCalls.length).toBe(0)

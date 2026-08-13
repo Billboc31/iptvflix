@@ -147,87 +147,47 @@ export class CatalogRefreshService {
 
       // Refresh buckets — movies
       await this.runRefreshBucket({
-        runId,
-        key: 'refresh:MOVIE:upcoming',
-        mediaType: 'MOVIE',
-        bucket: 'upcoming',
-        staleDays: this.config.upcomingStaleHours / 24,
-        checkpoint,
-        counts,
+        runId, key: 'refresh:MOVIE:upcoming', mediaType: 'MOVIE', bucket: 'upcoming',
+        staleDays: this.config.upcomingStaleHours / 24, checkpoint, counts,
         onError: (e) => { lastError = e },
       })
       await this.runRefreshBucket({
-        runId,
-        key: 'refresh:MOVIE:recent',
-        mediaType: 'MOVIE',
-        bucket: 'recent',
-        staleDays: this.config.recentStaleDays,
-        checkpoint,
-        counts,
+        runId, key: 'refresh:MOVIE:recent', mediaType: 'MOVIE', bucket: 'recent',
+        staleDays: this.config.recentStaleDays, checkpoint, counts,
         onError: (e) => { lastError = e },
       })
       await this.runRefreshBucket({
-        runId,
-        key: 'refresh:MOVIE:stable',
-        mediaType: 'MOVIE',
-        bucket: 'stable',
-        staleDays: this.config.stableStaleDays,
-        checkpoint,
-        counts,
+        runId, key: 'refresh:MOVIE:stable', mediaType: 'MOVIE', bucket: 'stable',
+        staleDays: this.config.stableStaleDays, checkpoint, counts,
         onError: (e) => { lastError = e },
       })
 
       // Refresh buckets — series
       await this.runRefreshBucket({
-        runId,
-        key: 'refresh:SERIES:upcoming',
-        mediaType: 'SERIES',
-        bucket: 'upcoming',
-        staleDays: this.config.upcomingStaleHours / 24,
-        checkpoint,
-        counts,
+        runId, key: 'refresh:SERIES:upcoming', mediaType: 'SERIES', bucket: 'upcoming',
+        staleDays: this.config.upcomingStaleHours / 24, checkpoint, counts,
         onError: (e) => { lastError = e },
       })
       await this.runRefreshBucket({
-        runId,
-        key: 'refresh:SERIES:recent',
-        mediaType: 'SERIES',
-        bucket: 'recent',
-        staleDays: this.config.recentStaleDays,
-        checkpoint,
-        counts,
+        runId, key: 'refresh:SERIES:recent', mediaType: 'SERIES', bucket: 'recent',
+        staleDays: this.config.recentStaleDays, checkpoint, counts,
         onError: (e) => { lastError = e },
       })
       await this.runRefreshBucket({
-        runId,
-        key: 'refresh:SERIES:stable',
-        mediaType: 'SERIES',
-        bucket: 'stable',
-        staleDays: this.config.stableStaleDays,
-        checkpoint,
-        counts,
+        runId, key: 'refresh:SERIES:stable', mediaType: 'SERIES', bucket: 'stable',
+        staleDays: this.config.stableStaleDays, checkpoint, counts,
         onError: (e) => { lastError = e },
       })
 
       // Discovery steps
       for (const feed of DISCOVERY_FEEDS) {
         await this.runDiscoveryFeed({
-          runId,
-          key: `discovery:MOVIE:${feed}`,
-          mediaType: 'MOVIE',
-          feed,
-          checkpoint,
-          counts,
-          onError: (e) => { lastError = e },
+          runId, key: `discovery:MOVIE:${feed}`, mediaType: 'MOVIE', feed,
+          checkpoint, counts, onError: (e) => { lastError = e },
         })
         await this.runDiscoveryFeed({
-          runId,
-          key: `discovery:SERIES:${feed}`,
-          mediaType: 'SERIES',
-          feed,
-          checkpoint,
-          counts,
-          onError: (e) => { lastError = e },
+          runId, key: `discovery:SERIES:${feed}`, mediaType: 'SERIES', feed,
+          checkpoint, counts, onError: (e) => { lastError = e },
         })
       }
 
