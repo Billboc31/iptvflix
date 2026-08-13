@@ -20,7 +20,6 @@ export default function SeasonSelector({ seriesId, seasons, profileId, devices, 
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (seasons.length === 0 || selectedSeason === 0) return
     if (episodeCache.has(selectedSeason)) return
     setLoading(true)
     getSeriesSeasonEpisodes(seriesId, selectedSeason, profileId)

@@ -22,15 +22,17 @@ export default function SimilarTitlesShelf({ mediaType, mediaId }: Props) {
   const [error, setError] = useState(false)
 
   useEffect(() => {
+    let stale = false
     setLoading(true)
     setError(false)
-    const fetch = mediaType === 'MOVIE'
+    const fetchPromise = mediaType === 'MOVIE'
       ? getSimilarMovies(mediaId).then((r) => r.map((m) => ({ ...m, _kind: 'MOVIE' as const })))
       : getSimilarSeries(mediaId).then((r) => r.map((s) => ({ ...s, _kind: 'SERIES' as const })))
-    fetch
-      .then(setItems)
-      .catch(() => setError(true))
-      .finally(() => setLoading(false))
+    fetchPromise
+      .then((data) => { if (!stale) setItems(data) })
+      .catch(() => { if (!stale) setError(true) })
+      .finally(() => { if (!stale) setLoading(false) })
+    return () => { stale = true }
   }, [mediaType, mediaId])
 
   if (loading) {

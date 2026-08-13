@@ -12,6 +12,7 @@ const COLLAPSED_COUNT = 3
 
 function variantLabel(v: AvailabilityVariantResponse): string {
   const parts: string[] = []
+  if (v.providerId) parts.push(v.providerId)
   if (v.audioLanguage) parts.push(v.audioLanguage.toUpperCase())
   if (v.subtitleLanguage) parts.push(`sub:${v.subtitleLanguage}`)
   if (v.videoQuality) parts.push(v.videoQuality)

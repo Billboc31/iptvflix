@@ -1,24 +1,13 @@
-Implementation complete. Here's a summary:
+238 pass / 5 fail — same count as before the fixes, confirming the 5 pre-existing failures in `MoviesPage`, `SeriesPage`, and `SearchPage` are untouched. Zero regressions.
 
 ---
 
-## Files modified (6)
+**Fixes applied:**
 
-| File | Change |
+| File | Fix |
 |---|---|
-| `apps/web/src/lib/api.ts` | Added `getSimilarMovies(id)` and `getSimilarSeries(id)` |
-| `apps/web/src/test/handlers.ts` | Added `MOCK_SIMILAR_MOVIE`, `MOCK_SIMILAR_SERIES`, and MSW handlers for `/movies/:id/similar` and `/series/:id/similar` |
-| `apps/web/src/pages/MovieDetailPage.tsx` | Full redesign: `MediaHero` + `MediaMetadata` + `MediaActions` + `AvailabilityPanel` + `CastRow` + `SimilarTitlesShelf` |
-| `apps/web/src/pages/SeriesDetailPage.tsx` | Same shell, adds `SeasonSelector` in place of `SeasonAccordion` |
-| `apps/web/src/pages/MovieDetailPage.test.tsx` | Updated for new design + added play-button-disabled and similar-titles tests |
-| `apps/web/src/pages/SeriesDetailPage.test.tsx` | Updated for `SeasonSelector` dropdown + added similar-titles test |
+| `SeasonSelector.tsx:22-23` | Removed `seasons.length === 0 \|\| selectedSeason === 0` guard — replaced with only the cache check. Season 0 (Spéciaux) now loads correctly. |
+| `AvailabilityPanel.tsx:14-16` | Added `v.providerId` as the first element of the label, so rows now render `xtream-1 · FR · 4K` as specified in the ticket. |
+| `SimilarTitlesShelf.tsx:24-34` | Renamed `fetch` → `fetchPromise` (no shadow of `window.fetch`). Added `stale` flag pattern to prevent race conditions on fast navigation. |
 
-## Files created (13)
-
-**Components:** `MediaHero`, `MediaMetadata`, `MediaActions`, `AvailabilityPanel`, `SimilarTitlesShelf`, `SeasonSelector`, `EpisodeCard`
-
-**Tests:** `MediaHero.test`, `MediaActions.test`, `AvailabilityPanel.test`, `SimilarTitlesShelf.test`, `SeasonSelector.test`, `EpisodeCard.test`
-
-## Test results
-
-**238 pass / 5 fail** — the 5 failures are pre-existing in `MoviesPage`, `SeriesPage`, and `SearchPage` (files I didn't touch, confirmed by git status). Zero regressions introduced.
+`EpisodeCard.tsx` still shows the `🎬` placeholder — `EpisodeResponse` has no `stillUrl` field in the API contract, so a real still image cannot be rendered until the backend exposes it.
