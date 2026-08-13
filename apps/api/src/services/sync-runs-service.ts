@@ -9,6 +9,7 @@ import { PlexClient } from '../providers/plex/client.js'
 import type { PlexCatalogSnapshot } from '../providers/plex/types.js'
 import { M3UClient } from '../providers/m3u/client.js'
 import type { M3UCatalogSnapshot } from '../providers/m3u/types.js'
+import { M3UAuthError, M3UNetworkError, M3UParseError } from '../providers/m3u/errors.js'
 import {
   CatalogSyncService,
   SyncAlreadyRunningError,
@@ -177,8 +178,29 @@ export async function triggerSync(body: TriggerSyncBody): Promise<SyncRunRespons
       const snapshot = await fetchPlexSnapshot(source)
       result = await CatalogSyncService.syncPlexCatalog(source.id, snapshot)
     } else if (source.type === 'M3U') {
-      const snapshot = await fetchM3USnapshot(source)
-      result = await CatalogSyncService.syncM3UCatalog(source.id, snapshot)
+      let snapshot: M3UCatalogSnapshot
+      try {
+        snapshot = await fetchM3USnapshot(source)
+      } catch (fetchErr) {
+        if (
+          fetchErr instanceof M3UAuthError ||
+          fetchErr instanceof M3UNetworkError ||
+          fetchErr instanceof M3UParseError
+        ) {
+          const [failedRun] = await db
+            .insert(syncRuns)
+            .values({
+              sourceId: source.id,
+              status: 'FAILED',
+              completedAt: new Date(),
+              errorMessage: (fetchErr as Error).message,
+            })
+            .returning()
+          return toResponse(failedRun)
+        }
+        throw fetchErr
+      }
+      result = await CatalogSyncService.syncM3UCatalog(source.id, snapshot!)
     } else {
       const snapshot = await fetchXtreamSnapshot(source)
       result = await CatalogSyncService.syncCatalog(source.id, snapshot)
