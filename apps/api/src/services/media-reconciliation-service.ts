@@ -47,6 +47,10 @@ export class ReconciliationAlreadyRunningError extends Error {
   }
 }
 
+function isUniqueConstraintError(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as Record<string, unknown>).code === '23505'
+}
+
 export class MediaReconciliationService {
   constructor(private readonly titleMatchingService: TitleMatchingService) {}
 
@@ -59,17 +63,31 @@ export class MediaReconciliationService {
 
     if (existing) throw new ReconciliationAlreadyRunningError(existing.id)
 
-    const [run] = await db
-      .insert(reconciliationRuns)
-      .values({ status: 'RUNNING', mediaType: opts?.mediaType ?? 'BOTH' })
-      .returning({ id: reconciliationRuns.id })
+    try {
+      const [run] = await db
+        .insert(reconciliationRuns)
+        .values({ status: 'RUNNING', mediaType: opts?.mediaType ?? 'BOTH' })
+        .returning({ id: reconciliationRuns.id })
 
-    return run.id
+      return run.id
+    } catch (err) {
+      if (isUniqueConstraintError(err)) {
+        // Two concurrent POSTs raced past the SELECT above — the partial unique index
+        // rejected the second INSERT. Translate to the expected error type so callers
+        // receive 409 instead of 500.
+        const [running] = await db
+          .select({ id: reconciliationRuns.id })
+          .from(reconciliationRuns)
+          .where(eq(reconciliationRuns.status, 'RUNNING'))
+        throw new ReconciliationAlreadyRunningError(running?.id ?? 'unknown')
+      }
+      throw err
+    }
   }
 
   /** Executes reconciliation for an existing RUNNING run. Intended for fire-and-forget from the route. */
   async executeRun(runId: string, opts?: ReconcileOptions): Promise<ReconcileResult> {
-    const batchSize = opts?.batchSize ?? 50
+    const batchSize = Math.max(1, opts?.batchSize ?? 50)
     const concurrency = opts?.concurrency ?? MATCH_CONCURRENCY
     const mediaType = opts?.mediaType ?? 'BOTH'
     const dryRun = opts?.dryRun ?? false
@@ -232,11 +250,6 @@ export class MediaReconciliationService {
           }
           pageCounts.unmatchedCount++
           continue
-        }
-
-        if (matchedResults.length === 0) {
-          // Mixed UNMATCHED + AMBIGUOUS already handled above; this path means some MATCHED, some UNMATCHED
-          // Fall through: evaluate canonical below
         }
 
         const canonicalIds = new Set(

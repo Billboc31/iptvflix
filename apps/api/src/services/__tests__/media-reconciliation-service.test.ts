@@ -542,56 +542,56 @@ describe('MediaReconciliationService', () => {
     await db.delete(movies).where(inArray(movies.id, [movie1.id, movie2.id]))
   })
 
-  it('11. cursor resumability — records from committed batches are not re-processed', async () => {
+  it('11. cursor resumability — executeRun resumes from a persisted mid-run cursor position', async () => {
     const now = new Date()
 
-    // Create 3 movies — we'll simulate processing with batchSize=2
+    // Create 3 movies with availabilities so each is eligible (not skipped)
     const movieIds: string[] = []
     for (let i = 0; i < 3; i++) {
       const [m] = await db
         .insert(movies)
-        .values({ title: `Resume Movie ${i}`, matchStatus: 'PENDING' })
+        .values({ title: `Cursor Movie ${i}`, matchStatus: 'PENDING' })
         .returning()
       movieIds.push(m.id)
       await db.insert(movieAvailabilities).values({
         movieId: m.id,
         providerId: testSourceId,
-        providerItemId: `rec-resume-${i}`,
-        rawTitle: `ResumeMovie${i}.1080p`,
+        providerItemId: `rec-cursor-${i}`,
+        rawTitle: `CursorMovie${i}.1080p`,
         firstSeenAt: now,
         lastSeenAt: now,
       })
     }
 
-    // Sort IDs to understand cursor order
+    // UUIDs sort lexicographically — ordering matches what _processType produces with ORDER BY id
     const sortedIds = [...movieIds].sort()
 
-    const searchCallCount = { count: 0 }
-    const provider = makeProvider(async () => {
-      searchCallCount.count++
-      return []
-    })
-    const svc = makeService(provider)
+    const svc = makeService(makeProvider(async () => []))
 
-    // Full run with batchSize=2 processes all 3 movies
-    const result = await svc.reconcile({ mediaType: 'MOVIE', batchSize: 2 })
-    expect(result.processedCount).toBe(3)
-    const totalCalls = searchCallCount.count
+    // Start a RUNNING row (does not execute the backfill yet)
+    const runId = await svc.startRun({ mediaType: 'MOVIE' })
 
-    // After full run, all 3 movies are either UNMATCHED or PENDING→UNMATCHED
-    // The cursor was advanced. Clean up the run row to allow a new run.
-    await db.delete(reconciliationRuns)
+    // Simulate a partially-completed interrupted run: the first two movies were already
+    // committed in a previous batch, so the cursor points at sortedIds[1]
+    await db
+      .update(reconciliationRuns)
+      .set({ cursorMovieId: sortedIds[1] })
+      .where(eq(reconciliationRuns.id, runId))
 
-    // Reset search call count
-    searchCallCount.count = 0
+    // Resume by calling executeRun directly on the still-RUNNING row
+    const result = await svc.executeRun(runId, { mediaType: 'MOVIE' })
 
-    // Now simulate "already processed" — movies that are now UNMATCHED will still be
-    // picked up (they're eligible). But MATCHED ones would not be.
-    // The key test: re-running produces correct processedCount (all 3 are still UNMATCHED → re-processed)
-    const result2 = await svc.reconcile({ mediaType: 'MOVIE', batchSize: 2 })
+    expect(result.status).toBe('COMPLETED')
+    // Only the third movie (id > sortedIds[1]) should have been fetched and processed
+    expect(result.processedCount).toBe(1)
 
-    // All 3 should be re-processed (UNMATCHED records are eligible for retry)
-    expect(result2.processedCount).toBe(3)
+    // The two movies before the cursor remain PENDING (were not touched by this run)
+    const untouched = await db
+      .select({ id: movies.id, matchStatus: movies.matchStatus })
+      .from(movies)
+      .where(inArray(movies.id, [sortedIds[0], sortedIds[1]]))
+    expect(untouched).toHaveLength(2)
+    expect(untouched.every((m) => m.matchStatus === 'PENDING')).toBe(true)
 
     // Cleanup
     await db.delete(movies).where(inArray(movies.id, movieIds))
