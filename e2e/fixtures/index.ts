@@ -6,6 +6,10 @@ interface FakeServers {
   happy: string
   empty: string
   authFail: string
+  m3uHappy: string
+  m3uAuthFail: string
+  m3uEmpty: string
+  m3uMalformed: string
 }
 
 function loadServers(): FakeServers {

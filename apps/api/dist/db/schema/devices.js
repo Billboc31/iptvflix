@@ -13,6 +13,7 @@ export const pairingCodes = pgTable('pairing_codes', {
     code: varchar('code', { length: 8 }).unique().notNull(),
     status: pairingCodeStatusEnum('status').notNull().default('pending'),
     deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'set null' }),
+    deviceToken: varchar('device_token', { length: 64 }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

@@ -384,8 +384,13 @@ describe('POST /sources/:id/test', () => {
     expect(body.message).not.toContain(PASSWORD)
   })
 
-  it('returns ok: false for M3U source without crashing', async () => {
+  it('returns ok: true for M3U source with a valid playlist URL', async () => {
     setupSelect([{ ...mockSource, type: 'M3U' as const }])
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve('#EXTM3U\n#EXTINF:-1,Channel\nhttp://stream.example.com/ch1.ts'),
+    })
 
     const res = await app.inject({
       method: 'POST',
@@ -393,7 +398,42 @@ describe('POST /sources/:id/test', () => {
     })
 
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ ok: false, message: 'M3U connection test not yet implemented' })
+    const body = res.json() as { ok: boolean }
+    expect(body.ok).toBe(true)
+  })
+
+  it('returns ok: false for M3U source on HTTP 401 without exposing credentials', async () => {
+    setupSelect([{ ...mockSource, type: 'M3U' as const }])
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: () => Promise.resolve(''),
+    })
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/sources/${mockSource.id}/test`,
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as { ok: boolean; message: string }
+    expect(body.ok).toBe(false)
+    expect(body.message).not.toContain(PASSWORD)
+  })
+
+  it('returns ok: false for M3U source on network error without exposing credentials', async () => {
+    setupSelect([{ ...mockSource, type: 'M3U' as const }])
+    mockFetch.mockRejectedValueOnce(new TypeError('fetch failed'))
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/sources/${mockSource.id}/test`,
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json() as { ok: boolean; message: string }
+    expect(body.ok).toBe(false)
+    expect(body.message).not.toContain(PASSWORD)
   })
 })
 

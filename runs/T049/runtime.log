@@ -1,0 +1,36 @@
+[2026-08-13T00:11:06Z] auto-run start: state=INIT
+[2026-08-13T00:11:06Z] auto-run: running step=planner
+[2026-08-13T00:11:12Z] auto-run: pre-planner rebase onto integration ok
+[2026-08-13T00:11:12Z] prompt: resolved=prompts/generic/planner.md source=generic
+[2026-08-13T00:11:12Z] prompt: generic fallback — injecting runs/T049/ticket.md
+[2026-08-13T00:11:12Z] compose: global-context=docs/ai/global-context.md
+[2026-08-13T00:11:12Z] compose: role=ai/roles/planner.md
+[2026-08-13T00:11:12Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-13T00:11:12Z] compose: skill=ai/skills/architecture-discipline.md
+[2026-08-13T00:11:12Z] compose: skill=ai/skills/documentation.md
+[2026-08-13T00:11:12Z] compose: task (canonical prompt)
+[2026-08-13T00:11:12Z] snapshot: runtime-prompt=runs/T049/prompts/planner-attempt-1.md
+[2026-08-13T00:16:45Z] compose: preferring on-disk runs/T049/plan.md over chatty stdout (agent Write beat meta-report)
+[2026-08-13T00:16:45Z] auto-run: step=planner done rc=0
+[2026-08-13T00:41:39Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-13T00:41:39Z] auto-run: running step=tester
+[2026-08-13T00:41:40Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-13T00:41:40Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-13T00:41:40Z] prompt: generic fallback — injecting runs/T049/ticket.md
+[2026-08-13T00:41:40Z] compose: global-context=docs/ai/global-context.md
+[2026-08-13T00:41:40Z] compose: role=ai/roles/tester.md
+[2026-08-13T00:41:40Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-13T00:41:40Z] compose: skill=ai/skills/testing.md
+[2026-08-13T00:41:40Z] compose: skill=ai/skills/debugging.md
+[2026-08-13T00:41:40Z] compose: task (canonical prompt)
+[2026-08-13T00:41:40Z] snapshot: runtime-prompt=runs/T049/prompts/tester-attempt-1.md
+[2026-08-13T00:48:37Z] auto-run: step=tester done rc=0
+[2026-08-13T00:48:37Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-13T00:48:37Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-13T00:48:38Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/dist/config/env.d.ts', 'apps/api/dist/config/env.d.ts.map', 'apps/api/dist/config/env.js', 'apps/api/dist/config/env.js.map', 'apps/api/dist/db/schema/devices.d.ts', 'apps/api/dist/db/schema/devices.d.ts.map', 'apps/api/dist/db/schema/devices.js', 'apps/api/dist/db/schema/devices.js.map', 'apps/api/dist/index.js', 'apps/api/dist/index.js.map', 'apps/api/dist/routes/commands.d.ts.map', 'apps/api/dist/routes/commands.js', 'apps/api/dist/routes/commands.js.map', 'apps/api/dist/routes/devices.d.ts.map', 'apps/api/dist/routes/devices.js', 'apps/api/dist/routes/devices.js.map', 'apps/api/dist/routes/health.d.ts.map', 'apps/api/dist/routes/health.js', 'apps/api/dist/routes/health.js.map', 'apps/api/dist/routes/pairing.d.ts.map', 'apps/api/dist/routes/pairing.js', 'apps/api/dist/routes/pairing.js.map', 'apps/api/dist/services/catalog-sync-service.d.ts', 'apps/api/dist/services/catalog-sync-service.d.ts.map', 'apps/api/dist/services/catalog-sync-service.js', 'apps/api/dist/services/catalog-sync-service.js.map', 'apps/api/dist/services/command.service.d.ts.map', 'apps/api/dist/services/command.service.js', 'apps/api/dist/services/command.service.js.map', 'apps/api/dist/services/pairing.service.js', 'apps/api/dist/services/pairing.service.js.map', 'apps/api/dist/services/source-service.d.ts.map', 'apps/api/dist/services/source-service.js', 'apps/api/dist/services/source-service.js.map', 'apps/api/dist/services/sync-runs-service.d.ts.map', 'apps/api/dist/services/sync-runs-service.js', 'apps/api/dist/services/sync-runs-service.js.map', 'apps/api/node_modules/.vite/vitest/results.json', 'runs/T049/daemon.lock', 'runs/T049/runtime.log', 'runs/T049/workflow-status.md']
+[2026-08-13T00:48:38Z] commit-checkpoint: sha=5923313 files=3 title='test(T049/workflow): tester — update 3 file(s)'
+[2026-08-13T00:48:38Z] auto-run: auto-push triggered
+[2026-08-13T00:48:38Z] push: tolerating runtime dirty files (not blocking): ['apps/api/dist/config/env.d.ts', 'apps/api/dist/config/env.d.ts.map', 'apps/api/dist/config/env.js', 'apps/api/dist/config/env.js.map', 'apps/api/dist/db/schema/devices.d.ts', 'apps/api/dist/db/schema/devices.d.ts.map', 'apps/api/dist/db/schema/devices.js', 'apps/api/dist/db/schema/devices.js.map', 'apps/api/dist/index.js', 'apps/api/dist/index.js.map', 'apps/api/dist/routes/commands.d.ts.map', 'apps/api/dist/routes/commands.js', 'apps/api/dist/routes/commands.js.map', 'apps/api/dist/routes/devices.d.ts.map', 'apps/api/dist/routes/devices.js', 'apps/api/dist/routes/devices.js.map', 'apps/api/dist/routes/health.d.ts.map', 'apps/api/dist/routes/health.js', 'apps/api/dist/routes/health.js.map', 'apps/api/dist/routes/pairing.d.ts.map', 'apps/api/dist/routes/pairing.js', 'apps/api/dist/routes/pairing.js.map', 'apps/api/dist/services/catalog-sync-service.d.ts', 'apps/api/dist/services/catalog-sync-service.d.ts.map', 'apps/api/dist/services/catalog-sync-service.js', 'apps/api/dist/services/catalog-sync-service.js.map', 'apps/api/dist/services/command.service.d.ts.map', 'apps/api/dist/services/command.service.js', 'apps/api/dist/services/command.service.js.map', 'apps/api/dist/services/pairing.service.js', 'apps/api/dist/services/pairing.service.js.map', 'apps/api/dist/services/source-service.d.ts.map', 'apps/api/dist/services/source-service.js', 'apps/api/dist/services/source-service.js.map', 'apps/api/dist/services/sync-runs-service.d.ts.map', 'apps/api/dist/services/sync-runs-service.js', 'apps/api/dist/services/sync-runs-service.js.map', 'apps/api/node_modules/.vite/vitest/results.json', 'runs/T049/daemon.lock', 'runs/T049/runtime.log', 'runs/T049/workflow-status.md']
+[2026-08-13T00:48:38Z] push: pushing branch=ticket/T049-implement-m3u-catalog-ingestion-through-the-common
+[2026-08-13T00:48:39Z] push: done branch=ticket/T049-implement-m3u-catalog-ingestion-through-the-common
+[2026-08-13T00:48:40Z] auto-run: TEST_COMPLETE — running PR lifecycle

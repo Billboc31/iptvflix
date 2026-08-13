@@ -14,6 +14,7 @@ import { releaseEvents } from '../db/schema/release-lifecycle.js'
 import type { XtreamCatalogSnapshot } from '../providers/xtream/types.js'
 import { normalizeTitle } from '../matching/title-normalizer.js'
 import type { PlexCatalogSnapshot, PlexGuid } from '../providers/plex/types.js'
+import type { M3UCatalogSnapshot } from '../providers/m3u/types.js'
 
 export interface CatalogSyncResult {
   runId: string
@@ -766,6 +767,55 @@ export const CatalogSyncService = {
         synopsis: ep.summary ?? null,
         durationMinutes: ep.duration ? Math.round(ep.duration / 60000) : null,
         airDate: ep.originallyAvailableAt ?? null,
+      })),
+    })
+  },
+
+  async syncM3UCatalog(sourceId: string, snapshot: M3UCatalogSnapshot): Promise<CatalogSyncResult> {
+    // Derive unique series entries from episode seriesKeys
+    const seriesMap = new Map<string, NormalizedSeriesItem>()
+    for (const ep of snapshot.episodes) {
+      const key = ep.seriesKey ?? ep.streamUrl
+      if (!seriesMap.has(key)) {
+        const { variantAttributes } = normalizeTitle(ep.rawTitle)
+        seriesMap.set(key, {
+          providerItemId: key,
+          title: ep.tvgName ?? ep.rawTitle,
+          posterPath: ep.tvgLogo ?? null,
+          synopsis: null,
+          tmdb: undefined,
+          firstAirYear: null,
+          rawTitle: ep.rawTitle,
+          audioLanguage: variantAttributes.audioLanguage,
+          subtitleLanguage: variantAttributes.subtitleLanguage,
+          videoQuality: variantAttributes.videoQuality,
+        })
+      }
+    }
+
+    return syncNormalized(sourceId, {
+      sourceId: snapshot.sourceId,
+      fetchedAt: snapshot.fetchedAt,
+      movies: snapshot.movies.map((entry) => {
+        const { variantAttributes } = normalizeTitle(entry.rawTitle)
+        return {
+          providerItemId: entry.tvgId ?? entry.streamUrl,
+          title: entry.tvgName ?? entry.rawTitle,
+          posterPath: entry.tvgLogo ?? null,
+          synopsis: null,
+          tmdb: undefined,
+          rawTitle: entry.rawTitle,
+          audioLanguage: variantAttributes.audioLanguage,
+          subtitleLanguage: variantAttributes.subtitleLanguage,
+          videoQuality: variantAttributes.videoQuality,
+        }
+      }),
+      series: [...seriesMap.values()],
+      episodes: snapshot.episodes.map((entry) => ({
+        providerItemId: entry.tvgId ?? entry.streamUrl,
+        seriesProviderItemId: entry.seriesKey ?? entry.streamUrl,
+        seasonNumber: entry.seasonNumber ?? 1,
+        episodeNumber: entry.episodeNumber ?? 1,
       })),
     })
   },

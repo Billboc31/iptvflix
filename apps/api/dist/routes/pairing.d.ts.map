@@ -1,1 +1,1 @@
-{"version":3,"file":"pairing.d.ts","sourceRoot":"","sources":["../../src/routes/pairing.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,eAAe,EAAE,MAAM,SAAS,CAAA;AAY9C,wBAAsB,aAAa,CAAC,GAAG,EAAE,eAAe,GAAG,OAAO,CAAC,IAAI,CAAC,CAsEvE"}
+{"version":3,"file":"pairing.d.ts","sourceRoot":"","sources":["../../src/routes/pairing.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,eAAe,EAAE,MAAM,SAAS,CAAA;AAa9C,wBAAsB,aAAa,CAAC,GAAG,EAAE,eAAe,GAAG,OAAO,CAAC,IAAI,CAAC,CAwEvE"}

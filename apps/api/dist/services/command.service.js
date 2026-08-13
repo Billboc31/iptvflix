@@ -42,15 +42,20 @@ export async function getPendingCommands(deviceId) {
         .select()
         .from(playbackCommands)
         .where(and(eq(playbackCommands.deviceId, deviceId), inArray(playbackCommands.state, ['pending', 'delivered'])));
+    const updatedRows = [];
     for (const row of rows) {
         if (row.state === 'pending') {
             await db
                 .update(playbackCommands)
                 .set({ state: 'delivered' })
                 .where(eq(playbackCommands.id, row.id));
+            updatedRows.push({ ...row, state: 'delivered' });
+        }
+        else {
+            updatedRows.push(row);
         }
     }
-    return rows.map(toResponse);
+    return updatedRows.map(toResponse);
 }
 export async function acknowledgeCommand(deviceId, commandId) {
     const [row] = await db

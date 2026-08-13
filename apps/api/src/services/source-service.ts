@@ -8,6 +8,7 @@ import type {
   TestSourceResult,
 } from '@iptvflix/api-contracts'
 import { PlexClient } from '../providers/plex/client.js'
+import { M3UClient } from '../providers/m3u/client.js'
 
 export class NotFoundError extends Error {
   readonly statusCode = 404
@@ -68,7 +69,16 @@ export async function testSourceConnection(id: string): Promise<TestSourceResult
   if (!row) throw new NotFoundError(id)
 
   if (row.type === 'M3U') {
-    return { ok: false, message: 'M3U connection test not yet implemented' }
+    const client = new M3UClient({
+      playlistUrl: row.baseUrl,
+      username: row.username ?? undefined,
+      password: row.password ?? undefined,
+    })
+    const result = await client.testConnection()
+    return {
+      ok: result.ok,
+      message: result.message ?? (result.ok ? 'Connection successful' : 'Connection failed'),
+    }
   }
 
   if (row.type === 'PLEX') {
