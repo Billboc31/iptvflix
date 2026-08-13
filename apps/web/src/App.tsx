@@ -12,6 +12,7 @@ import SourcesPage from './pages/SourcesPage.js'
 import OnboardingPage from './pages/OnboardingPage.js'
 import MyListPage from './pages/MyListPage.js'
 import ProfileSettingsPage from './pages/ProfileSettingsPage.js'
+import DeviceSettingsPage from './pages/DeviceSettingsPage.js'
 import LoginPage from './pages/LoginPage.js'
 import PlayerPage from './pages/PlayerPage.js'
 import ArrivalsPage from './pages/ArrivalsPage.js'
@@ -47,6 +48,7 @@ export default function App() {
                 <Route path="/sources" element={<SourcesPage />} />
                 <Route path="/my-list" element={<MyListPage />} />
                 <Route path="/settings/playback" element={<ProfileSettingsPage />} />
+                <Route path="/settings/devices" element={<DeviceSettingsPage />} />
                 <Route path="/arrivals" element={<ArrivalsPage />} />
               </Route>
             </Route>

@@ -15,6 +15,9 @@ import type {
   ShelfSummaryResponse,
   ShelfResponse,
   ProfileResponse,
+  DeviceResponse,
+  PairingCodeDetailResponse,
+  PlaybackCommandResponse,
 } from '@iptvflix/api-contracts'
 
 export const MOCK_MOVIE: MovieDetailResponse = {
@@ -220,6 +223,39 @@ export const MOCK_SHELF: ShelfResponse = {
   ],
 }
 
+export const MOCK_DEVICE_ONLINE: DeviceResponse = {
+  id: 'device-1',
+  name: 'Salon TV',
+  lastSeenAt: new Date(Date.now() - 10_000).toISOString(),
+  revokedAt: null,
+  createdAt: new Date('2024-01-01').toISOString(),
+}
+
+export const MOCK_DEVICE_OFFLINE: DeviceResponse = {
+  id: 'device-2',
+  name: 'Chambre TV',
+  lastSeenAt: new Date(Date.now() - 200_000).toISOString(),
+  revokedAt: null,
+  createdAt: new Date('2024-01-01').toISOString(),
+}
+
+export const MOCK_PAIRING_CODE_DETAIL: PairingCodeDetailResponse = {
+  code: 'ABCD1234',
+  status: 'pending',
+  expiresAt: new Date(Date.now() + 300_000).toISOString(),
+}
+
+export const MOCK_PLAY_COMMAND: PlaybackCommandResponse = {
+  id: 'cmd-1',
+  mediaType: 'movie',
+  mediaId: 'movie-1',
+  availabilityId: null,
+  startPositionMs: 0,
+  state: 'delivered',
+  expiresAt: new Date(Date.now() + 30_000).toISOString(),
+  createdAt: new Date().toISOString(),
+}
+
 export const MOCK_SYNC_RUN: SyncRunResponse = {
   id: 'run-1',
   sourceId: 'source-1',
@@ -281,6 +317,18 @@ export const handlers = [
   http.delete('/api/watchlist/:mediaType/:mediaId', () => new HttpResponse(null, { status: 204 })),
   http.put('/api/progress/:mediaType/:mediaId', () => HttpResponse.json(MOCK_CONTINUE_WATCHING)),
   http.get('/api/continue-watching', () => HttpResponse.json([MOCK_CONTINUE_WATCHING])),
+  http.get('/api/devices', () => HttpResponse.json([MOCK_DEVICE_ONLINE])),
+  http.get('/api/pairing/codes/:code', ({ params }) => {
+    const { code } = params as { code: string }
+    if (code === 'ABCD1234') return HttpResponse.json(MOCK_PAIRING_CODE_DETAIL)
+    return new HttpResponse(null, { status: 404 })
+  }),
+  http.post('/api/pairing/codes/:code/approve', () => HttpResponse.json(MOCK_DEVICE_ONLINE, { status: 201 })),
+  http.post('/api/devices/:id/commands', () => HttpResponse.json(MOCK_PLAY_COMMAND, { status: 201 })),
+  http.patch('/api/devices/:id', ({ params }) =>
+    HttpResponse.json({ ...MOCK_DEVICE_ONLINE, id: (params as { id: string }).id }),
+  ),
+  http.delete('/api/devices/:id', () => new HttpResponse(null, { status: 204 })),
   http.get('/api/shelves', () => HttpResponse.json([MOCK_SHELF_SUMMARY])),
   http.get('/api/shelves/:id', () => HttpResponse.json(MOCK_SHELF)),
   http.post('/api/shelves', () => HttpResponse.json(MOCK_SHELF_SUMMARY, { status: 201 })),

@@ -1,13 +1,21 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { EpisodeResponse } from '@iptvflix/api-contracts'
+import type { EpisodeResponse, DeviceResponse } from '@iptvflix/api-contracts'
+import { useToast } from '../ui/Toast.js'
 import Badge from '../ui/Badge.js'
+import DevicePickerModal from '../devices/DevicePickerModal.js'
 
 type Props = {
   episode: EpisodeResponse
+  devices?: DeviceResponse[]
+  progressMs?: number
 }
 
-export default function EpisodeRow({ episode }: Props) {
+export default function EpisodeRow({ episode, devices = [], progressMs = 0 }: Props) {
   const navigate = useNavigate()
+  const toast = useToast()
+  const [pickerOpen, setPickerOpen] = useState(false)
+
   const durationLabel = episode.durationMinutes ? `${episode.durationMinutes} min` : null
   const airLabel = episode.airDate
     ? new Date(episode.airDate).toLocaleDateString('fr-FR', { year: 'numeric', month: 'short', day: 'numeric' })
@@ -59,8 +67,39 @@ export default function EpisodeRow({ episode }: Props) {
               ▶ Lire
             </button>
           )}
+          {!isUnavailable && devices.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
+              aria-label={`Lire l'épisode ${episode.episodeNumber} sur TV`}
+            >
+              📺 TV
+            </button>
+          )}
         </div>
       </div>
+
+      {pickerOpen && (
+        <DevicePickerModal
+          open={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          devices={devices}
+          mediaType="episode"
+          mediaId={episode.id}
+          availabilityId={episode.selectedVariantId}
+          progressMs={progressMs}
+          onFastPath={(name, state) => {
+            if (state === 'delivered') {
+              toast.show(`Lecture lancée sur ${name}`, 'success')
+            } else if (state === 'device-offline') {
+              toast.show(`${name} est hors ligne`, 'error')
+            } else {
+              toast.show('Erreur lors de l\'envoi de la commande', 'error')
+            }
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { SeriesDetailResponse, AvailabilityVariantResponse } from '@iptvflix/api-contracts'
-import { getSeries, getProfile, ApiError } from '../lib/api.js'
+import { getSeries, getProfile, fetchContinueWatching, ApiError } from '../lib/api.js'
+import { useDevices } from '../hooks/useDevices.js'
 import Badge from '../components/ui/Badge.js'
 import Button from '../components/ui/Button.js'
 import Skeleton from '../components/ui/Skeleton.js'
@@ -64,17 +65,33 @@ function DetailSkeleton() {
 export default function SeriesDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { devices } = useDevices()
   const [series, setSeries] = useState<SeriesDetailResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
   const [profileId, setProfileId] = useState<string | undefined>(undefined)
+  const [progressByEpisodeId, setProgressByEpisodeId] = useState<Record<string, number>>({})
 
   useEffect(() => {
     getProfile()
       .then((p) => setProfileId(p.id))
       .catch(() => {/* profile unavailable — watchState will be null */})
+  }, [])
+
+  useEffect(() => {
+    fetchContinueWatching()
+      .then((items) => {
+        const map: Record<string, number> = {}
+        for (const item of items) {
+          if (item.mediaType === 'EPISODE') {
+            map[item.mediaId] = item.progressSeconds * 1000
+          }
+        }
+        setProgressByEpisodeId(map)
+      })
+      .catch(() => {/* progress unavailable — resume toggle will not show */})
   }, [])
 
   useEffect(() => {
@@ -226,7 +243,7 @@ export default function SeriesDetailPage() {
             {/* Seasons */}
             <div className="mt-6">
               <h2 className="text-lg font-semibold text-white mb-3">Saisons</h2>
-              <SeasonAccordion seriesId={series.id} seasons={series.seasons} profileId={profileId} />
+              <SeasonAccordion seriesId={series.id} seasons={series.seasons} profileId={profileId} devices={devices} progressByEpisodeId={progressByEpisodeId} />
             </div>
 
             <div className="flex flex-wrap gap-3 mt-6">

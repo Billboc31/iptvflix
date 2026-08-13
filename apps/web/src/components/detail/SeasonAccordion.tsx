@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { SeasonSummary, EpisodeResponse } from '@iptvflix/api-contracts'
+import type { SeasonSummary, EpisodeResponse, DeviceResponse } from '@iptvflix/api-contracts'
 import { getSeriesSeasonEpisodes } from '../../lib/api.js'
 import Spinner from '../ui/Spinner.js'
 import EpisodeRow from './EpisodeRow.js'
@@ -8,9 +8,11 @@ type Props = {
   seriesId: string
   seasons: SeasonSummary[]
   profileId?: string
+  devices?: DeviceResponse[]
+  progressByEpisodeId?: Record<string, number>
 }
 
-export default function SeasonAccordion({ seriesId, seasons, profileId }: Props) {
+export default function SeasonAccordion({ seriesId, seasons, profileId, devices, progressByEpisodeId }: Props) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [episodeCache, setEpisodeCache] = useState<Map<number, EpisodeResponse[]>>(new Map())
   const [loading, setLoading] = useState<Set<number>>(new Set())
@@ -86,7 +88,7 @@ export default function SeasonAccordion({ seriesId, seasons, profileId }: Props)
                     <Spinner />
                   </div>
                 ) : eps && eps.length > 0 ? (
-                  eps.map((ep) => <EpisodeRow key={ep.id} episode={ep} />)
+                  eps.map((ep) => <EpisodeRow key={ep.id} episode={ep} devices={devices} progressMs={progressByEpisodeId?.[ep.id] ?? 0} />)
                 ) : (
                   <p className="py-4 text-gray-500 text-sm">Aucun épisode disponible.</p>
                 )}
