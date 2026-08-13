@@ -39,6 +39,11 @@ function SeriesShelf({
             title={s.title}
             year={s.year}
             posterUrl={s.posterUrl}
+            badge={
+              s.availabilityStatus === 'UNAVAILABLE'
+                ? { label: 'Indisponible', variant: 'unavailable' }
+                : undefined
+            }
             mediaId={s.id}
             onClick={() => navigate(`/series/${s.id}`)}
           />

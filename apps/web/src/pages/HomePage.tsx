@@ -51,6 +51,12 @@ export default function HomePage() {
           backdropUrl={hero.backdropUrl}
           mediaId={hero.id}
           trailerKey={hero.trailerKey}
+          availabilityStatus={hero.availabilityStatus}
+          onPlay={
+            hero.availabilityStatus === 'AVAILABLE'
+              ? () => navigate(`/player/movie/${hero.id}`)
+              : undefined
+          }
           onDetails={() => navigate(`/movies/${hero.id}`)}
           onAddToList={() => {}}
         />

@@ -1,3 +1,4 @@
+import { resolveMediaImageUrl } from '../lib/tmdb-image.js'
 import { and, eq, desc, inArray } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { watchlist, movies, series } from '../db/schema/index.js'
@@ -14,14 +15,14 @@ async function fetchMediaMeta(mediaType: WatchlistMediaType, mediaId: string): P
       .from(movies)
       .where(eq(movies.id, mediaId))
     if (!row) throw new NotFoundError('Movie', mediaId)
-    return { title: row.title, posterUrl: row.posterPath }
+    return { title: row.title, posterUrl: resolveMediaImageUrl(row.posterPath) }
   } else {
     const [row] = await db
       .select({ id: series.id, title: series.title, posterPath: series.posterPath })
       .from(series)
       .where(eq(series.id, mediaId))
     if (!row) throw new NotFoundError('Series', mediaId)
-    return { title: row.title, posterUrl: row.posterPath }
+    return { title: row.title, posterUrl: resolveMediaImageUrl(row.posterPath) }
   }
 }
 
@@ -114,6 +115,6 @@ export async function listWatchlist(profileId: string): Promise<WatchlistEntry[]
 
   return rows.map((row) => {
     const meta = row.mediaType === 'MOVIE' ? movieMap.get(row.mediaId) : seriesMap.get(row.mediaId)
-    return toEntry(row, meta?.title ?? row.mediaId, meta?.posterPath ?? null)
+    return toEntry(row, meta?.title ?? row.mediaId, resolveMediaImageUrl(meta?.posterPath))
   })
 }

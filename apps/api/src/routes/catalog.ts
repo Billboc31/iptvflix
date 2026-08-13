@@ -24,6 +24,7 @@ import type {
 } from '@iptvflix/api-contracts'
 import { getDefaultProfilePreferences } from '../services/profile-service.js'
 import { resolveVariant } from '../services/availability-resolver.js'
+import { resolveMediaImageUrl } from '../lib/tmdb-image.js'
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w185'
 
@@ -163,8 +164,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       title: movie.title,
       year: movie.year,
       synopsis: movie.synopsis,
-      posterUrl: movie.posterPath,
-      backdropUrl: movie.backdropPath,
+      posterUrl: resolveMediaImageUrl(movie.posterPath),
+      backdropUrl: resolveMediaImageUrl(movie.backdropPath, 'w780'),
       runtime: movie.durationMinutes,
       genres: filterString(genreRows.map((r) => r.name)),
       quality: bestQuality(variants.map((v) => v.videoQuality)),
@@ -297,8 +298,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       title: seriesRow.title,
       year: seriesRow.firstAirYear,
       synopsis: seriesRow.synopsis,
-      posterUrl: seriesRow.posterPath,
-      backdropUrl: seriesRow.backdropPath,
+      posterUrl: resolveMediaImageUrl(seriesRow.posterPath),
+      backdropUrl: resolveMediaImageUrl(seriesRow.backdropPath, 'w780'),
       genres: filterString(genreRows.map((r) => r.name)),
       seasonCount: seasonRows.length,
       availabilityCount,

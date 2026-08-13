@@ -30,6 +30,11 @@ export default function ShelfRow({ shelf }: ShelfRowProps) {
                 posterUrl={item.posterUrl}
                 mediaId={item.mediaId}
                 trailerKey={item.trailerKey}
+                badge={
+                  shelf.id === 'sys_rec_upcoming'
+                    ? { label: 'Indisponible', variant: 'unavailable' }
+                    : undefined
+                }
                 onClick={() => navigate(`/${item.mediaType === 'MOVIE' ? 'movies' : 'series'}/${item.mediaId}`)}
               />
               {hasProgress && (

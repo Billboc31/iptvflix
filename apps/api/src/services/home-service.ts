@@ -1,3 +1,4 @@
+import { resolveMediaImageUrl } from '../lib/tmdb-image.js'
 import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { mediaVideos } from '../db/schema/media-videos.js'
@@ -93,7 +94,7 @@ function candidateToItem(c: RecommendationCandidate, trailerKeyMap: Map<string, 
     mediaType: c.mediaType,
     mediaId: c.mediaId,
     title: c.title,
-    posterUrl: c.posterPath,
+    posterUrl: resolveMediaImageUrl(c.posterPath),
     trailerKey: trailerKeyMap.get(c.mediaId) ?? null,
   }
 }

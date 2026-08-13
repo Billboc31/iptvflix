@@ -1,3 +1,4 @@
+import { resolveMediaImageUrl } from '../lib/tmdb-image.js'
 import { and, eq, desc, inArray, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { viewingProgress, movies, episodes, series } from '../db/schema/index.js'
@@ -106,10 +107,10 @@ export async function listContinueWatching(profileId: string): Promise<ContinueW
     const base = toRow(row)
     if (row.mediaType === 'MOVIE') {
       const meta = movieMap.get(row.mediaId)
-      return { ...base, title: meta?.title ?? row.mediaId, posterUrl: meta?.posterPath ?? null }
+      return { ...base, title: meta?.title ?? row.mediaId, posterUrl: resolveMediaImageUrl(meta?.posterPath) }
     } else {
       const meta = episodeSeriesMap.get(row.mediaId)
-      return { ...base, title: meta?.title ?? row.mediaId, posterUrl: meta?.posterPath ?? null }
+      return { ...base, title: meta?.title ?? row.mediaId, posterUrl: resolveMediaImageUrl(meta?.posterPath) }
     }
   })
 }

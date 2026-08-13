@@ -40,6 +40,11 @@ function MovieShelf({
             year={movie.year}
             posterUrl={movie.posterUrl}
             quality={movie.quality}
+            badge={
+              movie.availabilityStatus === 'UNAVAILABLE'
+                ? { label: 'Indisponible', variant: 'unavailable' }
+                : undefined
+            }
             mediaId={movie.id}
             trailerKey={movie.trailerKey}
             onClick={() => navigate(`/movies/${movie.id}`)}

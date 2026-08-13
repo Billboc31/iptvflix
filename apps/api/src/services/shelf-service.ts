@@ -1,3 +1,4 @@
+import { resolveMediaImageUrl } from '../lib/tmdb-image.js'
 import { and, eq, desc, asc, inArray, notInArray, gte, lte, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import {
@@ -109,7 +110,7 @@ async function resolveSystemShelf(id: string, profileId: string): Promise<ShelfI
       mediaType: 'MOVIE' as const,
       mediaId: r.id,
       title: r.title,
-      posterUrl: r.posterPath,
+      posterUrl: resolveMediaImageUrl(r.posterPath),
       trailerKey: trailerMap.get(r.id) ?? null,
     }))
   }
@@ -125,7 +126,7 @@ async function resolveSystemShelf(id: string, profileId: string): Promise<ShelfI
       mediaType: 'SERIES' as const,
       mediaId: r.id,
       title: r.title,
-      posterUrl: r.posterPath,
+      posterUrl: resolveMediaImageUrl(r.posterPath),
       trailerKey: trailerMap.get(r.id) ?? null,
     }))
   }
@@ -293,7 +294,7 @@ async function evaluateMovies(rules: ShelfRuleDefinition, profileId: string): Pr
     mediaType: 'MOVIE' as const,
     mediaId: r.id,
     title: r.title,
-    posterUrl: r.posterPath,
+    posterUrl: resolveMediaImageUrl(r.posterPath),
     trailerKey: trailerMap.get(r.id) ?? null,
   }))
 }
@@ -342,7 +343,7 @@ async function evaluateSeries(rules: ShelfRuleDefinition): Promise<ShelfItem[]> 
     mediaType: 'SERIES' as const,
     mediaId: r.id,
     title: r.title,
-    posterUrl: r.posterPath,
+    posterUrl: resolveMediaImageUrl(r.posterPath),
     trailerKey: trailerMap.get(r.id) ?? null,
   }))
 }
@@ -395,7 +396,7 @@ async function resolveManualItems(shelfId: string): Promise<ShelfItem[]> {
         mediaType: 'MOVIE' as const,
         mediaId: m.mediaId,
         title: meta?.title ?? m.mediaId,
-        posterUrl: meta?.posterPath ?? null,
+        posterUrl: resolveMediaImageUrl(meta?.posterPath),
         trailerKey: movieTrailers.get(m.mediaId) ?? null,
       }
     } else {
@@ -404,7 +405,7 @@ async function resolveManualItems(shelfId: string): Promise<ShelfItem[]> {
         mediaType: 'SERIES' as const,
         mediaId: m.mediaId,
         title: meta?.title ?? m.mediaId,
-        posterUrl: meta?.posterPath ?? null,
+        posterUrl: resolveMediaImageUrl(meta?.posterPath),
         trailerKey: seriesTrailers.get(m.mediaId) ?? null,
       }
     }
