@@ -22,7 +22,7 @@ class CommandRepository(
     private val apiClient: ApiClient,
     private val onRevoked: () -> Unit,
 ) {
-    private val acknowledgedIds = Collections.synchronizedSet(mutableSetOf<String>())
+    private val acknowledgedIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
     fun commands(): Flow<PlaybackCommand> = callbackFlow {
         var sseFailed = 0
@@ -82,9 +82,4 @@ class CommandRepository(
     private suspend fun acknowledgeCommand(id: String) {
         runCatching { apiClient.post("/devices/me/commands/$id/ack") }
     }
-}
-
-private object Collections {
-    fun <T> synchronizedSet(set: MutableSet<T>): MutableSet<T> =
-        java.util.Collections.synchronizedSet(set)
 }

@@ -47,9 +47,7 @@ class MediaItemBuilderTest {
     }
 
     @Test
-    fun `startPositionMs is propagated through the command to load call`() {
-        // The spec itself does not carry startPositionMs — the position is set via
-        // Player.seekTo() in PlayerViewModel. This test verifies the spec shape is complete.
+    fun `descriptor streamUrl is preserved as spec uri`() {
         val descriptor = PlaybackDescriptor(streamUrl = "https://cdn.example.com/ep.m3u8")
         val spec = descriptor.toMediaItemSpec()
         assertEquals("https://cdn.example.com/ep.m3u8", spec.uri)

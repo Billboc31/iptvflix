@@ -1,35 +1,22 @@
-Implementation complete. Here's a summary of everything created:
+All files look correct. Here's a summary of every change made:
 
 ---
 
-## Files modified (4)
+## Changes applied
 
-| File | Change |
+**3 blockers fixed:**
+
+| File | Fix |
 |---|---|
-| `gradle/libs.versions.toml` | Added 17 new dependency versions (Media3, Compose TV, OkHttp, serialization, security-crypto, ZXing, etc.) and 4 plugins |
-| `app/build.gradle.kts` | Enabled Compose + buildConfig, added all dependencies, raised minSdk to 23, added `testOptions.isReturnDefaultValues = true` |
-| `app/src/main/AndroidManifest.xml` | Added `INTERNET` permission, `android:name=".App"`, `Theme.Material.NoActionBar` |
-| `app/src/main/kotlin/.../MainActivity.kt` | Replaced `AppCompatActivity` stub with `ComponentActivity + setContent { AppNavGraph() }` |
+| `player/PlayerViewModel.kt` | Added `onTracksChanged` in the `Player.Listener` — maps ExoPlayer `Tracks.Group` objects to `TrackInfo` + builds `exoTracksMap` keyed by generated IDs. `_availableTracks` is now populated from the real ExoPlayer event instead of the API descriptor. |
+| `player/PlayerViewModel.kt` | Implemented `selectTrack()` — looks up the `ExoTrackRef` from `exoTracksMap` and calls `player.trackSelectionParameters.buildUpon().clearOverrides().addOverride(TrackSelectionOverride(...)).build()`. |
+| `player/PlayerViewModel.kt` | Fixed `onCleared()` — replaced `viewModelScope.launch { reportNow() }` (which was dropped when the scope cancelled) with `runBlocking(NonCancellable) { runCatching { withTimeout(2_000L) { reportNow() } } }`. |
 
-## New source files (24)
+**4 minors fixed:**
 
-| Layer | Files |
+| File | Fix |
 |---|---|
-| App | `App.kt` — singleton container (secureStorage, apiClient, sseClient) |
-| Storage | `TokenStore.kt` (interface), `SecureStorage.kt` (EncryptedSharedPreferences) |
-| Network | `ApiClient.kt` (OkHttp + token interceptor), `SseClient.kt` (Flow<String> with bounded backoff, 1s→60s) |
-| Pairing | `PairingApi.kt`, `PairingRepository.kt` (state machine: Idle→Requesting→PollingCode→Approved/Expired), `PairingViewModel.kt`, `PairingScreen.kt` (QR + code display) |
-| Commands | `CommandModels.kt`, `CommandParser.kt` (pure JSON→`PlaybackCommand?`), `CommandRepository.kt` (SSE with dedup + 3-failure poll fallback), `CommandViewModel.kt` |
-| Playback | `PlaybackApi.kt` (assumes #99 route `GET /playback/{type}/{id}`), `PlaybackResolver.kt` |
-| Player | `MediaItemBuilder.kt` (pure `PlaybackDescriptor→MediaItemSpec`), `PlayerViewModel.kt` (ExoPlayer lifecycle), `PlayerScreen.kt` (D-pad overlay, track panel, error state) |
-| Progress | `ProgressReporter.kt` (15s periodic + on-pause reports) |
-| Home | `HomeViewModel.kt` (device name, connection status, continue-watching), `HomeScreen.kt` |
-| Nav | `AppNavGraph.kt` (state-based: Pairing↔Home↔Player) |
-
-## Test files (5)
-
-`CommandParserTest` · `PairingStateMachineTest` · `ReconnectBackoffTest` · `ProgressReporterTest` · `MediaItemBuilderTest` — all runnable via `./gradlew :app:test` (JVM, no real device needed).
-
-## Key assumptions noted in code
-- Playback API route assumed from #99: `GET /playback/{mediaType}/{mediaId}?availabilityId=…`  — isolated in `PlaybackApi.kt`
-- `GET /devices/me` assumed to exist from #104 — only used in `HomeViewModel`
+| `storage/SecureStorage.kt` | Migrated from deprecated `MasterKeys.getOrCreate()` to `MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()`. Updated `EncryptedSharedPreferences.create()` to the new signature. |
+| `command/CommandRepository.kt` | Removed the local `private object Collections` wrapper; `acknowledgedIds` now calls `java.util.Collections.synchronizedSet(...)` directly. |
+| `command/ReconnectBackoffTest.kt` | Added `after 3 SSE failures repository switches to polling` — mocks SSE to throw `IOException`, verifies `commandStream()` is called exactly 3 times and the resulting command comes from the poll endpoint. |
+| `player/MediaItemBuilderTest.kt` | Renamed test #4 from the misleading `startPositionMs is propagated through the command to load call` to `descriptor streamUrl is preserved as spec uri`, which accurately describes what the assertion checks. |

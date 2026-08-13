@@ -4,8 +4,11 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import com.iptvflix.androidtv.App
 import com.iptvflix.androidtv.command.PlaybackCommand
@@ -14,9 +17,12 @@ import com.iptvflix.androidtv.playback.PlaybackResolver
 import com.iptvflix.androidtv.playback.TrackInfo
 import com.iptvflix.androidtv.progress.ProgressReporter
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 
 private const val TAG = "PlayerViewModel"
 private const val SEEK_STEP_MS = 10_000L
@@ -29,6 +35,11 @@ sealed class PlayerUiState {
     data class Error(val message: String) : PlayerUiState()
 }
 
+private data class ExoTrackRef(
+    val group: Tracks.Group,
+    val trackIndex: Int,
+)
+
 class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     private val container get() = getApplication<App>()
@@ -40,6 +51,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _availableTracks = MutableStateFlow<List<TrackInfo>>(emptyList())
     val availableTracks: StateFlow<List<TrackInfo>> = _availableTracks
+
+    // Populated by onTracksChanged; read on main thread only (player listener runs on main looper)
+    private var exoTracksMap = mapOf<String, ExoTrackRef>()
 
     private var progressReporter: ProgressReporter? = null
     private var reporterJob: Job? = null
@@ -65,6 +79,27 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 Log.e(TAG, "Playback error: ${error.errorCodeName}")
                 _uiState.value = PlayerUiState.Error(error.message ?: "Playback failed")
             }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                val map = mutableMapOf<String, ExoTrackRef>()
+                val infoList = mutableListOf<TrackInfo>()
+                tracks.groups.forEachIndexed { groupIdx, group ->
+                    val type = when (group.type) {
+                        C.TRACK_TYPE_AUDIO -> "audio"
+                        C.TRACK_TYPE_TEXT -> "subtitle"
+                        else -> return@forEachIndexed
+                    }
+                    for (trackIdx in 0 until group.length) {
+                        val format = group.getTrackFormat(trackIdx)
+                        val id = "g${groupIdx}t${trackIdx}"
+                        val label = format.label ?: format.language ?: "$type $trackIdx"
+                        map[id] = ExoTrackRef(group, trackIdx)
+                        infoList.add(TrackInfo(id = id, label = label, language = format.language, type = type))
+                    }
+                }
+                exoTracksMap = map
+                _availableTracks.value = infoList
+            }
         })
     }
 
@@ -73,7 +108,6 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             _uiState.value = PlayerUiState.Buffering
             runCatching {
                 val descriptor = PlaybackResolver(PlaybackApi(container.apiClient)).resolve(command)
-                _availableTracks.value = descriptor.tracks
 
                 val mediaItem = buildMediaItem(descriptor.toMediaItemSpec())
                 player.setMediaItem(mediaItem)
@@ -115,12 +149,20 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun selectTrack(trackId: String) {
-        // Track selection hook — wires to ExoPlayer TrackSelectionParameters
-        // when track group index is resolvable from the descriptor.
+        val ref = exoTracksMap[trackId] ?: return
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .clearOverrides()
+            .addOverride(TrackSelectionOverride(ref.group.mediaTrackGroup, listOf(ref.trackIndex)))
+            .build()
     }
 
     override fun onCleared() {
-        viewModelScope.launch { progressReporter?.reportNow() }
+        // runBlocking with NonCancellable ensures the final progress report is flushed
+        // before viewModelScope cancels — without this the coroutine is dropped silently.
+        runBlocking(NonCancellable) {
+            runCatching { withTimeout(2_000L) { progressReporter?.reportNow() } }
+        }
         reporterJob?.cancel()
         player.release()
         super.onCleared()

@@ -2,7 +2,7 @@ package com.iptvflix.androidtv.storage
 
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKeys
+import androidx.security.crypto.MasterKey
 
 private const val PREFS_FILE = "secure_prefs"
 private const val KEY_DEVICE_TOKEN = "device_token"
@@ -10,9 +10,11 @@ private const val KEY_DEVICE_TOKEN = "device_token"
 class SecureStorage(context: Context) : TokenStore {
 
     private val prefs = EncryptedSharedPreferences.create(
-        PREFS_FILE,
-        MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
         context,
+        PREFS_FILE,
+        MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build(),
         EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
     )
