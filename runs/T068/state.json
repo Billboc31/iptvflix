@@ -3,7 +3,7 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T068-implement-hybrid-local-tmdb-search-with-automatic",
   "issue_number": 135,
-  "updated_at": "2026-08-13T19:58:56Z",
+  "updated_at": "2026-08-13T19:59:06Z",
   "pre_conflict_state": "TEST_COMPLETE",
   "conflict_detected_at": "2026-08-13T19:57:56Z",
   "conflicted_files": [
@@ -21,5 +21,7 @@
   ],
   "pr_number": 147,
   "pr_synced": true,
-  "conflict_pr_number": 147
+  "conflict_pr_number": 147,
+  "pr_merged": true,
+  "daemon_archived": true
 }
