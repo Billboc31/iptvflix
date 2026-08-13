@@ -1,7 +1,7 @@
 {
   "ticket_id": "T069",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T069-migrate-existing-iptvflix-media-and-user-state-to",
   "issue_number": 136,
-  "updated_at": "2026-08-13T15:19:44Z"
+  "updated_at": "2026-08-13T18:55:30Z"
 }
