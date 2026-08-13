@@ -31,6 +31,7 @@ class CommandRepository(
         } catch (e: UnauthorizedException) {
             Log.w(TAG, "Device revoked — clearing token")
             onRevoked()
+            close()
         }
         awaitClose()
     }
