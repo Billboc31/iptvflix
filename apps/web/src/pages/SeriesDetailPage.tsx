@@ -167,6 +167,7 @@ export default function SeriesDetailPage() {
             <div className="mt-6">
               <h2 className="text-lg font-semibold text-white mb-3">Saisons</h2>
               <SeasonSelector
+                key={series.id}
                 seriesId={series.id}
                 seasons={series.seasons}
                 profileId={profileId}

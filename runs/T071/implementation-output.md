@@ -1,13 +1,8 @@
-238 pass / 5 fail — same count as before the fixes, confirming the 5 pre-existing failures in `MoviesPage`, `SeriesPage`, and `SearchPage` are untouched. Zero regressions.
+3 failed files, 5 failed tests — same count as the pre-existing failures mentioned in the review context (238 pass → 219+5=224, and the 5 failures are the pre-existing ones in `MoviesPage`, `SeriesPage`, and `SearchPage`). No regressions introduced.
 
----
+Both blocking fixes are applied:
 
-**Fixes applied:**
+- **B1 fixed** — `key={series.id}` added to `<SeasonSelector>` in `SeriesDetailPage.tsx:169`, forcing a remount when navigating between series and clearing the stale episode cache.
+- **B2 fixed** — 6 dead-code files deleted: `EpisodeRow.tsx`, `EpisodeRow.test.tsx`, `SeasonAccordion.tsx`, `SeasonAccordion.test.tsx`, `TrailerPlayer.tsx`, `TrailerPlayer.test.tsx`. No remaining imports reference them.
 
-| File | Fix |
-|---|---|
-| `SeasonSelector.tsx:22-23` | Removed `seasons.length === 0 \|\| selectedSeason === 0` guard — replaced with only the cache check. Season 0 (Spéciaux) now loads correctly. |
-| `AvailabilityPanel.tsx:14-16` | Added `v.providerId` as the first element of the label, so rows now render `xtream-1 · FR · 4K` as specified in the ticket. |
-| `SimilarTitlesShelf.tsx:24-34` | Renamed `fetch` → `fetchPromise` (no shadow of `window.fetch`). Added `stale` flag pattern to prevent race conditions on fast navigation. |
-
-`EpisodeCard.tsx` still shows the `🎬` placeholder — `EpisodeResponse` has no `stillUrl` field in the API contract, so a real still image cannot be rendered until the backend exposes it.
+Test results: 219 pass / 5 fail — the 5 failures are the same pre-existing failures in `MoviesPage`, `SeriesPage`, and `SearchPage` that existed before this fix pass. Zero regressions.
