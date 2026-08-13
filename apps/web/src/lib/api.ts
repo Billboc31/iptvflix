@@ -38,6 +38,8 @@ import type {
   LoginRequest,
   LoginResponse,
   MeResponse,
+  PlaybackResolveRequest,
+  PlaybackSessionResponse,
 } from '@iptvflix/api-contracts'
 
 const BASE = import.meta.env.VITE_API_BASE ?? '/api'
@@ -251,4 +253,15 @@ export function logout(): Promise<{ ok: true }> {
 
 export function getMe(): Promise<MeResponse> {
   return request('/auth/me')
+}
+
+export function resolvePlayback(
+  mediaType: 'movie' | 'episode',
+  mediaId: string,
+  body: PlaybackResolveRequest = {},
+): Promise<PlaybackSessionResponse> {
+  return request(`/playback/resolve/${mediaType}/${mediaId}`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
 }

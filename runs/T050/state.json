@@ -1,7 +1,7 @@
 {
   "ticket_id": "T050",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T050-add-secure-web-playback-flow-from-selected-availab",
   "issue_number": 99,
-  "updated_at": "2026-08-13T01:26:44Z"
+  "updated_at": "2026-08-13T01:41:32Z"
 }

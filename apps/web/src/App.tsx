@@ -13,6 +13,7 @@ import OnboardingPage from './pages/OnboardingPage.js'
 import MyListPage from './pages/MyListPage.js'
 import ProfileSettingsPage from './pages/ProfileSettingsPage.js'
 import LoginPage from './pages/LoginPage.js'
+import PlayerPage from './pages/PlayerPage.js'
 import { AuthProvider } from './context/AuthContext.js'
 import ProtectedRoute from './components/ProtectedRoute.js'
 
@@ -28,6 +29,9 @@ export default function App() {
 
             {/* Protected scope */}
             <Route element={<ProtectedRoute />}>
+              {/* Player — full-screen, no AppShell */}
+              <Route path="/player/:mediaType/:mediaId" element={<PlayerPage />} />
+
               {/* Onboarding — no AppShell */}
               <Route path="/onboarding" element={<OnboardingPage />} />
 
