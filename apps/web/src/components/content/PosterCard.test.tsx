@@ -156,4 +156,17 @@ describe('PosterCard', () => {
     // No iframe should appear — timer was cancelled on unmount
     expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument()
   })
+
+  it('card root element has w-28 class for mobile base width', () => {
+    render(<PosterCard title="Movie" onClick={() => {}} />)
+    const card = screen.getByRole('button')
+    expect(card.className).toContain('w-28')
+  })
+
+  it('card root element has responsive md:w-32 and lg:w-36 classes', () => {
+    render(<PosterCard title="Movie" onClick={() => {}} />)
+    const card = screen.getByRole('button')
+    expect(card.className).toContain('md:w-32')
+    expect(card.className).toContain('lg:w-36')
+  })
 })

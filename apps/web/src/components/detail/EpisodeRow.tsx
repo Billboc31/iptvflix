@@ -61,7 +61,7 @@ export default function EpisodeRow({ episode, devices = [], progressMs = 0 }: Pr
                   }`,
                 )
               }
-              className="text-[#e50914] hover:text-[#e50914]/80 font-medium transition-colors"
+              className="inline-flex items-center min-h-[44px] text-[#e50914] hover:text-[#e50914]/80 font-medium transition-colors"
               aria-label={`Lire l'épisode ${episode.episodeNumber}`}
             >
               ▶ Lire
@@ -71,7 +71,7 @@ export default function EpisodeRow({ episode, devices = [], progressMs = 0 }: Pr
             <button
               type="button"
               onClick={() => setPickerOpen(true)}
-              className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
+              className="inline-flex items-center min-h-[44px] text-blue-400 hover:text-blue-300 font-medium transition-colors"
               aria-label={`Lire l'épisode ${episode.episodeNumber} sur TV`}
             >
               📺 TV

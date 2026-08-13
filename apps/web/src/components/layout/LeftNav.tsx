@@ -22,7 +22,7 @@ const NAV_ITEMS: NavItem[] = [
 
 export default function LeftNav() {
   return (
-    <nav className="fixed top-0 left-0 h-screen w-60 bg-[#111118] border-r border-white/5 flex flex-col z-40">
+    <nav className="hidden md:flex fixed top-0 left-0 h-screen w-60 bg-[#111118] border-r border-white/5 flex-col z-40">
       {/* Logo */}
       <div className="px-6 py-6 border-b border-white/5">
         <span className="text-2xl font-bold text-[#e50914] tracking-tight">IPTVFlix</span>

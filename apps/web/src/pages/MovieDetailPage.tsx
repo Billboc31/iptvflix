@@ -20,7 +20,7 @@ function DetailSkeleton() {
       <div className="relative h-[50vh] min-h-72 overflow-hidden">
         <Skeleton className="absolute inset-0 w-full h-full rounded-none" />
       </div>
-      <div className="px-8 py-6 -mt-24 relative">
+      <div className="px-4 py-4 md:px-8 md:py-6 -mt-24 relative">
         <div className="flex gap-6 items-start">
           <div className="hidden md:block flex-shrink-0 w-40 rounded-xl overflow-hidden">
             <Skeleton height="240px" />
@@ -138,7 +138,7 @@ export default function MovieDetailPage() {
       </div>
 
       {/* Content */}
-      <div className="px-8 py-6 -mt-24 relative">
+      <div className="px-4 py-4 md:px-8 md:py-6 -mt-24 relative">
         <div className="flex gap-6 items-start">
           {/* Poster */}
           {movie.posterUrl && (
@@ -149,7 +149,7 @@ export default function MovieDetailPage() {
 
           {/* Info */}
           <div className="flex-1 min-w-0">
-            <h1 className="text-4xl font-bold text-white mb-1">{movie.title}</h1>
+            <h1 className="text-2xl md:text-4xl font-bold text-white mb-1">{movie.title}</h1>
             {showOriginalTitle && (
               <p className="text-gray-400 text-base mb-3">{movie.originalTitle}</p>
             )}
@@ -229,11 +229,12 @@ export default function MovieDetailPage() {
             <CastRow cast={movie.cast} director={movie.director} />
 
             <div className="flex flex-wrap gap-3">
-              <Button variant="ghost" onClick={() => navigate(-1)}>
+              <Button variant="ghost" className="min-h-[44px]" onClick={() => navigate(-1)}>
                 ← Retour
               </Button>
               {movie.availabilityStatus === 'AVAILABLE' && (
                 <Button
+                  className="min-h-[44px]"
                   onClick={() =>
                     navigate(
                       `/player/movie/${movie.id}${
@@ -246,7 +247,7 @@ export default function MovieDetailPage() {
                 </Button>
               )}
               {devices.length > 0 && (
-                <Button variant="secondary" onClick={() => setPickerOpen(true)}>
+                <Button variant="secondary" className="min-h-[44px]" onClick={() => setPickerOpen(true)}>
                   📺 Lire sur TV
                 </Button>
               )}

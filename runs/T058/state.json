@@ -1,7 +1,7 @@
 {
   "ticket_id": "T058",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T058-redesign-mobile-navigation-and-shelf-browsing-for",
   "issue_number": 119,
-  "updated_at": "2026-08-13T05:59:20Z"
+  "updated_at": "2026-08-13T06:11:37Z"
 }

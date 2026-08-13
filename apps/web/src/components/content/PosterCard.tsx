@@ -56,7 +56,7 @@ export default function PosterCard({
       onMouseLeave={cancelPreview}
       onFocus={startPreview}
       onBlur={cancelPreview}
-      className="relative flex-shrink-0 w-36 cursor-pointer group"
+      className="relative flex-shrink-0 w-28 md:w-32 lg:w-36 cursor-pointer group"
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       onKeyDown={(e) => e.key === 'Enter' && onClick?.()}
