@@ -33,3 +33,25 @@
 [2026-08-13T18:38:49Z] push: pushing branch=ticket/T066-add-scheduled-refreshes-for-the-canonical-catalog
 [2026-08-13T18:38:51Z] push: done branch=ticket/T066-add-scheduled-refreshes-for-the-canonical-catalog
 [2026-08-13T18:38:51Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-13T18:39:15Z] auto-run: step=tester done rc=0
+[2026-08-13T18:39:15Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-13T18:39:15Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-13T18:39:15Z] commit-checkpoint: unstaged runtime garbage: ['runs/T066/runtime.log', 'runs/T066/workflow-status.md']
+[2026-08-13T18:39:15Z] commit-checkpoint: sha=cdafe92 files=2 title='test(T066/workflow): tester — update 2 file(s)'
+[2026-08-13T18:39:15Z] auto-run: auto-push triggered
+[2026-08-13T18:39:15Z] push: tolerating runtime dirty files (not blocking): ['runs/T066/runtime.log', 'runs/T066/workflow-status.md']
+[2026-08-13T18:39:15Z] push: pushing branch=ticket/T066-add-scheduled-refreshes-for-the-canonical-catalog
+[2026-08-13T18:39:17Z] push: done branch=ticket/T066-add-scheduled-refreshes-for-the-canonical-catalog
+[2026-08-13T18:39:17Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-13T18:44:03Z] conflict-resolver: [pass 2/3] conflicted=['apps/api/src/services/scheduler-service.ts'] | staged=['apps/api/src/services/scheduler-service.ts'] | unresolved=[] | continue_rc=1 | next_source=[]
+[2026-08-13T18:44:03Z] conflict-resolver: all conflicts resolved after 2 pass(es)
+[2026-08-13T18:44:03Z] conflict-resolver: running tests
+[2026-08-13T18:44:03Z] conflict-resolver: test-report written: runs/T066/conflict/test-report.md
+[2026-08-13T18:44:03Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-13T18:44:03Z] conflict-resolver: commit: sha=bae67a2
+[2026-08-13T18:44:03Z] conflict-resolver: git push --force-with-lease origin ticket/T066-add-scheduled-refreshes-for-the-canonical-catalog
+[2026-08-13T18:44:05Z] conflict-resolver: push succeeded
+[2026-08-13T18:44:05Z] conflict-resolver: state → CONFLICT_RESOLVED_REVIEW_NEEDED
+[2026-08-13T18:44:06Z] auto-finalize-conflict: gate disabled for project='iptvflix'
+[2026-08-13T18:44:06Z] conflict-resolver: transition CONFLICT_RESOLVED_REVIEW_NEEDED → TEST_COMPLETE (auto, PROJECT_SETTING)
+[2026-08-13T18:44:06Z] auto-run: TEST_COMPLETE — running PR lifecycle
