@@ -1,7 +1,7 @@
 {
   "ticket_id": "T057",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T057-add-web-play-on-tv-device-picker-and-remote-handof",
   "issue_number": 106,
-  "updated_at": "2026-08-13T02:44:28Z"
+  "updated_at": "2026-08-13T03:01:24Z"
 }

@@ -41,6 +41,10 @@ import type {
   MeResponse,
   PlaybackResolveRequest,
   PlaybackSessionResponse,
+  DeviceResponse,
+  PairingCodeDetailResponse,
+  PlaybackCommandRequest,
+  PlaybackCommandResponse,
 } from '@iptvflix/api-contracts'
 
 const BASE = import.meta.env.VITE_API_BASE ?? '/api'
@@ -273,4 +277,31 @@ export function resolvePlayback(
     method: 'POST',
     body: JSON.stringify(body),
   })
+}
+
+export function listDevices(): Promise<DeviceResponse[]> {
+  return request('/devices')
+}
+
+export function getPairingCodeDetail(code: string): Promise<PairingCodeDetailResponse> {
+  return request(`/pairing/codes/${code}`)
+}
+
+export function approvePairingCode(code: string, name?: string): Promise<DeviceResponse> {
+  return request(`/pairing/codes/${code}/approve`, { method: 'POST', body: JSON.stringify({ name }) })
+}
+
+export function sendPlayOnTvCommand(
+  deviceId: string,
+  payload: PlaybackCommandRequest,
+): Promise<PlaybackCommandResponse> {
+  return request(`/devices/${deviceId}/commands`, { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export function renameDevice(deviceId: string, name: string): Promise<DeviceResponse> {
+  return request(`/devices/${deviceId}`, { method: 'PATCH', body: JSON.stringify({ name }) })
+}
+
+export function revokeDevice(deviceId: string): Promise<void> {
+  return request(`/devices/${deviceId}`, { method: 'DELETE' })
 }

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { MovieDetailResponse, AvailabilityVariantResponse } from '@iptvflix/api-contracts'
 import { getMovie, ApiError } from '../lib/api.js'
+import { useDevices } from '../hooks/useDevices.js'
+import { useToast } from '../components/ui/Toast.js'
 import Badge from '../components/ui/Badge.js'
 import Button from '../components/ui/Button.js'
 import Skeleton from '../components/ui/Skeleton.js'
@@ -10,6 +12,7 @@ import WatchlistButton from '../components/content/WatchlistButton.js'
 import FeedbackButtons from '../components/content/FeedbackButtons.js'
 import TrailerPlayer from '../components/detail/TrailerPlayer.js'
 import CastRow from '../components/detail/CastRow.js'
+import DevicePickerModal from '../components/devices/DevicePickerModal.js'
 
 function DetailSkeleton() {
   return (
@@ -64,11 +67,14 @@ function VariantBadge({ variant }: { variant: AvailabilityVariantResponse }) {
 export default function MovieDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const toast = useToast()
+  const { devices } = useDevices()
   const [movie, setMovie] = useState<MovieDetailResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -231,9 +237,31 @@ export default function MovieDetailPage() {
                   ▶ Lecture
                 </Button>
               )}
+              {devices.length > 0 && (
+                <Button variant="secondary" onClick={() => setPickerOpen(true)}>
+                  📺 Lire sur TV
+                </Button>
+              )}
               <WatchlistButton mediaType="MOVIE" mediaId={movie.id} />
               <FeedbackButtons mediaType="MOVIE" mediaId={movie.id} />
             </div>
+            <DevicePickerModal
+              open={pickerOpen}
+              onClose={() => setPickerOpen(false)}
+              devices={devices}
+              mediaType="movie"
+              mediaId={movie.id}
+              availabilityId={selectedVariantId}
+              onFastPath={(name, state) => {
+                if (state === 'delivered') {
+                  toast.show(`Lecture lancée sur ${name}`, 'success')
+                } else if (state === 'device-offline') {
+                  toast.show(`${name} est hors ligne`, 'error')
+                } else {
+                  toast.show('Erreur lors de l\'envoi de la commande', 'error')
+                }
+              }}
+            />
           </div>
         </div>
       </div>

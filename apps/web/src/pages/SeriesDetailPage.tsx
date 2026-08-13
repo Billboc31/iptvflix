@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { SeriesDetailResponse, AvailabilityVariantResponse } from '@iptvflix/api-contracts'
 import { getSeries, getProfile, ApiError } from '../lib/api.js'
+import { useDevices } from '../hooks/useDevices.js'
 import Badge from '../components/ui/Badge.js'
 import Button from '../components/ui/Button.js'
 import Skeleton from '../components/ui/Skeleton.js'
@@ -64,6 +65,7 @@ function DetailSkeleton() {
 export default function SeriesDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { devices } = useDevices()
   const [series, setSeries] = useState<SeriesDetailResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
@@ -226,7 +228,7 @@ export default function SeriesDetailPage() {
             {/* Seasons */}
             <div className="mt-6">
               <h2 className="text-lg font-semibold text-white mb-3">Saisons</h2>
-              <SeasonAccordion seriesId={series.id} seasons={series.seasons} profileId={profileId} />
+              <SeasonAccordion seriesId={series.id} seasons={series.seasons} profileId={profileId} devices={devices} />
             </div>
 
             <div className="flex flex-wrap gap-3 mt-6">
