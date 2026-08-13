@@ -6,7 +6,7 @@ import type {
   ExternalMovieCandidate,
   ExternalSeriesCandidate,
 } from '@iptvflix/api-contracts'
-import { searchContent, materializeMovie, materializeSeries } from '../lib/api.js'
+import { searchContent, searchDiscover, materializeMovie, materializeSeries } from '../lib/api.js'
 import PosterCard from '../components/content/PosterCard.js'
 import Spinner from '../components/ui/Spinner.js'
 import EmptyState from '../components/ui/EmptyState.js'
@@ -26,6 +26,7 @@ export default function SearchPage() {
   const [externalMovies, setExternalMovies] = useState<ExternalMovieCandidate[]>([])
   const [externalSeries, setExternalSeries] = useState<ExternalSeriesCandidate[]>([])
   const [loading, setLoading] = useState(false)
+  const [externalLoading, setExternalLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const [externalError, setExternalError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
@@ -40,23 +41,34 @@ export default function SearchPage() {
       setExternalError(null)
       return
     }
+
     setLoading(true)
+    setExternalLoading(true)
     setError(null)
+    setExternalError(null)
+
     searchContent(debouncedQuery)
-      .then(({ movies: m, series: s, externalMovies: em = [], externalSeries: es = [] }) => {
+      .then(({ movies: m, series: s }) => {
         setMovies(m)
         setSeries(s)
-        setExternalMovies(em)
-        setExternalSeries(es)
       })
       .catch((err: Error) => {
         setError(err)
         setMovies([])
         setSeries([])
+      })
+      .finally(() => setLoading(false))
+
+    searchDiscover(debouncedQuery)
+      .then(({ externalMovies: em, externalSeries: es }) => {
+        setExternalMovies(em)
+        setExternalSeries(es)
+      })
+      .catch(() => {
         setExternalMovies([])
         setExternalSeries([])
       })
-      .finally(() => setLoading(false))
+      .finally(() => setExternalLoading(false))
   }, [debouncedQuery, retryCount])
 
   // Sync query into URL
@@ -67,7 +79,7 @@ export default function SearchPage() {
 
   const total = movies.length + series.length
   const hasExternal = externalMovies.length > 0 || externalSeries.length > 0
-  const showExternal = hasExternal && total <= 5
+  const showExternal = hasExternal || externalLoading
 
   async function handleExternalMovieClick(candidate: ExternalMovieCandidate) {
     setExternalError(null)
@@ -190,7 +202,9 @@ export default function SearchPage() {
             <p role="alert" className="text-red-400 text-sm mb-4">{externalError}</p>
           )}
 
-          {externalMovies.length > 0 && (
+          {externalLoading && <Spinner />}
+
+          {!externalLoading && externalMovies.length > 0 && (
             <div className="mb-6">
               <h3 className="text-sm font-medium text-gray-500 mb-3">Films</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -208,7 +222,7 @@ export default function SearchPage() {
             </div>
           )}
 
-          {externalSeries.length > 0 && (
+          {!externalLoading && externalSeries.length > 0 && (
             <div>
               <h3 className="text-sm font-medium text-gray-500 mb-3">Séries</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">

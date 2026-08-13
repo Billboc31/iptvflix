@@ -10,6 +10,7 @@ import type {
   MovieFilters,
   SeriesFilters,
   SearchResponse,
+  DiscoverResponse,
   SourceResponse,
   CreateSourceBody,
   UpdateSourceBody,
@@ -117,6 +118,10 @@ export function getSeriesSeasonEpisodes(
 
 export function searchContent(q: string): Promise<SearchResponse> {
   return request(`/search${toQuery({ q })}`)
+}
+
+export function searchDiscover(q: string): Promise<DiscoverResponse> {
+  return request(`/search/remote${toQuery({ q })}`)
 }
 
 export function materializeMovie(tmdbId: string): Promise<{ id: string }> {

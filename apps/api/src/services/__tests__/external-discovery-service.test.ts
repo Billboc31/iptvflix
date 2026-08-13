@@ -123,8 +123,8 @@ describe('ExternalDiscoveryService', () => {
       expect(results).toHaveLength(0)
     })
 
-    it('caps results at 5 even when provider returns more', async () => {
-      const many: MetadataCandidate[] = Array.from({ length: 10 }, (_, i) => ({
+    it('caps results at 10 even when provider returns more', async () => {
+      const many: MetadataCandidate[] = Array.from({ length: 15 }, (_, i) => ({
         externalId: String(i + 1),
         title: `Movie ${i + 1}`,
         year: 2020,
@@ -134,7 +134,7 @@ describe('ExternalDiscoveryService', () => {
 
       const results = await service.discoverMovies('movie', new Set())
 
-      expect(results).toHaveLength(5)
+      expect(results).toHaveLength(10)
     })
 
     it('returns [] and does not rethrow when provider throws', async () => {

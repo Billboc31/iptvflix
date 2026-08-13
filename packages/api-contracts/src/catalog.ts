@@ -159,6 +159,9 @@ export type ExternalSeriesCandidate = {
 export type SearchResponse = {
   movies: MovieResponse[]
   series: SeriesResponse[]
+}
+
+export type DiscoverResponse = {
   externalMovies: ExternalMovieCandidate[]
   externalSeries: ExternalSeriesCandidate[]
 }

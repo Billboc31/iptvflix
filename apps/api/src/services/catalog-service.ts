@@ -440,13 +440,25 @@ export async function searchContent(
     db
       .select()
       .from(movies)
-      .where(or(ilike(movies.title, pattern), ilike(movies.originalTitle, pattern)))
+      .where(
+        or(
+          ilike(movies.title, pattern),
+          ilike(movies.originalTitle, pattern),
+          sql`${movies.localizations}->'fr'->>'title' ILIKE ${pattern}`,
+        ),
+      )
       .orderBy(asc(movies.title))
       .limit(20),
     db
       .select()
       .from(series)
-      .where(or(ilike(series.title, pattern), ilike(series.originalTitle, pattern)))
+      .where(
+        or(
+          ilike(series.title, pattern),
+          ilike(series.originalTitle, pattern),
+          sql`${series.localizations}->'fr'->>'title' ILIKE ${pattern}`,
+        ),
+      )
       .orderBy(asc(series.title))
       .limit(20),
   ])

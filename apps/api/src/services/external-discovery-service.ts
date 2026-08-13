@@ -13,7 +13,7 @@ interface CacheEntry<T> {
 }
 
 const CACHE_TTL_MS = 60_000
-const MAX_EXTERNAL_RESULTS = 5
+const MAX_EXTERNAL_RESULTS = 10
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500'
 
 export class ExternalDiscoveryService {

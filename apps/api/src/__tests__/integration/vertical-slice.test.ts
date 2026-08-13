@@ -341,33 +341,25 @@ describe('Vertical slice integration — source config → sync → catalog quer
     }
   })
 
-  it('search returns externalMovies and externalSeries arrays (empty when no discovery service)', async () => {
-    mswServer.use(...happyHandlers())
-
-    // Create and sync a source so local search has data
-    const createRes = await app.inject({
-      method: 'POST',
-      url: '/sources',
-      body: { name: 'Search Base Source', type: 'XTREAM', baseUrl: FAKE_BASE, username: 'testuser', password: 'testpass' },
-    })
-    expect(createRes.statusCode).toBe(201)
-    const source = createRes.json<{ id: string }>()
-    cleanupSourceId = source.id
-
-    await app.inject({ method: 'POST', url: '/sync-runs', body: { sourceId: source.id } })
-
-    // Use a fresh app without discovery service to verify base search response shape
+  it('GET /search returns only movies and series (no external fields); GET /search/remote returns empty arrays when no discovery service', async () => {
+    // Use a fresh app without discovery service to verify response shapes
     const bareApp = Fastify({ logger: false })
     await bareApp.register(searchRoutes)
     await bareApp.ready()
 
-    const res = await bareApp.inject({ method: 'GET', url: '/search?q=Integration' })
-    expect(res.statusCode).toBe(200)
-    const body = res.json<any>()
-    expect(Array.isArray(body.movies)).toBe(true)
-    expect(Array.isArray(body.series)).toBe(true)
-    expect(Array.isArray(body.externalMovies)).toBe(true)
-    expect(Array.isArray(body.externalSeries)).toBe(true)
+    const searchRes = await bareApp.inject({ method: 'GET', url: '/search?q=Integration' })
+    expect(searchRes.statusCode).toBe(200)
+    const searchBody = searchRes.json<any>()
+    expect(Array.isArray(searchBody.movies)).toBe(true)
+    expect(Array.isArray(searchBody.series)).toBe(true)
+    expect(searchBody).not.toHaveProperty('externalMovies')
+    expect(searchBody).not.toHaveProperty('externalSeries')
+
+    const remoteRes = await bareApp.inject({ method: 'GET', url: '/search/remote?q=Integration' })
+    expect(remoteRes.statusCode).toBe(200)
+    const remoteBody = remoteRes.json<any>()
+    expect(remoteBody.externalMovies).toEqual([])
+    expect(remoteBody.externalSeries).toEqual([])
 
     await bareApp.close()
   })
@@ -563,13 +555,21 @@ describe('Vertical slice — external discovery flow', () => {
       http.get(`${FAKE_TMDB_BASE}/search/tv`, () => HttpResponse.json({ results: [] })),
     )
 
-    const res = await discoveryApp.inject({
+    const localRes = await discoveryApp.inject({
       method: 'GET',
       url: '/search?q=External+Only',
     })
+    expect(localRes.statusCode).toBe(200)
+    const localBody = localRes.json<any>()
+    expect(localBody.movies).toHaveLength(0)
+    expect(localBody).not.toHaveProperty('externalMovies')
+
+    const res = await discoveryApp.inject({
+      method: 'GET',
+      url: '/search/remote?q=External+Only',
+    })
     expect(res.statusCode).toBe(200)
     const body = res.json<any>()
-    expect(body.movies).toHaveLength(0)
     expect(body.externalMovies).toHaveLength(1)
     expect(body.externalMovies[0].tmdbId).toBe('99999')
     expect(body.externalMovies[0].title).toBe('External Only Movie')
@@ -595,10 +595,10 @@ describe('Vertical slice — external discovery flow', () => {
     const { id } = matRes.json<{ id: string }>()
     materializedMovieIds.push(id)
 
-    // Search should now return the movie in local results and NOT in externalMovies
+    // Remote search should now exclude the locally known tmdbId
     const res = await discoveryApp.inject({
       method: 'GET',
-      url: '/search?q=External+Only',
+      url: '/search/remote?q=External+Only',
     })
     expect(res.statusCode).toBe(200)
     const body = res.json<any>()
@@ -664,15 +664,23 @@ describe('Vertical slice — external discovery flow', () => {
     )
 
     // Use a distinct query so the 60s in-memory cache from earlier tests doesn't interfere
-    const res = await discoveryApp.inject({
+    const localRes = await discoveryApp.inject({
       method: 'GET',
       url: '/search?q=TmdbDown',
     })
-    expect(res.statusCode).toBe(200)
-    const body = res.json<any>()
-    expect(Array.isArray(body.movies)).toBe(true)
-    expect(body.externalMovies).toEqual([])
-    expect(body.externalSeries).toEqual([])
+    expect(localRes.statusCode).toBe(200)
+    const localBody = localRes.json<any>()
+    expect(Array.isArray(localBody.movies)).toBe(true)
+    expect(localBody).not.toHaveProperty('externalMovies')
+
+    const remoteRes = await discoveryApp.inject({
+      method: 'GET',
+      url: '/search/remote?q=TmdbDown',
+    })
+    expect(remoteRes.statusCode).toBe(200)
+    const remoteBody = remoteRes.json<any>()
+    expect(remoteBody.externalMovies).toEqual([])
+    expect(remoteBody.externalSeries).toEqual([])
   })
 
   it('POST /discovery/movies returns 409 for invalid tmdbId', async () => {
