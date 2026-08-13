@@ -1,7 +1,7 @@
 {
   "ticket_id": "T066",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T066-add-scheduled-refreshes-for-the-canonical-catalog",
   "issue_number": 133,
-  "updated_at": "2026-08-13T15:12:05Z"
+  "updated_at": "2026-08-13T18:00:51Z"
 }
