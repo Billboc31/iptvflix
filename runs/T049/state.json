@@ -1,7 +1,7 @@
 {
   "ticket_id": "T049",
-  "state": "IMPLEMENTATION_REVIEW_NEEDED",
+  "state": "IMPLEMENTATION_FIX_REQUIRED",
   "branch": "ticket/T049-implement-m3u-catalog-ingestion-through-the-common",
   "issue_number": 98,
-  "updated_at": "2026-08-13T00:24:39Z"
+  "updated_at": "2026-08-13T00:31:47Z"
 }
