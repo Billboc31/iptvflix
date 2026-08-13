@@ -6,6 +6,9 @@
  * out of order — which broke Railway prod (e.g. missing vote_average while
  * match_status existed). This script applies any migration whose SHA-256 is
  * not yet in drizzle.__drizzle_migrations, sorted by journal idx.
+ *
+ * On drifted DBs (heal migrations / partial applies), duplicate DDL is treated
+ * as already-applied so redeploys can catch up and record the missing hash.
  */
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -15,6 +18,9 @@ import postgres from 'postgres'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = path.resolve(__dirname, '../migrations')
+
+/** Postgres: duplicate_column, duplicate_table, duplicate_object, duplicate_schema */
+const ALREADY_EXISTS_CODES = new Set(['42701', '42P07', '42710', '42P06'])
 
 function loadPending(appliedHashes) {
   const journal = JSON.parse(
@@ -34,6 +40,21 @@ function loadPending(appliedHashes) {
     }
   }
   return pending
+}
+
+async function applyStatement(tx, stmt) {
+  try {
+    await tx.unsafe(stmt)
+  } catch (err) {
+    const code = err && typeof err === 'object' ? err.code : undefined
+    if (code && ALREADY_EXISTS_CODES.has(code)) {
+      console.warn(
+        `[migrate-safe] already exists (${code}), continuing: ${stmt.replace(/\s+/g, ' ').slice(0, 100)}`,
+      )
+      return
+    }
+    throw err
+  }
 }
 
 async function main() {
@@ -73,7 +94,7 @@ async function main() {
 
       await sql.begin(async (tx) => {
         for (const stmt of statements) {
-          await tx.unsafe(stmt)
+          await applyStatement(tx, stmt)
         }
         await tx`
           INSERT INTO drizzle.__drizzle_migrations (hash, created_at)

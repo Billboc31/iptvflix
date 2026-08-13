@@ -1,9 +1,9 @@
-ALTER TABLE "movies" ADD COLUMN "vote_average" real;--> statement-breakpoint
-ALTER TABLE "movies" ADD COLUMN "certification" text;--> statement-breakpoint
-ALTER TABLE "series" ADD COLUMN "vote_average" real;--> statement-breakpoint
-ALTER TABLE "series" ADD COLUMN "certification" text;--> statement-breakpoint
-ALTER TABLE "series" ADD COLUMN "status" text;--> statement-breakpoint
-CREATE TABLE "media_videos" (
+ALTER TABLE "movies" ADD COLUMN IF NOT EXISTS "vote_average" real;--> statement-breakpoint
+ALTER TABLE "movies" ADD COLUMN IF NOT EXISTS "certification" text;--> statement-breakpoint
+ALTER TABLE "series" ADD COLUMN IF NOT EXISTS "vote_average" real;--> statement-breakpoint
+ALTER TABLE "series" ADD COLUMN IF NOT EXISTS "certification" text;--> statement-breakpoint
+ALTER TABLE "series" ADD COLUMN IF NOT EXISTS "status" text;--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "media_videos" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"media_type" text NOT NULL,
 	"media_id" uuid NOT NULL,
@@ -14,7 +14,7 @@ CREATE TABLE "media_videos" (
 	"fetched_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "media_credits" (
+CREATE TABLE IF NOT EXISTS "media_credits" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"media_type" text NOT NULL,
 	"media_id" uuid NOT NULL,
