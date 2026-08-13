@@ -7,9 +7,14 @@ import {
   ReconciliationAlreadyRunningError,
   type ReconcileOptions,
 } from '../services/media-reconciliation-service.js'
+import { EpisodeBackfillService } from '../services/episode-backfill-service.js'
 
 interface ReconcileRouteOptions {
   reconciliationService: MediaReconciliationService
+}
+
+interface EpisodeBackfillRouteOptions {
+  backfillService: EpisodeBackfillService
 }
 
 export async function reconcileRoutes(
@@ -43,5 +48,22 @@ export async function reconcileRoutes(
 
     if (!run) return reply.status(404).send({ error: 'Reconciliation run not found' })
     return run
+  })
+}
+
+export async function episodeBackfillRoutes(
+  app: FastifyInstance,
+  opts: EpisodeBackfillRouteOptions,
+): Promise<void> {
+  app.post<{ Body: { force?: boolean } }>('/admin/episode-backfill', async (request, reply) => {
+    const { force } = request.body ?? {}
+    void opts.backfillService.backfill({ force })
+    return reply.status(202).send({ status: 'RUNNING' })
+  })
+
+  app.get('/admin/episode-backfill/latest', async (_request, reply) => {
+    const state = opts.backfillService.getLatestState()
+    if (!state) return reply.status(404).send({ error: 'No backfill run found' })
+    return state
   })
 }

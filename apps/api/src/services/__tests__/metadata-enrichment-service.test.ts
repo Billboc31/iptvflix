@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MetadataEnrichmentService } from '../metadata-enrichment-service.js'
-import type { MetadataProvider, ExternalMovieMetadata, ExternalSeriesMetadata } from '../../providers/metadata/types.js'
+import type { MetadataProvider, ExternalMovieMetadata, ExternalSeriesMetadata, ExternalSeasonEpisode } from '../../providers/metadata/types.js'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import type * as schema from '../../db/schema/index.js'
 
@@ -87,6 +87,7 @@ function makeProvider(overrides: Partial<MetadataProvider> = {}): MetadataProvid
     getSeriesCredits: vi.fn().mockResolvedValue([]),
     getMovieCertification: vi.fn().mockResolvedValue(null),
     getSeriesCertification: vi.fn().mockResolvedValue(null),
+    getSeasonEpisodes: vi.fn().mockResolvedValue([]),
     ...overrides,
   }
 }
@@ -424,6 +425,132 @@ describe('MetadataEnrichmentService', () => {
       const result = await service.enrichPending()
       expect(result.movies.failed).toBe(1)
       expect(result.movies.enriched).toBe(0)
+    })
+  })
+
+  describe('enrichSeriesSeasons()', () => {
+    const SEASON_ID = 'season-uuid-1'
+    const EPISODE_ID = 'episode-uuid-1'
+
+    it('returns no-tmdb-id when series has null tmdbId', async () => {
+      const row = { id: SERIES_ID, tmdbId: null }
+      const whereMock = vi.fn().mockResolvedValue([row])
+      const fromMock = vi.fn().mockReturnValue({ where: whereMock })
+      const selectMock = vi.fn().mockReturnValue({ from: fromMock })
+
+      const db = { select: selectMock } as unknown as Db
+      const service = new MetadataEnrichmentService(db, makeProvider())
+      const result = await service.enrichSeriesSeasons(SERIES_ID)
+      expect(result.result).toBe('no-tmdb-id')
+    })
+
+    it('returns no-tmdb-id when series row is not found', async () => {
+      const whereMock = vi.fn().mockResolvedValue([])
+      const fromMock = vi.fn().mockReturnValue({ where: whereMock })
+      const selectMock = vi.fn().mockReturnValue({ from: fromMock })
+
+      const db = { select: selectMock } as unknown as Db
+      const service = new MetadataEnrichmentService(db, makeProvider())
+      const result = await service.enrichSeriesSeasons(SERIES_ID)
+      expect(result.result).toBe('no-tmdb-id')
+    })
+
+    it('upserts title, synopsis, airDate from TMDB onto existing episode rows', async () => {
+      const tmdbEpisodes: ExternalSeasonEpisode[] = [
+        { episodeNumber: 1, title: 'Pilot (TMDB)', synopsis: 'Synop', airDate: '2024-01-15', runtimeMinutes: 45, stillPath: null },
+      ]
+
+      let callIdx = 0
+      const callResults = [
+        [{ id: SERIES_ID, tmdbId: TMDB_SERIES_ID }],
+        [{ id: SEASON_ID, seasonNumber: 1 }],
+        [{ id: EPISODE_ID }],
+      ]
+
+      const whereMock = vi.fn().mockImplementation(() => Promise.resolve(callResults[callIdx++] ?? []))
+      const limitMock = vi.fn().mockImplementation(() => Promise.resolve(callResults[callIdx++] ?? []))
+      const fromMock = vi.fn().mockReturnValue({ where: whereMock })
+      const selectMock = vi.fn().mockImplementation(() => ({
+        from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: limitMock }) }),
+      }))
+
+      // Override: first call returns series, second call returns seasons, subsequent calls return episodes
+      let selectCall = 0
+      const smartSelect = vi.fn().mockImplementation(() => {
+        const callNum = selectCall++
+        if (callNum === 0) {
+          // series lookup
+          return { from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ id: SERIES_ID, tmdbId: TMDB_SERIES_ID }]) }) }
+        }
+        if (callNum === 1) {
+          // seasons lookup
+          return { from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ id: SEASON_ID, seasonNumber: 1 }]) }) }
+        }
+        // episode lookup
+        return { from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ id: EPISODE_ID }]) }) }) }
+      })
+
+      const whereUpdate = vi.fn().mockResolvedValue(undefined)
+      const setMock = vi.fn().mockReturnValue({ where: whereUpdate })
+      const updateMock = vi.fn().mockReturnValue({ set: setMock })
+
+      const mockDb = {
+        select: smartSelect,
+        update: updateMock,
+      } as unknown as Db
+
+      const provider = makeProvider({
+        getSeasonEpisodes: vi.fn().mockResolvedValue(tmdbEpisodes),
+      })
+
+      const service = new MetadataEnrichmentService(mockDb, provider)
+      const result = await service.enrichSeriesSeasons(SERIES_ID)
+
+      expect(result.result).toBe('enriched')
+      expect(provider.getSeasonEpisodes).toHaveBeenCalledWith(TMDB_SERIES_ID, 1)
+      expect(updateMock).toHaveBeenCalled()
+      const setArgs = setMock.mock.calls[0][0] as Record<string, unknown>
+      expect(setArgs.title).toBe('Pilot (TMDB)')
+      expect(setArgs.synopsis).toBe('Synop')
+      expect(setArgs.airDate).toBe('2024-01-15')
+    })
+
+    it('does not INSERT a new episode row for a TMDB episode with no matching DB row', async () => {
+      let selectCall = 0
+      const smartSelect = vi.fn().mockImplementation(() => {
+        const callNum = selectCall++
+        if (callNum === 0) {
+          return { from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ id: SERIES_ID, tmdbId: TMDB_SERIES_ID }]) }) }
+        }
+        if (callNum === 1) {
+          return { from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ id: SEASON_ID, seasonNumber: 1 }]) }) }
+        }
+        // Episode lookup returns empty — TMDB-only episode, no DB row
+        return { from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }) }) }
+      })
+
+      const insertMock = vi.fn()
+      const updateMock = vi.fn()
+
+      const mockDb = {
+        select: smartSelect,
+        insert: insertMock,
+        update: updateMock,
+      } as unknown as Db
+
+      const provider = makeProvider({
+        getSeasonEpisodes: vi.fn().mockResolvedValue([
+          { episodeNumber: 99, title: 'TMDB Only', synopsis: null, airDate: null, runtimeMinutes: null, stillPath: null },
+        ]),
+      })
+
+      const service = new MetadataEnrichmentService(mockDb, provider)
+      const result = await service.enrichSeriesSeasons(SERIES_ID)
+
+      expect(result.result).toBe('enriched')
+      expect(result.episodes.skipped).toBe(1)
+      expect(insertMock).not.toHaveBeenCalled()
+      expect(updateMock).not.toHaveBeenCalled()
     })
   })
 })

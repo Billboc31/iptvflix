@@ -113,3 +113,16 @@ export interface TmdbContentRatingEntry {
 export interface TmdbContentRatingsResponse {
   results: TmdbContentRatingEntry[]
 }
+
+export interface TmdbSeasonEpisode {
+  episode_number: number
+  name: string | null
+  overview: string | null
+  air_date: string | null
+  runtime: number | null
+  still_path: string | null
+}
+
+export interface TmdbSeasonResponse {
+  episodes: TmdbSeasonEpisode[]
+}

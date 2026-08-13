@@ -1,7 +1,7 @@
 {
   "ticket_id": "T062",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T062-ingest-and-reconcile-canonical-series-season-episo",
   "issue_number": 124,
-  "updated_at": "2026-08-13T11:11:23Z"
+  "updated_at": "2026-08-13T11:39:47Z"
 }

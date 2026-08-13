@@ -4,6 +4,7 @@ import type {
   ExternalSeriesMetadata,
   ExternalVideo,
   ExternalCreditPerson,
+  ExternalSeasonEpisode,
   MetadataCandidate,
   DiscoveryFeed,
 } from '../types.js'
@@ -16,6 +17,7 @@ import type {
   TmdbAggregateCreditsResponse,
   TmdbReleaseDatesResponse,
   TmdbContentRatingsResponse,
+  TmdbSeasonResponse,
 } from './types.js'
 import { TmdbRateLimitError, TmdbNetworkError } from './errors.js'
 
@@ -254,6 +256,25 @@ export class TmdbClient implements MetadataProvider {
       return usEntry?.rating ?? null
     } catch {
       return null
+    }
+  }
+
+  async getSeasonEpisodes(tmdbSeriesId: number, seasonNumber: number): Promise<ExternalSeasonEpisode[]> {
+    const response = await this.fetchWithRetry(`${BASE_URL}/tv/${tmdbSeriesId}/season/${seasonNumber}`)
+    if (response.status === 404) return []
+    if (!response.ok) return []
+    try {
+      const raw = (await response.json()) as TmdbSeasonResponse
+      return (raw.episodes ?? []).map((ep) => ({
+        episodeNumber: ep.episode_number,
+        title: ep.name || null,
+        synopsis: ep.overview || null,
+        airDate: ep.air_date || null,
+        runtimeMinutes: ep.runtime ?? null,
+        stillPath: ep.still_path ?? null,
+      }))
+    } catch {
+      return []
     }
   }
 
