@@ -1,20 +1,12 @@
-Both changes look correct. Here's a summary of what was done:
+All 15 tests pass. Here's a summary of what was done:
 
----
+**`::watchlist_media_type` cast — not a bug.** The schema confirms `media_arrivals.media_type` uses `watchlist_media_type`, so the cast at line 549 is correct.
 
-**Fix 1 — `startRun` race condition (blocking issue #2)**
+**4 new tests added** to `apps/api/src/services/__tests__/media-reconciliation-service.test.ts`:
 
-Added `isUniqueConstraintError` helper that checks for Postgres error code `'23505'`. The `INSERT` in `startRun` is now wrapped in a try/catch: if a concurrent request races past the initial `SELECT` and triggers the partial unique index, the constraint error is caught, translated to `ReconciliationAlreadyRunningError`, and the route returns 409 as expected.
+- **Test 12** — `explicit_feedback` migration: verifies that a LIKE on an old movie ID migrates to the canonical after merge.
+- **Test 13** — `shelf_members` migration: verifies that a shelf entry on an old movie ID points to canonical after merge.
+- **Test 14** — `follow_release` migration: verifies that a follow entry on an old movie ID migrates to canonical after merge.
+- **Test 15** — `release_events` + `media_arrivals` FK chain: the most complex path — a non-conflicting event migrates to canonical with its arrival's `media_id` updated (FK stays valid); a conflicting event has its arrival deleted first, then the event itself is deleted.
 
-**Fix 2 — Test 11 cursor resumability (blocking issue #1)**
-
-Replaced the old test (which re-ran `reconcile()` twice and tested UNMATCHED re-eligibility — already covered by test 9) with a test that exercises the actual cursor code path:
-1. Creates 3 movies with availabilities
-2. Calls `startRun()` to get a live RUNNING row
-3. Manually sets `cursorMovieId` to `sortedIds[1]` via `db.update` (simulating a mid-run crash after the first two movies committed)
-4. Calls `executeRun(runId)` directly on that still-RUNNING row
-5. Asserts `processedCount === 1` (only the movie with `id > sortedIds[1]` was fetched) and that the first two movies remain `PENDING` (untouched by this resume)
-
-**Also cleaned up:**
-- Dead code block at the `matchedResults.length === 0` check (unreachable — removed)
-- `batchSize` clamped to `Math.max(1, ...)` to prevent the infinite-loop edge case with `batchSize: 0`
+**`afterEach` updated** to clean up `mediaArrivals`, `explicitFeedback`, `followRelease`, and `shelves` (cascading to `shelfMembers`) per profile, and `releaseEvents` for canonical media IDs before they are deleted — preserving correct deletion order for the RESTRICT FK constraint.

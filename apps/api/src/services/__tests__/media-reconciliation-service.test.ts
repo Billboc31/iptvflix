@@ -11,6 +11,10 @@ import { viewingProgress } from '../../db/schema/viewing-progress.js'
 import { profiles } from '../../db/schema/profiles.js'
 import { reconciliationRuns } from '../../db/schema/reconciliation-runs.js'
 import { titleMatchResults } from '../../db/schema/title-match-results.js'
+import { explicitFeedback } from '../../db/schema/explicit-feedback.js'
+import { shelves, shelfMembers } from '../../db/schema/shelves.js'
+import { followRelease, releaseEvents } from '../../db/schema/release-lifecycle.js'
+import { mediaArrivals } from '../../db/schema/arrivals.js'
 import { MediaReconciliationService, ReconciliationAlreadyRunningError } from '../media-reconciliation-service.js'
 import { TitleMatchingService } from '../title-matching-service.js'
 import type { MetadataProvider, MetadataCandidate } from '../../providers/metadata/types.js'
@@ -90,6 +94,26 @@ afterAll(async () => {
 })
 
 afterEach(async () => {
+  // media_arrivals must be deleted before release_events (RESTRICT FK)
+  await db.delete(mediaArrivals).where(eq(mediaArrivals.profileId, testProfileId))
+  await db.delete(explicitFeedback).where(eq(explicitFeedback.profileId, testProfileId))
+  await db.delete(followRelease).where(eq(followRelease.profileId, testProfileId))
+  // shelves cascade-delete shelf_members
+  await db.delete(shelves).where(eq(shelves.profileId, testProfileId))
+
+  // Collect canonical media IDs before deleting them so we can clean their release_events
+  const [canonicalMovieRows, canonicalSeriesRows] = await Promise.all([
+    db.select({ id: movies.id }).from(movies).where(inArray(movies.tmdbId, ALL_TEST_TMDB_IDS)),
+    db.select({ id: seriesTable.id }).from(seriesTable).where(inArray(seriesTable.tmdbId, ALL_TEST_TMDB_IDS)),
+  ])
+  const allTestMediaIds = [
+    ...canonicalMovieRows.map((m) => m.id),
+    ...canonicalSeriesRows.map((s) => s.id),
+  ]
+  if (allTestMediaIds.length > 0) {
+    await db.delete(releaseEvents).where(inArray(releaseEvents.mediaId, allTestMediaIds))
+  }
+
   await db.delete(reconciliationRuns)
   await db.delete(titleMatchResults).where(eq(titleMatchResults.providerId, testSourceId))
   await db.delete(movies).where(inArray(movies.tmdbId, ALL_TEST_TMDB_IDS))
@@ -595,5 +619,248 @@ describe('MediaReconciliationService', () => {
 
     // Cleanup
     await db.delete(movies).where(inArray(movies.id, movieIds))
+  })
+
+  it('12. explicit_feedback migration — feedback on old media ID migrates to canonical after merge', async () => {
+    const now = new Date()
+
+    const [canonical] = await db
+      .insert(movies)
+      .values({ title: 'Inception Canonical', year: 2010, tmdbId: T.inception, matchStatus: 'MATCHED' })
+      .returning()
+
+    const [oldMovie] = await db
+      .insert(movies)
+      .values({ title: 'Inception Old', matchStatus: 'PENDING' })
+      .returning()
+    await db.insert(movieAvailabilities).values({
+      movieId: oldMovie.id,
+      providerId: testSourceId,
+      providerItemId: 'rec-fb-1',
+      rawTitle: 'Inception.2010.1080p',
+      firstSeenAt: now,
+      lastSeenAt: now,
+    })
+    await db.insert(explicitFeedback).values({
+      profileId: testProfileId,
+      mediaType: 'MOVIE',
+      mediaId: oldMovie.id,
+      feedback: 'LIKE',
+    })
+
+    const provider = makeProvider(async () => [movieCandidate(String(T.inception), 'Inception', 2010)])
+    const svc = makeService(provider)
+    await svc.reconcile({ mediaType: 'MOVIE' })
+
+    const feedbackRows = await db
+      .select()
+      .from(explicitFeedback)
+      .where(and(eq(explicitFeedback.profileId, testProfileId), eq(explicitFeedback.mediaType, 'MOVIE')))
+
+    expect(feedbackRows).toHaveLength(1)
+    expect(feedbackRows[0].mediaId).toBe(canonical.id)
+    expect(feedbackRows[0].feedback).toBe('LIKE')
+
+    // Old movie was merged into canonical
+    const [oldGone] = await db.select().from(movies).where(eq(movies.id, oldMovie.id))
+    expect(oldGone).toBeUndefined()
+  })
+
+  it('13. shelf_members migration — shelf membership on old media ID migrates to canonical after merge', async () => {
+    const now = new Date()
+
+    const [canonical] = await db
+      .insert(movies)
+      .values({ title: 'Inception Canonical', year: 2010, tmdbId: T.inception, matchStatus: 'MATCHED' })
+      .returning()
+
+    const [oldMovie] = await db
+      .insert(movies)
+      .values({ title: 'Inception Old', matchStatus: 'PENDING' })
+      .returning()
+    await db.insert(movieAvailabilities).values({
+      movieId: oldMovie.id,
+      providerId: testSourceId,
+      providerItemId: 'rec-shelf-1',
+      rawTitle: 'Inception.2010.1080p',
+      firstSeenAt: now,
+      lastSeenAt: now,
+    })
+
+    const [shelf] = await db
+      .insert(shelves)
+      .values({ profileId: testProfileId, title: 'My Test Shelf', type: 'MANUAL' })
+      .returning()
+    await db.insert(shelfMembers).values({
+      shelfId: shelf.id,
+      mediaType: 'MOVIE',
+      mediaId: oldMovie.id,
+    })
+
+    const provider = makeProvider(async () => [movieCandidate(String(T.inception), 'Inception', 2010)])
+    const svc = makeService(provider)
+    await svc.reconcile({ mediaType: 'MOVIE' })
+
+    const members = await db.select().from(shelfMembers).where(eq(shelfMembers.shelfId, shelf.id))
+    expect(members).toHaveLength(1)
+    expect(members[0].mediaId).toBe(canonical.id)
+  })
+
+  it('14. follow_release migration — follow entry on old media ID migrates to canonical after merge', async () => {
+    const now = new Date()
+
+    const [canonical] = await db
+      .insert(movies)
+      .values({ title: 'Inception Canonical', year: 2010, tmdbId: T.inception, matchStatus: 'MATCHED' })
+      .returning()
+
+    const [oldMovie] = await db
+      .insert(movies)
+      .values({ title: 'Inception Old', matchStatus: 'PENDING' })
+      .returning()
+    await db.insert(movieAvailabilities).values({
+      movieId: oldMovie.id,
+      providerId: testSourceId,
+      providerItemId: 'rec-follow-1',
+      rawTitle: 'Inception.2010.1080p',
+      firstSeenAt: now,
+      lastSeenAt: now,
+    })
+    await db.insert(followRelease).values({
+      profileId: testProfileId,
+      mediaType: 'MOVIE',
+      mediaId: oldMovie.id,
+    })
+
+    const provider = makeProvider(async () => [movieCandidate(String(T.inception), 'Inception', 2010)])
+    const svc = makeService(provider)
+    await svc.reconcile({ mediaType: 'MOVIE' })
+
+    const follows = await db
+      .select()
+      .from(followRelease)
+      .where(and(eq(followRelease.profileId, testProfileId), eq(followRelease.mediaType, 'MOVIE')))
+
+    expect(follows).toHaveLength(1)
+    expect(follows[0].mediaId).toBe(canonical.id)
+  })
+
+  it('15. release_events + media_arrivals FK chain — non-conflicting events migrate with their arrivals; conflicting events delete their arrivals then self', async () => {
+    const now = new Date()
+
+    const [canonical] = await db
+      .insert(movies)
+      .values({ title: 'Inception Canonical', year: 2010, tmdbId: T.inception, matchStatus: 'MATCHED' })
+      .returning()
+
+    const [oldMovie] = await db
+      .insert(movies)
+      .values({ title: 'Inception Old', matchStatus: 'PENDING' })
+      .returning()
+    await db.insert(movieAvailabilities).values({
+      movieId: oldMovie.id,
+      providerId: testSourceId,
+      providerItemId: 'rec-re-1',
+      rawTitle: 'Inception.2010.1080p',
+      firstSeenAt: now,
+      lastSeenAt: now,
+    })
+
+    // Non-conflicting event on old movie (ANNOUNCED — no equivalent on canonical)
+    const occurredNonConflict = new Date('2024-01-01T00:00:00Z')
+    const [nonConflictingEvent] = await db
+      .insert(releaseEvents)
+      .values({
+        mediaType: 'MOVIE',
+        mediaId: oldMovie.id,
+        eventType: 'ANNOUNCED',
+        occurredAt: occurredNonConflict,
+      })
+      .returning()
+
+    // Conflicting SOURCE_APPEARED on old movie — same source + occurred_at as one on canonical
+    const occurredConflict = new Date('2024-06-01T00:00:00Z')
+    const [conflictingEventOnOld] = await db
+      .insert(releaseEvents)
+      .values({
+        mediaType: 'MOVIE',
+        mediaId: oldMovie.id,
+        eventType: 'SOURCE_APPEARED',
+        occurredAt: occurredConflict,
+        sourceId: testSourceId,
+      })
+      .returning()
+
+    // Matching SOURCE_APPEARED already on canonical (creates the conflict)
+    await db.insert(releaseEvents).values({
+      mediaType: 'MOVIE',
+      mediaId: canonical.id,
+      eventType: 'SOURCE_APPEARED',
+      occurredAt: occurredConflict,
+      sourceId: testSourceId,
+    })
+
+    // Arrival tied to the non-conflicting event (should be migrated)
+    const [nonConflictArrival] = await db
+      .insert(mediaArrivals)
+      .values({
+        profileId: testProfileId,
+        mediaType: 'MOVIE',
+        mediaId: oldMovie.id,
+        releaseEventId: nonConflictingEvent.id,
+        arrivedAt: now,
+      })
+      .returning()
+
+    // Arrival tied to the conflicting event (should be deleted when event can't migrate)
+    const [conflictArrival] = await db
+      .insert(mediaArrivals)
+      .values({
+        profileId: testProfileId,
+        mediaType: 'MOVIE',
+        mediaId: oldMovie.id,
+        releaseEventId: conflictingEventOnOld.id,
+        arrivedAt: now,
+      })
+      .returning()
+
+    const provider = makeProvider(async () => [movieCandidate(String(T.inception), 'Inception', 2010)])
+    const svc = makeService(provider)
+    await svc.reconcile({ mediaType: 'MOVIE' })
+
+    // Non-conflicting event migrated to canonical
+    const [migratedEvent] = await db
+      .select()
+      .from(releaseEvents)
+      .where(eq(releaseEvents.id, nonConflictingEvent.id))
+    expect(migratedEvent).toBeDefined()
+    expect(migratedEvent.mediaId).toBe(canonical.id)
+
+    // Its arrival's media_id updated to canonical; FK to release_event still valid
+    const [migratedArrival] = await db
+      .select()
+      .from(mediaArrivals)
+      .where(eq(mediaArrivals.id, nonConflictArrival.id))
+    expect(migratedArrival).toBeDefined()
+    expect(migratedArrival.mediaId).toBe(canonical.id)
+    expect(migratedArrival.releaseEventId).toBe(nonConflictingEvent.id)
+
+    // Conflicting event deleted (canonical's event wins)
+    const [deletedEvent] = await db
+      .select()
+      .from(releaseEvents)
+      .where(eq(releaseEvents.id, conflictingEventOnOld.id))
+    expect(deletedEvent).toBeUndefined()
+
+    // Conflicting arrival deleted before its event was removed
+    const [deletedArrival] = await db
+      .select()
+      .from(mediaArrivals)
+      .where(eq(mediaArrivals.id, conflictArrival.id))
+    expect(deletedArrival).toBeUndefined()
+
+    // Old movie deleted (merged into canonical)
+    const [oldGone] = await db.select().from(movies).where(eq(movies.id, oldMovie.id))
+    expect(oldGone).toBeUndefined()
   })
 })
