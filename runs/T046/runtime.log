@@ -1,0 +1,40 @@
+[2026-08-12T23:30:47Z] auto-run start: state=INIT
+[2026-08-12T23:30:47Z] auto-run: running step=planner
+[2026-08-12T23:30:52Z] auto-run: pre-planner rebase onto integration ok
+[2026-08-12T23:30:52Z] prompt: resolved=prompts/generic/planner.md source=generic
+[2026-08-12T23:30:52Z] prompt: generic fallback — injecting runs/T046/ticket.md
+[2026-08-12T23:30:52Z] compose: global-context=docs/ai/global-context.md
+[2026-08-12T23:30:52Z] compose: role=ai/roles/planner.md
+[2026-08-12T23:30:52Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-12T23:30:52Z] compose: skill=ai/skills/architecture-discipline.md
+[2026-08-12T23:30:52Z] compose: skill=ai/skills/documentation.md
+[2026-08-12T23:30:52Z] compose: task (canonical prompt)
+[2026-08-12T23:30:52Z] snapshot: runtime-prompt=runs/T046/prompts/planner-attempt-1.md
+[2026-08-12T23:34:48Z] auto-run: step=planner done rc=0
+[2026-08-13T00:04:07Z] conflict-resolver: [pass 1/3] conflicted=['apps/api/src/config/env.ts', 'apps/api/src/index.ts'] | staged=['apps/api/src/config/env.ts', 'apps/api/src/index.ts'] | unresolved=[] | continue_rc=1 | next_source=[]
+[2026-08-13T00:04:07Z] conflict-resolver: all conflicts resolved after 1 pass(es)
+[2026-08-13T00:04:07Z] conflict-resolver: running tests
+[2026-08-13T00:04:07Z] conflict-resolver: test-report written: runs/T046/conflict/test-report.md
+[2026-08-13T00:04:07Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-13T00:04:58Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-13T00:04:58Z] auto-run: running step=tester
+[2026-08-13T00:05:00Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-13T00:05:00Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-13T00:05:00Z] prompt: generic fallback — injecting runs/T046/ticket.md
+[2026-08-13T00:05:00Z] compose: global-context=docs/ai/global-context.md
+[2026-08-13T00:05:00Z] compose: role=ai/roles/tester.md
+[2026-08-13T00:05:00Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-13T00:05:00Z] compose: skill=ai/skills/testing.md
+[2026-08-13T00:05:00Z] compose: skill=ai/skills/debugging.md
+[2026-08-13T00:05:00Z] compose: task (canonical prompt)
+[2026-08-13T00:05:00Z] snapshot: runtime-prompt=runs/T046/prompts/tester-attempt-1.md
+[2026-08-13T00:10:48Z] auto-run: step=tester done rc=0
+[2026-08-13T00:10:48Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-13T00:10:48Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-13T00:10:48Z] commit-checkpoint: unstaged runtime garbage: ['runs/T046/daemon.lock', 'runs/T046/runtime.log', 'runs/T046/workflow-status.md']
+[2026-08-13T00:10:48Z] commit-checkpoint: sha=f57f173 files=3 title='test(T046/workflow): tester — update 3 file(s)'
+[2026-08-13T00:10:48Z] auto-run: auto-push triggered
+[2026-08-13T00:10:48Z] push: tolerating runtime dirty files (not blocking): ['runs/T046/daemon.lock', 'runs/T046/runtime.log', 'runs/T046/workflow-status.md']
+[2026-08-13T00:10:48Z] push: pushing branch=ticket/T046-protect-hosted-iptvflix-with-single-user-authentic
+[2026-08-13T00:10:50Z] push: done branch=ticket/T046-protect-hosted-iptvflix-with-single-user-authentic
+[2026-08-13T00:10:51Z] auto-run: TEST_COMPLETE — running PR lifecycle
