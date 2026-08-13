@@ -149,18 +149,28 @@ function localTitleDedupeKey(raw: string): string {
 
 /** Drizzle wraps pg errors; surface the underlying cause in sync_runs.error_message. */
 function formatDbError(err: unknown): string {
-  if (!(err instanceof Error)) return String(err)
-  const cause = (err as { cause?: unknown }).cause
-  const causeMsg =
-    cause instanceof Error
-      ? cause.message
-      : cause && typeof cause === 'object' && 'message' in cause
-        ? String((cause as { message: unknown }).message)
-        : cause
-          ? String(cause)
-          : ''
-  const combined = causeMsg && !err.message.includes(causeMsg) ? `${err.message} | ${causeMsg}` : err.message
-  return combined.slice(0, 2000)
+  const parts: string[] = []
+  let cur: unknown = err
+  for (let depth = 0; depth < 5 && cur; depth++) {
+    if (!(cur instanceof Error)) {
+      parts.push(String(cur))
+      break
+    }
+    const e = cur as Error & { code?: string; detail?: string; constraint?: string; cause?: unknown }
+    if (e.code) parts.push(`code=${e.code}`)
+    if (e.constraint) parts.push(`constraint=${e.constraint}`)
+    if (e.detail) parts.push(e.detail)
+    if (e.message) {
+      parts.push(
+        e.message.startsWith('Failed query:')
+          ? `${e.message.slice(0, 160)}…`
+          : e.message,
+      )
+    }
+    cur = e.cause
+  }
+  const combined = parts.filter(Boolean).join(' | ')
+  return (combined || String(err)).slice(0, 2000)
 }
 
 /** Clear stale RUNNING locks and insert a new RUNNING sync_run. */
@@ -470,14 +480,23 @@ async function runTitleMatchPrePass(
     return { prePassMap: new Map(), matchedCount: 0, unmatchedCount: 0 }
   }
 
-  // Guard: skip items already MATCHED in a previous sync run
+  const mediaType = items[0].mediaType
+
+  // Guard: skip items already MATCHED in a previous sync run (same media type only —
+  // Xtream movie stream_id and series_id often collide as the same string).
   const existingMatched = await db
-    .select({ providerItemId: titleMatchResults.providerItemId, movieId: titleMatchResults.movieId, seriesId: titleMatchResults.seriesId })
+    .select({
+      providerItemId: titleMatchResults.providerItemId,
+      movieId: titleMatchResults.movieId,
+      seriesId: titleMatchResults.seriesId,
+      mediaType: titleMatchResults.mediaType,
+    })
     .from(titleMatchResults)
     .where(
       and(
         eq(titleMatchResults.providerId, sourceId),
         eq(titleMatchResults.matchState, 'MATCHED'),
+        eq(titleMatchResults.mediaType, mediaType),
         inArray(titleMatchResults.providerItemId, items.map((i) => i.providerItemId)),
       ),
     )
@@ -485,7 +504,7 @@ async function runTitleMatchPrePass(
   const prePassMap = new Map<string, string | null>()
   const alreadyMatchedIds = new Set<string>()
   for (const row of existingMatched) {
-    const canonicalId = row.movieId ?? row.seriesId ?? null
+    const canonicalId = mediaType === 'MOVIE' ? row.movieId ?? null : row.seriesId ?? null
     prePassMap.set(row.providerItemId, canonicalId)
     alreadyMatchedIds.add(row.providerItemId)
   }
@@ -505,7 +524,9 @@ async function runTitleMatchPrePass(
     mediaType: i.mediaType,
   }))
 
-  let matchedCount = existingMatched.filter((r) => (r.movieId ?? r.seriesId) !== null).length
+  let matchedCount = existingMatched.filter((r) =>
+    mediaType === 'MOVIE' ? r.movieId != null : r.seriesId != null,
+  ).length
   let unmatchedCount = 0
 
   const results = await matchingService.matchBatch(inputs, {
@@ -520,7 +541,7 @@ async function runTitleMatchPrePass(
 
     const key = dedupeKey(item.rawTitle)
     if (result.matchState === 'MATCHED') {
-      const canonicalId = result.movieId ?? result.seriesId ?? null
+      const canonicalId = mediaType === 'MOVIE' ? result.movieId ?? null : result.seriesId ?? null
       prePassMap.set(item.providerItemId, canonicalId)
       if (canonicalId) dedupeMap.set(key, canonicalId)
       matchedCount++
@@ -647,24 +668,27 @@ async function syncNormalized(
         `Matching TMDB : ${moviesWithoutTmdb.length} films + ${seriesWithoutTmdb.length} séries sans id…`,
       )
 
-      const [moviePass, seriesPass] = await Promise.all([
-        runTitleMatchPrePass(sourceId, moviesWithoutTmdb, matchingService).catch((err) => {
+      // Run sequentially: movie/series provider item ids often collide as the same string.
+      const moviePass = await runTitleMatchPrePass(sourceId, moviesWithoutTmdb, matchingService).catch(
+        (err) => {
           console.error('[catalog-sync] movie title-match pre-pass failed:', err)
           return {
             prePassMap: new Map<string, string | null>(),
             matchedCount: 0,
             unmatchedCount: moviesWithoutTmdb.length,
           }
-        }),
-        runTitleMatchPrePass(sourceId, seriesWithoutTmdb, matchingService).catch((err) => {
+        },
+      )
+      const seriesPass = await runTitleMatchPrePass(sourceId, seriesWithoutTmdb, matchingService).catch(
+        (err) => {
           console.error('[catalog-sync] series title-match pre-pass failed:', err)
           return {
             prePassMap: new Map<string, string | null>(),
             matchedCount: 0,
             unmatchedCount: seriesWithoutTmdb.length,
           }
-        }),
-      ])
+        },
+      )
       moviePrePassMap = moviePass.prePassMap
       seriesPrePassMap = seriesPass.prePassMap
       counts.titleMatchedCount += moviePass.matchedCount + seriesPass.matchedCount
@@ -791,7 +815,12 @@ async function syncNormalized(
           await tx.insert(movies).values(moviesToInsert)
         }
         if (newAvails.length > 0) {
-          await tx.insert(movieAvailabilities).values(newAvails)
+          await tx
+            .insert(movieAvailabilities)
+            .values(newAvails)
+            .onConflictDoNothing({
+              target: [movieAvailabilities.providerId, movieAvailabilities.providerItemId],
+            })
         }
         if (appearEvents.length > 0) {
           await tx.insert(releaseEvents).values(appearEvents).onConflictDoNothing()
@@ -912,7 +941,12 @@ async function syncNormalized(
           await tx.insert(series).values(seriesToInsert)
         }
         if (newAvails.length > 0) {
-          await tx.insert(seriesAvailabilities).values(newAvails)
+          await tx
+            .insert(seriesAvailabilities)
+            .values(newAvails)
+            .onConflictDoNothing({
+              target: [seriesAvailabilities.providerId, seriesAvailabilities.providerItemId],
+            })
         }
         if (appearEvents.length > 0) {
           await tx.insert(releaseEvents).values(appearEvents).onConflictDoNothing()

@@ -28,5 +28,5 @@ export const titleMatchResults = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [unique().on(t.providerId, t.providerItemId)],
+  (t) => [unique().on(t.providerId, t.providerItemId, t.mediaType)],
 )

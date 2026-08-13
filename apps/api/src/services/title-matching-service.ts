@@ -123,6 +123,7 @@ export class TitleMatchingService {
         and(
           eq(titleMatchResults.providerId, input.providerId),
           eq(titleMatchResults.providerItemId, input.providerItemId),
+          eq(titleMatchResults.mediaType, input.mediaType),
         ),
       )
 
@@ -217,7 +218,11 @@ export class TitleMatchingService {
       .insert(titleMatchResults)
       .values({ ...row, createdAt: now })
       .onConflictDoUpdate({
-        target: [titleMatchResults.providerId, titleMatchResults.providerItemId],
+        target: [
+          titleMatchResults.providerId,
+          titleMatchResults.providerItemId,
+          titleMatchResults.mediaType,
+        ],
         set: row,
         where: ne(titleMatchResults.matchState, 'MATCHED'),
       })
@@ -232,6 +237,7 @@ export class TitleMatchingService {
           and(
             eq(titleMatchResults.providerId, input.providerId),
             eq(titleMatchResults.providerItemId, input.providerItemId),
+            eq(titleMatchResults.mediaType, input.mediaType),
           ),
         )
       return toMatchResult(current!)
