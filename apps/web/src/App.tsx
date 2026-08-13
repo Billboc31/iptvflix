@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { ToastProvider } from './components/ui/Toast.js'
+import { PreviewProvider } from './contexts/PreviewContext.js'
 import AppShell from './components/layout/AppShell.js'
 import HomePage from './pages/HomePage.js'
 import MoviesPage from './pages/MoviesPage.js'
@@ -18,6 +19,7 @@ import ProtectedRoute from './components/ProtectedRoute.js'
 export default function App() {
   return (
     <ToastProvider>
+      <PreviewProvider>
       <BrowserRouter>
         <AuthProvider>
           <Routes>
@@ -45,6 +47,7 @@ export default function App() {
           </Routes>
         </AuthProvider>
       </BrowserRouter>
+      </PreviewProvider>
     </ToastProvider>
   )
 }

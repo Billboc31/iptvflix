@@ -14,6 +14,7 @@ import type {
   ContinueWatchingItem,
   ShelfSummaryResponse,
   ShelfResponse,
+  ProfileResponse,
 } from '@iptvflix/api-contracts'
 
 export const MOCK_MOVIE: MovieDetailResponse = {
@@ -28,13 +29,13 @@ export const MOCK_MOVIE: MovieDetailResponse = {
   quality: 'HD',
   availabilityCount: 1,
   availabilityStatus: 'AVAILABLE',
+  trailerKey: 'abc123',
   originalTitle: 'The Original Test Movie',
   imdbId: null,
   tmdbId: 99999,
   enrichmentStatus: 'matched',
   selectedVariantId: null,
   variants: [],
-  trailerKey: 'abc123',
   cast: [
     { name: 'Jane Doe', character: 'Hero', profileUrl: null },
     { name: 'John Smith', character: 'Villain', profileUrl: null },
@@ -52,6 +53,14 @@ export const MOCK_MOVIE_NO_TRAILER: MovieDetailResponse = {
   director: null,
   voteAverage: null,
   certification: null,
+}
+
+export const MOCK_PROFILE_PREFERENCES = {
+  preferredAudioLanguages: [] as string[],
+  preferredSubtitleLanguages: [] as string[],
+  preferredSourceIds: [] as string[],
+  maxVideoQuality: null as string | null,
+  autoplayPreviews: true,
 }
 
 export const MOCK_UNMATCHED_MOVIE: MovieDetailResponse = {
@@ -235,7 +244,18 @@ const seriesList: PaginatedList<SeriesResponse> = {
   pageSize: 20,
 }
 
+const defaultProfile: ProfileResponse = {
+  id: '00000000-0000-0000-0000-000000000001',
+  name: 'Default',
+  preferences: MOCK_PROFILE_PREFERENCES,
+}
+
 export const handlers = [
+  http.get('/api/profile', () => HttpResponse.json(defaultProfile)),
+  http.patch('/api/profile/preferences', async ({ request }) => {
+    const body = await request.json() as Partial<ProfileResponse['preferences']>
+    return HttpResponse.json({ ...defaultProfile, preferences: { ...MOCK_PROFILE_PREFERENCES, ...body } })
+  }),
   http.get('/api/movies', () => HttpResponse.json(moviesList)),
   http.get('/api/movies/:id', () => HttpResponse.json(MOCK_MOVIE)),
   http.get('/api/series', () => HttpResponse.json(seriesList)),

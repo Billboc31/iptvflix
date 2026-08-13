@@ -550,6 +550,7 @@ describe('GET /shelves/:id dynamic availability evaluation', () => {
     setupSelectWhere([makeDynamicShelf({ mediaType: 'MOVIE', availableToMe: false })])
     setupSelectFromWhere({}) // notInArray subquery
     setupSelectWhereOrderLimit([movieUnavailable])
+    setupSelectWhere([]) // fetchTrailerKeys
 
     const res = await app.inject({ method: 'GET', url: `/shelves/${DYNAMIC_SHELF_ID}` })
 
@@ -562,6 +563,7 @@ describe('GET /shelves/:id dynamic availability evaluation', () => {
   it('availableToMe: undefined for movies — returns movies regardless of availability', async () => {
     setupSelectWhere([makeDynamicShelf({ mediaType: 'MOVIE' })])
     setupSelectWhereOrderLimit([movieUnavailable, movieAvailable])
+    setupSelectWhere([]) // fetchTrailerKeys
 
     const res = await app.inject({ method: 'GET', url: `/shelves/${DYNAMIC_SHELF_ID}` })
 
@@ -574,6 +576,7 @@ describe('GET /shelves/:id dynamic availability evaluation', () => {
     setupSelectWhere([makeDynamicShelf({ mediaType: 'SERIES', availableToMe: false })])
     setupSelectFromWhere({}) // notInArray subquery
     setupSelectWhereOrderLimit([seriesUnavailable])
+    setupSelectWhere([]) // fetchTrailerKeys
 
     const res = await app.inject({ method: 'GET', url: `/shelves/${DYNAMIC_SHELF_ID}` })
 
@@ -586,6 +589,7 @@ describe('GET /shelves/:id dynamic availability evaluation', () => {
   it('availableToMe: undefined for series — returns series regardless of availability', async () => {
     setupSelectWhere([makeDynamicShelf({ mediaType: 'SERIES' })])
     setupSelectWhereOrderLimit([seriesUnavailable, seriesAvailable])
+    setupSelectWhere([]) // fetchTrailerKeys
 
     const res = await app.inject({ method: 'GET', url: `/shelves/${DYNAMIC_SHELF_ID}` })
 
@@ -598,6 +602,7 @@ describe('GET /shelves/:id dynamic availability evaluation', () => {
     setupSelectWhere([makeDynamicShelf({ mediaType: 'MOVIE', availableToMe: true })])
     setupSelectFromWhere({}) // inArray subquery
     setupSelectWhereOrderLimit([movieAvailable])
+    setupSelectWhere([]) // fetchTrailerKeys
 
     const res = await app.inject({ method: 'GET', url: `/shelves/${DYNAMIC_SHELF_ID}` })
 
@@ -611,6 +616,7 @@ describe('GET /shelves/:id dynamic availability evaluation', () => {
     setupSelectWhere([makeDynamicShelf({ mediaType: 'SERIES', availableToMe: true })])
     setupSelectFromWhere({}) // inArray subquery
     setupSelectWhereOrderLimit([seriesAvailable])
+    setupSelectWhere([]) // fetchTrailerKeys
 
     const res = await app.inject({ method: 'GET', url: `/shelves/${DYNAMIC_SHELF_ID}` })
 

@@ -37,6 +37,7 @@ const MOCK_PROFILE: ProfileResponse = {
     preferredSubtitleLanguages: ['fr'],
     preferredSourceIds: [],
     maxVideoQuality: null,
+    autoplayPreviews: true,
   },
 }
 
@@ -86,6 +87,7 @@ describe('ProfileSettingsPage', () => {
         preferredSubtitleLanguages: ['fr'],
         preferredSourceIds: [],
         maxVideoQuality: null,
+        autoplayPreviews: true,
       })
     })
   })

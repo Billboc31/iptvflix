@@ -30,6 +30,7 @@ export type MovieResponse = {
   quality: string | null
   availabilityCount: number
   availabilityStatus: AvailabilityStatus
+  trailerKey: string | null
 }
 
 export type MovieDetailResponse = MovieResponse & {
@@ -39,7 +40,6 @@ export type MovieDetailResponse = MovieResponse & {
   enrichmentStatus: EnrichmentStatus
   selectedVariantId: string | null
   variants: AvailabilityVariantResponse[]
-  trailerKey: string | null
   cast: CastMemberResponse[]
   director: string | null
   voteAverage: number | null

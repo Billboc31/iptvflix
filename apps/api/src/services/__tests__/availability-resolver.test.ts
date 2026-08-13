@@ -8,6 +8,7 @@ const EMPTY_PREFS: ProfilePreferences = {
   preferredSubtitleLanguages: [],
   preferredSourceIds: [],
   maxVideoQuality: null,
+  autoplayPreviews: true,
 }
 
 function makeVariant(overrides: Partial<ResolvableVariant> & { id: string }): ResolvableVariant {

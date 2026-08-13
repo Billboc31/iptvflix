@@ -45,6 +45,8 @@ export default function HomePage() {
           title={hero.title}
           synopsis={hero.synopsis}
           backdropUrl={hero.backdropUrl}
+          mediaId={hero.id}
+          trailerKey={hero.trailerKey}
           onDetails={() => navigate(`/movies/${hero.id}`)}
           onAddToList={() => {}}
         />

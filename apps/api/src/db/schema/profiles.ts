@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, timestamp } from 'drizzle-orm/pg-core'
+import { pgTable, text, uuid, timestamp, boolean } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
 export const profiles = pgTable('profiles', {
@@ -9,4 +9,5 @@ export const profiles = pgTable('profiles', {
   preferredSubtitleLanguages: text('preferred_subtitle_languages').array().notNull().default(sql`'{}'`),
   preferredSourceIds: text('preferred_source_ids').array().notNull().default(sql`'{}'`),
   maxVideoQuality: text('max_video_quality'),
+  autoplayPreviews: boolean('autoplay_previews').notNull().default(true),
 })

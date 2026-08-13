@@ -1,0 +1,143 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T054/reviews/implementation-review.md
+- generated at: 2026-08-13T01:31:07Z
+
+---
+
+---
+
+# PR Review — T054: Netflix-style Autoplay Previews
+
+## Résumé
+
+L'implémentation couvre la quasi-totalité du ticket T054 avec une architecture claire, des tests bien structurés, et un respect général du plan. Deux problèmes bloquants ont été identifiés : un conflit de numérotation de migration qui empêchera la colonne `autoplay_previews` d'être créée, et l'absence de navigation clavier/clic sur les cartes de `ShelfRow`.
+
+---
+
+## Vérifications effectuées
+
+- Contrats API (`packages/api-contracts/`) : `catalog.ts`, `shelves.ts`, `profile.ts`
+- Backend : migration SQL, schéma Drizzle, `profile-service.ts`, `shelf-service.ts`, `home-service.ts`, `catalog-service.ts`, `routes/profile.ts`, `routes/movies.ts`
+- Frontend : `PreviewContext.tsx`, `PreviewPlayer.tsx`, `HeroSection.tsx`, `PosterCard.tsx`, `ShelfRow.tsx`, `App.tsx`, `ProfileSettingsPage.tsx`
+- Tests : `PreviewContext.test.tsx`, `PreviewPlayer.test.tsx`, `HeroSection.test.tsx`, `PosterCard.test.tsx`, `ShelfRow.test.tsx`
+- Journal de migrations : `apps/api/migrations/meta/_journal.json`
+
+---
+
+## Points validés
+
+- **API contracts** : `trailerKey: string | null` correctement ajouté à `MovieResponse` et `ShelfItem`. `autoplayPreviews: boolean` ajouté à `ProfilePreferences`.
+- **Backend trailerKey** : `catalog-service.listMovies`, `shelf-service` (toutes les branches system/dynamic/manual), `home-service` — tous réalisent un batch fetch via `inArray` sur `mediaVideos`, aucun N+1.
+- **`PreviewContext`** : gestion `prefers-reduced-motion` avec listener dynamique, `autoplayPreviews` lu une fois au mount, refs stables pour `activate`/`deactivate`.
+- **`PreviewPlayer`** : iframe youtube-nocookie montée uniquement quand `active=true`, unmontée sur `active=false`, `tabIndex=-1` pour éviter le piège focus, fallback visuel sur erreur (`visibility: hidden`), opacité en transition pour éviter le flash.
+- **`HeroSection`** : timer 2 s, nettoyage au unmount, garde `pointer: coarse`, bouton mute/unmute avec `aria-label`.
+- **`PosterCard`** : timer 1,5 s sur hover/focus, annulation sur mouseLeave/blur, garde touch, cleanup au unmount.
+- **`ProfileSettingsPage`** : toggle checkbox avec label explicite, sauvegarde via `updateProfilePreferences`.
+- **`routes/profile.ts`** : validation `typeof body.autoplayPreviews !== 'boolean'` → 400.
+- **`profile-service`** : merge patch correct avec gestion de `'autoplayPreviews' in patch` pour supporter la valeur `false`.
+- **Tests** : couverture de `activate`/`deactivate`, no-op reduced-motion, no-op autoplay disabled, delay/cancel, touch guard, unmount cleanup — tous présents.
+- **Un seul player actif** : `activate` remplace directement `activeId`/`activeKey` dans le contexte ; aucune instanciation multiple possible.
+
+---
+
+## Problèmes détectés
+
+### 🔴 BLOQUANT #1 — Migration `0021_autoplay_previews.sql` absente du journal
+
+**Fichier** : `apps/api/migrations/meta/_journal.json`
+
+L'entrée `idx: 21` est déjà enregistrée dans le journal avec le tag `0021_tv_pairing_commands`. Le fichier `0021_autoplay_previews.sql` existe sur disque mais n'est **pas référencé dans le journal**. Drizzle-kit utilise le journal pour tracker les migrations appliquées : cette migration ne sera donc jamais exécutée en production.
+
+**Conséquence** : la colonne `autoplay_previews` n'existera pas dans la base de données. L'API crashera à l'accès `profile.autoplayPreviews` dans `profile-service.ts`.
+
+**Correction requise** :
+1. Renommer le fichier SQL en `0022_autoplay_previews.sql`
+2. Ajouter l'entrée `idx: 22` dans `_journal.json` avec le bon tag
+3. Mettre à jour le snapshot correspondant dans `apps/api/migrations/meta/`
+
+---
+
+### 🔴 BLOQUANT #2 — Cards de `ShelfRow` non navigables (clavier et clic)
+
+**Fichier** : `apps/web/src/components/content/ShelfRow.tsx`, lignes 26–31
+
+`ShelfRow` ne passe aucun `onClick` à `PosterCard`. Or `PosterCard` (sur main comme dans cette branche) ne rend `role="button"` et `tabIndex={0}` que si `onClick` est fourni :
+```tsx
+role={onClick ? 'button' : undefined}
+tabIndex={onClick ? 0 : undefined}
+```
+
+Sans `onClick`, les cartes sont **non interactives au clavier** et non cliquables. Le ticket exige explicitement : *"Ensure cards remain usable with keyboard navigation and that preview behavior does not trap focus"*. Le plan précise également *"Card click and keyboard Enter remain fully functional while preview is active"*.
+
+La conséquence directe : `PosterCard.onFocus` ne peut jamais se déclencher depuis le clavier (pas de tabIndex), rendant le scénario de preview au focus non testable en practice.
+
+**Correction requise** : passer un handler de navigation à chaque `PosterCard` dans `ShelfRow` :
+```tsx
+<PosterCard
+  title={item.title}
+  posterUrl={item.posterUrl}
+  mediaId={item.mediaId}
+  trailerKey={item.trailerKey}
+  onClick={() => navigate(`/${item.mediaType === 'MOVIE' ? 'movies' : 'series'}/${item.mediaId}`)}
+/>
+```
+Cela nécessite d'importer `useNavigate` dans `ShelfRow`.
+
+---
+
+### 🟡 MINEUR #1 — `postMessage` avec target origin `'*'`
+
+**Fichier** : `apps/web/src/components/content/PreviewPlayer.tsx`, ligne 22
+
+```tsx
+iframeRef.current.contentWindow.postMessage(JSON.stringify({...}), '*')
+```
+
+L'origine cible `'*'` est acceptable pour communiquer vers une iframe externe (l'origine de l'iframe ne peut pas être connue à l'avance depuis le contexte parent). Non bloquant — le message ne contient aucune donnée sensible.
+
+---
+
+### 🟡 MINEUR #2 — Préférence `autoplayPreviews` non reflétée immédiatement après sauvegarde
+
+`PreviewContext` lit `autoplayPreviews` une seule fois au mount. Si l'utilisateur désactive l'option dans `ProfileSettingsPage` puis revient à l'accueil sans rechargement, des previews peuvent encore se déclencher.
+
+Le plan admet ce comportement ("reflected in the PreviewContext on next load"), mais aucun test ne documente cette limitation. Non bloquant, mais une note dans l'UI ou un event bus minimal permettrait de l'éviter.
+
+---
+
+### 🟡 MINEUR #3 — `badge` prop non threadée dans `ShelfRow`
+
+`PosterCard` accepte un `badge?: { label: string; variant: ... }` (hérité du main). `ShelfRow` ne le passe jamais. Les badges d'indisponibilité/upcoming ne s'affichent donc pas sur les cartes des shelves. Hors scope T054, mais c'est un oubli à documenter.
+
+---
+
+### ℹ️ INFO — Séries dans `sys_continue_watching` sans trailerKey
+
+**Fichier** : `apps/api/src/services/shelf-service.ts`, ligne 80
+
+Les items de type `SERIES` dans "Continuer à regarder" ont toujours `trailerKey: null`. Le commentaire en code l'explique (les épisodes ne portent pas l'ID de la série parente). Comportement acceptable et documenté.
+
+---
+
+## Risques éventuels
+
+- Le crash au démarrage API (migration manquante) est un risque de production immédiat si la branche est mergée telle quelle.
+- L'absence de navigation dans ShelfRow peut passer inaperçue en review mais brise l'expérience utilisateur de base.
+
+---
+
+## Décision
+
+REQUEST_CHANGES — 2 problèmes bloquants à corriger avant merge.
+
+## Actions demandées
+
+1. **[BLOQUANT]** Renommer `0021_autoplay_previews.sql` → `0022_autoplay_previews.sql`, enregistrer l'entrée `idx: 22` dans `_journal.json`, et mettre à jour le snapshot Drizzle correspondant.
+2. **[BLOQUANT]** Ajouter `useNavigate` dans `ShelfRow.tsx` et passer un `onClick` de navigation à chaque `PosterCard`.
+3. **[MINEUR]** (optionnel) Documenter la limitation "live update" de `PreviewContext` dans un test commenté ou une note UI.
+
+---
+
+IMPLEMENTATION_FIX_REQUIRED

@@ -1,4 +1,9 @@
+import { useEffect, useRef } from 'react'
 import Badge from '../ui/Badge.js'
+import PreviewPlayer from './PreviewPlayer.js'
+import { usePreview } from '../../contexts/PreviewContext.js'
+
+const isTouch = () => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
 
 type PosterCardProps = {
   title: string
@@ -6,13 +11,51 @@ type PosterCardProps = {
   posterUrl?: string | null
   quality?: string | null
   badge?: { label: string; variant: 'unavailable' | 'upcoming' }
+  mediaId?: string
+  trailerKey?: string | null
   onClick?: () => void
 }
 
-export default function PosterCard({ title, year, posterUrl, quality, badge, onClick }: PosterCardProps) {
+export default function PosterCard({
+  title,
+  year,
+  posterUrl,
+  quality,
+  badge,
+  mediaId,
+  trailerKey,
+  onClick,
+}: PosterCardProps) {
+  const { activeId, activate, deactivate } = usePreview()
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isActive = !!mediaId && activeId === mediaId
+
+  function startPreview() {
+    if (!mediaId || !trailerKey || isTouch()) return
+    timerRef.current = setTimeout(() => activate(mediaId, trailerKey), 1500)
+  }
+
+  function cancelPreview() {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    if (isActive) deactivate()
+  }
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [])
+
   return (
     <div
       onClick={onClick}
+      onMouseEnter={startPreview}
+      onMouseLeave={cancelPreview}
+      onFocus={startPreview}
+      onBlur={cancelPreview}
       className="relative flex-shrink-0 w-36 cursor-pointer group"
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
@@ -28,6 +71,9 @@ export default function PosterCard({ title, year, posterUrl, quality, badge, onC
             <span className="text-xs text-center px-2 line-clamp-2">{title}</span>
           </div>
         )}
+
+        {/* Preview player — lazy-mounted only for the active card */}
+        {trailerKey && <PreviewPlayer trailerKey={trailerKey} active={isActive} />}
 
         {/* Quality badge */}
         {quality && (
