@@ -125,6 +125,37 @@ function isUniqueConstraintViolation(err: unknown): boolean {
   return code === '23505'
 }
 
+/** Strip NULs / control junk Xtream sometimes embeds; Postgres rejects `\0` in text. */
+function sanitizeText(value: string | null | undefined): string | null {
+  if (value == null) return null
+  const cleaned = String(value).replace(/\u0000/g, '').trim()
+  return cleaned.length > 0 ? cleaned : null
+}
+
+function resolveDisplayTitle(
+  title: string | null | undefined,
+  rawTitle: string | null | undefined,
+  fallbackId: string,
+): string {
+  return sanitizeText(title) ?? sanitizeText(rawTitle) ?? `Untitled (${fallbackId})`
+}
+
+/** Drizzle wraps pg errors; surface the underlying cause in sync_runs.error_message. */
+function formatDbError(err: unknown): string {
+  if (!(err instanceof Error)) return String(err)
+  const cause = (err as { cause?: unknown }).cause
+  const causeMsg =
+    cause instanceof Error
+      ? cause.message
+      : cause && typeof cause === 'object' && 'message' in cause
+        ? String((cause as { message: unknown }).message)
+        : cause
+          ? String(cause)
+          : ''
+  const combined = causeMsg && !err.message.includes(causeMsg) ? `${err.message} | ${causeMsg}` : err.message
+  return combined.slice(0, 2000)
+}
+
 /** Clear stale RUNNING locks and insert a new RUNNING sync_run. */
 export async function acquireSyncRunLock(sourceId: string): Promise<string> {
   const staleThreshold = new Date(Date.now() - STALE_LOCK_MS)
@@ -210,9 +241,9 @@ async function resolveMovieId(
     const inserted = await tx
       .insert(movies)
       .values({
-        title: item.title,
-        posterPath: item.posterPath ?? null,
-        synopsis: item.synopsis ?? null,
+        title: resolveDisplayTitle(item.title, item.rawTitle, item.providerItemId),
+        posterPath: sanitizeText(item.posterPath),
+        synopsis: sanitizeText(item.synopsis),
         year: null,
         tmdbId,
         matchStatus: 'MATCHED',
@@ -240,9 +271,9 @@ async function resolveMovieId(
   const [inserted] = await tx
     .insert(movies)
     .values({
-      title: item.title,
-      posterPath: item.posterPath ?? null,
-      synopsis: item.synopsis ?? null,
+      title: resolveDisplayTitle(item.title, item.rawTitle, item.providerItemId),
+      posterPath: sanitizeText(item.posterPath),
+      synopsis: sanitizeText(item.synopsis),
       year: null,
       tmdbId: null,
       matchStatus: 'UNMATCHED',
@@ -275,9 +306,9 @@ async function resolveSeriesId(
     const inserted = await tx
       .insert(series)
       .values({
-        title: item.title,
-        posterPath: item.posterPath ?? null,
-        synopsis: item.synopsis ?? null,
+        title: resolveDisplayTitle(item.title, item.rawTitle, item.providerItemId),
+        posterPath: sanitizeText(item.posterPath),
+        synopsis: sanitizeText(item.synopsis),
         firstAirYear: item.firstAirYear ?? null,
         tmdbId,
         matchStatus: 'MATCHED',
@@ -305,9 +336,9 @@ async function resolveSeriesId(
   const [inserted] = await tx
     .insert(series)
     .values({
-      title: item.title,
-      posterPath: item.posterPath ?? null,
-      synopsis: item.synopsis ?? null,
+      title: resolveDisplayTitle(item.title, item.rawTitle, item.providerItemId),
+      posterPath: sanitizeText(item.posterPath),
+      synopsis: sanitizeText(item.synopsis),
       firstAirYear: item.firstAirYear ?? null,
       tmdbId: null,
       matchStatus: 'UNMATCHED',
@@ -643,9 +674,9 @@ async function syncNormalized(
                 movieId = randomUUID()
                 moviesToInsert.push({
                   id: movieId,
-                  title: movie.title,
-                  posterPath: movie.posterPath ?? null,
-                  synopsis: movie.synopsis ?? null,
+                  title: resolveDisplayTitle(movie.title, movie.rawTitle, providerItemId),
+                  posterPath: sanitizeText(movie.posterPath),
+                  synopsis: sanitizeText(movie.synopsis),
                   year: null,
                   tmdbId: null,
                   matchStatus: 'UNMATCHED',
@@ -661,10 +692,10 @@ async function syncNormalized(
               firstSeenAt: snapshot.fetchedAt,
               lastSeenAt: snapshot.fetchedAt,
               status: 'AVAILABLE',
-              rawTitle: movie.rawTitle ?? null,
-              audioLanguage: movie.audioLanguage ?? null,
-              subtitleLanguage: movie.subtitleLanguage ?? null,
-              videoQuality: movie.videoQuality ?? null,
+              rawTitle: sanitizeText(movie.rawTitle),
+              audioLanguage: sanitizeText(movie.audioLanguage),
+              subtitleLanguage: sanitizeText(movie.subtitleLanguage),
+              videoQuality: sanitizeText(movie.videoQuality),
             })
             appearEvents.push({
               mediaType: 'MOVIE',
@@ -754,9 +785,9 @@ async function syncNormalized(
                 seriesId = randomUUID()
                 seriesToInsert.push({
                   id: seriesId,
-                  title: s.title,
-                  posterPath: s.posterPath ?? null,
-                  synopsis: s.synopsis ?? null,
+                  title: resolveDisplayTitle(s.title, s.rawTitle, providerItemId),
+                  posterPath: sanitizeText(s.posterPath),
+                  synopsis: sanitizeText(s.synopsis),
                   firstAirYear: s.firstAirYear ?? null,
                   tmdbId: null,
                   matchStatus: 'UNMATCHED',
@@ -772,10 +803,10 @@ async function syncNormalized(
               firstSeenAt: snapshot.fetchedAt,
               lastSeenAt: snapshot.fetchedAt,
               status: 'AVAILABLE',
-              rawTitle: s.rawTitle ?? null,
-              audioLanguage: s.audioLanguage ?? null,
-              subtitleLanguage: s.subtitleLanguage ?? null,
-              videoQuality: s.videoQuality ?? null,
+              rawTitle: sanitizeText(s.rawTitle),
+              audioLanguage: sanitizeText(s.audioLanguage),
+              subtitleLanguage: sanitizeText(s.subtitleLanguage),
+              videoQuality: sanitizeText(s.videoQuality),
             })
             appearEvents.push({
               mediaType: 'SERIES',
@@ -1078,7 +1109,9 @@ async function syncNormalized(
       }
     })
   } catch (err) {
-    syncError = err instanceof Error ? err : new Error(String(err))
+    const message = formatDbError(err)
+    syncError = new Error(message)
+    console.error(`[catalog-sync] sync failed runId=${runId}:`, err)
   }
 
   // Release lock — always runs regardless of sync outcome
@@ -1148,29 +1181,31 @@ export const CatalogSyncService = {
         sourceId: snapshot.sourceId,
         fetchedAt: snapshot.fetchedAt,
         movies: snapshot.vodStreams.map((s) => {
-          const { variantAttributes } = normalizeTitle(s.name)
+          const rawName = typeof s.name === 'string' ? s.name : ''
+          const { variantAttributes } = normalizeTitle(rawName || `stream-${s.stream_id}`)
           return {
             providerItemId: s.stream_id.toString(),
-            title: s.name,
+            title: rawName || `Untitled (${s.stream_id})`,
             posterPath: s.cover,
             synopsis: s.plot ?? s.description,
             tmdb: s.tmdb,
-            rawTitle: s.name,
+            rawTitle: rawName || null,
             audioLanguage: variantAttributes.audioLanguage,
             subtitleLanguage: variantAttributes.subtitleLanguage,
             videoQuality: variantAttributes.videoQuality,
           }
         }),
         series: snapshot.series.map((s) => {
-          const { variantAttributes } = normalizeTitle(s.name)
+          const rawName = typeof s.name === 'string' ? s.name : ''
+          const { variantAttributes } = normalizeTitle(rawName || `series-${s.series_id}`)
           return {
             providerItemId: s.series_id.toString(),
-            title: s.name,
+            title: rawName || `Untitled (${s.series_id})`,
             posterPath: s.cover,
             synopsis: s.plot,
             tmdb: snapshot.seriesInfo?.[s.series_id]?.info.tmdb_id,
             firstAirYear: parseYear(s.releaseDate),
-            rawTitle: s.name,
+            rawTitle: rawName || null,
             audioLanguage: variantAttributes.audioLanguage,
             subtitleLanguage: variantAttributes.subtitleLanguage,
             videoQuality: variantAttributes.videoQuality,
