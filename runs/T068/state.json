@@ -3,8 +3,23 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T068-implement-hybrid-local-tmdb-search-with-automatic",
   "issue_number": 135,
-  "updated_at": "2026-08-13T19:53:23Z",
-  "pre_conflict_state": "IMPLEMENTATION_APPROVED",
-  "conflict_detected_at": "2026-08-13T19:46:03Z",
-  "conflicted_files": []
+  "updated_at": "2026-08-13T19:58:56Z",
+  "pre_conflict_state": "TEST_COMPLETE",
+  "conflict_detected_at": "2026-08-13T19:57:56Z",
+  "conflicted_files": [
+    "apps/api/src/__tests__/integration/vertical-slice.test.ts",
+    "apps/api/src/routes/catalog.ts",
+    "apps/api/src/routes/search.test.ts",
+    "apps/api/src/routes/search.ts",
+    "apps/api/src/services/__tests__/catalog-service.test.ts",
+    "apps/api/src/services/__tests__/external-discovery-service.test.ts",
+    "apps/api/src/services/catalog-service.ts",
+    "apps/api/src/services/external-discovery-service.ts",
+    "apps/web/src/lib/api.ts",
+    "apps/web/src/pages/SearchPage.tsx",
+    "packages/api-contracts/src/catalog.ts"
+  ],
+  "pr_number": 147,
+  "pr_synced": true,
+  "conflict_pr_number": 147
 }
