@@ -1,3 +1,21 @@
-All 8 HeroSection tests and all 12 PosterCard tests pass. Full suite: 20 test files, 129 tests, no failures.
+Both blocking fixes are done. Here's a summary:
 
-The root cause was stale TypeScript-compiled `.js` artifacts left in the source tree alongside the `.tsx` sources. When Vitest resolved `./HeroSection.js`, it found and loaded the pre-T054 compiled artifact (which had no preview logic, no context usage, no mute button) instead of the updated `HeroSection.tsx`. Same for `PosterCard.js`. Deleting all compiled artifacts from `src/` lets Vitest fall back to the TypeScript sources for all `.js` imports.
+---
+
+## Changements effectués
+
+### Fix BLOQUANT #1 — Migration renommée et journal mis à jour
+
+- **Renommé** : `apps/api/migrations/0021_autoplay_previews.sql` → `0022_autoplay_previews.sql`
+- **Mis à jour** : `apps/api/migrations/meta/_journal.json` — entrée `idx: 22` avec tag `0022_autoplay_previews` ajoutée
+- **Créé** : `apps/api/migrations/meta/0022_snapshot.json` — copie du snapshot `0021` avec la colonne `autoplay_previews boolean NOT NULL DEFAULT true` ajoutée à la table `profiles`
+
+### Fix BLOQUANT #2 — Navigation clavier/clic dans ShelfRow
+
+- **Modifié** : `apps/web/src/components/content/ShelfRow.tsx`
+  - Import de `useNavigate` depuis `react-router-dom`
+  - Passage d'un `onClick` de navigation à chaque `PosterCard`, ce qui active `role="button"` et `tabIndex={0}` sur les cartes
+
+### Vérification
+
+Tous les 25 tests T054 passent (ShelfRow ×5, PosterCard ×12, HeroSection ×8).

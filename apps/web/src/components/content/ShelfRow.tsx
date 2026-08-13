@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import HorizontalRow from './HorizontalRow.js'
 import PosterCard from './PosterCard.js'
 import type { ShelfResponse } from '@iptvflix/api-contracts'
@@ -7,6 +8,7 @@ type ShelfRowProps = {
 }
 
 export default function ShelfRow({ shelf }: ShelfRowProps) {
+  const navigate = useNavigate()
   if (shelf.items.length === 0) return null
 
   return (
@@ -28,6 +30,7 @@ export default function ShelfRow({ shelf }: ShelfRowProps) {
                 posterUrl={item.posterUrl}
                 mediaId={item.mediaId}
                 trailerKey={item.trailerKey}
+                onClick={() => navigate(`/${item.mediaType === 'MOVIE' ? 'movies' : 'series'}/${item.mediaId}`)}
               />
               {hasProgress && (
                 <div
