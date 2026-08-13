@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import type { EpisodeResponse } from '@iptvflix/api-contracts'
 import Badge from '../ui/Badge.js'
 
@@ -6,6 +7,7 @@ type Props = {
 }
 
 export default function EpisodeRow({ episode }: Props) {
+  const navigate = useNavigate()
   const durationLabel = episode.durationMinutes ? `${episode.durationMinutes} min` : null
   const airLabel = episode.airDate
     ? new Date(episode.airDate).toLocaleDateString('fr-FR', { year: 'numeric', month: 'short', day: 'numeric' })
@@ -38,9 +40,25 @@ export default function EpisodeRow({ episode }: Props) {
             {episode.synopsis}
           </p>
         )}
-        <div className="flex flex-wrap gap-3 text-gray-500 text-xs">
+        <div className="flex flex-wrap items-center gap-3 text-gray-500 text-xs">
           {durationLabel && <span>{durationLabel}</span>}
           {airLabel && <span>{airLabel}</span>}
+          {!isUnavailable && (
+            <button
+              type="button"
+              onClick={() =>
+                navigate(
+                  `/player/episode/${episode.id}${
+                    episode.selectedVariantId ? `?availabilityId=${episode.selectedVariantId}` : ''
+                  }`,
+                )
+              }
+              className="text-[#e50914] hover:text-[#e50914]/80 font-medium transition-colors"
+              aria-label={`Lire l'épisode ${episode.episodeNumber}`}
+            >
+              ▶ Lire
+            </button>
+          )}
         </div>
       </div>
     </div>

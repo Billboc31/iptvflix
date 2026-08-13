@@ -218,6 +218,19 @@ export default function MovieDetailPage() {
               <Button variant="ghost" onClick={() => navigate(-1)}>
                 ← Retour
               </Button>
+              {movie.availabilityStatus === 'AVAILABLE' && (
+                <Button
+                  onClick={() =>
+                    navigate(
+                      `/player/movie/${movie.id}${
+                        selectedVariantId ? `?availabilityId=${selectedVariantId}` : ''
+                      }`,
+                    )
+                  }
+                >
+                  ▶ Lecture
+                </Button>
+              )}
               <WatchlistButton mediaType="MOVIE" mediaId={movie.id} />
               <FeedbackButtons mediaType="MOVIE" mediaId={movie.id} />
             </div>

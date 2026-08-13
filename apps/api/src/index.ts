@@ -26,6 +26,7 @@ import { profileRoutes } from './routes/profile.js'
 import { pairingRoutes } from './routes/pairing.js'
 import { devicesRoutes } from './routes/devices.js'
 import { commandsRoutes } from './routes/commands.js'
+import { playbackRoutes } from './routes/playback.js'
 import { testHelpersRoutes } from './routes/test-helpers.js'
 import { authRoutes } from './routes/auth.js'
 import { schedulerRoutes } from './routes/scheduler.js'
@@ -88,6 +89,7 @@ await app.register(async function protectedScope(protectedApp) {
   await protectedApp.register(profileRoutes)
   await protectedApp.register(watchlistRoutes)
   await protectedApp.register(viewingProgressRoutes)
+  await protectedApp.register(playbackRoutes)
   await protectedApp.register(shelvesRoutes)
   await protectedApp.register(followReleaseRoutes)
   await protectedApp.register(feedbackRoutes)
