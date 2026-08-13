@@ -1,7 +1,7 @@
 {
   "ticket_id": "T060",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T060-resolve-missing-tmdb-ids-during-source-sync-and-bu",
   "issue_number": 122,
-  "updated_at": "2026-08-13T07:48:47Z"
+  "updated_at": "2026-08-13T08:38:07Z"
 }
