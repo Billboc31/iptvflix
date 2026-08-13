@@ -169,6 +169,20 @@
       "when": 1786587759326,
       "tag": "0023_media_arrivals",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1786900000001,
+      "tag": "0024_fuzzy_starbolt",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786950000000,
+      "tag": "0025_reconciliation_runs",
+      "breakpoints": true
     }
   ]
 }
