@@ -55,7 +55,7 @@ function makeSnapshot(
   }
 }
 
-function makeSeriesInfo(episodes: Record<string, Array<{ id: string; episode_num: number; title: string; releasedate?: string }>>): XtreamSeriesInfo {
+function makeSeriesInfo(episodes: Record<string, Array<{ id: string; episode_num: number; title: string; releasedate?: string }>>, tmdbId?: string): XtreamSeriesInfo {
   return {
     info: {
       name: '',
@@ -73,6 +73,7 @@ function makeSeriesInfo(episodes: Record<string, Array<{ id: string; episode_num
       episode_run_time: '',
       category_id: '1',
       category_name: '',
+      tmdb_id: tmdbId,
     },
     episodes: Object.fromEntries(
       Object.entries(episodes).map(([season, eps]) => [
@@ -153,53 +154,45 @@ describe('CatalogSyncService', () => {
       const result = await CatalogSyncService.syncCatalog(testSourceId, snapshot)
 
       expect(result.status).toBe('completed')
-      expect(result.counts.moviesCreated).toBe(2)
+      // Movie Alpha (tmdb:9000111) is resolved; Movie Beta (no tmdb) is skipped.
+      expect(result.counts.moviesCreated).toBe(1)
       expect(result.counts.moviesUpdated).toBe(0)
-      expect(result.counts.seriesCreated).toBe(1)
+      // Series One has no TMDB ID and no matchingService → skipped.
+      expect(result.counts.seriesCreated).toBe(0)
       expect(result.counts.seriesUpdated).toBe(0)
       expect(result.counts.unavailableCount).toBe(0)
 
-      // Verify movie availability rows
+      // Only Movie Alpha (with TMDB ID) gets an availability row.
       const movieAvRows = await db
         .select()
         .from(movieAvailabilities)
         .where(eq(movieAvailabilities.providerId, testSourceId))
-      expect(movieAvRows).toHaveLength(2)
-      for (const row of movieAvRows) {
-        expect(row.status).toBe('AVAILABLE')
-        expect(row.firstSeenAt.toISOString()).toBe(fetchedAt.toISOString())
-        expect(row.lastSeenAt.toISOString()).toBe(fetchedAt.toISOString())
-        expect(row.unavailableAt).toBeNull()
-      }
+      expect(movieAvRows).toHaveLength(1)
+      expect(movieAvRows[0].status).toBe('AVAILABLE')
+      expect(movieAvRows[0].firstSeenAt.toISOString()).toBe(fetchedAt.toISOString())
+      expect(movieAvRows[0].lastSeenAt.toISOString()).toBe(fetchedAt.toISOString())
+      expect(movieAvRows[0].unavailableAt).toBeNull()
 
-      // Verify tmdbId mapped correctly
+      // Canonical movie row has TMDB ID; title is a placeholder (enrichment fills real title later).
       const [av1] = await db
         .select()
         .from(movieAvailabilities)
         .where(eq(movieAvailabilities.providerItemId, '1'))
       const [movie1] = await db.select().from(movies).where(eq(movies.id, av1.movieId))
-      expect(movie1.title).toBe('Movie Alpha')
       expect(movie1.tmdbId).toBe(9000111)
-      expect(movie1.synopsis).toBe('A plot')
 
-      // Verify series availability row
+      // Series One (no TMDB ID, no matchingService) produces no series availability row.
       const serAvRows = await db
         .select()
         .from(seriesAvailabilities)
         .where(eq(seriesAvailabilities.providerId, testSourceId))
-      expect(serAvRows).toHaveLength(1)
-      expect(serAvRows[0].status).toBe('AVAILABLE')
-      expect(serAvRows[0].firstSeenAt.toISOString()).toBe(fetchedAt.toISOString())
-
-      const [ser] = await db.select().from(seriesTable).where(eq(seriesTable.id, serAvRows[0].seriesId))
-      expect(ser.title).toBe('Series One')
-      expect(ser.firstAirYear).toBe(2022)
+      expect(serAvRows).toHaveLength(0)
 
       // Verify sync run
       const [run] = await db.select().from(syncRuns).where(eq(syncRuns.id, result.runId))
       expect(run.status).toBe('COMPLETED')
-      expect(run.moviesCreated).toBe(2)
-      expect(run.seriesCreated).toBe(1)
+      expect(run.moviesCreated).toBe(1)
+      expect(run.seriesCreated).toBe(0)
     })
   })
 
@@ -207,11 +200,12 @@ describe('CatalogSyncService', () => {
     it('does not create duplicate rows and updates lastSeenAt without changing firstSeenAt', async () => {
       const firstFetch = new Date('2026-01-01T10:00:00Z')
       const secondFetch = new Date('2026-01-02T10:00:00Z')
-      const stream = makeVodStream({ stream_id: 3, name: 'Stable Movie' })
+      const stream = makeVodStream({ stream_id: 3, name: 'Stable Movie', tmdb: '50003' })
       const seriesEntry = makeSeriesEntry({ series_id: 20, name: 'Stable Series' })
+      const series20Info = { 20: makeSeriesInfo({}, '60020') }
 
-      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [seriesEntry], firstFetch))
-      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [seriesEntry], secondFetch))
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [seriesEntry], firstFetch, series20Info))
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [seriesEntry], secondFetch, series20Info))
 
       // No duplicate rows
       const movieAvRows = await db
@@ -238,8 +232,8 @@ describe('CatalogSyncService', () => {
     it('marks missing items as UNAVAILABLE without deleting rows', async () => {
       const t1 = new Date('2026-01-01T10:00:00Z')
       const t2 = new Date('2026-01-02T10:00:00Z')
-      const streamA = makeVodStream({ stream_id: 4, name: 'Movie Present' })
-      const streamB = makeVodStream({ stream_id: 5, name: 'Movie Gone' })
+      const streamA = makeVodStream({ stream_id: 4, name: 'Movie Present', tmdb: '50004' })
+      const streamB = makeVodStream({ stream_id: 5, name: 'Movie Gone', tmdb: '50005' })
 
       // First sync: both A and B
       await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([streamA, streamB], [], t1))
@@ -272,7 +266,7 @@ describe('CatalogSyncService', () => {
       const t1 = new Date('2026-01-01T10:00:00Z')
       const t2 = new Date('2026-01-02T10:00:00Z')
       const t3 = new Date('2026-01-03T10:00:00Z')
-      const stream = makeVodStream({ stream_id: 6, name: 'Returning Movie' })
+      const stream = makeVodStream({ stream_id: 6, name: 'Returning Movie', tmdb: '50006' })
 
       // First sync: item seen
       await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [], t1))
@@ -378,17 +372,15 @@ describe('CatalogSyncService', () => {
 
       expect(result.status).toBe('completed')
       expect(result.error).toBeUndefined()
-      expect(result.counts.moviesCreated).toBe(1)
+      // Oversized tmdb is rejected (>int4 max) → treated as no TMDB ID → skipped, no canonical row.
+      expect(result.counts.moviesCreated).toBe(0)
+      expect(result.counts.unresolvedCount).toBe(1)
 
       const avRows = await db
         .select()
         .from(movieAvailabilities)
         .where(eq(movieAvailabilities.providerId, testSourceId))
-      expect(avRows).toHaveLength(1)
-
-      const [movie] = await db.select().from(movies).where(eq(movies.id, avRows[0].movieId))
-      expect(movie.title).toBe('Overflow Movie')
-      expect(movie.tmdbId).toBeNull()
+      expect(avRows).toHaveLength(0)
     })
   })
 
@@ -433,7 +425,7 @@ describe('CatalogSyncService', () => {
       await CatalogSyncService.syncCatalog(
         testSourceId,
         makeSnapshot([], [seriesEntry], t1, {
-          100: makeSeriesInfo({ '1': [{ id: 'ep-100-1', episode_num: 1, title: 'Pilot' }] }),
+          100: makeSeriesInfo({ '1': [{ id: 'ep-100-1', episode_num: 1, title: 'Pilot' }] }, '60100'),
         }),
       )
 
@@ -470,7 +462,7 @@ describe('CatalogSyncService', () => {
               { id: 'ep-101-1', episode_num: 1, title: 'Pilot', releasedate: '2024-01-01' },
               { id: 'ep-101-2', episode_num: 2, title: 'Part Two' },
             ],
-          }),
+          }, '60101'),
         }),
       )
 
@@ -495,7 +487,7 @@ describe('CatalogSyncService', () => {
       const t1 = new Date('2026-02-01T10:00:00Z')
       const t2 = new Date('2026-02-02T10:00:00Z')
       const seriesEntry = makeSeriesEntry({ series_id: 102, name: 'Stable Episode Series' })
-      const info = makeSeriesInfo({ '1': [{ id: 'ep-102-1', episode_num: 1, title: 'Stable Ep' }] })
+      const info = makeSeriesInfo({ '1': [{ id: 'ep-102-1', episode_num: 1, title: 'Stable Ep' }] }, '60102')
 
       await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 102: info }))
       await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t2, { 102: info }))
@@ -523,7 +515,7 @@ describe('CatalogSyncService', () => {
               { id: 'ep-103-1', episode_num: 1, title: 'Keep' },
               { id: 'ep-103-2', episode_num: 2, title: 'Gone' },
             ],
-          }),
+          }, '60103'),
         }),
       )
 
@@ -556,7 +548,7 @@ describe('CatalogSyncService', () => {
       const t2 = new Date('2026-02-02T10:00:00Z')
       const t3 = new Date('2026-02-03T10:00:00Z')
       const seriesEntry = makeSeriesEntry({ series_id: 104, name: 'Reappearing Series' })
-      const info = makeSeriesInfo({ '1': [{ id: 'ep-104-1', episode_num: 1, title: 'Returning Ep' }] })
+      const info = makeSeriesInfo({ '1': [{ id: 'ep-104-1', episode_num: 1, title: 'Returning Ep' }] }, '60104')
 
       // Seen
       await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 104: info }))
@@ -655,7 +647,7 @@ describe('CatalogSyncService', () => {
           { id: 'ep-conflict-1', episode_num: 1, title: 'Ep 1' },
           { id: 'ep-conflict-2', episode_num: 2, title: 'Ep 2' },
         ],
-      })
+      }, '60106')
       await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 106: infoEp1 }))
 
       // Second sync: same provider remaps 'ep-conflict-1' to S01E02 (provider data corruption/bug)
@@ -776,7 +768,8 @@ describe('CatalogSyncService', () => {
           .from(seriesTable)
           .where(eq(seriesTable.tmdbId, 88002))
         expect(canonicalRows).toHaveLength(1)
-        expect(canonicalRows[0].title).toBe('Plex Only Series')
+        // Title is a placeholder — enrichment overwrites with real TMDB title later.
+        expect(canonicalRows[0].title).toBe('[TMDB #88002]')
 
         const avRows = await db
           .select()
@@ -797,7 +790,7 @@ describe('CatalogSyncService', () => {
       }
     })
 
-    it('does not merge same-title series from two providers when no TMDB ID is present', async () => {
+    it('produces no availability rows when items have no TMDB ID and no matchingService', async () => {
       const fetchedAt = new Date('2026-03-01T10:00:00Z')
       const [plexSource] = await db
         .insert(sources)
@@ -805,11 +798,13 @@ describe('CatalogSyncService', () => {
         .returning()
 
       try {
+        // Xtream series with no TMDB ID → skipped (no canonical, no availability).
         await CatalogSyncService.syncCatalog(
           testSourceId,
           makeSnapshot([], [makeSeriesEntry({ series_id: 400, name: 'Alias' })], fetchedAt),
         )
 
+        // Plex show with no Guid (no TMDB ID) → also skipped.
         const plexSnapshot: PlexCatalogSnapshot = {
           sourceId: plexSource.id,
           fetchedAt,
@@ -828,17 +823,9 @@ describe('CatalogSyncService', () => {
           .from(seriesAvailabilities)
           .where(eq(seriesAvailabilities.providerId, plexSource.id))
 
-        expect(xtreamAvRows).toHaveLength(1)
-        expect(plexAvRows).toHaveLength(1)
-        expect(xtreamAvRows[0].seriesId).not.toBe(plexAvRows[0].seriesId)
+        expect(xtreamAvRows).toHaveLength(0)
+        expect(plexAvRows).toHaveLength(0)
       } finally {
-        const plexAvRows = await db
-          .select({ seriesId: seriesAvailabilities.seriesId })
-          .from(seriesAvailabilities)
-          .where(eq(seriesAvailabilities.providerId, plexSource.id))
-        if (plexAvRows.length > 0) {
-          await db.delete(seriesTable).where(inArray(seriesTable.id, plexAvRows.map((r) => r.seriesId)))
-        }
         await db.delete(syncRuns).where(eq(syncRuns.sourceId, plexSource.id))
         await db.delete(sources).where(eq(sources.id, plexSource.id))
       }
@@ -911,8 +898,8 @@ describe('CatalogSyncService', () => {
       const t2 = new Date('2026-03-02T10:00:00Z')
       const seriesA = makeSeriesEntry({ series_id: 700, name: 'Series A' })
       const seriesB = makeSeriesEntry({ series_id: 701, name: 'Series B' })
-      const infoA = makeSeriesInfo({ '1': [{ id: 'ep-700-1', episode_num: 1, title: 'A Ep 1' }] })
-      const infoB = makeSeriesInfo({ '1': [{ id: 'ep-701-1', episode_num: 1, title: 'B Ep 1' }] })
+      const infoA = makeSeriesInfo({ '1': [{ id: 'ep-700-1', episode_num: 1, title: 'A Ep 1' }] }, '60700')
+      const infoB = makeSeriesInfo({ '1': [{ id: 'ep-701-1', episode_num: 1, title: 'B Ep 1' }] }, '60701')
 
       // First sync: both series with episodes
       await CatalogSyncService.syncCatalog(
@@ -961,10 +948,10 @@ describe('CatalogSyncService', () => {
   describe('source lifecycle events', () => {
     it('records exactly one SOURCE_APPEARED event per movie and series on first sync', async () => {
       const t1 = new Date('2026-05-01T10:00:00Z')
-      const stream = makeVodStream({ stream_id: 500, name: 'Lifecycle Movie' })
+      const stream = makeVodStream({ stream_id: 500, name: 'Lifecycle Movie', tmdb: '50500' })
       const seriesEntry = makeSeriesEntry({ series_id: 500, name: 'Lifecycle Series' })
 
-      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [seriesEntry], t1))
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [seriesEntry], t1, { 500: makeSeriesInfo({}, '60500') }))
 
       const [movieAv] = await db
         .select()
@@ -994,11 +981,12 @@ describe('CatalogSyncService', () => {
     it('does not create additional events when re-syncing with an identical snapshot', async () => {
       const t1 = new Date('2026-05-01T10:00:00Z')
       const t2 = new Date('2026-05-02T10:00:00Z')
-      const stream = makeVodStream({ stream_id: 501, name: 'Stable Lifecycle Movie' })
+      const stream = makeVodStream({ stream_id: 501, name: 'Stable Lifecycle Movie', tmdb: '50501' })
       const seriesEntry = makeSeriesEntry({ series_id: 501, name: 'Stable Lifecycle Series' })
+      const series501Info = { 501: makeSeriesInfo({}, '60501') }
 
-      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [seriesEntry], t1))
-      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [seriesEntry], t2))
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [seriesEntry], t1, series501Info))
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [seriesEntry], t2, series501Info))
 
       const [movieAv] = await db
         .select()
@@ -1026,10 +1014,10 @@ describe('CatalogSyncService', () => {
     it('records SOURCE_DISAPPEARED when a previously AVAILABLE item is absent from the snapshot', async () => {
       const t1 = new Date('2026-05-01T10:00:00Z')
       const t2 = new Date('2026-05-02T10:00:00Z')
-      const stream = makeVodStream({ stream_id: 502, name: 'Disappearing Lifecycle Movie' })
+      const stream = makeVodStream({ stream_id: 502, name: 'Disappearing Lifecycle Movie', tmdb: '50502' })
       const seriesEntry = makeSeriesEntry({ series_id: 502, name: 'Disappearing Lifecycle Series' })
 
-      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [seriesEntry], t1))
+      await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [seriesEntry], t1, { 502: makeSeriesInfo({}, '60502') }))
       await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [], t2))
 
       const [movieAv] = await db
@@ -1062,7 +1050,7 @@ describe('CatalogSyncService', () => {
       const t1 = new Date('2026-05-01T10:00:00Z')
       const t2 = new Date('2026-05-02T10:00:00Z')
       const t3 = new Date('2026-05-03T10:00:00Z')
-      const stream = makeVodStream({ stream_id: 503, name: 'Reappearing Lifecycle Movie' })
+      const stream = makeVodStream({ stream_id: 503, name: 'Reappearing Lifecycle Movie', tmdb: '50503' })
 
       await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [], t1))
       await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [], t2))
@@ -1083,7 +1071,7 @@ describe('CatalogSyncService', () => {
     it('does not create events for metadata-only updates on an already AVAILABLE item', async () => {
       const t1 = new Date('2026-05-01T10:00:00Z')
       const t2 = new Date('2026-05-02T10:00:00Z')
-      const stream = makeVodStream({ stream_id: 504, name: 'Metadata Movie' })
+      const stream = makeVodStream({ stream_id: 504, name: 'Metadata Movie', tmdb: '50504' })
       const streamUpdated = { ...stream, name: 'Metadata Movie Updated' }
 
       await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [], t1))
@@ -1109,7 +1097,7 @@ describe('CatalogSyncService', () => {
           { id: 'ep-600-1', episode_num: 1, title: 'Ep One' },
           { id: 'ep-600-2', episode_num: 2, title: 'Ep Two' },
         ],
-      })
+      }, '60600')
 
       await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 600: info }))
 
@@ -1134,7 +1122,7 @@ describe('CatalogSyncService', () => {
       const t1 = new Date('2026-06-01T10:00:00Z')
       const t2 = new Date('2026-06-02T10:00:00Z')
       const seriesEntry = makeSeriesEntry({ series_id: 601, name: 'Stable Lifecycle Episode Series' })
-      const info = makeSeriesInfo({ '1': [{ id: 'ep-601-1', episode_num: 1, title: 'Stable Ep' }] })
+      const info = makeSeriesInfo({ '1': [{ id: 'ep-601-1', episode_num: 1, title: 'Stable Ep' }] }, '60601')
 
       await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 601: info }))
       await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t2, { 601: info }))
@@ -1159,7 +1147,7 @@ describe('CatalogSyncService', () => {
       await CatalogSyncService.syncCatalog(
         testSourceId,
         makeSnapshot([], [seriesEntry], t1, {
-          602: makeSeriesInfo({ '1': [{ id: 'ep-602-1', episode_num: 1, title: 'Gone Ep' }] }),
+          602: makeSeriesInfo({ '1': [{ id: 'ep-602-1', episode_num: 1, title: 'Gone Ep' }] }, '60602'),
         }),
       )
       await CatalogSyncService.syncCatalog(
@@ -1187,7 +1175,7 @@ describe('CatalogSyncService', () => {
       const t2 = new Date('2026-06-02T10:00:00Z')
       const t3 = new Date('2026-06-03T10:00:00Z')
       const seriesEntry = makeSeriesEntry({ series_id: 603, name: 'Reappearing Episode Series' })
-      const info = makeSeriesInfo({ '1': [{ id: 'ep-603-1', episode_num: 1, title: 'Returning Ep' }] })
+      const info = makeSeriesInfo({ '1': [{ id: 'ep-603-1', episode_num: 1, title: 'Returning Ep' }] }, '60603')
 
       await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 603: info }))
       await CatalogSyncService.syncCatalog(
@@ -1211,7 +1199,7 @@ describe('CatalogSyncService', () => {
     it('episode events carry the correct sourceId', async () => {
       const t1 = new Date('2026-06-01T10:00:00Z')
       const seriesEntry = makeSeriesEntry({ series_id: 604, name: 'Source Identity Episode Series' })
-      const info = makeSeriesInfo({ '1': [{ id: 'ep-604-1', episode_num: 1, title: 'Ep' }] })
+      const info = makeSeriesInfo({ '1': [{ id: 'ep-604-1', episode_num: 1, title: 'Ep' }] }, '60604')
 
       await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 604: info }))
 
@@ -1487,7 +1475,7 @@ describe('CatalogSyncService', () => {
       }
     })
 
-    it('ambiguous match result: local UNMATCHED movie created, no false merge', async () => {
+    it('ambiguous match result: item is skipped, no availability created', async () => {
       const fetchedAt = new Date('2026-08-01T10:00:00Z')
 
       const [canonicalMovie] = await db
@@ -1513,26 +1501,19 @@ describe('CatalogSyncService', () => {
 
         expect(result.status).toBe('completed')
         expect(result.counts.titleMatchedCount).toBe(0)
-        expect(result.counts.titleUnmatchedCount).toBe(1)
+        expect(result.counts.ambiguousCount).toBe(1)
 
         const avRows = await db
           .select()
           .from(movieAvailabilities)
           .where(eq(movieAvailabilities.providerId, testSourceId))
-        expect(avRows).toHaveLength(1)
-
-        // Must NOT point to the canonical movie — a distinct UNMATCHED row is created
-        expect(avRows[0].movieId).not.toBe(canonicalMovie.id)
-
-        const [unmatchedMovie] = await db.select().from(movies).where(eq(movies.id, avRows[0].movieId))
-        expect(unmatchedMovie.tmdbId).toBeNull()
-        expect(unmatchedMovie.matchStatus).toBe('UNMATCHED')
+        expect(avRows).toHaveLength(0)
       } finally {
         await db.delete(movies).where(eq(movies.id, canonicalMovie.id))
       }
     })
 
-    it('zero TMDB candidates: UNMATCHED local movie created and remains playable', async () => {
+    it('zero TMDB candidates: UNMATCHED item is skipped, no availability created', async () => {
       const fetchedAt = new Date('2026-08-01T10:00:00Z')
       const responses = new Map([
         ['904', { matchState: 'UNMATCHED' as const, movieId: null }],
@@ -1551,20 +1532,16 @@ describe('CatalogSyncService', () => {
 
       expect(result.status).toBe('completed')
       expect(result.counts.titleUnmatchedCount).toBe(1)
+      expect(result.counts.unresolvedCount).toBe(1)
 
       const avRows = await db
         .select()
         .from(movieAvailabilities)
         .where(eq(movieAvailabilities.providerId, testSourceId))
-      expect(avRows).toHaveLength(1)
-      expect(avRows[0].status).toBe('AVAILABLE')
-
-      const [movie] = await db.select().from(movies).where(eq(movies.id, avRows[0].movieId))
-      expect(movie.tmdbId).toBeNull()
-      expect(movie.matchStatus).toBe('UNMATCHED')
+      expect(avRows).toHaveLength(0)
     })
 
-    it('TMDB failure during pre-pass: affected item stored as UNMATCHED, sync completes', async () => {
+    it('TMDB failure during pre-pass: affected item is skipped, sync still completes', async () => {
       const fetchedAt = new Date('2026-08-01T10:00:00Z')
 
       const throwingMock = {
@@ -1593,12 +1570,7 @@ describe('CatalogSyncService', () => {
         .select()
         .from(movieAvailabilities)
         .where(eq(movieAvailabilities.providerId, testSourceId))
-      expect(avRows).toHaveLength(1)
-      expect(avRows[0].status).toBe('AVAILABLE')
-
-      const [movie] = await db.select().from(movies).where(eq(movies.id, avRows[0].movieId))
-      expect(movie.tmdbId).toBeNull()
-      expect(movie.matchStatus).toBe('UNMATCHED')
+      expect(avRows).toHaveLength(0)
     })
 
     it('re-sync with identical snapshot is idempotent when matching service is provided', async () => {
@@ -1637,7 +1609,7 @@ describe('CatalogSyncService', () => {
       }
     })
 
-    it('movies.matchStatus is MATCHED for TMDB-resolved items and UNMATCHED for local skeletons', async () => {
+    it('movies.matchStatus is MATCHED for TMDB-resolved items; items without TMDB ID are skipped', async () => {
       const fetchedAt = new Date('2026-08-01T10:00:00Z')
 
       const result = await CatalogSyncService.syncCatalog(
@@ -1653,22 +1625,20 @@ describe('CatalogSyncService', () => {
       )
 
       expect(result.status).toBe('completed')
+      expect(result.counts.unresolvedCount).toBe(1) // 908 skipped
 
       const avRows = await db
         .select({ movieId: movieAvailabilities.movieId, providerItemId: movieAvailabilities.providerItemId })
         .from(movieAvailabilities)
         .where(eq(movieAvailabilities.providerId, testSourceId))
 
+      expect(avRows).toHaveLength(1)
       const withTmdb = avRows.find((r) => r.providerItemId === '907')!
-      const withoutTmdb = avRows.find((r) => r.providerItemId === '908')!
+      expect(withTmdb).toBeDefined()
 
       const [movieMatched] = await db.select().from(movies).where(eq(movies.id, withTmdb.movieId))
-      const [movieUnmatched] = await db.select().from(movies).where(eq(movies.id, withoutTmdb.movieId))
-
       expect(movieMatched.matchStatus).toBe('MATCHED')
       expect(movieMatched.tmdbId).toBe(999001)
-      expect(movieUnmatched.matchStatus).toBe('UNMATCHED')
-      expect(movieUnmatched.tmdbId).toBeNull()
     })
 
     it('series without TMDB ID is matched via title matching service', async () => {
@@ -1709,7 +1679,7 @@ describe('CatalogSyncService', () => {
       }
     })
 
-    it('movie without TMDB ID and no matching service creates UNMATCHED skeleton (backward compat)', async () => {
+    it('movie without TMDB ID and no matching service is skipped entirely', async () => {
       const fetchedAt = new Date('2026-08-01T10:00:00Z')
 
       const result = await CatalogSyncService.syncCatalog(
@@ -1724,21 +1694,16 @@ describe('CatalogSyncService', () => {
       expect(result.status).toBe('completed')
       expect(result.counts.titleMatchedCount).toBe(0)
       expect(result.counts.titleUnmatchedCount).toBe(0)
+      expect(result.counts.unresolvedCount).toBe(1)
 
       const avRows = await db
         .select()
         .from(movieAvailabilities)
         .where(eq(movieAvailabilities.providerId, testSourceId))
-      expect(avRows).toHaveLength(1)
-      expect(avRows[0].status).toBe('AVAILABLE')
-
-      const [movie] = await db.select().from(movies).where(eq(movies.id, avRows[0].movieId))
-      expect(movie.tmdbId).toBeNull()
-      expect(movie.matchStatus).toBe('UNMATCHED')
-      expect(movie.title).toBe('Unknown Movie 2099')
+      expect(avRows).toHaveLength(0)
     })
 
-    it('consolidates IPTV title variants onto one movie without matchingService', async () => {
+    it('produces no availability rows when items have no TMDB ID and no matchingService', async () => {
       const fetchedAt = new Date('2026-08-01T11:00:00Z')
 
       const result = await CatalogSyncService.syncCatalog(
@@ -1754,18 +1719,13 @@ describe('CatalogSyncService', () => {
       )
 
       expect(result.status).toBe('completed')
-      expect(result.counts.titleMatchedCount).toBe(1)
+      expect(result.counts.unresolvedCount).toBe(2)
 
       const avRows = await db
         .select()
         .from(movieAvailabilities)
         .where(eq(movieAvailabilities.providerId, testSourceId))
-      expect(avRows).toHaveLength(2)
-      expect(avRows[0].movieId).toBe(avRows[1].movieId)
-
-      const [movie] = await db.select().from(movies).where(eq(movies.id, avRows[0].movieId))
-      expect(movie.title).toBe('Consolidation Test')
-      expect(movie.matchStatus).toBe('UNMATCHED')
+      expect(avRows).toHaveLength(0)
     })
   })
 
@@ -1790,6 +1750,7 @@ describe('CatalogSyncService', () => {
           episode_run_time: '',
           category_id: '1',
           category_name: '',
+          tmdb_id: '61001',
         },
         episodes: {
           '1': [
@@ -1844,6 +1805,7 @@ describe('CatalogSyncService', () => {
           episode_run_time: '',
           category_id: '1',
           category_name: '',
+          tmdb_id: '61002',
         },
         episodes: {
           '1': [
@@ -1969,7 +1931,7 @@ describe('CatalogSyncService', () => {
           { id: 'ep-1004-1', episode_num: 1, title: 'Ep One' },
           { id: 'ep-1004-2', episode_num: 2, title: 'Ep Two' },
         ],
-      })
+      }, '61004')
 
       await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t1, { 1004: info }))
       await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([], [seriesEntry], t2, { 1004: info }))
@@ -1992,7 +1954,7 @@ describe('CatalogSyncService', () => {
       await CatalogSyncService.syncCatalog(
         testSourceId,
         makeSnapshot([], [seriesEntry], t1, {
-          1005: makeSeriesInfo({ '1': [{ id: 'ep-1005-1', episode_num: 1, title: 'Ep One' }] }),
+          1005: makeSeriesInfo({ '1': [{ id: 'ep-1005-1', episode_num: 1, title: 'Ep One' }] }, '61005'),
         }),
       )
 
@@ -2004,7 +1966,7 @@ describe('CatalogSyncService', () => {
               { id: 'ep-1005-1', episode_num: 1, title: 'Ep One' },
               { id: 'ep-1005-2', episode_num: 2, title: 'Ep Two (new)' },
             ],
-          }),
+          }, '61005'),
         }),
       )
 

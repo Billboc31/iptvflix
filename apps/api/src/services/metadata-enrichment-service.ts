@@ -340,6 +340,78 @@ export class MetadataEnrichmentService {
     return { result: 'enriched', episodes: counters }
   }
 
+  /**
+   * Ensures a canonical movie row exists for the given TMDB ID.
+   * When the movie is not in the local DB, fetches the title from TMDB and inserts
+   * a canonical skeleton (no provider metadata). Enrichment fills the rest later.
+   */
+  async importMovieByTmdbId(tmdbId: number): Promise<{ id: string } | null> {
+    const [existing] = await this.db
+      .select({ id: movies.id })
+      .from(movies)
+      .where(eq(movies.tmdbId, tmdbId))
+    if (existing) return existing
+
+    let title: string
+    try {
+      const meta = await this.provider.getMovieMetadata(tmdbId)
+      if (!meta) return null
+      title = meta.title
+    } catch {
+      return null
+    }
+
+    const [inserted] = await this.db
+      .insert(movies)
+      .values({ title, tmdbId, matchStatus: 'MATCHED' })
+      .onConflictDoNothing({ target: movies.tmdbId })
+      .returning({ id: movies.id })
+
+    if (inserted) return inserted
+
+    const [row] = await this.db
+      .select({ id: movies.id })
+      .from(movies)
+      .where(eq(movies.tmdbId, tmdbId))
+    return row ?? null
+  }
+
+  /**
+   * Ensures a canonical series row exists for the given TMDB ID.
+   * When the series is not in the local DB, fetches the title from TMDB and inserts
+   * a canonical skeleton (no provider metadata). Enrichment fills the rest later.
+   */
+  async importSeriesByTmdbId(tmdbId: number): Promise<{ id: string } | null> {
+    const [existing] = await this.db
+      .select({ id: series.id })
+      .from(series)
+      .where(eq(series.tmdbId, tmdbId))
+    if (existing) return existing
+
+    let title: string
+    try {
+      const meta = await this.provider.getSeriesMetadata(tmdbId)
+      if (!meta) return null
+      title = meta.title
+    } catch {
+      return null
+    }
+
+    const [inserted] = await this.db
+      .insert(series)
+      .values({ title, tmdbId, matchStatus: 'MATCHED' })
+      .onConflictDoNothing({ target: series.tmdbId })
+      .returning({ id: series.id })
+
+    if (inserted) return inserted
+
+    const [row] = await this.db
+      .select({ id: series.id })
+      .from(series)
+      .where(eq(series.tmdbId, tmdbId))
+    return row ?? null
+  }
+
   async enrichPending(opts?: {
     staleDays?: number
     force?: boolean
