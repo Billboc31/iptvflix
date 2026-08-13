@@ -1,7 +1,7 @@
 {
   "ticket_id": "T064",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T064-pivot-iptvflix-to-a-tmdb-first-canonical-catalog-a",
   "issue_number": 131,
-  "updated_at": "2026-08-13T15:10:02Z"
+  "updated_at": "2026-08-13T15:25:31Z"
 }
