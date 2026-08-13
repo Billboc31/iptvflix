@@ -18,33 +18,42 @@ function renderPage(id = 'series-1') {
 }
 
 describe('SeriesDetailPage', () => {
-  it('renders season list from SeriesDetailResponse.seasons', async () => {
+  it('renders season dropdown with all seasons from SeriesDetailResponse.seasons', async () => {
     renderPage()
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: MOCK_SERIES.title })).toBeInTheDocument()
     })
-    expect(screen.getByText(/Saison 1/)).toBeInTheDocument()
-    expect(screen.getByText(/Saison 2/)).toBeInTheDocument()
+    const select = screen.getByRole('combobox')
+    expect(select).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Saison 1/i })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Saison 2/i })).toBeInTheDocument()
   })
 
-  it('expanding a season fetches and displays its episode list', async () => {
-    const user = userEvent.setup()
+  it('auto-loads and displays episodes for the first season on mount', async () => {
     renderPage()
-
-    await waitFor(() => {
-      expect(screen.getByText(/Saison 1/)).toBeInTheDocument()
-    })
-
-    const seasonBtn = screen.getAllByRole('button').find((btn) =>
-      btn.textContent?.includes('Saison 1'),
-    )
-    expect(seasonBtn).toBeDefined()
-    await user.click(seasonBtn!)
-
     await waitFor(() => {
       expect(screen.getByText('Pilot')).toBeInTheDocument()
     })
     expect(screen.getByText('Second Episode')).toBeInTheDocument()
+  })
+
+  it('changes episode list when a different season is selected', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.get('/api/series/:id/seasons/:seasonNumber/episodes', ({ params }) => {
+        const sn = Number((params as { seasonNumber: string }).seasonNumber)
+        if (sn === 2) return HttpResponse.json([{ ...MOCK_EPISODES[0], title: 'S2E1', id: 's2e1' }])
+        return HttpResponse.json(MOCK_EPISODES)
+      }),
+    )
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pilot')).toBeInTheDocument())
+
+    await user.selectOptions(screen.getByRole('combobox'), '2')
+    await waitFor(() => {
+      expect(screen.getByText('S2E1')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Pilot')).not.toBeInTheDocument()
   })
 
   it('shows fallback message when seasons array is empty', async () => {
@@ -78,7 +87,7 @@ describe('SeriesDetailPage', () => {
     })
   })
 
-  it('caches episodes so a second expand does not re-fetch', async () => {
+  it('caches episodes so a second select of the same season does not re-fetch', async () => {
     const user = userEvent.setup()
     let fetchCount = 0
     server.use(
@@ -89,20 +98,16 @@ describe('SeriesDetailPage', () => {
     )
 
     renderPage()
-    await waitFor(() => expect(screen.getByText(/Saison 1/)).toBeInTheDocument())
-
-    const [seasonBtn] = screen.getAllByRole('button').filter((btn) =>
-      btn.textContent?.includes('Saison 1'),
-    )
-    await user.click(seasonBtn)
     await waitFor(() => expect(screen.getByText('Pilot')).toBeInTheDocument())
-
-    // Collapse and re-expand
-    await user.click(seasonBtn)
-    await user.click(seasonBtn)
-    await waitFor(() => expect(screen.getByText('Pilot')).toBeInTheDocument())
-
     expect(fetchCount).toBe(1)
+
+    // Switch to season 2 and back to season 1
+    await user.selectOptions(screen.getByRole('combobox'), '2')
+    await waitFor(() => expect(fetchCount).toBe(2))
+    await user.selectOptions(screen.getByRole('combobox'), '1')
+    await waitFor(() => expect(screen.getByText('Pilot')).toBeInTheDocument())
+
+    expect(fetchCount).toBe(2)
   })
 
   it('shows status badge when series status is present', async () => {
@@ -121,14 +126,14 @@ describe('SeriesDetailPage', () => {
     expect(screen.getByText('TV-MA')).toBeInTheDocument()
   })
 
-  it('shows trailer play button when trailerKey is present', async () => {
+  it('shows bande-annonce button when trailerKey is present', async () => {
     renderPage()
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /bande-annonce/i })).toBeInTheDocument()
     })
   })
 
-  it('does not show trailer button when trailerKey is null', async () => {
+  it('does not show bande-annonce button when trailerKey is null', async () => {
     server.use(
       http.get('/api/series/:id', () =>
         HttpResponse.json({ ...MOCK_SERIES, trailerKey: null }),
@@ -147,5 +152,15 @@ describe('SeriesDetailPage', () => {
       expect(screen.getByText('Alice Martin')).toBeInTheDocument()
     })
     expect(screen.getByText('Showrunner Name')).toBeInTheDocument()
+  })
+
+  it('renders Titres similaires section', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: MOCK_SERIES.title })).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Titres similaires')).toBeInTheDocument()
+    })
   })
 })
