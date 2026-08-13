@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
+import SettingsMenu from './SettingsMenu.js'
 
 const NAV_ITEMS = [
   { label: 'Accueil', to: '/', end: true },
@@ -70,14 +71,8 @@ export default function TopNav() {
             🔍
           </button>
 
-          {/* Profile / settings link */}
-          <NavLink
-            to="/settings/playback"
-            className="text-gray-400 hover:text-white transition-colors p-1 text-sm"
-            aria-label="Paramètres"
-          >
-            ⚙️
-          </NavLink>
+          {/* Settings menu */}
+          <SettingsMenu />
         </div>
       </div>
     </header>
