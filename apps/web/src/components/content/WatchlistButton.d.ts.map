@@ -1,1 +1,0 @@
-{"version":3,"file":"WatchlistButton.d.ts","sourceRoot":"","sources":["WatchlistButton.tsx"],"names":[],"mappings":"AACA,OAAO,KAAK,EAAE,kBAAkB,EAAE,MAAM,yBAAyB,CAAA;AAEjE,KAAK,oBAAoB,GAAG;IAC1B,SAAS,EAAE,kBAAkB,CAAA;IAC7B,OAAO,EAAE,MAAM,CAAA;CAChB,CAAA;AAED,MAAM,CAAC,OAAO,UAAU,eAAe,CAAC,EAAE,SAAS,EAAE,OAAO,EAAE,EAAE,oBAAoB,+BAuBnF"}

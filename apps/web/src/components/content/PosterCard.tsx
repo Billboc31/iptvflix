@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import Badge from '../ui/Badge.js'
 import PreviewPlayer from './PreviewPlayer.js'
 import { usePreview } from '../../contexts/PreviewContext.js'
@@ -42,6 +42,12 @@ export default function PosterCard({
     }
     if (isActive) deactivate()
   }
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [])
 
   return (
     <div

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { getProfile } from '../lib/api.js'
 
 type PreviewContextValue = {
@@ -8,7 +8,7 @@ type PreviewContextValue = {
   deactivate: () => void
 }
 
-const PreviewContext = createContext<PreviewContextValue>({
+export const PreviewContext = createContext<PreviewContextValue>({
   activeId: null,
   activeKey: null,
   activate: () => {},
@@ -19,11 +19,18 @@ export function PreviewProvider({ children }: { children: React.ReactNode }) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [autoplayEnabled, setAutoplayEnabled] = useState(true)
-
-  const reducedMotion =
+  const [reducedMotion, setReducedMotion] = useState(
     typeof window !== 'undefined'
       ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      : false
+      : false,
+  )
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
 
   useEffect(() => {
     getProfile()
@@ -31,16 +38,22 @@ export function PreviewProvider({ children }: { children: React.ReactNode }) {
       .catch(() => {})
   }, [])
 
-  function activate(id: string, key: string) {
-    if (reducedMotion || !autoplayEnabled) return
+  // Use refs so activate/deactivate are stable across renders
+  const reducedMotionRef = useRef(reducedMotion)
+  const autoplayEnabledRef = useRef(autoplayEnabled)
+  reducedMotionRef.current = reducedMotion
+  autoplayEnabledRef.current = autoplayEnabled
+
+  const activate = useCallback((id: string, key: string) => {
+    if (reducedMotionRef.current || !autoplayEnabledRef.current) return
     setActiveId(id)
     setActiveKey(key)
-  }
+  }, [])
 
-  function deactivate() {
+  const deactivate = useCallback(() => {
     setActiveId(null)
     setActiveKey(null)
-  }
+  }, [])
 
   return (
     <PreviewContext.Provider value={{ activeId, activeKey, activate, deactivate }}>

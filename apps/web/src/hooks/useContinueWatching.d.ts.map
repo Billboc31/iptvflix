@@ -1,1 +1,0 @@
-{"version":3,"file":"useContinueWatching.d.ts","sourceRoot":"","sources":["useContinueWatching.ts"],"names":[],"mappings":"AAEA,OAAO,KAAK,EAAE,oBAAoB,EAAE,MAAM,yBAAyB,CAAA;AAEnE,MAAM,MAAM,yBAAyB,GAAG;IACtC,KAAK,EAAE,oBAAoB,EAAE,CAAA;IAC7B,OAAO,EAAE,OAAO,CAAA;IAChB,KAAK,EAAE,KAAK,GAAG,IAAI,CAAA;CACpB,CAAA;AAED,wBAAgB,mBAAmB,IAAI,yBAAyB,CAa/D"}

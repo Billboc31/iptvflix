@@ -38,4 +38,10 @@ describe('PreviewPlayer', () => {
     rerender(<PreviewPlayer trailerKey="abc123" active={false} />)
     expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument()
   })
+
+  it('iframe has tabIndex -1 to prevent keyboard trap', () => {
+    render(<PreviewPlayer trailerKey="abc123" active={true} />)
+    const iframe = screen.getByTestId('preview-iframe') as HTMLIFrameElement
+    expect(iframe.tabIndex).toBe(-1)
+  })
 })

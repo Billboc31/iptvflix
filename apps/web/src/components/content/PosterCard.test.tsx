@@ -3,19 +3,22 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '../../test/handlers.js'
 import PosterCard from './PosterCard.js'
-import { PreviewProvider } from '../../contexts/PreviewContext.js'
 
-function renderCard(props: Parameters<typeof PosterCard>[0]) {
-  return render(
-    <PreviewProvider>
-      <PosterCard {...props} />
-    </PreviewProvider>,
-  )
-}
+const mockUsePreview = vi.hoisted(() => vi.fn())
+
+vi.mock('../../contexts/PreviewContext.js', () => ({
+  usePreview: () => mockUsePreview(),
+}))
 
 describe('PosterCard', () => {
   beforeEach(() => {
-    vi.useFakeTimers()
+    mockUsePreview.mockReturnValue({
+      activeId: null as string | null,
+      activeKey: null as string | null,
+      activate: vi.fn(),
+      deactivate: vi.fn(),
+    })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate'] })
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation((query: string) => ({
@@ -32,55 +35,53 @@ describe('PosterCard', () => {
   })
 
   it('renders title and year', () => {
-    renderCard({ title: 'Inception', year: 2010 })
+    render(<PosterCard title="Inception" year={2010} />)
     expect(screen.getAllByText('Inception').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('2010')).toBeInTheDocument()
   })
 
   it('renders quality badge when quality is provided', () => {
-    renderCard({ title: 'Movie', quality: 'HD' })
+    render(<PosterCard title="Movie" quality="HD" />)
     expect(screen.getByText('HD')).toBeInTheDocument()
   })
 
   it('does not render year when null', () => {
-    renderCard({ title: 'Movie', year: null })
+    render(<PosterCard title="Movie" year={null} />)
     expect(screen.queryByText('null')).not.toBeInTheDocument()
   })
 
   it('calls onClick when clicked', () => {
     const onClick = vi.fn()
-    renderCard({ title: 'Movie', onClick })
+    render(<PosterCard title="Movie" onClick={onClick} />)
     fireEvent.click(screen.getByRole('button'))
     expect(onClick).toHaveBeenCalledOnce()
   })
 
   it('does not mount preview when trailerKey is null', async () => {
-    renderCard({ title: 'NoTrailer', mediaId: 'movie-1', trailerKey: null, onClick: () => {} })
-    await act(async () => {
-      fireEvent.mouseEnter(screen.getByRole('button'))
-      vi.advanceTimersByTime(2000)
-    })
+    render(<PosterCard title="NoTrailer" mediaId="movie-1" trailerKey={null} onClick={() => {}} />)
+    fireEvent.mouseEnter(screen.getByRole('button'))
+    await act(() => vi.advanceTimersByTime(2000))
     expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument()
   })
 
   it('starts preview after 1.5s hover delay', async () => {
-    renderCard({ title: 'Movie', mediaId: 'movie-1', trailerKey: 'abc123', onClick: () => {} })
+    const activate = vi.fn()
+    mockUsePreview.mockReturnValue({ activeId: null, activeKey: null, activate, deactivate: vi.fn() })
+    render(<PosterCard title="Movie" mediaId="movie-1" trailerKey="abc123" onClick={() => {}} />)
     const card = screen.getByRole('button')
     fireEvent.mouseEnter(card)
-    expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument()
+    expect(activate).not.toHaveBeenCalled()
     await act(() => vi.advanceTimersByTime(1500))
-    expect(screen.getByTestId('preview-iframe')).toBeInTheDocument()
+    expect(activate).toHaveBeenCalledWith('movie-1', 'abc123')
   })
 
   it('cancels preview when mouse leaves before delay fires', async () => {
-    renderCard({ title: 'Movie', mediaId: 'movie-1', trailerKey: 'abc123', onClick: () => {} })
+    render(<PosterCard title="Movie" mediaId="movie-1" trailerKey="abc123" onClick={() => {}} />)
     const card = screen.getByRole('button')
-    await act(async () => {
-      fireEvent.mouseEnter(card)
-      vi.advanceTimersByTime(500)
-      fireEvent.mouseLeave(card)
-      vi.advanceTimersByTime(2000)
-    })
+    fireEvent.mouseEnter(card)
+    await act(() => vi.advanceTimersByTime(500))
+    fireEvent.mouseLeave(card)
+    await act(() => vi.advanceTimersByTime(2000))
     expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument()
   })
 
@@ -94,12 +95,10 @@ describe('PosterCard', () => {
         removeEventListener: vi.fn(),
       })),
     })
-    renderCard({ title: 'Movie', mediaId: 'movie-1', trailerKey: 'abc123', onClick: () => {} })
+    render(<PosterCard title="Movie" mediaId="movie-1" trailerKey="abc123" onClick={() => {}} />)
     const card = screen.getByRole('button')
-    await act(async () => {
-      fireEvent.mouseEnter(card)
-      vi.advanceTimersByTime(2000)
-    })
+    fireEvent.mouseEnter(card)
+    await act(() => vi.advanceTimersByTime(2000))
     expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument()
   })
 
@@ -119,35 +118,42 @@ describe('PosterCard', () => {
         }),
       ),
     )
-    renderCard({ title: 'Movie', mediaId: 'movie-1', trailerKey: 'abc123', onClick: () => {} })
-    // Flush profile fetch before firing timer
+    // activate spy is a no-op → activeId stays null → no iframe shown
+    render(<PosterCard title="Movie" mediaId="movie-1" trailerKey="abc123" onClick={() => {}} />)
     await act(async () => {})
     const card = screen.getByRole('button')
-    await act(async () => {
-      fireEvent.mouseEnter(card)
-      vi.advanceTimersByTime(2000)
-    })
+    fireEvent.mouseEnter(card)
+    await act(() => vi.advanceTimersByTime(2000))
     expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument()
   })
 
   it('focus triggers preview after 1.5s', async () => {
-    renderCard({ title: 'Movie', mediaId: 'movie-1', trailerKey: 'abc123', onClick: () => {} })
+    const activate = vi.fn()
+    mockUsePreview.mockReturnValue({ activeId: null, activeKey: null, activate, deactivate: vi.fn() })
+    render(<PosterCard title="Movie" mediaId="movie-1" trailerKey="abc123" onClick={() => {}} />)
     const card = screen.getByRole('button')
     fireEvent.focus(card)
-    expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument()
+    expect(activate).not.toHaveBeenCalled()
     await act(() => vi.advanceTimersByTime(1500))
-    expect(screen.getByTestId('preview-iframe')).toBeInTheDocument()
+    expect(activate).toHaveBeenCalledWith('movie-1', 'abc123')
   })
 
   it('blur cancels preview', async () => {
-    renderCard({ title: 'Movie', mediaId: 'movie-1', trailerKey: 'abc123', onClick: () => {} })
+    render(<PosterCard title="Movie" mediaId="movie-1" trailerKey="abc123" onClick={() => {}} />)
     const card = screen.getByRole('button')
-    await act(async () => {
-      fireEvent.focus(card)
-      vi.advanceTimersByTime(500)
-      fireEvent.blur(card)
-      vi.advanceTimersByTime(2000)
-    })
+    fireEvent.focus(card)
+    await act(() => vi.advanceTimersByTime(500))
+    fireEvent.blur(card)
+    await act(() => vi.advanceTimersByTime(2000))
+    expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument()
+  })
+
+  it('clears pending timer when unmounted before delay fires', async () => {
+    const { unmount } = render(<PosterCard title="Movie" mediaId="movie-1" trailerKey="abc123" onClick={() => {}} />)
+    fireEvent.mouseEnter(screen.getByRole('button'))
+    unmount()
+    await act(() => vi.advanceTimersByTime(2000))
+    // No iframe should appear — timer was cancelled on unmount
     expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument()
   })
 })

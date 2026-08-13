@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Button from '../ui/Button.js'
 import PreviewPlayer from './PreviewPlayer.js'
 import { usePreview } from '../../contexts/PreviewContext.js'
@@ -31,15 +31,22 @@ export default function HeroSection({
   const { activeId, activate, deactivate } = usePreview()
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isActive = !!mediaId && activeId === mediaId
+  const isActiveRef = useRef(isActive)
+  isActiveRef.current = isActive
+  const [muted, setMuted] = useState(true)
+
+  useEffect(() => {
+    setMuted(true)
+  }, [mediaId])
 
   useEffect(() => {
     if (!mediaId || !trailerKey || isPointerCoarse()) return
     timerRef.current = setTimeout(() => activate(mediaId, trailerKey), 2000)
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
-      deactivate()
+      if (isActiveRef.current) deactivate()
     }
-  }, [mediaId, trailerKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mediaId, trailerKey, activate, deactivate])
 
   return (
     <div className="relative h-[56vh] min-h-80 overflow-hidden">
@@ -57,12 +64,23 @@ export default function HeroSection({
 
       {/* Preview player — mounts only when active */}
       {trailerKey && (
-        <PreviewPlayer trailerKey={trailerKey} active={isActive} />
+        <PreviewPlayer trailerKey={trailerKey} active={isActive} muted={muted} />
       )}
 
       {/* Gradient overlays */}
       <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0f] via-[#0a0a0f]/70 to-transparent" />
       <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0f] via-transparent to-transparent" />
+
+      {/* Mute/unmute control — visible only during active preview */}
+      {isActive && (
+        <button
+          onClick={() => setMuted((m) => !m)}
+          className="absolute bottom-4 right-4 z-10 px-3 py-1.5 rounded-full bg-black/60 text-white text-xs font-medium hover:bg-black/80 transition-colors border border-white/20"
+          aria-label={muted ? 'Activer le son' : 'Couper le son'}
+        >
+          {muted ? 'Son coupé' : 'Son activé'}
+        </button>
+      )}
 
       {/* Content */}
       <div className="relative h-full flex flex-col justify-end px-8 pb-10 max-w-2xl">

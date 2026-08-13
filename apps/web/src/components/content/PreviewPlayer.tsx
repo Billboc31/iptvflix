@@ -3,9 +3,10 @@ import { useEffect, useRef, useState } from 'react'
 type PreviewPlayerProps = {
   trailerKey: string
   active: boolean
+  muted?: boolean
 }
 
-export default function PreviewPlayer({ trailerKey, active }: PreviewPlayerProps) {
+export default function PreviewPlayer({ trailerKey, active, muted = true }: PreviewPlayerProps) {
   const [loaded, setLoaded] = useState(false)
   const [failed, setFailed] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -14,6 +15,14 @@ export default function PreviewPlayer({ trailerKey, active }: PreviewPlayerProps
     setLoaded(false)
     setFailed(false)
   }, [trailerKey])
+
+  useEffect(() => {
+    if (!active || !iframeRef.current?.contentWindow) return
+    iframeRef.current.contentWindow.postMessage(
+      JSON.stringify({ event: 'command', func: muted ? 'mute' : 'unMute', args: '' }),
+      '*',
+    )
+  }, [muted, active, loaded])
 
   if (!active) return null
 
@@ -24,6 +33,7 @@ export default function PreviewPlayer({ trailerKey, active }: PreviewPlayerProps
       ref={iframeRef}
       key={trailerKey}
       src={src}
+      tabIndex={-1}
       allow="autoplay; encrypted-media"
       title="Preview"
       data-testid="preview-iframe"
