@@ -7,6 +7,8 @@ import { XtreamCodesClient } from '../providers/xtream/client.js'
 import type { XtreamCatalogSnapshot } from '../providers/xtream/types.js'
 import { PlexClient } from '../providers/plex/client.js'
 import type { PlexCatalogSnapshot } from '../providers/plex/types.js'
+import { M3UClient } from '../providers/m3u/client.js'
+import type { M3UCatalogSnapshot } from '../providers/m3u/types.js'
 import {
   CatalogSyncService,
   SyncAlreadyRunningError,
@@ -108,6 +110,17 @@ async function fetchXtreamSnapshot(source: typeof sources.$inferSelect): Promise
   }
 }
 
+async function fetchM3USnapshot(source: typeof sources.$inferSelect): Promise<M3UCatalogSnapshot> {
+  const timeoutMs = parseInt(process.env.M3U_FETCH_TIMEOUT_MS ?? '60000', 10)
+  const client = new M3UClient({
+    playlistUrl: source.baseUrl,
+    username: source.username ?? undefined,
+    password: source.password ?? undefined,
+    timeoutMs,
+  })
+  return client.fetchSnapshot(source.id)
+}
+
 async function fetchPlexSnapshot(source: typeof sources.$inferSelect): Promise<PlexCatalogSnapshot> {
   const client = new PlexClient(source.baseUrl, source.password ?? '', 60_000)
 
@@ -152,8 +165,8 @@ export async function triggerSync(body: TriggerSyncBody): Promise<SyncRunRespons
     throw err
   }
 
-  if (source.type !== 'XTREAM' && source.type !== 'PLEX') {
-    const err = new Error('Only XTREAM and PLEX sources can be synchronized')
+  if (source.type !== 'XTREAM' && source.type !== 'PLEX' && source.type !== 'M3U') {
+    const err = new Error('Only XTREAM, PLEX, and M3U sources can be synchronized')
     ;(err as Error & { statusCode?: number }).statusCode = 400
     throw err
   }
@@ -163,6 +176,9 @@ export async function triggerSync(body: TriggerSyncBody): Promise<SyncRunRespons
     if (source.type === 'PLEX') {
       const snapshot = await fetchPlexSnapshot(source)
       result = await CatalogSyncService.syncPlexCatalog(source.id, snapshot)
+    } else if (source.type === 'M3U') {
+      const snapshot = await fetchM3USnapshot(source)
+      result = await CatalogSyncService.syncM3UCatalog(source.id, snapshot)
     } else {
       const snapshot = await fetchXtreamSnapshot(source)
       result = await CatalogSyncService.syncCatalog(source.id, snapshot)

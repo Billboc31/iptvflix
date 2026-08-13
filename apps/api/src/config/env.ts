@@ -22,3 +22,4 @@ export const WEB_SECRET: string | undefined = process.env.WEB_SECRET || undefine
 export const JWT_SECRET: string = jwtSecret
 export const AUTH_USERNAME: string = process.env.AUTH_USERNAME ?? 'admin'
 export const AUTH_PASSWORD_HASH: string = authPasswordHash
+export const M3U_FETCH_TIMEOUT_MS = Number(process.env.M3U_FETCH_TIMEOUT_MS ?? 60000)
