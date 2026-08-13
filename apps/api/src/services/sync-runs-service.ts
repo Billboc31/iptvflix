@@ -13,6 +13,8 @@ import { M3UAuthError, M3UNetworkError, M3UParseError } from '../providers/m3u/e
 import {
   CatalogSyncService,
   SyncAlreadyRunningError,
+  acquireSyncRunLock,
+  failSyncRun,
 } from './catalog-sync-service.js'
 import { NotFoundError } from './source-service.js'
 
@@ -62,11 +64,13 @@ export async function listSyncRuns(): Promise<SyncRunResponse[]> {
 }
 
 async function fetchXtreamSnapshot(source: typeof sources.$inferSelect): Promise<XtreamCatalogSnapshot> {
+  // 60s is too short for 100k+ VOD payloads; allow longer list downloads.
+  const listTimeoutMs = parseInt(process.env.XTREAM_LIST_TIMEOUT_MS ?? '180000', 10)
   const client = new XtreamCodesClient({
     baseUrl: source.baseUrl,
     username: source.username ?? '',
     password: source.password ?? '',
-    timeoutMs: 60_000,
+    timeoutMs: listTimeoutMs,
   })
 
   await client.authenticate()
@@ -77,16 +81,42 @@ async function fetchXtreamSnapshot(source: typeof sources.$inferSelect): Promise
     client.getSeries(),
   ])
 
+  // Per-series episode fetch is extremely expensive on large catalogs (~50k
+  // series). Opt-in via XTREAM_FETCH_SERIES_INFO=true; default skips it so the
+  // first sync can finish with movies + series metadata.
+  const fetchSeriesInfo = process.env.XTREAM_FETCH_SERIES_INFO === 'true'
+  if (!fetchSeriesInfo) {
+    console.info(
+      `[xtream-snapshot] skipping getSeriesInfo for ${series.length} series ` +
+        `(set XTREAM_FETCH_SERIES_INFO=true to enable)`,
+    )
+    return {
+      sourceId: source.id,
+      fetchedAt: new Date(),
+      vodCategories,
+      vodStreams,
+      seriesCategories,
+      series,
+      seriesInfo: {},
+    }
+  }
+
+  const infoClient = new XtreamCodesClient({
+    baseUrl: source.baseUrl,
+    username: source.username ?? '',
+    password: source.password ?? '',
+    timeoutMs: parseInt(process.env.XTREAM_SERIES_INFO_TIMEOUT_MS ?? '30000', 10),
+  })
   const concurrencyLimit = parseInt(process.env.XTREAM_SERIES_CONCURRENCY ?? '5', 10)
   const settledResults = await withBoundedConcurrency(
     series.map((s) => async () => {
-      const info = await client.getSeriesInfo(s.series_id)
+      const info = await infoClient.getSeriesInfo(s.series_id)
       return [s.series_id, info] as const
     }),
     concurrencyLimit,
   )
 
-  const seriesInfo: Record<number, Awaited<ReturnType<typeof client.getSeriesInfo>>> = {}
+  const seriesInfo: Record<number, Awaited<ReturnType<typeof infoClient.getSeriesInfo>>> = {}
   const failedSeriesIds: number[] = []
   for (let i = 0; i < settledResults.length; i++) {
     const r = settledResults[i]
@@ -172,45 +202,9 @@ export async function triggerSync(body: TriggerSyncBody): Promise<SyncRunRespons
     throw err
   }
 
+  let runId: string
   try {
-    let result: Awaited<ReturnType<typeof CatalogSyncService.syncCatalog>>
-    if (source.type === 'PLEX') {
-      const snapshot = await fetchPlexSnapshot(source)
-      result = await CatalogSyncService.syncPlexCatalog(source.id, snapshot)
-    } else if (source.type === 'M3U') {
-      let snapshot: M3UCatalogSnapshot
-      try {
-        snapshot = await fetchM3USnapshot(source)
-      } catch (fetchErr) {
-        if (
-          fetchErr instanceof M3UAuthError ||
-          fetchErr instanceof M3UNetworkError ||
-          fetchErr instanceof M3UParseError
-        ) {
-          const [failedRun] = await db
-            .insert(syncRuns)
-            .values({
-              sourceId: source.id,
-              status: 'FAILED',
-              completedAt: new Date(),
-              errorMessage: (fetchErr as Error).message,
-            })
-            .returning()
-          return toResponse(failedRun)
-        }
-        throw fetchErr
-      }
-      result = await CatalogSyncService.syncM3UCatalog(source.id, snapshot!)
-    } else {
-      const snapshot = await fetchXtreamSnapshot(source)
-      result = await CatalogSyncService.syncCatalog(source.id, snapshot)
-    }
-
-    const [row] = await db.select().from(syncRuns).where(eq(syncRuns.id, result.runId))
-    if (!row) {
-      throw new Error('Sync completed but run record is missing')
-    }
-    return toResponse(row)
+    runId = await acquireSyncRunLock(source.id)
   } catch (err) {
     if (err instanceof SyncAlreadyRunningError) {
       const conflict = new Error(err.message)
@@ -219,4 +213,48 @@ export async function triggerSync(body: TriggerSyncBody): Promise<SyncRunRespons
     }
     throw err
   }
+
+  const [runningRow] = await db.select().from(syncRuns).where(eq(syncRuns.id, runId))
+  if (!runningRow) {
+    throw new Error('Failed to create sync run')
+  }
+
+  // Run catalog fetch + DB upsert in the background so the UI can poll RUNNING.
+  void (async () => {
+    try {
+      if (source.type === 'PLEX') {
+        const snapshot = await fetchPlexSnapshot(source)
+        await CatalogSyncService.syncPlexCatalog(source.id, snapshot, { runId })
+      } else if (source.type === 'M3U') {
+        let snapshot: M3UCatalogSnapshot
+        try {
+          snapshot = await fetchM3USnapshot(source)
+        } catch (fetchErr) {
+          if (
+            fetchErr instanceof M3UAuthError ||
+            fetchErr instanceof M3UNetworkError ||
+            fetchErr instanceof M3UParseError
+          ) {
+            await failSyncRun(runId, (fetchErr as Error).message)
+            return
+          }
+          throw fetchErr
+        }
+        await CatalogSyncService.syncM3UCatalog(source.id, snapshot, { runId })
+      } else {
+        const snapshot = await fetchXtreamSnapshot(source)
+        await CatalogSyncService.syncCatalog(source.id, snapshot, { runId })
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[sync-runs] background sync failed runId=${runId}:`, err)
+      try {
+        await failSyncRun(runId, message)
+      } catch (persistErr) {
+        console.error(`[sync-runs] failed to mark run FAILED runId=${runId}:`, persistErr)
+      }
+    }
+  })()
+
+  return toResponse(runningRow)
 }
