@@ -1,7 +1,12 @@
 import 'dotenv/config'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { eq, and } from 'drizzle-orm'
 import { CanonicalResolver } from '../canonical-resolver.js'
 import type { MetadataEnrichmentService } from '../metadata-enrichment-service.js'
+import { db } from '../../db/client.js'
+import { series as seriesTable } from '../../db/schema/series.js'
+import { seasons } from '../../db/schema/seasons.js'
+import { episodes } from '../../db/schema/episodes.js'
 
 function makeEnrichmentService(
   importMovieResult: { id: string } | null = { id: 'tmdb-movie-1' },
@@ -139,12 +144,73 @@ describe('CanonicalResolver', () => {
   })
 
   describe('resolveEpisodeCanonical', () => {
-    // Episode resolution uses the real DB — covered by catalog-sync-service integration tests.
-    // This unit test verifies the method exists and has the expected interface.
-    it('has resolveEpisodeCanonical method', () => {
+    let testSeriesId: string
+
+    beforeEach(async () => {
+      const [row] = await db
+        .insert(seriesTable)
+        .values({ title: 'Resolver Test Series' })
+        .returning({ id: seriesTable.id })
+      testSeriesId = row.id
+    })
+
+    afterEach(async () => {
+      await db.delete(seriesTable).where(eq(seriesTable.id, testSeriesId))
+    })
+
+    it('creates season and episode canonical records and returns their id', async () => {
       const svc = makeEnrichmentService()
       const resolver = new CanonicalResolver(svc as unknown as MetadataEnrichmentService)
-      expect(typeof resolver.resolveEpisodeCanonical).toBe('function')
+
+      const result = await resolver.resolveEpisodeCanonical({
+        seriesId: testSeriesId,
+        seasonNumber: 1,
+        episodeNumber: 3,
+        episodeMeta: { title: 'Provider Title', synopsis: 'Provider synopsis' },
+      })
+
+      expect(result).not.toBeNull()
+      expect(result!.id).toBeTypeOf('string')
+
+      const [ep] = await db
+        .select({ title: episodes.title })
+        .from(episodes)
+        .where(eq(episodes.id, result!.id))
+      expect(ep.title).toBe('Provider Title')
+
+      const [season] = await db
+        .select({ seasonNumber: seasons.seasonNumber })
+        .from(seasons)
+        .where(and(eq(seasons.seriesId, testSeriesId), eq(seasons.seasonNumber, 1)))
+      expect(season.seasonNumber).toBe(1)
+    })
+
+    it('returns the same id on a second call (idempotent, no overwrite)', async () => {
+      const svc = makeEnrichmentService()
+      const resolver = new CanonicalResolver(svc as unknown as MetadataEnrichmentService)
+
+      const first = await resolver.resolveEpisodeCanonical({
+        seriesId: testSeriesId,
+        seasonNumber: 2,
+        episodeNumber: 1,
+        episodeMeta: { title: 'Original Title' },
+      })
+      expect(first).not.toBeNull()
+
+      const second = await resolver.resolveEpisodeCanonical({
+        seriesId: testSeriesId,
+        seasonNumber: 2,
+        episodeNumber: 1,
+        episodeMeta: { title: 'Provider Dirty Title' },
+      })
+
+      expect(second!.id).toBe(first!.id)
+
+      const [ep] = await db
+        .select({ title: episodes.title })
+        .from(episodes)
+        .where(eq(episodes.id, first!.id))
+      expect(ep.title).toBe('Original Title')
     })
   })
 })

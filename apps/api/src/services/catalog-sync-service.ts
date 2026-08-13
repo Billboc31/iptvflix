@@ -358,17 +358,6 @@ async function resolveEpisodeId(
     .limit(1)
 
   if (existingEpisode) {
-    if (meta) {
-      const updates: Partial<typeof episodes.$inferInsert> = {}
-      if (meta.title != null) updates.title = meta.title
-      if (meta.synopsis != null) updates.synopsis = meta.synopsis
-      if (meta.durationMinutes != null) updates.durationMinutes = meta.durationMinutes
-      if (meta.airDate != null) updates.airDate = meta.airDate
-      if (Object.keys(updates).length > 0) {
-        updates.updatedAt = new Date()
-        await tx.update(episodes).set(updates).where(eq(episodes.id, existingEpisode.id))
-      }
-    }
     return existingEpisode.id
   }
 

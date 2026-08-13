@@ -8,6 +8,10 @@ import { XtreamCodesClient } from '../providers/xtream/client.js'
 import type { XtreamSeriesInfo } from '../providers/xtream/types.js'
 import { CatalogSyncService, acquireSyncRunLock, SyncAlreadyRunningError } from './catalog-sync-service.js'
 import { withBoundedConcurrency } from './sync-runs-service.js'
+import { TMDB_API_KEY } from '../config/env.js'
+import { TmdbClient } from '../providers/metadata/tmdb/client.js'
+import { MetadataEnrichmentService } from './metadata-enrichment-service.js'
+import { CanonicalResolver } from './canonical-resolver.js'
 
 export interface BackfillResult {
   processed: number
@@ -146,9 +150,13 @@ export class EpisodeBackfillService {
     }
 
     try {
+      const canonicalResolver = TMDB_API_KEY
+        ? new CanonicalResolver(new MetadataEnrichmentService(db, new TmdbClient({ apiKey: TMDB_API_KEY })))
+        : undefined
       await CatalogSyncService.syncCatalog(source.id, snapshot, {
         runId,
         skipLifecycle: true,
+        canonicalResolver,
       })
       result.succeeded += successCount
     } catch (err) {
