@@ -22,3 +22,25 @@
 [2026-08-13T09:43:11Z] conflict-resolver: running tests
 [2026-08-13T09:43:11Z] conflict-resolver: test-report written: runs/T060/conflict/test-report.md
 [2026-08-13T09:43:11Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-13T09:44:03Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-13T09:44:03Z] auto-run: running step=tester
+[2026-08-13T09:44:04Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-13T09:44:04Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-13T09:44:04Z] prompt: generic fallback — injecting runs/T060/ticket.md
+[2026-08-13T09:44:04Z] compose: global-context=docs/ai/global-context.md
+[2026-08-13T09:44:04Z] compose: role=ai/roles/tester.md
+[2026-08-13T09:44:04Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-13T09:44:04Z] compose: skill=ai/skills/testing.md
+[2026-08-13T09:44:04Z] compose: skill=ai/skills/debugging.md
+[2026-08-13T09:44:04Z] compose: task (canonical prompt)
+[2026-08-13T09:44:04Z] snapshot: runtime-prompt=runs/T060/prompts/tester-attempt-1.md
+[2026-08-13T09:47:23Z] auto-run: step=tester done rc=0
+[2026-08-13T09:47:23Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-13T09:47:23Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-13T09:47:23Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T060/daemon.lock', 'runs/T060/runtime.log', 'runs/T060/workflow-status.md']
+[2026-08-13T09:47:23Z] commit-checkpoint: sha=592a2cc files=3 title='test(T060/workflow): tester — update 3 file(s)'
+[2026-08-13T09:47:23Z] auto-run: auto-push triggered
+[2026-08-13T09:47:23Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T060/daemon.lock', 'runs/T060/runtime.log', 'runs/T060/workflow-status.md']
+[2026-08-13T09:47:23Z] push: pushing branch=ticket/T060-resolve-missing-tmdb-ids-during-source-sync-and-bu
+[2026-08-13T09:47:25Z] push: done branch=ticket/T060-resolve-missing-tmdb-ids-during-source-sync-and-bu
+[2026-08-13T09:47:26Z] auto-run: TEST_COMPLETE — running PR lifecycle
