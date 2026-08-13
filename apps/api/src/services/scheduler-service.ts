@@ -5,7 +5,7 @@ import { sources } from '../db/schema/sources.js'
 import { syncRuns } from '../db/schema/sync-runs.js'
 import type { TriggerSyncBody } from '@iptvflix/api-contracts'
 import type { DiscoveryCandidatePoolService } from './discovery-candidate-pool-service.js'
-import type { CatalogRefreshService } from './catalog-refresh-service.js'
+import { type CatalogRefreshService, CatalogRefreshAlreadyRunningError } from './catalog-refresh-service.js'
 
 async function withBoundedConcurrency<T>(
   tasks: (() => Promise<T>)[],
@@ -160,8 +160,7 @@ export class SchedulerService {
       if (last?.completedAt && Date.now() - last.completedAt.getTime() < cadenceMs) return
       await this.catalogRefreshService.run()
     } catch (err) {
-      const statusCode = (err as Error & { statusCode?: number }).statusCode
-      if (statusCode === 409) {
+      if (err instanceof CatalogRefreshAlreadyRunningError) {
         console.debug('[scheduler] Catalog refresh already running, skipping')
         return
       }
