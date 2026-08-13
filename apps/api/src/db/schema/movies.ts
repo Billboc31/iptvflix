@@ -1,7 +1,11 @@
-import { pgTable, pgEnum, text, uuid, integer, timestamp, date, primaryKey, real } from 'drizzle-orm/pg-core'
+import { pgTable, pgEnum, text, uuid, integer, timestamp, date, primaryKey, real, jsonb, varchar } from 'drizzle-orm/pg-core'
 import { genres } from './genres.js'
+import { collections } from './collections.js'
 
 export const matchStatusEnum = pgEnum('match_status', ['PENDING', 'MATCHED', 'UNMATCHED'])
+
+type SpokenLanguage = { iso639_1: string; name: string }
+type ProductionCountry = { iso3166_1: string; name: string }
 
 export const movies = pgTable('movies', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -24,6 +28,18 @@ export const movies = pgTable('movies', {
   digitalReleaseDate: date('digital_release_date'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  // TMDB-first catalog fields
+  popularity: real('popularity'),
+  voteCount: integer('vote_count'),
+  originalLanguage: varchar('original_language', { length: 10 }),
+  spokenLanguages: jsonb('spoken_languages').$type<SpokenLanguage[]>(),
+  productionCountries: jsonb('production_countries').$type<ProductionCountry[]>(),
+  tagline: text('tagline'),
+  status: text('status'),
+  keywords: jsonb('keywords').$type<string[]>(),
+  collectionId: uuid('collection_id').references(() => collections.id),
+  externalIds: jsonb('external_ids').$type<Record<string, string | number | null>>(),
+  tmdbSyncedAt: timestamp('tmdb_synced_at', { withTimezone: true }),
 })
 
 export const movieGenres = pgTable(

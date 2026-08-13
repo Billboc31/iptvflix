@@ -170,6 +170,16 @@ export async function listMovies(filters: MovieFilters): Promise<PaginatedList<M
       availabilityCount,
       availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
       trailerKey: trailerKeyMap.get(m.id) ?? null,
+      popularity: m.popularity ?? null,
+      voteCount: m.voteCount ?? null,
+      originalLanguage: m.originalLanguage ?? null,
+      spokenLanguages: m.spokenLanguages ?? null,
+      productionCountries: m.productionCountries ?? null,
+      tagline: m.tagline ?? null,
+      status: m.status ?? null,
+      keywords: m.keywords ?? null,
+      collection: null,
+      externalIds: m.externalIds ?? null,
     }
   })
 
@@ -212,6 +222,16 @@ export async function getMovie(id: string): Promise<MovieResponse | null> {
     availabilityCount,
     availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
     trailerKey: trailerRow[0]?.youtubeKey ?? null,
+    popularity: row.popularity ?? null,
+    voteCount: row.voteCount ?? null,
+    originalLanguage: row.originalLanguage ?? null,
+    spokenLanguages: row.spokenLanguages ?? null,
+    productionCountries: row.productionCountries ?? null,
+    tagline: row.tagline ?? null,
+    status: row.status ?? null,
+    keywords: row.keywords ?? null,
+    collection: null,
+    externalIds: row.externalIds ?? null,
   }
 }
 
@@ -326,6 +346,19 @@ export async function listSeries(filters: SeriesFilters): Promise<PaginatedList<
       seasonCount: seasonMap.get(s.id) ?? 0,
       availabilityCount,
       availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
+      popularity: s.popularity ?? null,
+      voteCount: s.voteCount ?? null,
+      originalLanguage: s.originalLanguage ?? null,
+      spokenLanguages: s.spokenLanguages ?? null,
+      productionCountries: s.productionCountries ?? null,
+      tagline: s.tagline ?? null,
+      keywords: s.keywords ?? null,
+      externalIds: s.externalIds ?? null,
+      inProduction: s.inProduction ?? null,
+      networks: s.networks ?? null,
+      createdBy: s.createdBy ?? null,
+      numberOfSeasons: s.numberOfSeasons ?? null,
+      numberOfEpisodes: s.numberOfEpisodes ?? null,
     }
   })
 
@@ -364,6 +397,19 @@ export async function getSeries(id: string): Promise<SeriesResponse | null> {
     seasonCount: Number(seasonCountRows[0]?.cnt ?? 0),
     availabilityCount,
     availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
+    popularity: row.popularity ?? null,
+    voteCount: row.voteCount ?? null,
+    originalLanguage: row.originalLanguage ?? null,
+    spokenLanguages: row.spokenLanguages ?? null,
+    productionCountries: row.productionCountries ?? null,
+    tagline: row.tagline ?? null,
+    keywords: row.keywords ?? null,
+    externalIds: row.externalIds ?? null,
+    inProduction: row.inProduction ?? null,
+    networks: row.networks ?? null,
+    createdBy: row.createdBy ?? null,
+    numberOfSeasons: row.numberOfSeasons ?? null,
+    numberOfEpisodes: row.numberOfEpisodes ?? null,
   }
 }
 
@@ -513,6 +559,16 @@ export async function searchContent(
         availabilityCount,
         availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
         trailerKey: mTrailerKeyMap.get(m.id) ?? null,
+        popularity: m.popularity ?? null,
+        voteCount: m.voteCount ?? null,
+        originalLanguage: m.originalLanguage ?? null,
+        spokenLanguages: m.spokenLanguages ?? null,
+        productionCountries: m.productionCountries ?? null,
+        tagline: m.tagline ?? null,
+        status: m.status ?? null,
+        keywords: m.keywords ?? null,
+        collection: null,
+        externalIds: m.externalIds ?? null,
       }
     }),
     series: seriesRows.map((s) => {
@@ -528,6 +584,19 @@ export async function searchContent(
         seasonCount: sSeasonMap.get(s.id) ?? 0,
         availabilityCount,
         availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
+        popularity: s.popularity ?? null,
+        voteCount: s.voteCount ?? null,
+        originalLanguage: s.originalLanguage ?? null,
+        spokenLanguages: s.spokenLanguages ?? null,
+        productionCountries: s.productionCountries ?? null,
+        tagline: s.tagline ?? null,
+        keywords: s.keywords ?? null,
+        externalIds: s.externalIds ?? null,
+        inProduction: s.inProduction ?? null,
+        networks: s.networks ?? null,
+        createdBy: s.createdBy ?? null,
+        numberOfSeasons: s.numberOfSeasons ?? null,
+        numberOfEpisodes: s.numberOfEpisodes ?? null,
       }
     }),
   }

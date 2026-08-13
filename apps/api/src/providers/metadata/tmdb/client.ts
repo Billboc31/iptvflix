@@ -18,6 +18,7 @@ import type {
   TmdbReleaseDatesResponse,
   TmdbContentRatingsResponse,
   TmdbSeasonResponse,
+  TmdbCollection,
 } from './types.js'
 import { TmdbRateLimitError, TmdbNetworkError } from './errors.js'
 
@@ -43,12 +44,35 @@ function mapMovieDetail(raw: TmdbMovieDetail): Omit<ExternalMovieMetadata, 'cert
     posterPath: raw.poster_path ?? null,
     backdropPath: raw.backdrop_path ?? null,
     genres: raw.genres.map((g) => g.name),
+    genreObjects: raw.genres.map((g) => ({ name: g.name, tmdbId: g.id })),
     runtimeMinutes: raw.runtime ?? null,
     imdbId: raw.imdb_id ?? null,
     popularity: raw.popularity ?? null,
     voteAverage: raw.vote_average ?? null,
+    voteCount: raw.vote_count ?? null,
     releaseStatus: raw.status ?? null,
+    status: raw.status ?? null,
     releaseDate: raw.release_date || null,
+    originalLanguage: raw.original_language ?? null,
+    spokenLanguages: raw.spoken_languages
+      ? raw.spoken_languages.map((l) => ({ iso639_1: l.iso_639_1, name: l.name }))
+      : null,
+    productionCountries: raw.production_countries
+      ? raw.production_countries.map((c) => ({ iso3166_1: c.iso_3166_1, name: c.name }))
+      : null,
+    tagline: raw.tagline ?? null,
+    keywords: raw.keywords?.results?.map((k) => k.name) ?? null,
+    belongsToCollection: raw.belongs_to_collection
+      ? {
+          tmdbId: raw.belongs_to_collection.id,
+          name: raw.belongs_to_collection.name,
+          posterPath: raw.belongs_to_collection.poster_path ?? null,
+          backdropPath: raw.belongs_to_collection.backdrop_path ?? null,
+        }
+      : null,
+    externalIds: raw.external_ids
+      ? (raw.external_ids as unknown as Record<string, string | number | null>)
+      : null,
   }
 }
 
@@ -61,12 +85,48 @@ function mapSeriesDetail(raw: TmdbSeriesDetail): Omit<ExternalSeriesMetadata, 'c
     posterPath: raw.poster_path ?? null,
     backdropPath: raw.backdrop_path ?? null,
     genres: raw.genres.map((g) => g.name),
+    genreObjects: raw.genres.map((g) => ({ name: g.name, tmdbId: g.id })),
     imdbId: null,
     popularity: raw.popularity ?? null,
     voteAverage: raw.vote_average ?? null,
+    voteCount: raw.vote_count ?? null,
     status: raw.status ?? null,
     releaseStatus: raw.status ?? null,
     firstAirDate: raw.first_air_date || null,
+    originalLanguage: raw.original_language ?? null,
+    spokenLanguages: raw.spoken_languages
+      ? raw.spoken_languages.map((l) => ({ iso639_1: l.iso_639_1, name: l.name }))
+      : null,
+    productionCountries: raw.production_countries
+      ? raw.production_countries.map((c) => ({ iso3166_1: c.iso_3166_1, name: c.name }))
+      : null,
+    tagline: raw.tagline ?? null,
+    inProduction: raw.in_production ?? null,
+    networks: raw.networks
+      ? raw.networks.map((n) => ({
+          id: n.id,
+          name: n.name,
+          logoPath: n.logo_path ?? null,
+          originCountry: n.origin_country,
+        }))
+      : null,
+    createdBy: raw.created_by
+      ? raw.created_by.map((c) => ({ id: c.id, name: c.name, profilePath: c.profile_path ?? null }))
+      : null,
+    numberOfSeasons: raw.number_of_seasons ?? null,
+    numberOfEpisodes: raw.number_of_episodes ?? null,
+    keywords: raw.keywords?.results?.map((k) => k.name) ?? null,
+    externalIds: raw.external_ids
+      ? (raw.external_ids as unknown as Record<string, string | number | null>)
+      : null,
+    seasons: raw.seasons
+      ? raw.seasons.map((s) => ({
+          tmdbId: s.id,
+          seasonNumber: s.season_number,
+          posterPath: s.poster_path ?? null,
+          episodeCount: s.episode_count,
+        }))
+      : null,
   }
 }
 
@@ -113,7 +173,9 @@ export class TmdbClient implements MetadataProvider {
   }
 
   async getMovieMetadata(tmdbId: number): Promise<ExternalMovieMetadata | null> {
-    const response = await this.fetchWithRetry(`${BASE_URL}/movie/${tmdbId}`)
+    const response = await this.fetchWithRetry(
+      `${BASE_URL}/movie/${tmdbId}?append_to_response=keywords,external_ids`,
+    )
     if (response.status === 404) return null
     if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
     try {
@@ -125,7 +187,9 @@ export class TmdbClient implements MetadataProvider {
   }
 
   async getSeriesMetadata(tmdbId: number): Promise<ExternalSeriesMetadata | null> {
-    const response = await this.fetchWithRetry(`${BASE_URL}/tv/${tmdbId}`)
+    const response = await this.fetchWithRetry(
+      `${BASE_URL}/tv/${tmdbId}?append_to_response=keywords,external_ids`,
+    )
     if (response.status === 404) return null
     if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
     try {
@@ -133,6 +197,17 @@ export class TmdbClient implements MetadataProvider {
       return { ...mapSeriesDetail(raw), certification: null }
     } catch {
       throw new TmdbNetworkError('Could not parse TMDB series response')
+    }
+  }
+
+  async fetchCollection(collectionTmdbId: number): Promise<TmdbCollection | null> {
+    const response = await this.fetchWithRetry(`${BASE_URL}/collection/${collectionTmdbId}`)
+    if (response.status === 404) return null
+    if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
+    try {
+      return (await response.json()) as TmdbCollection
+    } catch {
+      throw new TmdbNetworkError('Could not parse TMDB collection response')
     }
   }
 
@@ -272,6 +347,9 @@ export class TmdbClient implements MetadataProvider {
         airDate: ep.air_date || null,
         runtimeMinutes: ep.runtime ?? null,
         stillPath: ep.still_path ?? null,
+        tmdbId: ep.id ?? null,
+        voteAverage: ep.vote_average ?? null,
+        voteCount: ep.vote_count ?? null,
       }))
     } catch {
       return []
@@ -385,5 +463,4 @@ export class TmdbClient implements MetadataProvider {
       throw new TmdbNetworkError('Could not parse TMDB series feed response')
     }
   }
-
 }

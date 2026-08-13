@@ -1,4 +1,5 @@
 export * from './app_config.js'
+export * from './collections.js'
 export * from './genres.js'
 export * from './movies.js'
 export * from './series.js'

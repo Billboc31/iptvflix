@@ -1,6 +1,11 @@
-import { pgTable, text, uuid, integer, timestamp, date, primaryKey, real } from 'drizzle-orm/pg-core'
+import { pgTable, text, uuid, integer, timestamp, date, primaryKey, real, jsonb, varchar, boolean } from 'drizzle-orm/pg-core'
 import { genres } from './genres.js'
 import { matchStatusEnum } from './movies.js'
+
+type SpokenLanguage = { iso639_1: string; name: string }
+type ProductionCountry = { iso3166_1: string; name: string }
+type Network = { id: number; name: string; logoPath: string | null; originCountry: string }
+type CreatedBy = { id: number; name: string; profilePath: string | null }
 
 export const series = pgTable('series', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -23,6 +28,21 @@ export const series = pgTable('series', {
   digitalReleaseDate: date('digital_release_date'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  // TMDB-first catalog fields
+  popularity: real('popularity'),
+  voteCount: integer('vote_count'),
+  originalLanguage: varchar('original_language', { length: 10 }),
+  spokenLanguages: jsonb('spoken_languages').$type<SpokenLanguage[]>(),
+  productionCountries: jsonb('production_countries').$type<ProductionCountry[]>(),
+  tagline: text('tagline'),
+  inProduction: boolean('in_production'),
+  networks: jsonb('networks').$type<Network[]>(),
+  createdBy: jsonb('created_by').$type<CreatedBy[]>(),
+  numberOfSeasons: integer('number_of_seasons'),
+  numberOfEpisodes: integer('number_of_episodes'),
+  keywords: jsonb('keywords').$type<string[]>(),
+  externalIds: jsonb('external_ids').$type<Record<string, string | number | null>>(),
+  tmdbSyncedAt: timestamp('tmdb_synced_at', { withTimezone: true }),
 })
 
 export const seriesGenres = pgTable(

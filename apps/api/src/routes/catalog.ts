@@ -6,6 +6,7 @@ import { series as seriesTable, seriesGenres } from '../db/schema/series.js'
 import { seasons } from '../db/schema/seasons.js'
 import { episodes } from '../db/schema/episodes.js'
 import { genres } from '../db/schema/genres.js'
+import { collections } from '../db/schema/collections.js'
 import {
   movieAvailabilities,
   seriesAvailabilities,
@@ -151,6 +152,20 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         .orderBy(asc(mediaCredits.creditOrder)),
     ])
 
+    // Fetch collection if movie belongs to one
+    let collection: MovieDetailResponse['collection'] = null
+    if (movie.collectionId) {
+      const [collRow] = await db.select().from(collections).where(eq(collections.id, movie.collectionId))
+      if (collRow) {
+        collection = {
+          tmdbId: collRow.tmdbId,
+          name: collRow.name,
+          posterPath: collRow.posterPath ?? null,
+          backdropPath: collRow.backdropPath ?? null,
+        }
+      }
+    }
+
     const availabilityCount = Number(availCountRows[0]?.cnt ?? 0)
     const variants: AvailabilityVariantResponse[] = variantRows
     const { selectedVariantId } = resolveVariant(variantRows, prefs)
@@ -181,6 +196,16 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       director,
       voteAverage: movie.voteAverage ?? null,
       certification: movie.certification ?? null,
+      popularity: movie.popularity ?? null,
+      voteCount: movie.voteCount ?? null,
+      originalLanguage: movie.originalLanguage ?? null,
+      spokenLanguages: movie.spokenLanguages ?? null,
+      productionCountries: movie.productionCountries ?? null,
+      tagline: movie.tagline ?? null,
+      status: movie.status ?? null,
+      keywords: movie.keywords ?? null,
+      collection,
+      externalIds: movie.externalIds ?? null,
     }
 
     return response
@@ -322,6 +347,19 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       voteAverage: seriesRow.voteAverage ?? null,
       certification: seriesRow.certification ?? null,
       status: seriesRow.status ?? null,
+      popularity: seriesRow.popularity ?? null,
+      voteCount: seriesRow.voteCount ?? null,
+      originalLanguage: seriesRow.originalLanguage ?? null,
+      spokenLanguages: seriesRow.spokenLanguages ?? null,
+      productionCountries: seriesRow.productionCountries ?? null,
+      tagline: seriesRow.tagline ?? null,
+      keywords: seriesRow.keywords ?? null,
+      externalIds: seriesRow.externalIds ?? null,
+      inProduction: seriesRow.inProduction ?? null,
+      networks: seriesRow.networks ?? null,
+      createdBy: seriesRow.createdBy ?? null,
+      numberOfSeasons: seriesRow.numberOfSeasons ?? null,
+      numberOfEpisodes: seriesRow.numberOfEpisodes ?? null,
     }
 
     return response
@@ -432,6 +470,10 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
           selectedVariantId,
           variants: epVariantMap.get(e.id) ?? [],
           watchState: computeWatchState(profileId, progressMap.get(e.id)),
+          tmdbId: e.tmdbId ?? null,
+          posterPath: e.posterPath ?? null,
+          voteAverage: e.voteAverage ?? null,
+          voteCount: e.voteCount ?? null,
         }
       })
     },
