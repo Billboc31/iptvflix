@@ -1,100 +1,80 @@
-I now have a full picture of the implementation. Let me write the review.
+I have a full picture of the implementation and both fixes. Let me write the review.
 
 ---
 
-# PR Review — T068: Hybrid local + TMDB search with automatic catalog enrichment
+# PR Review — T068: Hybrid local + TMDB search with automatic catalog enrichment (attempt 2)
 
 ## Résumé
 
-L'implémentation délivre les fonctionnalités core du ticket : séparation local/distant, recherche de titres en français, dégradation gracieuse, déduplication par tmdbId et matérialisation à la sélection. Deux problèmes bloquants sont identifiés.
+Les deux bloquants de la review précédente ont été corrigés. L'implémentation est conforme au plan, aux acceptance criteria du ticket, et ne présente pas de nouveau problème bloquant.
 
 ---
 
 ## Vérifications effectuées
 
-- Plan lu et comparé au diff complet (`git diff main`)
-- Tous les fichiers modifiés lus dans leur intégralité
-- Fichiers de tests lus (search.test.ts, external-discovery-service.test.ts, vertical-slice.test.ts)
-- Contrats d'API comparés entre main et la branche T068
-- Vérification de la présence des tests requis par le plan
+- Plan T068 relu intégralement (`runs/T068/plan.md`)
+- Review précédente relue (`runs/T068/reviews/implementation-review.md`)
+- Diff complet `git diff main...HEAD --name-only` — fichiers T068 uniquement analysés
+- `packages/api-contracts/src/catalog.ts` — types vérifiés contre `main` et contre le plan
+- `apps/api/src/routes/search.ts` — route locale et route remote lues
+- `apps/api/src/services/catalog-service.ts` — `searchContent`, `getMovieTmdbIds`, `getSeriesTmdbIds`
+- `apps/api/src/services/external-discovery-service.ts` — `MAX_EXTERNAL_RESULTS`, caching, matérialisation
+- `apps/web/src/lib/api.ts` — `searchContent`, `searchDiscover`
+- `apps/web/src/pages/SearchPage.tsx` — logique `useEffect`, `externalLoading`, `showExternal`
+- `apps/api/src/routes/search.test.ts` — 14 cas de test route
+- `apps/api/src/services/__tests__/catalog-service.test.ts` — 3 tests d'intégration nouveaux
 
 ---
 
 ## Points validés
 
-**Architecture de base**
-- `GET /search` ne fait plus d'appel TMDB — retourne uniquement les résultats locaux, valide le critère "fast offline".
-- `GET /search/remote` retourne `{ externalMovies, externalSeries }` excluant les TMDB IDs locaux connus.
-- Le tri sur `local_results_threshold` a bien été supprimé — la section externe s'affiche dès le début.
-- La déduplication est correcte : `getMovieTmdbIds` / `getSeriesTmdbIds` retournent des `Set<string>` filtrés avant l'appel TMDB.
-- Dégradation gracieuse : si `discoveryService` est absent ou TMDB lève une exception, retour 200 avec tableaux vides — local non affecté.
+**BLOQUANT 1 résolu** — `packages/api-contracts/src/catalog.ts`
+- `MovieResponse` : 11 champs uniquement — aucun des champs `popularity`, `voteCount`, `originalLanguage`, etc. n'est présent.
+- `SeriesResponse` : 10 champs — conforme à `main`.
+- `EpisodeResponse` : inchangé par rapport à `main`.
+- `SearchResponse = { movies, series }` — sans `externalMovies` / `externalSeries`.
+- `DiscoverResponse = { externalMovies, externalSeries }` — ajouté conformément au plan.
 
-**Recherche en français**
-- `searchContent()` étend correctement la clause `WHERE` avec `${movies.localizations}->'fr'->>'title' ILIKE ${pattern}` (requête paramétrée — pas d'injection SQL).
-- Idem pour series.
+**BLOQUANT 2 résolu** — `apps/api/src/services/__tests__/catalog-service.test.ts`
+- 3 tests d'intégration : match film par `localizations.fr.title`, absence de match, match série par `localizations.fr.title`.
+- Cleanup `afterEach` par `tmdbId` — isolation correcte.
+- `matchStatus: 'MATCHED'` présent dans les inserts — respecte la contrainte NOT NULL du schéma.
+
+**Architecture locale / distante**
+- `GET /search` : validation `q`, retourne `searchContent(q)`, aucun appel TMDB, HTTP 200 garanti.
+- `GET /search/remote` : valide `q`, graceful degradation si `discoveryService` absent ou TMDB lève une exception, retour 200 avec tableaux vides.
+- Déduplication : `getMovieTmdbIds` / `getSeriesTmdbIds` construisent des `Set<string>` passés aux `discoverMovies` / `discoverSeries`.
+
+**Recherche française**
+- `catalog-service.ts:383` : `` sql`${movies.localizations}->'fr'->>'title' ILIKE ${pattern}` `` — requête paramétrée, pas d'injection SQL.
+- Même clause sur `series.localizations` à la ligne 393.
 
 **Frontend**
-- Deux appels parallèles indépendants dans `useEffect` : `searchContent` settle en premier → résultats locaux visibles immédiatement.
-- `externalLoading` est un état propre et indépendant.
-- `showExternal = hasExternal || externalLoading` — correct, la section externe apparaît dès l'envoi de la requête TMDB.
-- Erreurs de matérialisation isolées dans `externalError`; erreurs TMDB silencieusement avalées → section externe vide sans polluer la section locale.
-- `retryCount` redéclenche les deux requêtes — cohérent.
+- `SearchPage.tsx:50-71` : deux promises indépendantes dans le même `useEffect` — résultats locaux settles en premier sans attendre `searchDiscover`.
+- `showExternal = hasExternal || externalLoading` (ligne 82) — section externe visible dès l'envoi de la requête TMDB, conforme au plan.
+- Erreurs TMDB avalées silencieusement (catch vide ligne 67) — la section locale reste propre.
+- `externalError` (ligne 31) — isolé pour les erreurs de matérialisation uniquement.
+
+**`external-discovery-service.ts`**
+- `MAX_EXTERNAL_RESULTS = 10` (ligne 16) — relevé de 5 à 10 conformément au plan.
+- Cache 60s par query — évite les appels TMDB redondants.
 
 **Tests**
-- 14 tests route (`search.test.ts`) : validation input, shape, exclusion TMDB IDs, graceful degradation — bonne couverture.
-- 16 tests `ExternalDiscoveryService` : mapping, cache TTL, exclusion, matérialisation, placeholder title — complets.
+- `search.test.ts` : 14 tests couvrent shape, exclusion TMDB IDs, graceful degradation, validation input — bonne profondeur.
+- Le test "returns empty arrays when discoveryService throws" (ligne 185) simule le crash via `mockSearchContent.mockRejectedValue` — simule effectivement la propagation de l'erreur dans le handler `/search/remote`.
 
 ---
 
-## Problèmes détectés
+## Risques résiduels (non bloquants, identifiés dans la review précédente, inchangés)
 
-### 🔴 BLOQUANT 1 — Scope creep : expansion non planifiée de `MovieResponse`, `SeriesResponse`, `EpisodeResponse`
-
-**Fichier** : `packages/api-contracts/src/catalog.ts`
-
-Le plan T068 ne prévoit qu'une seule modification des contrats :
-> "Remove `externalMovies` and `externalSeries` from `SearchResponse`. Add `DiscoverResponse`."
-
-L'implémentation a aussi **étendu** trois types partagés par tous les endpoints catalog :
-
-| Type | Champs ajoutés |
-|---|---|
-| `MovieResponse` | `popularity`, `voteCount`, `originalLanguage`, `spokenLanguages`, `productionCountries`, `tagline`, `status`, `keywords`, `collection`, `externalIds` |
-| `SeriesResponse` | `popularity`, `voteCount`, `originalLanguage`, `spokenLanguages`, `productionCountries`, `tagline`, `keywords`, `externalIds`, `inProduction`, `networks`, `createdBy`, `numberOfSeasons`, `numberOfEpisodes` |
-| `EpisodeResponse` | `tmdbId`, `posterPath`, `voteAverage`, `voteCount` |
-
-Cela a cascadé sur `listMovies`, `getMovie`, `listSeries`, `getSeries` dans `catalog-service.ts` (4 fonctions hors scope). L'`EpisodeResponse` est totalement hors périmètre T068.
-
-Ces changements :
-- Affectent **tous** les endpoints catalog, pas seulement la recherche
-- N'étaient pas dans le plan, ni dans les acceptance criteria
-- Constituent probablement un reste de T064 qui aurait dû avoir son propre ticket
-
-**Action requise** : révertir ces expansions de types à la forme présente dans `main` (`MovieResponse` sans les 10 champs supplémentaires, etc.). Les corrections nécessaires liées à T068 se limitent à `DiscoverResponse`. Si ces champs sont jugés nécessaires, ouvrir un ticket séparé.
-
----
-
-### 🔴 BLOQUANT 2 — Test manquant pour la recherche par titre localisé (fr)
-
-**Plan, section "Tests"** :
-> "`services/catalog-service.ts`: add case where the match is only in `localizations.fr.title` and assert the entity is returned."
-
-Ce test est absent. Il n'existe pas de fichier `catalog-service.test.ts`. La recherche en français est une feature centrale de T068 (critère d'acceptance : "French/localized titles plus original/alternate titles"). Tester uniquement via le mock de `searchContent` dans `search.test.ts` ne valide pas la logique SQL réelle.
-
-**Action requise** : créer un test unitaire ou d'intégration qui insère un film avec un titre stocké uniquement dans `localizations.fr.title` et vérifie que `searchContent` le retourne.
-
----
-
-## Risques éventuels
-
-- **Race condition frontend** : deux appels parallèles sans `AbortController` peuvent provoquer des states-updates parasites si l'utilisateur modifie la query rapidement. Pattern pre-existant, non introduit par T068, acceptable.
-- **Spinner externe après clear** : si le champ est vidé pendant que `searchDiscover` est in-flight, la section externe reste visible (spinner) jusqu'à settlement. Mineur.
-- **`/search/remote` appelle `searchContent()` en doublon** : le handler appelle `searchContent()` pour construire les TMDB ID à exclure, alors que `GET /search` a déjà fait cet appel côté client. Doublon DB intentionnel selon le plan — pas un bug, mais un coût à connaître.
+- **Race condition frontend** : les deux appels parallèles n'ont pas d'`AbortController`. Si `debouncedQuery` change rapidement, les callbacks de la requête précédente mettront à jour le state. Pattern pré-existant, hors scope T068.
+- **`/search/remote` appelle `searchContent()` en doublon** : doublon DB intentionnel selon le plan pour obtenir les TMDB IDs locaux à exclure. Coût connu, comportement correct.
+- **Spinner externe après clear** : si le champ est vidé pendant que `searchDiscover` est in-flight, la section externe reste visible jusqu'au settlement. Mineur.
 
 ---
 
 ## Décision
 
-Les deux problèmes bloquants (scope creep sur les contrats partagés + test manquant) doivent être corrigés avant merge.
+Les deux bloquants sont résolus. L'implémentation respecte le plan, le scope du ticket, les conventions de code, et les critères d'acceptance. Aucun nouveau problème bloquant identifié.
 
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
