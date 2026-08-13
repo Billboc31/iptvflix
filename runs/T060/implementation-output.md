@@ -1,0 +1,1 @@
+Committed. All 54 new/updated tests pass (11 `TitleMatchingService` + 43 `CatalogSyncService`). The 5 pre-existing failures in `vertical-slice.test.ts` (4) and `arrival-service.test.ts` (1) are unrelated to T060 and existed before this work.
