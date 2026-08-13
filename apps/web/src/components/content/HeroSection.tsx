@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { AvailabilityStatus } from '@iptvflix/api-contracts'
 import Button from '../ui/Button.js'
 import PreviewPlayer from './PreviewPlayer.js'
 import { usePreview } from '../../contexts/PreviewContext.js'
@@ -15,7 +16,7 @@ type HeroSectionProps = {
   backdropUrl?: string | null
   mediaId?: string
   trailerKey?: string | null
-  availabilityStatus?: 'AVAILABLE' | 'UNAVAILABLE'
+  availabilityStatus?: AvailabilityStatus
   onPlay?: () => void
   onDetails?: () => void
   onAddToList?: () => void

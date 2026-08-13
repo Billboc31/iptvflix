@@ -14,7 +14,12 @@ export default function SeriesPage() {
 
   const { genres } = useGenres()
 
-  const { data: heroData } = useSeries({ pageSize: 1, sortBy: 'recentAvailability' })
+  const { data: heroAvailableData } = useSeries({
+    pageSize: 1,
+    sortBy: 'recentAvailability',
+    availability: 'AVAILABLE',
+  })
+  const { data: heroFallbackData } = useSeries({ pageSize: 1, sortBy: 'recentAvailability' })
 
   const shelfAFilters = selectedGenreId
     ? { pageSize: 20, genreId: selectedGenreId }
@@ -26,7 +31,7 @@ export default function SeriesPage() {
     sortBy: 'title',
   })
 
-  const heroSeries = heroData?.items[0]
+  const heroSeries = heroAvailableData?.items[0] ?? heroFallbackData?.items[0]
 
   const selectedGenreName = genres.find((g) => g.id === selectedGenreId)?.name
 

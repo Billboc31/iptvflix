@@ -3,10 +3,13 @@ import { test, expect } from '@playwright/test'
 test.describe('Mobile navigation', () => {
   test.skip(({ browserName, isMobile }) => !isMobile, 'Mobile-only tests')
 
-  test('LeftNav sidebar is not visible on mobile viewport', async ({ page }) => {
+  test('TopNav header is present and no sidebar nav is visible on mobile', async ({ page }) => {
     await page.goto('/')
-    const leftNav = page.locator('nav').filter({ hasText: 'IPTVFlix' })
-    await expect(leftNav).toBeHidden()
+    // The persistent top navigation renders inside a <header>
+    await expect(page.getByRole('banner')).toBeVisible()
+    // No standalone sidebar <nav> element should be present (TopNav links are hidden on mobile via CSS)
+    const sidebarNav = page.locator('aside nav')
+    await expect(sidebarNav).toHaveCount(0)
   })
 
   test('BottomNav is visible with all 5 tabs', async ({ page }) => {
