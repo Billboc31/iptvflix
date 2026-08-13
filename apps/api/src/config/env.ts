@@ -23,3 +23,11 @@ export const JWT_SECRET: string = jwtSecret
 export const AUTH_USERNAME: string = process.env.AUTH_USERNAME ?? 'admin'
 export const AUTH_PASSWORD_HASH: string = authPasswordHash
 export const M3U_FETCH_TIMEOUT_MS = Number(process.env.M3U_FETCH_TIMEOUT_MS ?? 60000)
+export const SYNC_SCHEDULER_ENABLED =
+  process.env.SYNC_SCHEDULER_ENABLED !== undefined
+    ? process.env.SYNC_SCHEDULER_ENABLED === 'true'
+    : process.env.NODE_ENV === 'production'
+export const SOURCE_SYNC_CADENCE_MINUTES = Number(process.env.SOURCE_SYNC_CADENCE_MINUTES ?? 60)
+export const DISCOVERY_CADENCE_MINUTES = Number(process.env.DISCOVERY_CADENCE_MINUTES ?? 360)
+export const SOURCE_SYNC_CONCURRENCY = Number(process.env.SOURCE_SYNC_CONCURRENCY ?? 2)
+export const SCHEDULER_STARTUP_DELAY_MS = Number(process.env.SCHEDULER_STARTUP_DELAY_MS ?? 30000)

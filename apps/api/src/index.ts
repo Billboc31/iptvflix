@@ -28,12 +28,26 @@ import { devicesRoutes } from './routes/devices.js'
 import { commandsRoutes } from './routes/commands.js'
 import { testHelpersRoutes } from './routes/test-helpers.js'
 import { authRoutes } from './routes/auth.js'
+import { schedulerRoutes } from './routes/scheduler.js'
 import { authenticate } from './plugins/auth.js'
-import { PORT, CORS_ORIGIN, TMDB_API_KEY, JWT_SECRET } from './config/env.js'
+import {
+  PORT,
+  CORS_ORIGIN,
+  TMDB_API_KEY,
+  JWT_SECRET,
+  SYNC_SCHEDULER_ENABLED,
+  SOURCE_SYNC_CADENCE_MINUTES,
+  DISCOVERY_CADENCE_MINUTES,
+  SOURCE_SYNC_CONCURRENCY,
+  SCHEDULER_STARTUP_DELAY_MS,
+} from './config/env.js'
 import { db } from './db/client.js'
 import { TmdbClient } from './providers/metadata/tmdb/client.js'
 import { MetadataEnrichmentService } from './services/metadata-enrichment-service.js'
 import { ExternalDiscoveryService } from './services/external-discovery-service.js'
+import { DiscoveryCandidatePoolService } from './services/discovery-candidate-pool-service.js'
+import { SchedulerService } from './services/scheduler-service.js'
+import { triggerSync } from './services/sync-runs-service.js'
 
 const app = Fastify({ logger: true })
 
@@ -91,6 +105,30 @@ await app.register(async function protectedScope(protectedApp) {
 if (process.env.NODE_ENV !== 'production') {
   await app.register(testHelpersRoutes)
 }
+
+await app.register(schedulerRoutes, {
+  enabled: SYNC_SCHEDULER_ENABLED,
+  sourceSyncCadenceMinutes: SOURCE_SYNC_CADENCE_MINUTES,
+  discoveryCadenceMinutes: DISCOVERY_CADENCE_MINUTES,
+})
+
+const discoveryPoolService =
+  TMDB_API_KEY && discoveryService
+    ? new DiscoveryCandidatePoolService(
+        db,
+        new TmdbClient({ apiKey: TMDB_API_KEY }),
+        discoveryService,
+      )
+    : null
+
+const scheduler = new SchedulerService(db, triggerSync, discoveryPoolService, {
+  enabled: SYNC_SCHEDULER_ENABLED,
+  sourceSyncCadenceMinutes: SOURCE_SYNC_CADENCE_MINUTES,
+  discoveryCadenceMinutes: DISCOVERY_CADENCE_MINUTES,
+  sourceSyncConcurrency: SOURCE_SYNC_CONCURRENCY,
+  startupDelayMs: SCHEDULER_STARTUP_DELAY_MS,
+})
+scheduler.start()
 
 try {
   await app.listen({ port: PORT, host: '0.0.0.0' })
