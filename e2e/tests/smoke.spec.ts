@@ -27,10 +27,11 @@ test.describe('E2E smoke — Batch 1 vertical slice', () => {
 
   test('empty catalog — no content before any sync', async ({ page }) => {
     await page.goto('/movies')
-    await expect(page.getByText('Aucun film trouvé')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Disponibles' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Lire' })).not.toBeVisible()
 
     await page.goto('/series')
-    await expect(page.getByText('Aucune série trouvée')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Disponibles' })).toBeVisible()
   })
 
   test('connection failure — auth-fail source shows error on test', async ({
@@ -56,13 +57,14 @@ test.describe('E2E smoke — Batch 1 vertical slice', () => {
     await page.getByRole('button', { name: 'Synchroniser' }).click()
     await expect(page.getByText('Synchronisation lancée.')).toBeVisible({ timeout: 10_000 })
 
-    // Navigate to movies — expect empty state
+    // Navigate to movies — expect shelves present but no hero Play button
     await page.goto('/movies')
-    await expect(page.getByText('Aucun film trouvé')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('heading', { name: 'Disponibles' })).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('button', { name: 'Lire' })).not.toBeVisible()
 
-    // Navigate to series — expect empty state
+    // Navigate to series — expect shelves present with no playable hero
     await page.goto('/series')
-    await expect(page.getByText('Aucune série trouvée')).toBeVisible({ timeout: 5_000 })
+    await expect(page.getByRole('heading', { name: 'Disponibles' })).toBeVisible({ timeout: 5_000 })
   })
 
   test('sync failure — unreachable source records a failed run', async ({ page }) => {
