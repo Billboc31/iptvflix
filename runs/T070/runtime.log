@@ -48,3 +48,10 @@
 [2026-08-13T19:46:22Z] conflict-resolver: running tests
 [2026-08-13T19:46:22Z] conflict-resolver: test-report written: runs/T070/conflict/test-report.md
 [2026-08-13T19:46:22Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-13T19:46:22Z] conflict-resolver: commit: sha=6bf1aa5
+[2026-08-13T19:46:22Z] conflict-resolver: git push --force-with-lease origin ticket/T070-drive-movies-and-series-discovery-shelves-from-the
+[2026-08-13T19:46:24Z] conflict-resolver: push succeeded
+[2026-08-13T19:46:24Z] conflict-resolver: state → CONFLICT_RESOLVED_REVIEW_NEEDED
+[2026-08-13T19:46:24Z] auto-finalize-conflict: gate disabled for project='iptvflix'
+[2026-08-13T19:46:24Z] conflict-resolver: transition CONFLICT_RESOLVED_REVIEW_NEEDED → TEST_COMPLETE (auto, PROJECT_SETTING)
+[2026-08-13T19:46:25Z] auto-run: TEST_COMPLETE — running PR lifecycle
