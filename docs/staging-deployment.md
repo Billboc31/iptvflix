@@ -51,8 +51,10 @@ On each API deploy Railway will:
 1. Add a second Railway service from the same GitHub repo.
 2. Keep **Root Directory** empty (monorepo root) so the pnpm workspace resolves.
 3. Set **Config-as-code** / railway config path to `apps/web/railway.toml`.
-4. Set `VITE_API_BASE` to the public API URL (must be present at build time).
-5. Deploy. Nixpacks runs `pnpm --filter web build` then `pnpm --filter web start` (`serve` for the Vite `dist/` SPA).
+4. Set build-time env vars on the **web** service:
+   - `VITE_API_BASE` = public API URL **without** a path, e.g. `https://iptvflixapi-production.up.railway.app` (not `/api`)
+5. On the **API** service set `CORS_ORIGIN` to the web origin **without** trailing slash, e.g. `https://iptvflix-production-dfc4.up.railway.app`
+6. Deploy / Redeploy the web service after changing `VITE_API_BASE` (restart alone is not enough — Vite inlines the value at build).
 
 Do **not** rely on Railpack auto-detect at the monorepo root: there is no root `start` script and Vite lives under `apps/web`, which produces `No start command detected`.
 

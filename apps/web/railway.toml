@@ -1,6 +1,8 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "pnpm install --frozen-lockfile && pnpm --filter web build"
+# VITE_API_BASE is baked into the JS bundle at build time. Without it the SPA
+# defaults to "/api", which `serve` cannot proxy — login/catalog look "broken".
+buildCommand = "pnpm install --frozen-lockfile && node -e \"if(!process.env.VITE_API_BASE){console.error('VITE_API_BASE is required for Railway web builds');process.exit(1)}\" && pnpm --filter web build"
 
 [deploy]
 # Static SPA (Vite dist/). Root Directory for this service must be the repo root
