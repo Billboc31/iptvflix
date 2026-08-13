@@ -23,13 +23,17 @@ This guide covers the full Railway + Vercel staging setup from scratch.
 
 Do not commit secret values. Use the Railway dashboard to set `DATABASE_URL` and `TMDB_API_KEY`.
 
-### Vercel (Web)
+### Railway (Web SPA) or Vercel (Web)
 
 | Variable | Required | Description |
 |---|---|---|
-| `VITE_API_BASE` | **Yes** | Full Railway API origin, e.g. `https://your-api.railway.app` |
+| `VITE_API_BASE` | **Yes** | Full Railway API origin, e.g. `https://your-api.railway.app` (injected at **build** time) |
+
+When hosting the web app on Railway, also set `CORS_ORIGIN` on the **API** service to the Railway web URL.
 
 ## Railway Setup
+
+### API service
 
 1. Create a new Railway project and connect the GitHub repository.
 2. Add a **PostgreSQL** plugin to the project — Railway injects `DATABASE_URL` into the API service automatically.
@@ -37,10 +41,20 @@ Do not commit secret values. Use the Railway dashboard to set `DATABASE_URL` and
 4. Set the required environment variables listed above via the Railway dashboard.
 5. Trigger the first deploy (push to `main` or click **Deploy** in the dashboard).
 
-On each deploy Railway will:
+On each API deploy Railway will:
 - Run `pnpm install --frozen-lockfile && pnpm --filter api build` to compile TypeScript output into `dist/`.
 - Run `pnpm --filter api start:railway`, which executes `drizzle-kit migrate` before starting the server. If the migration fails, the process exits non-zero and Railway aborts the deploy.
 - Poll `GET /health` after startup. A 503 response (DB unreachable) marks the deploy unhealthy and Railway rolls back.
+
+### Web service (optional alternative to Vercel)
+
+1. Add a second Railway service from the same GitHub repo.
+2. Keep **Root Directory** empty (monorepo root) so the pnpm workspace resolves.
+3. Set **Config-as-code** / railway config path to `apps/web/railway.toml`.
+4. Set `VITE_API_BASE` to the public API URL (must be present at build time).
+5. Deploy. Nixpacks runs `pnpm --filter web build` then `pnpm --filter web start` (`serve` for the Vite `dist/` SPA).
+
+Do **not** rely on Railpack auto-detect at the monorepo root: there is no root `start` script and Vite lives under `apps/web`, which produces `No start command detected`.
 
 ## Vercel Setup
 
