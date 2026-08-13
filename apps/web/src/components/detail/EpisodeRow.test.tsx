@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
-import type { EpisodeResponse } from '@iptvflix/api-contracts'
+import type { EpisodeResponse, DeviceResponse } from '@iptvflix/api-contracts'
 import { ToastProvider } from '../ui/Toast.js'
 import EpisodeRow from './EpisodeRow.js'
 
@@ -19,11 +19,19 @@ const BASE_EP: EpisodeResponse = {
   watchState: null,
 }
 
-function renderRow(episode = BASE_EP) {
+const MOCK_DEVICE: DeviceResponse = {
+  id: 'device-1',
+  name: 'Salon TV',
+  lastSeenAt: new Date(Date.now() - 10_000).toISOString(),
+  revokedAt: null,
+  createdAt: new Date('2024-01-01').toISOString(),
+}
+
+function renderRow(episode = BASE_EP, devices: DeviceResponse[] = []) {
   return render(
     <MemoryRouter>
       <ToastProvider>
-        <EpisodeRow episode={episode} />
+        <EpisodeRow episode={episode} devices={devices} />
       </ToastProvider>
     </MemoryRouter>,
   )
@@ -68,5 +76,20 @@ describe('EpisodeRow', () => {
   it('uses episode number as fallback when title is null', () => {
     renderRow({ ...BASE_EP, title: null })
     expect(screen.getByText('Épisode 1')).toBeInTheDocument()
+  })
+
+  it('shows TV button when devices are provided and episode is available', () => {
+    renderRow(BASE_EP, [MOCK_DEVICE])
+    expect(screen.getByLabelText("Lire l'épisode 1 sur TV")).toBeInTheDocument()
+  })
+
+  it('does not show TV button when no devices', () => {
+    renderRow(BASE_EP, [])
+    expect(screen.queryByLabelText("Lire l'épisode 1 sur TV")).not.toBeInTheDocument()
+  })
+
+  it('does not show TV button for UNAVAILABLE episode even with devices', () => {
+    renderRow({ ...BASE_EP, availabilityStatus: 'UNAVAILABLE' }, [MOCK_DEVICE])
+    expect(screen.queryByLabelText("Lire l'épisode 1 sur TV")).not.toBeInTheDocument()
   })
 })

@@ -8,9 +8,10 @@ import DevicePickerModal from '../devices/DevicePickerModal.js'
 type Props = {
   episode: EpisodeResponse
   devices?: DeviceResponse[]
+  progressMs?: number
 }
 
-export default function EpisodeRow({ episode, devices = [] }: Props) {
+export default function EpisodeRow({ episode, devices = [], progressMs = 0 }: Props) {
   const navigate = useNavigate()
   const toast = useToast()
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -87,6 +88,7 @@ export default function EpisodeRow({ episode, devices = [] }: Props) {
           mediaType="episode"
           mediaId={episode.id}
           availabilityId={episode.selectedVariantId}
+          progressMs={progressMs}
           onFastPath={(name, state) => {
             if (state === 'delivered') {
               toast.show(`Lecture lancée sur ${name}`, 'success')

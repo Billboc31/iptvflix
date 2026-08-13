@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { MovieDetailResponse, AvailabilityVariantResponse } from '@iptvflix/api-contracts'
-import { getMovie, ApiError } from '../lib/api.js'
+import { getMovie, fetchContinueWatching, ApiError } from '../lib/api.js'
 import { useDevices } from '../hooks/useDevices.js'
 import { useToast } from '../components/ui/Toast.js'
 import Badge from '../components/ui/Badge.js'
@@ -75,22 +75,30 @@ export default function MovieDetailPage() {
   const [notFound, setNotFound] = useState(false)
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [progressMs, setProgressMs] = useState(0)
 
   useEffect(() => {
     if (!id) return
     setLoading(true)
     setNotFound(false)
     setError(null)
-    getMovie(id)
-      .then((m) => {
+    Promise.allSettled([getMovie(id), fetchContinueWatching()])
+      .then(([movieResult, cwResult]) => {
+        if (movieResult.status === 'rejected') {
+          const err = movieResult.reason as Error
+          if (err instanceof ApiError && err.status === 404) {
+            setNotFound(true)
+          } else {
+            setError(err)
+          }
+          return
+        }
+        const m = movieResult.value
         setMovie(m)
         setSelectedVariantId(m.selectedVariantId)
-      })
-      .catch((err) => {
-        if (err instanceof ApiError && err.status === 404) {
-          setNotFound(true)
-        } else {
-          setError(err)
+        if (cwResult.status === 'fulfilled') {
+          const item = cwResult.value.find((i) => i.mediaType === 'MOVIE' && i.mediaId === id)
+          setProgressMs(item ? item.progressSeconds * 1000 : 0)
         }
       })
       .finally(() => setLoading(false))
@@ -252,6 +260,7 @@ export default function MovieDetailPage() {
               mediaType="movie"
               mediaId={movie.id}
               availabilityId={selectedVariantId}
+              progressMs={progressMs}
               onFastPath={(name, state) => {
                 if (state === 'delivered') {
                   toast.show(`Lecture lancée sur ${name}`, 'success')

@@ -17,7 +17,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Recherche', to: '/search', icon: '🔍' },
   { label: 'Sources IPTV', to: '/sources', icon: '📡' },
   { label: 'Préférences lecture', to: '/settings/playback', icon: '⚙️' },
-  { label: 'Appareils TV', to: '/settings/devices', icon: '📺' },
+  { label: 'Appareils TV', to: '/settings/devices', icon: '🖥️' },
 ]
 
 export default function LeftNav() {

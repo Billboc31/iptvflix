@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { ProfilePreferences, SourceResponse } from '@iptvflix/api-contracts'
 import { getProfile, listSources, updateProfilePreferences } from '../lib/api.js'
 import Button from '../components/ui/Button.js'
@@ -267,9 +268,21 @@ export default function ProfileSettingsPage() {
   return (
     <div className="max-w-xl mx-auto px-6 py-8">
       <h1 className="text-2xl font-bold text-white mb-2">Préférences de lecture</h1>
-      <p className="text-gray-400 text-sm mb-8">
+      <p className="text-gray-400 text-sm mb-4">
         Ces préférences sont indépendantes de la langue de l'interface.
       </p>
+      <div className="mb-8 p-4 bg-white/5 border border-white/10 rounded-lg flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-white">Appareils TV</p>
+          <p className="text-xs text-gray-400">Gérer les appareils appairés et lancer la lecture sur TV</p>
+        </div>
+        <Link
+          to="/settings/devices"
+          className="text-sm text-[#e50914] hover:text-[#e50914]/80 font-medium transition-colors"
+        >
+          Gérer →
+        </Link>
+      </div>
 
       <form onSubmit={handleSave}>
         <LanguageListInput

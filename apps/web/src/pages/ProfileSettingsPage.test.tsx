@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/handlers.js'
 import ProfileSettingsPage from './ProfileSettingsPage.js'
@@ -46,7 +47,7 @@ describe('ProfileSettingsPage', () => {
     server.use(
       http.get('/api/profile', () => HttpResponse.json(MOCK_PROFILE)),
     )
-    render(<ProfileSettingsPage />)
+    render(<MemoryRouter><ProfileSettingsPage /></MemoryRouter>)
     await waitFor(() => {
       expect(screen.getByText('en')).toBeInTheDocument()
     })
@@ -58,7 +59,7 @@ describe('ProfileSettingsPage', () => {
     server.use(
       http.get('/api/profile', () => HttpResponse.json(MOCK_PROFILE)),
     )
-    render(<ProfileSettingsPage />)
+    render(<MemoryRouter><ProfileSettingsPage /></MemoryRouter>)
     await waitFor(() => {
       expect(screen.getByText('en')).toBeInTheDocument()
     })
@@ -76,7 +77,7 @@ describe('ProfileSettingsPage', () => {
         return HttpResponse.json(MOCK_PROFILE)
       }),
     )
-    render(<ProfileSettingsPage />)
+    render(<MemoryRouter><ProfileSettingsPage /></MemoryRouter>)
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeInTheDocument()
     })
@@ -102,7 +103,7 @@ describe('ProfileSettingsPage', () => {
       ),
       http.get('/api/sources', () => HttpResponse.json(MOCK_SOURCES)),
     )
-    render(<ProfileSettingsPage />)
+    render(<MemoryRouter><ProfileSettingsPage /></MemoryRouter>)
     await waitFor(() => {
       expect(screen.getByText('Xtream HD')).toBeInTheDocument()
     })
@@ -120,7 +121,7 @@ describe('ProfileSettingsPage', () => {
       ),
       http.get('/api/sources', () => HttpResponse.json(MOCK_SOURCES)),
     )
-    render(<ProfileSettingsPage />)
+    render(<MemoryRouter><ProfileSettingsPage /></MemoryRouter>)
     await waitFor(() => {
       expect(screen.getByText('Xtream HD')).toBeInTheDocument()
     })
@@ -147,7 +148,7 @@ describe('ProfileSettingsPage', () => {
         return HttpResponse.json(MOCK_PROFILE)
       }),
     )
-    render(<ProfileSettingsPage />)
+    render(<MemoryRouter><ProfileSettingsPage /></MemoryRouter>)
     await waitFor(() => {
       expect(screen.getByText('Xtream HD')).toBeInTheDocument()
     })
@@ -174,7 +175,7 @@ describe('ProfileSettingsPage', () => {
         return HttpResponse.json(MOCK_PROFILE)
       }),
     )
-    render(<ProfileSettingsPage />)
+    render(<MemoryRouter><ProfileSettingsPage /></MemoryRouter>)
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeInTheDocument()
     })
