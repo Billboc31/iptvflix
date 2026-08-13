@@ -31,6 +31,7 @@ import { testHelpersRoutes } from './routes/test-helpers.js'
 import { authRoutes } from './routes/auth.js'
 import { schedulerRoutes } from './routes/scheduler.js'
 import { arrivalsRoutes } from './routes/arrivals.js'
+import { reconcileRoutes } from './routes/reconcile.js'
 import { authenticate } from './plugins/auth.js'
 import {
   PORT,
@@ -49,6 +50,8 @@ import { MetadataEnrichmentService } from './services/metadata-enrichment-servic
 import { ExternalDiscoveryService } from './services/external-discovery-service.js'
 import { DiscoveryCandidatePoolService } from './services/discovery-candidate-pool-service.js'
 import { SchedulerService } from './services/scheduler-service.js'
+import { TitleMatchingService } from './services/title-matching-service.js'
+import { MediaReconciliationService } from './services/media-reconciliation-service.js'
 import { triggerSync } from './services/sync-runs-service.js'
 
 const app = Fastify({ logger: true })
@@ -104,6 +107,13 @@ await app.register(async function protectedScope(protectedApp) {
     ? new MetadataEnrichmentService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
     : null
   await protectedApp.register(enrichmentRoutes, { enrichmentService })
+
+  const reconciliationService = TMDB_API_KEY
+    ? new MediaReconciliationService(new TitleMatchingService(new TmdbClient({ apiKey: TMDB_API_KEY })))
+    : null
+  if (reconciliationService) {
+    await protectedApp.register(reconcileRoutes, { reconciliationService })
+  }
 })
 
 if (process.env.NODE_ENV !== 'production') {

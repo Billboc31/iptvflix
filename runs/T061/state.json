@@ -1,0 +1,10 @@
+{
+  "ticket_id": "T061",
+  "state": "TEST_COMPLETE",
+  "branch": "ticket/T061-backfill-and-reconcile-already-synced-media-withou",
+  "issue_number": 123,
+  "updated_at": "2026-08-13T11:01:43Z",
+  "pre_conflict_state": "IMPLEMENTATION_FIX_REQUIRED",
+  "conflict_detected_at": "2026-08-13T10:29:13Z",
+  "conflicted_files": []
+}
