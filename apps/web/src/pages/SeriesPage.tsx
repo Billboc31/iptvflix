@@ -1,75 +1,106 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { SeriesFilters } from '@iptvflix/api-contracts'
-import FilterBar from '../components/content/FilterBar.js'
-import PosterGrid from '../components/content/PosterGrid.js'
+import HeroSection from '../components/content/HeroSection.js'
+import GenreChips from '../components/content/GenreChips.js'
+import HorizontalRow from '../components/content/HorizontalRow.js'
+import PosterCard from '../components/content/PosterCard.js'
 import Skeleton from '../components/ui/Skeleton.js'
-import EmptyState from '../components/ui/EmptyState.js'
-import ErrorState from '../components/ui/ErrorState.js'
 import { useSeries } from '../hooks/useSeries.js'
 import { useGenres } from '../hooks/useGenres.js'
 
 export default function SeriesPage() {
   const navigate = useNavigate()
-  const [filters, setFilters] = useState<SeriesFilters>({ page: 1, pageSize: 20 })
-  const { data, loading, error, refetch } = useSeries(filters)
+  const [selectedGenreId, setSelectedGenreId] = useState<string | undefined>(undefined)
+
   const { genres } = useGenres()
 
-  const totalPages = data ? Math.ceil(data.total / data.pageSize) : 0
-  const currentPage = filters.page ?? 1
+  const { data: heroData } = useSeries({ pageSize: 1, sortBy: 'recentAvailability' })
+
+  const shelfAFilters = selectedGenreId
+    ? { pageSize: 20, genreId: selectedGenreId }
+    : { pageSize: 20, sortBy: 'recentAvailability' as const, availability: 'AVAILABLE' as const }
+
+  const { data: shelfAData, loading: shelfALoading } = useSeries(shelfAFilters)
+  const { data: shelfBData, loading: shelfBLoading } = useSeries({
+    pageSize: 20,
+    sortBy: 'title',
+  })
+
+  const heroSeries = heroData?.items[0]
+
+  const selectedGenreName = genres.find((g) => g.id === selectedGenreId)?.name
 
   return (
-    <div className="px-8 py-6">
-      <h1 className="text-3xl font-bold text-white mb-6">Séries</h1>
-
-      <FilterBar
-        value={filters}
-        onChange={(f) => setFilters(f as SeriesFilters)}
-        genres={genres}
-      />
-
-      {loading && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <Skeleton key={i} className="aspect-[2/3] w-full rounded-lg" />
-          ))}
-        </div>
-      )}
-
-      {!loading && error && <ErrorState message={error.message} onRetry={refetch} />}
-
-      {!loading && !error && data && data.items.length === 0 && (
-        <EmptyState
-          icon="📺"
-          heading="Aucune série trouvée"
-          description="Essayez d'autres filtres ou ajoutez une source IPTV."
+    <div className="min-h-screen bg-[#0a0a0f]">
+      {/* Cinematic hero — no onPlay for series (episode-driven playability) */}
+      {heroSeries && (
+        <HeroSection
+          title={heroSeries.title}
+          synopsis={heroSeries.synopsis}
+          backdropUrl={heroSeries.backdropUrl}
+          mediaId={heroSeries.id}
+          availabilityStatus={heroSeries.availabilityStatus}
+          onDetails={() => navigate(`/series/${heroSeries.id}`)}
         />
       )}
 
-      {!loading && !error && data && data.items.length > 0 && (
-        <PosterGrid items={data.items} onItemClick={(id) => navigate(`/series/${id}`)} />
-      )}
+      {/* Compact genre selector */}
+      <GenreChips genres={genres} selected={selectedGenreId} onSelect={setSelectedGenreId} />
 
-      {!loading && !error && data && totalPages > 1 && (
-        <div className="flex items-center justify-center gap-4 mt-6">
-          <button
-            onClick={() => setFilters((f) => ({ ...f, page: currentPage - 1 }))}
-            disabled={currentPage <= 1}
-            className="px-4 py-2 rounded-lg bg-[#1a1a24] border border-white/10 text-sm text-white disabled:opacity-40 hover:border-[#e50914]/50 transition-colors"
-          >
-            Précédent
-          </button>
-          <span className="text-sm text-gray-400">
-            Page {currentPage} / {totalPages}
-          </span>
-          <button
-            onClick={() => setFilters((f) => ({ ...f, page: currentPage + 1 }))}
-            disabled={currentPage >= totalPages}
-            className="px-4 py-2 rounded-lg bg-[#1a1a24] border border-white/10 text-sm text-white disabled:opacity-40 hover:border-[#e50914]/50 transition-colors"
-          >
-            Suivant
-          </button>
-        </div>
+      {/* Shelves */}
+      {selectedGenreId ? (
+        <HorizontalRow title={selectedGenreName ?? 'Séries'}>
+          {shelfALoading && (
+            <Skeleton className="shrink-0 w-28 md:w-32 lg:w-36 aspect-[2/3] rounded-lg" />
+          )}
+          {shelfAData?.items.map((series) => (
+            <div key={series.id} className="shrink-0 w-28 md:w-32 lg:w-36">
+              <PosterCard
+                title={series.title}
+                year={series.year}
+                posterUrl={series.posterUrl}
+                mediaId={series.id}
+                onClick={() => navigate(`/series/${series.id}`)}
+              />
+            </div>
+          ))}
+        </HorizontalRow>
+      ) : (
+        <>
+          <HorizontalRow title="Disponibles">
+            {shelfALoading && (
+              <Skeleton className="shrink-0 w-28 md:w-32 lg:w-36 aspect-[2/3] rounded-lg" />
+            )}
+            {shelfAData?.items.map((series) => (
+              <div key={series.id} className="shrink-0 w-28 md:w-32 lg:w-36">
+                <PosterCard
+                  title={series.title}
+                  year={series.year}
+                  posterUrl={series.posterUrl}
+                  mediaId={series.id}
+                  onClick={() => navigate(`/series/${series.id}`)}
+                />
+              </div>
+            ))}
+          </HorizontalRow>
+
+          <HorizontalRow title="Toutes les séries">
+            {shelfBLoading && (
+              <Skeleton className="shrink-0 w-28 md:w-32 lg:w-36 aspect-[2/3] rounded-lg" />
+            )}
+            {shelfBData?.items.map((series) => (
+              <div key={series.id} className="shrink-0 w-28 md:w-32 lg:w-36">
+                <PosterCard
+                  title={series.title}
+                  year={series.year}
+                  posterUrl={series.posterUrl}
+                  mediaId={series.id}
+                  onClick={() => navigate(`/series/${series.id}`)}
+                />
+              </div>
+            ))}
+          </HorizontalRow>
+        </>
       )}
     </div>
   )

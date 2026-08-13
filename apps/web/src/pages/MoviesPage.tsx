@@ -1,76 +1,123 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { MovieFilters } from '@iptvflix/api-contracts'
-import FilterBar from '../components/content/FilterBar.js'
-import PosterGrid from '../components/content/PosterGrid.js'
+import HeroSection from '../components/content/HeroSection.js'
+import GenreChips from '../components/content/GenreChips.js'
+import HorizontalRow from '../components/content/HorizontalRow.js'
+import PosterCard from '../components/content/PosterCard.js'
 import Skeleton from '../components/ui/Skeleton.js'
-import EmptyState from '../components/ui/EmptyState.js'
-import ErrorState from '../components/ui/ErrorState.js'
 import { useMovies } from '../hooks/useMovies.js'
 import { useGenres } from '../hooks/useGenres.js'
 
 export default function MoviesPage() {
   const navigate = useNavigate()
-  const [filters, setFilters] = useState<MovieFilters>({ page: 1, pageSize: 20 })
-  const { data, loading, error, refetch } = useMovies(filters)
+  const [selectedGenreId, setSelectedGenreId] = useState<string | undefined>(undefined)
+
   const { genres } = useGenres()
 
-  const totalPages = data ? Math.ceil(data.total / data.pageSize) : 0
-  const currentPage = filters.page ?? 1
+  const { data: heroAvailableData } = useMovies({
+    pageSize: 1,
+    sortBy: 'recentAvailability',
+    availability: 'AVAILABLE',
+  })
+  const { data: heroFallbackData } = useMovies({ pageSize: 1, sortBy: 'recentAvailability' })
+
+  const shelfAFilters = selectedGenreId
+    ? { pageSize: 20, genreId: selectedGenreId }
+    : { pageSize: 20, sortBy: 'recentAvailability' as const, availability: 'AVAILABLE' as const }
+
+  const { data: shelfAData, loading: shelfALoading } = useMovies(shelfAFilters)
+  const { data: shelfBData, loading: shelfBLoading } = useMovies({
+    pageSize: 20,
+    sortBy: 'title',
+  })
+
+  const heroMovie = heroAvailableData?.items[0] ?? heroFallbackData?.items[0]
+
+  const selectedGenreName = genres.find((g) => g.id === selectedGenreId)?.name
 
   return (
-    <div className="px-8 py-6">
-      <h1 className="text-3xl font-bold text-white mb-6">Films</h1>
-
-      <FilterBar
-        value={filters}
-        onChange={(f) => setFilters(f as MovieFilters)}
-        showQuality
-        genres={genres}
-      />
-
-      {loading && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <Skeleton key={i} className="aspect-[2/3] w-full rounded-lg" />
-          ))}
-        </div>
-      )}
-
-      {!loading && error && <ErrorState message={error.message} onRetry={refetch} />}
-
-      {!loading && !error && data && data.items.length === 0 && (
-        <EmptyState
-          icon="🎬"
-          heading="Aucun film trouvé"
-          description="Essayez d'autres filtres ou ajoutez une source IPTV."
+    <div className="min-h-screen bg-[#0a0a0f]">
+      {/* Cinematic hero */}
+      {heroMovie && (
+        <HeroSection
+          title={heroMovie.title}
+          synopsis={heroMovie.synopsis}
+          backdropUrl={heroMovie.backdropUrl}
+          mediaId={heroMovie.id}
+          trailerKey={heroMovie.trailerKey}
+          availabilityStatus={heroMovie.availabilityStatus}
+          onPlay={
+            heroMovie.availabilityStatus === 'AVAILABLE'
+              ? () => navigate(`/player/movie/${heroMovie.id}`)
+              : undefined
+          }
+          onDetails={() => navigate(`/movies/${heroMovie.id}`)}
         />
       )}
 
-      {!loading && !error && data && data.items.length > 0 && (
-        <PosterGrid items={data.items} onItemClick={(id) => navigate(`/movies/${id}`)} />
-      )}
+      {/* Compact genre selector */}
+      <GenreChips genres={genres} selected={selectedGenreId} onSelect={setSelectedGenreId} />
 
-      {!loading && !error && data && totalPages > 1 && (
-        <div className="flex items-center justify-center gap-4 mt-6">
-          <button
-            onClick={() => setFilters((f) => ({ ...f, page: currentPage - 1 }))}
-            disabled={currentPage <= 1}
-            className="px-4 py-2 rounded-lg bg-[#1a1a24] border border-white/10 text-sm text-white disabled:opacity-40 hover:border-[#e50914]/50 transition-colors"
-          >
-            Précédent
-          </button>
-          <span className="text-sm text-gray-400">
-            Page {currentPage} / {totalPages}
-          </span>
-          <button
-            onClick={() => setFilters((f) => ({ ...f, page: currentPage + 1 }))}
-            disabled={currentPage >= totalPages}
-            className="px-4 py-2 rounded-lg bg-[#1a1a24] border border-white/10 text-sm text-white disabled:opacity-40 hover:border-[#e50914]/50 transition-colors"
-          >
-            Suivant
-          </button>
-        </div>
+      {/* Shelves */}
+      {selectedGenreId ? (
+        <HorizontalRow title={selectedGenreName ?? 'Films'}>
+          {shelfALoading && (
+            <Skeleton className="shrink-0 w-28 md:w-32 lg:w-36 aspect-[2/3] rounded-lg" />
+          )}
+          {shelfAData?.items.map((movie) => (
+            <div key={movie.id} className="shrink-0 w-28 md:w-32 lg:w-36">
+              <PosterCard
+                title={movie.title}
+                year={movie.year}
+                posterUrl={movie.posterUrl}
+                quality={movie.quality}
+                mediaId={movie.id}
+                trailerKey={movie.trailerKey}
+                onClick={() => navigate(`/movies/${movie.id}`)}
+              />
+            </div>
+          ))}
+        </HorizontalRow>
+      ) : (
+        <>
+          <HorizontalRow title="Disponibles">
+            {shelfALoading && (
+              <Skeleton className="shrink-0 w-28 md:w-32 lg:w-36 aspect-[2/3] rounded-lg" />
+            )}
+            {shelfAData?.items.map((movie) => (
+              <div key={movie.id} className="shrink-0 w-28 md:w-32 lg:w-36">
+                <PosterCard
+                  title={movie.title}
+                  year={movie.year}
+                  posterUrl={movie.posterUrl}
+                  quality={movie.quality}
+                  mediaId={movie.id}
+                  trailerKey={movie.trailerKey}
+                  onClick={() => navigate(`/movies/${movie.id}`)}
+                />
+              </div>
+            ))}
+          </HorizontalRow>
+
+          <HorizontalRow title="Tous les films">
+            {shelfBLoading && (
+              <Skeleton className="shrink-0 w-28 md:w-32 lg:w-36 aspect-[2/3] rounded-lg" />
+            )}
+            {shelfBData?.items.map((movie) => (
+              <div key={movie.id} className="shrink-0 w-28 md:w-32 lg:w-36">
+                <PosterCard
+                  title={movie.title}
+                  year={movie.year}
+                  posterUrl={movie.posterUrl}
+                  quality={movie.quality}
+                  mediaId={movie.id}
+                  trailerKey={movie.trailerKey}
+                  onClick={() => navigate(`/movies/${movie.id}`)}
+                />
+              </div>
+            ))}
+          </HorizontalRow>
+        </>
       )}
     </div>
   )

@@ -96,4 +96,29 @@ describe('HeroSection', () => {
     expect(screen.getByRole('button', { name: 'Couper le son' })).toBeInTheDocument()
     expect(screen.getByText('Son activé')).toBeInTheDocument()
   })
+
+  it('renders a Play button when availabilityStatus is AVAILABLE and onPlay is provided', () => {
+    const onPlay = vi.fn()
+    render(<HeroSection title="Movie" availabilityStatus="AVAILABLE" onPlay={onPlay} />)
+    expect(screen.getByRole('button', { name: 'Lire' })).toBeInTheDocument()
+  })
+
+  it('does not render Play button when availabilityStatus is UNAVAILABLE', () => {
+    render(<HeroSection title="Movie" availabilityStatus="UNAVAILABLE" onPlay={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Lire' })).not.toBeInTheDocument()
+  })
+
+  it('does not render Play button when onPlay is absent even if availabilityStatus is AVAILABLE', () => {
+    render(<HeroSection title="Movie" availabilityStatus="AVAILABLE" />)
+    expect(screen.queryByRole('button', { name: 'Lire' })).not.toBeInTheDocument()
+  })
+
+  it('fires onPlay callback when Play button is clicked', async () => {
+    const onPlay = vi.fn()
+    render(<HeroSection title="Movie" availabilityStatus="AVAILABLE" onPlay={onPlay} />)
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Lire' }))
+    })
+    expect(onPlay).toHaveBeenCalledOnce()
+  })
 })

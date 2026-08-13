@@ -15,6 +15,8 @@ type HeroSectionProps = {
   backdropUrl?: string | null
   mediaId?: string
   trailerKey?: string | null
+  availabilityStatus?: 'AVAILABLE' | 'UNAVAILABLE'
+  onPlay?: () => void
   onDetails?: () => void
   onAddToList?: () => void
 }
@@ -25,6 +27,8 @@ export default function HeroSection({
   backdropUrl,
   mediaId,
   trailerKey,
+  availabilityStatus,
+  onPlay,
   onDetails,
   onAddToList,
 }: HeroSectionProps) {
@@ -49,7 +53,7 @@ export default function HeroSection({
   }, [mediaId, trailerKey, activate, deactivate])
 
   return (
-    <div className="relative h-[56vh] min-h-80 overflow-hidden">
+    <div className="relative h-[65vh] min-h-80 overflow-hidden">
       {/* Backdrop */}
       {backdropUrl ? (
         <img
@@ -89,7 +93,12 @@ export default function HeroSection({
           <p className="text-gray-300 text-sm leading-relaxed mb-6 line-clamp-2 md:line-clamp-3">{synopsis}</p>
         )}
         <div className="flex flex-wrap gap-2">
-          {onDetails && <Button onClick={onDetails}>Détails</Button>}
+          {availabilityStatus === 'AVAILABLE' && onPlay && (
+            <Button onClick={onPlay}>Lire</Button>
+          )}
+          {onDetails && (
+            <Button variant="secondary" onClick={onDetails}>Plus d'infos</Button>
+          )}
           {onAddToList && (
             <Button variant="secondary" onClick={onAddToList}>
               + Ma Liste

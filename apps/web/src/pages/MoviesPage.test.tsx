@@ -1,8 +1,17 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import MoviesPage from './MoviesPage.js'
+
+vi.mock('../contexts/PreviewContext.js', () => ({
+  usePreview: () => ({
+    activeId: null as string | null,
+    activeKey: null as string | null,
+    activate: vi.fn(),
+    deactivate: vi.fn(),
+  }),
+}))
 
 function renderPage() {
   return render(
@@ -13,19 +22,54 @@ function renderPage() {
 }
 
 describe('MoviesPage', () => {
-  it('shows skeleton placeholders while loading', () => {
-    renderPage()
-    expect(screen.getByText('Films')).toBeInTheDocument()
-  })
-
-  it('renders movie posters after loading', async () => {
+  it('renders a Hero section with the featured movie title', async () => {
     renderPage()
     await waitFor(() => {
       expect(screen.getAllByText('The Test Movie').length).toBeGreaterThanOrEqual(1)
     })
   })
 
-  it('shows empty state when no movies returned', async () => {
+  it('renders genre chips including Tous and genre names from API', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Tous' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Action' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Drama' })).toBeInTheDocument()
+    })
+  })
+
+  it('renders Disponibles and Tous les films shelf rows by default', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('Disponibles')).toBeInTheDocument()
+      expect(screen.getByText('Tous les films')).toBeInTheDocument()
+    })
+  })
+
+  it('shows Play button when hero movie is AVAILABLE', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Lire' })).toBeInTheDocument()
+    })
+  })
+
+  it('shows no Play button when hero movie is UNAVAILABLE', async () => {
+    const { server } = await import('../test/handlers.js')
+    const { http, HttpResponse } = await import('msw')
+    const { MOCK_UNMATCHED_MOVIE } = await import('../test/handlers.js')
+    server.use(
+      http.get('/api/movies', () =>
+        HttpResponse.json({ items: [MOCK_UNMATCHED_MOVIE], total: 1, page: 1, pageSize: 20 }),
+      ),
+    )
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getAllByText('Unmatched Movie').length).toBeGreaterThanOrEqual(1)
+    })
+    expect(screen.queryByRole('button', { name: 'Lire' })).not.toBeInTheDocument()
+  })
+
+  it('shows no hero when API returns no movies', async () => {
     const { server } = await import('../test/handlers.js')
     const { http, HttpResponse } = await import('msw')
     server.use(
@@ -35,32 +79,20 @@ describe('MoviesPage', () => {
     )
     renderPage()
     await waitFor(() => {
-      expect(screen.getByText('Aucun film trouvé')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Lire' })).not.toBeInTheDocument()
     })
   })
 
-  it('has genre and year filter dropdowns', async () => {
+  it('filters to a genre shelf when a genre chip is selected', async () => {
+    const user = userEvent.setup()
     renderPage()
     await waitFor(() => {
-      expect(screen.getAllByText('The Test Movie').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getByRole('button', { name: 'Action' })).toBeInTheDocument()
     })
-    expect(screen.getByLabelText('Filtrer par genre')).toBeInTheDocument()
-    expect(screen.getByLabelText('Filtrer par année')).toBeInTheDocument()
-  })
-
-  it('populates genre dropdown from /genres endpoint', async () => {
-    renderPage()
+    await user.click(screen.getByRole('button', { name: 'Action' }))
     await waitFor(() => {
-      expect(screen.getByText('Action')).toBeInTheDocument()
-      expect(screen.getByText('Drama')).toBeInTheDocument()
-    })
-  })
-
-  it('has availability and sort filter dropdowns', async () => {
-    renderPage()
-    await waitFor(() => {
-      expect(screen.getByLabelText('Filtrer par disponibilité')).toBeInTheDocument()
-      expect(screen.getByLabelText('Trier par')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Action' })).toBeInTheDocument()
+      expect(screen.queryByText('Tous les films')).not.toBeInTheDocument()
     })
   })
 
@@ -72,23 +104,8 @@ describe('MoviesPage', () => {
     )
     renderPage()
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeInTheDocument()
-    })
-  })
-
-  it('shows pagination controls when multiple pages exist', async () => {
-    const { server } = await import('../test/handlers.js')
-    const { http, HttpResponse } = await import('msw')
-    const { MOCK_MOVIE } = await import('../test/handlers.js')
-    server.use(
-      http.get('/api/movies', () =>
-        HttpResponse.json({ items: [MOCK_MOVIE], total: 40, page: 1, pageSize: 20 }),
-      ),
-    )
-    renderPage()
-    await waitFor(() => {
-      expect(screen.getByText('Suivant')).toBeInTheDocument()
-      expect(screen.getByText('Précédent')).toBeInTheDocument()
+      // shelves render even on error (they just show nothing); hero is absent
+      expect(screen.queryByRole('button', { name: 'Lire' })).not.toBeInTheDocument()
     })
   })
 })
