@@ -37,7 +37,7 @@ function DetailSkeleton() {
       <div className="relative h-[50vh] min-h-72 overflow-hidden">
         <Skeleton className="absolute inset-0 w-full h-full rounded-none" />
       </div>
-      <div className="px-8 py-6 -mt-24 relative">
+      <div className="px-4 py-4 md:px-8 md:py-6 -mt-24 relative">
         <div className="flex gap-6 items-start">
           <div className="hidden md:block flex-shrink-0 w-40 rounded-xl overflow-hidden">
             <Skeleton height="240px" />
@@ -148,7 +148,7 @@ export default function SeriesDetailPage() {
       </div>
 
       {/* Content */}
-      <div className="px-8 py-6 -mt-24 relative">
+      <div className="px-4 py-4 md:px-8 md:py-6 -mt-24 relative">
         <div className="flex gap-6 items-start">
           {/* Poster */}
           {series.posterUrl && (
@@ -159,7 +159,7 @@ export default function SeriesDetailPage() {
 
           {/* Info */}
           <div className="flex-1 min-w-0">
-            <h1 className="text-4xl font-bold text-white mb-1">{series.title}</h1>
+            <h1 className="text-2xl md:text-4xl font-bold text-white mb-1">{series.title}</h1>
             {showOriginalTitle && (
               <p className="text-gray-400 text-base mb-3">{series.originalTitle}</p>
             )}
@@ -200,9 +200,18 @@ export default function SeriesDetailPage() {
               </div>
             )}
 
+            {/* Primary actions — placed before synopsis so they are above the fold on mobile */}
+            <div className="flex flex-wrap gap-3 mb-6">
+              <Button variant="ghost" className="min-h-[44px]" onClick={() => navigate(-1)}>
+                ← Retour
+              </Button>
+              <WatchlistButton mediaType="SERIES" mediaId={series.id} />
+              <FeedbackButtons mediaType="SERIES" mediaId={series.id} />
+            </div>
+
             {/* Synopsis */}
             {series.synopsis && (
-              <p className="text-gray-300 text-sm leading-relaxed mb-6 max-w-2xl">
+              <p className="text-gray-300 text-sm leading-relaxed mb-6 max-w-2xl line-clamp-4 md:line-clamp-none">
                 {series.synopsis}
               </p>
             )}
@@ -246,13 +255,6 @@ export default function SeriesDetailPage() {
               <SeasonAccordion seriesId={series.id} seasons={series.seasons} profileId={profileId} devices={devices} progressByEpisodeId={progressByEpisodeId} />
             </div>
 
-            <div className="flex flex-wrap gap-3 mt-6">
-              <Button variant="ghost" onClick={() => navigate(-1)}>
-                ← Retour
-              </Button>
-              <WatchlistButton mediaType="SERIES" mediaId={series.id} />
-              <FeedbackButtons mediaType="SERIES" mediaId={series.id} />
-            </div>
           </div>
         </div>
       </div>

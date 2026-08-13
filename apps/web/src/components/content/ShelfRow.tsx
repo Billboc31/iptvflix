@@ -12,7 +12,7 @@ export default function ShelfRow({ shelf }: ShelfRowProps) {
   if (shelf.items.length === 0) return null
 
   return (
-    <div className="px-8 mt-8">
+    <div className="mt-8">
       <HorizontalRow title={shelf.title}>
         {shelf.items.map((item) => {
           const hasProgress =
@@ -24,7 +24,7 @@ export default function ShelfRow({ shelf }: ShelfRowProps) {
             : 0
 
           return (
-            <div key={`${item.mediaType}-${item.mediaId}`} className="relative flex-shrink-0 w-36">
+            <div key={`${item.mediaType}-${item.mediaId}`} className="relative flex-shrink-0 w-28 md:w-32 lg:w-36 snap-start">
               <PosterCard
                 title={item.title}
                 posterUrl={item.posterUrl}

@@ -83,12 +83,12 @@ export default function HeroSection({
       )}
 
       {/* Content */}
-      <div className="relative h-full flex flex-col justify-end px-8 pb-10 max-w-2xl">
-        <h1 className="text-4xl font-bold text-white mb-3 drop-shadow-lg">{title}</h1>
+      <div className="relative h-full flex flex-col justify-end px-4 md:px-8 pb-6 md:pb-10 max-w-2xl">
+        <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white mb-3 drop-shadow-lg">{title}</h1>
         {synopsis && (
-          <p className="text-gray-300 text-sm leading-relaxed mb-6 line-clamp-3">{synopsis}</p>
+          <p className="text-gray-300 text-sm leading-relaxed mb-6 line-clamp-2 md:line-clamp-3">{synopsis}</p>
         )}
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2">
           {onDetails && <Button onClick={onDetails}>Détails</Button>}
           {onAddToList && (
             <Button variant="secondary" onClick={onAddToList}>

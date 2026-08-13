@@ -24,7 +24,7 @@ export default function Dialog({ open, onClose, title, children }: DialogProps) 
         role="dialog"
         aria-modal="true"
         aria-labelledby="dialog-title"
-        className="relative bg-[#1a1a24] rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl border border-white/10"
+        className="relative bg-[#1a1a24] rounded-xl w-full max-w-sm max-h-[90vh] overflow-y-auto shadow-2xl border border-white/10"
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
           <h2 id="dialog-title" className="text-lg font-semibold text-white">

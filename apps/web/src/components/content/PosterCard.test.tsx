@@ -156,4 +156,10 @@ describe('PosterCard', () => {
     // No iframe should appear — timer was cancelled on unmount
     expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument()
   })
+
+  it('card root element uses w-full so width is controlled by the parent container', () => {
+    render(<PosterCard title="Movie" onClick={() => {}} />)
+    const card = screen.getByRole('button')
+    expect(card.className).toContain('w-full')
+  })
 })
