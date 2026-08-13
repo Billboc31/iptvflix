@@ -1,5 +1,7 @@
-import { pgTable, text, uuid, integer, timestamp, date, primaryKey, real } from 'drizzle-orm/pg-core'
+import { pgTable, pgEnum, text, uuid, integer, timestamp, date, primaryKey, real } from 'drizzle-orm/pg-core'
 import { genres } from './genres.js'
+
+export const matchStatusEnum = pgEnum('match_status', ['PENDING', 'MATCHED', 'UNMATCHED'])
 
 export const movies = pgTable('movies', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -14,6 +16,7 @@ export const movies = pgTable('movies', {
   imdbId: text('imdb_id').unique(),
   voteAverage: real('vote_average'),
   certification: text('certification'),
+  matchStatus: matchStatusEnum('match_status').notNull().default('PENDING'),
   metadataProvider: text('metadata_provider'),
   metadataEnrichedAt: timestamp('metadata_enriched_at', { withTimezone: true }),
   announcedAt: date('announced_at'),

@@ -10,6 +10,7 @@ import { syncRuns } from '../../db/schema/sync-runs.js'
 import { releaseEvents } from '../../db/schema/release-lifecycle.js'
 import { CatalogSyncService, SyncAlreadyRunningError } from '../catalog-sync-service.js'
 import { withBoundedConcurrency } from '../sync-runs-service.js'
+import { TitleMatchingService, type MatchItemInput, type MatchResult } from '../title-matching-service.js'
 import type { XtreamCatalogSnapshot, XtreamVodStream, XtreamSeries, XtreamSeriesInfo } from '../../providers/xtream/types.js'
 import type { PlexCatalogSnapshot } from '../../providers/plex/types.js'
 
@@ -142,7 +143,7 @@ describe('CatalogSyncService', () => {
       const fetchedAt = new Date('2026-01-01T10:00:00Z')
       const snapshot = makeSnapshot(
         [
-          makeVodStream({ stream_id: 1, name: 'Movie Alpha', tmdb: '111', plot: 'A plot' }),
+          makeVodStream({ stream_id: 1, name: 'Movie Alpha', tmdb: '9000111', plot: 'A plot' }),
           makeVodStream({ stream_id: 2, name: 'Movie Beta' }),
         ],
         [makeSeriesEntry({ series_id: 10, name: 'Series One', releaseDate: '2022-03-15' })],
@@ -178,7 +179,7 @@ describe('CatalogSyncService', () => {
         .where(eq(movieAvailabilities.providerItemId, '1'))
       const [movie1] = await db.select().from(movies).where(eq(movies.id, av1.movieId))
       expect(movie1.title).toBe('Movie Alpha')
-      expect(movie1.tmdbId).toBe(111)
+      expect(movie1.tmdbId).toBe(9000111)
       expect(movie1.synopsis).toBe('A plot')
 
       // Verify series availability row
@@ -1362,6 +1363,378 @@ describe('CatalogSyncService', () => {
       } finally {
         await cleanupPlexSource(plexSource.id)
       }
+    })
+  })
+
+  describe('title-matching pre-pass', () => {
+    function makeMockMatchingService(
+      responses: Map<string, { matchState: 'MATCHED' | 'UNMATCHED' | 'AMBIGUOUS'; movieId?: string | null; seriesId?: string | null }>,
+    ): TitleMatchingService {
+      const mock = {
+        matchItem: async (input: MatchItemInput): Promise<MatchResult> => {
+          const resp = responses.get(input.providerItemId) ?? { matchState: 'UNMATCHED' as const }
+          return {
+            id: 'mock-id',
+            providerId: input.providerId,
+            providerItemId: input.providerItemId,
+            matchState: resp.matchState,
+            confidence: resp.matchState === 'MATCHED' ? 0.95 : null,
+            movieId: resp.movieId ?? null,
+            seriesId: resp.seriesId ?? null,
+            normalizedTitle: input.rawTitle,
+            extractedYear: null,
+            candidateCount: resp.matchState === 'UNMATCHED' ? 0 : 2,
+            notes: `mock:${resp.matchState}`,
+          }
+        },
+        matchBatch: async (inputs: MatchItemInput[]): Promise<MatchResult[]> => {
+          return Promise.all(inputs.map((i) => mock.matchItem(i)))
+        },
+      } as unknown as TitleMatchingService
+      return mock
+    }
+
+    it('provider item without TMDB ID, confident match: attaches availability to canonical movie', async () => {
+      const fetchedAt = new Date('2026-08-01T10:00:00Z')
+
+      const [canonicalMovie] = await db
+        .insert(movies)
+        .values({ title: 'Dune Part Two', year: 2024, tmdbId: 9438631 })
+        .returning()
+
+      try {
+        const responses = new Map([
+          ['900', { matchState: 'MATCHED' as const, movieId: canonicalMovie.id }],
+        ])
+        const matchingService = makeMockMatchingService(responses)
+
+        const result = await CatalogSyncService.syncCatalog(
+          testSourceId,
+          makeSnapshot(
+            [makeVodStream({ stream_id: 900, name: '4K-FR - Dune Part Two 2024 1080p' })],
+            [],
+            fetchedAt,
+          ),
+          { matchingService },
+        )
+
+        expect(result.status).toBe('completed')
+        expect(result.counts.moviesCreated).toBe(1)
+        expect(result.counts.titleMatchedCount).toBe(1)
+        expect(result.counts.titleUnmatchedCount).toBe(0)
+
+        const avRows = await db
+          .select()
+          .from(movieAvailabilities)
+          .where(eq(movieAvailabilities.providerId, testSourceId))
+        expect(avRows).toHaveLength(1)
+        expect(avRows[0].movieId).toBe(canonicalMovie.id)
+        expect(avRows[0].rawTitle).toBe('4K-FR - Dune Part Two 2024 1080p')
+
+        // Canonical movie row count stays at 1
+        const movieRows = await db.select().from(movies).where(eq(movies.tmdbId, 9438631))
+        expect(movieRows).toHaveLength(1)
+      } finally {
+        await db.delete(movies).where(eq(movies.id, canonicalMovie.id))
+      }
+    })
+
+    it('multiple provider items matching the same canonical movie converge on one movie row', async () => {
+      const fetchedAt = new Date('2026-08-01T10:00:00Z')
+
+      const [canonicalMovie] = await db
+        .insert(movies)
+        .values({ title: 'Dune', year: 2021, tmdbId: 9438630 })
+        .returning()
+
+      try {
+        const responses = new Map([
+          ['901', { matchState: 'MATCHED' as const, movieId: canonicalMovie.id }],
+          ['902', { matchState: 'MATCHED' as const, movieId: canonicalMovie.id }],
+        ])
+        const matchingService = makeMockMatchingService(responses)
+
+        const result = await CatalogSyncService.syncCatalog(
+          testSourceId,
+          makeSnapshot(
+            [
+              makeVodStream({ stream_id: 901, name: 'FR - Dune 2021 4K' }),
+              makeVodStream({ stream_id: 902, name: 'EN - Dune 2021 1080p' }),
+            ],
+            [],
+            fetchedAt,
+          ),
+          { matchingService },
+        )
+
+        expect(result.status).toBe('completed')
+        expect(result.counts.moviesCreated).toBe(2)
+        expect(result.counts.titleMatchedCount).toBe(2)
+
+        const avRows = await db
+          .select()
+          .from(movieAvailabilities)
+          .where(eq(movieAvailabilities.providerId, testSourceId))
+        expect(avRows).toHaveLength(2)
+        expect(avRows[0].movieId).toBe(canonicalMovie.id)
+        expect(avRows[1].movieId).toBe(canonicalMovie.id)
+
+        // Only one canonical movie row
+        const movieRows = await db.select().from(movies).where(eq(movies.tmdbId, 9438630))
+        expect(movieRows).toHaveLength(1)
+      } finally {
+        await db.delete(movies).where(eq(movies.id, canonicalMovie.id))
+      }
+    })
+
+    it('ambiguous match result: local UNMATCHED movie created, no false merge', async () => {
+      const fetchedAt = new Date('2026-08-01T10:00:00Z')
+
+      const [canonicalMovie] = await db
+        .insert(movies)
+        .values({ title: 'Alien', year: 2024, tmdbId: 9945961 })
+        .returning()
+
+      try {
+        const responses = new Map([
+          ['903', { matchState: 'AMBIGUOUS' as const, movieId: null }],
+        ])
+        const matchingService = makeMockMatchingService(responses)
+
+        const result = await CatalogSyncService.syncCatalog(
+          testSourceId,
+          makeSnapshot(
+            [makeVodStream({ stream_id: 903, name: 'Alien Romulus 2024 4K' })],
+            [],
+            fetchedAt,
+          ),
+          { matchingService },
+        )
+
+        expect(result.status).toBe('completed')
+        expect(result.counts.titleMatchedCount).toBe(0)
+        expect(result.counts.titleUnmatchedCount).toBe(1)
+
+        const avRows = await db
+          .select()
+          .from(movieAvailabilities)
+          .where(eq(movieAvailabilities.providerId, testSourceId))
+        expect(avRows).toHaveLength(1)
+
+        // Must NOT point to the canonical movie — a distinct UNMATCHED row is created
+        expect(avRows[0].movieId).not.toBe(canonicalMovie.id)
+
+        const [unmatchedMovie] = await db.select().from(movies).where(eq(movies.id, avRows[0].movieId))
+        expect(unmatchedMovie.tmdbId).toBeNull()
+        expect(unmatchedMovie.matchStatus).toBe('UNMATCHED')
+      } finally {
+        await db.delete(movies).where(eq(movies.id, canonicalMovie.id))
+      }
+    })
+
+    it('zero TMDB candidates: UNMATCHED local movie created and remains playable', async () => {
+      const fetchedAt = new Date('2026-08-01T10:00:00Z')
+      const responses = new Map([
+        ['904', { matchState: 'UNMATCHED' as const, movieId: null }],
+      ])
+      const matchingService = makeMockMatchingService(responses)
+
+      const result = await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot(
+          [makeVodStream({ stream_id: 904, name: 'Xzqwerty Unknown 2099 4K' })],
+          [],
+          fetchedAt,
+        ),
+        { matchingService },
+      )
+
+      expect(result.status).toBe('completed')
+      expect(result.counts.titleUnmatchedCount).toBe(1)
+
+      const avRows = await db
+        .select()
+        .from(movieAvailabilities)
+        .where(eq(movieAvailabilities.providerId, testSourceId))
+      expect(avRows).toHaveLength(1)
+      expect(avRows[0].status).toBe('AVAILABLE')
+
+      const [movie] = await db.select().from(movies).where(eq(movies.id, avRows[0].movieId))
+      expect(movie.tmdbId).toBeNull()
+      expect(movie.matchStatus).toBe('UNMATCHED')
+    })
+
+    it('TMDB failure during pre-pass: affected item stored as UNMATCHED, sync completes', async () => {
+      const fetchedAt = new Date('2026-08-01T10:00:00Z')
+
+      const throwingMock = {
+        matchItem: async (_input: MatchItemInput): Promise<MatchResult> => {
+          throw new Error('TMDB network error')
+        },
+        matchBatch: async (inputs: MatchItemInput[]): Promise<MatchResult[]> => {
+          return Promise.all(inputs.map((i) => throwingMock.matchItem(i)))
+        },
+      } as unknown as TitleMatchingService
+
+      const result = await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot(
+          [makeVodStream({ stream_id: 905, name: 'Some Movie 2024 1080p' })],
+          [],
+          fetchedAt,
+        ),
+        { matchingService: throwingMock },
+      )
+
+      // Sync must complete despite TMDB failure
+      expect(result.status).toBe('completed')
+
+      const avRows = await db
+        .select()
+        .from(movieAvailabilities)
+        .where(eq(movieAvailabilities.providerId, testSourceId))
+      expect(avRows).toHaveLength(1)
+      expect(avRows[0].status).toBe('AVAILABLE')
+
+      const [movie] = await db.select().from(movies).where(eq(movies.id, avRows[0].movieId))
+      expect(movie.tmdbId).toBeNull()
+      expect(movie.matchStatus).toBe('UNMATCHED')
+    })
+
+    it('re-sync with identical snapshot is idempotent when matching service is provided', async () => {
+      const fetchedAt1 = new Date('2026-08-01T10:00:00Z')
+      const fetchedAt2 = new Date('2026-08-02T10:00:00Z')
+
+      const [canonicalMovie] = await db
+        .insert(movies)
+        .values({ title: 'Oppenheimer', year: 2023, tmdbId: 9872585 })
+        .returning()
+
+      try {
+        const responses = new Map([
+          ['906', { matchState: 'MATCHED' as const, movieId: canonicalMovie.id }],
+        ])
+        const matchingService = makeMockMatchingService(responses)
+        const stream = makeVodStream({ stream_id: 906, name: 'Oppenheimer 2023 4K' })
+
+        await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [], fetchedAt1), { matchingService })
+        await CatalogSyncService.syncCatalog(testSourceId, makeSnapshot([stream], [], fetchedAt2), { matchingService })
+
+        const avRows = await db
+          .select()
+          .from(movieAvailabilities)
+          .where(eq(movieAvailabilities.providerId, testSourceId))
+        expect(avRows).toHaveLength(1)
+        expect(avRows[0].movieId).toBe(canonicalMovie.id)
+        expect(avRows[0].firstSeenAt.toISOString()).toBe(fetchedAt1.toISOString())
+        expect(avRows[0].lastSeenAt.toISOString()).toBe(fetchedAt2.toISOString())
+
+        // No duplicate movie rows
+        const movieRows = await db.select().from(movies).where(eq(movies.tmdbId, 9872585))
+        expect(movieRows).toHaveLength(1)
+      } finally {
+        await db.delete(movies).where(eq(movies.id, canonicalMovie.id))
+      }
+    })
+
+    it('movies.matchStatus is MATCHED for TMDB-resolved items and UNMATCHED for local skeletons', async () => {
+      const fetchedAt = new Date('2026-08-01T10:00:00Z')
+
+      const result = await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot(
+          [
+            makeVodStream({ stream_id: 907, name: 'Movie With TMDB', tmdb: '999001' }),
+            makeVodStream({ stream_id: 908, name: 'Movie Without TMDB' }),
+          ],
+          [],
+          fetchedAt,
+        ),
+      )
+
+      expect(result.status).toBe('completed')
+
+      const avRows = await db
+        .select({ movieId: movieAvailabilities.movieId, providerItemId: movieAvailabilities.providerItemId })
+        .from(movieAvailabilities)
+        .where(eq(movieAvailabilities.providerId, testSourceId))
+
+      const withTmdb = avRows.find((r) => r.providerItemId === '907')!
+      const withoutTmdb = avRows.find((r) => r.providerItemId === '908')!
+
+      const [movieMatched] = await db.select().from(movies).where(eq(movies.id, withTmdb.movieId))
+      const [movieUnmatched] = await db.select().from(movies).where(eq(movies.id, withoutTmdb.movieId))
+
+      expect(movieMatched.matchStatus).toBe('MATCHED')
+      expect(movieMatched.tmdbId).toBe(999001)
+      expect(movieUnmatched.matchStatus).toBe('UNMATCHED')
+      expect(movieUnmatched.tmdbId).toBeNull()
+    })
+
+    it('series without TMDB ID is matched via title matching service', async () => {
+      const fetchedAt = new Date('2026-08-01T10:00:00Z')
+
+      const [canonicalSeries] = await db
+        .insert(seriesTable)
+        .values({ title: 'Severance', firstAirYear: 2022, tmdbId: 9095396 })
+        .returning()
+
+      try {
+        const responses = new Map([
+          ['910', { matchState: 'MATCHED' as const, seriesId: canonicalSeries.id }],
+        ])
+        const matchingService = makeMockMatchingService(responses)
+
+        const result = await CatalogSyncService.syncCatalog(
+          testSourceId,
+          makeSnapshot(
+            [],
+            [makeSeriesEntry({ series_id: 910, name: 'FR - Severance S01 2022' })],
+            fetchedAt,
+          ),
+          { matchingService },
+        )
+
+        expect(result.status).toBe('completed')
+        expect(result.counts.titleMatchedCount).toBe(1)
+
+        const avRows = await db
+          .select()
+          .from(seriesAvailabilities)
+          .where(eq(seriesAvailabilities.providerId, testSourceId))
+        expect(avRows).toHaveLength(1)
+        expect(avRows[0].seriesId).toBe(canonicalSeries.id)
+      } finally {
+        await db.delete(seriesTable).where(eq(seriesTable.id, canonicalSeries.id))
+      }
+    })
+
+    it('movie without TMDB ID and no matching service creates UNMATCHED skeleton (backward compat)', async () => {
+      const fetchedAt = new Date('2026-08-01T10:00:00Z')
+
+      const result = await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot(
+          [makeVodStream({ stream_id: 909, name: 'Unknown Movie 2099 4K' })],
+          [],
+          fetchedAt,
+        ),
+      )
+
+      expect(result.status).toBe('completed')
+      expect(result.counts.titleMatchedCount).toBe(0)
+      expect(result.counts.titleUnmatchedCount).toBe(0)
+
+      const avRows = await db
+        .select()
+        .from(movieAvailabilities)
+        .where(eq(movieAvailabilities.providerId, testSourceId))
+      expect(avRows).toHaveLength(1)
+      expect(avRows[0].status).toBe('AVAILABLE')
+
+      const [movie] = await db.select().from(movies).where(eq(movies.id, avRows[0].movieId))
+      expect(movie.tmdbId).toBeNull()
+      expect(movie.matchStatus).toBe('UNMATCHED')
     })
   })
 })

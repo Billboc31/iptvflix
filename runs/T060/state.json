@@ -1,0 +1,10 @@
+{
+  "ticket_id": "T060",
+  "state": "TEST_COMPLETE",
+  "branch": "ticket/T060-resolve-missing-tmdb-ids-during-source-sync-and-bu",
+  "issue_number": 122,
+  "updated_at": "2026-08-13T09:47:23Z",
+  "pre_conflict_state": "IMPLEMENTATION_APPROVED",
+  "conflict_detected_at": "2026-08-13T09:42:19Z",
+  "conflicted_files": []
+}

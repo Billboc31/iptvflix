@@ -20,6 +20,8 @@ export const syncRuns = pgTable(
     seriesUpdated: integer('series_updated').notNull().default(0),
     unavailableCount: integer('unavailable_count').notNull().default(0),
     failedCount: integer('failed_count').notNull().default(0),
+    titleMatchedCount: integer('title_matched_count').notNull().default(0),
+    titleUnmatchedCount: integer('title_unmatched_count').notNull().default(0),
     errorMessage: text('error_message'),
   },
   (t) => [

@@ -11,11 +11,16 @@ import {
   episodeAvailabilities,
 } from '../db/schema/availabilities.js'
 import { syncRuns } from '../db/schema/sync-runs.js'
+import { titleMatchResults } from '../db/schema/title-match-results.js'
 import { releaseEvents } from '../db/schema/release-lifecycle.js'
 import type { XtreamCatalogSnapshot } from '../providers/xtream/types.js'
 import { normalizeTitle } from '../matching/title-normalizer.js'
 import type { PlexCatalogSnapshot, PlexGuid } from '../providers/plex/types.js'
 import type { M3UCatalogSnapshot } from '../providers/m3u/types.js'
+import { TitleMatchingService, type MatchItemInput } from './title-matching-service.js'
+
+const MATCH_CONCURRENCY = parseInt(process.env.MATCH_CONCURRENCY ?? '5', 10) || 5
+const MATCH_THROTTLE_MS = parseInt(process.env.MATCH_THROTTLE_MS ?? '250', 10) || 0
 
 export interface CatalogSyncResult {
   runId: string
@@ -27,6 +32,8 @@ export interface CatalogSyncResult {
     seriesUpdated: number
     unavailableCount: number
     failedCount: number
+    titleMatchedCount: number
+    titleUnmatchedCount: number
   }
   error?: string
 }
@@ -201,6 +208,7 @@ async function resolveMovieId(
         synopsis: item.synopsis ?? null,
         year: null,
         tmdbId,
+        matchStatus: 'MATCHED',
       })
       .onConflictDoNothing({ target: movies.tmdbId })
       .returning({ id: movies.id })
@@ -230,6 +238,7 @@ async function resolveMovieId(
       synopsis: item.synopsis ?? null,
       year: null,
       tmdbId: null,
+      matchStatus: 'UNMATCHED',
     })
     .returning({ id: movies.id })
   return inserted.id
@@ -264,6 +273,7 @@ async function resolveSeriesId(
         synopsis: item.synopsis ?? null,
         firstAirYear: item.firstAirYear ?? null,
         tmdbId,
+        matchStatus: 'MATCHED',
       })
       .onConflictDoNothing({ target: series.tmdbId })
       .returning({ id: series.id })
@@ -293,6 +303,7 @@ async function resolveSeriesId(
       synopsis: item.synopsis ?? null,
       firstAirYear: item.firstAirYear ?? null,
       tmdbId: null,
+      matchStatus: 'UNMATCHED',
     })
     .returning({ id: series.id })
   return inserted.id
@@ -369,14 +380,96 @@ async function persistSyncRunProgress(
       seriesUpdated: counts.seriesUpdated,
       unavailableCount: counts.unavailableCount,
       failedCount: counts.failedCount,
+      titleMatchedCount: counts.titleMatchedCount,
+      titleUnmatchedCount: counts.titleUnmatchedCount,
     })
     .where(eq(syncRuns.id, runId))
+}
+
+async function runTitleMatchPrePass(
+  sourceId: string,
+  items: Array<{ providerItemId: string; rawTitle: string; mediaType: 'MOVIE' | 'SERIES' }>,
+  matchingService: TitleMatchingService,
+): Promise<{ prePassMap: Map<string, string | null>; matchedCount: number; unmatchedCount: number }> {
+  if (items.length === 0) {
+    return { prePassMap: new Map(), matchedCount: 0, unmatchedCount: 0 }
+  }
+
+  // Guard: skip items already MATCHED in a previous sync run
+  const existingMatched = await db
+    .select({ providerItemId: titleMatchResults.providerItemId, movieId: titleMatchResults.movieId, seriesId: titleMatchResults.seriesId })
+    .from(titleMatchResults)
+    .where(
+      and(
+        eq(titleMatchResults.providerId, sourceId),
+        eq(titleMatchResults.matchState, 'MATCHED'),
+        inArray(titleMatchResults.providerItemId, items.map((i) => i.providerItemId)),
+      ),
+    )
+
+  const prePassMap = new Map<string, string | null>()
+  const alreadyMatchedIds = new Set<string>()
+  for (const row of existingMatched) {
+    const canonicalId = row.movieId ?? row.seriesId ?? null
+    prePassMap.set(row.providerItemId, canonicalId)
+    alreadyMatchedIds.add(row.providerItemId)
+  }
+
+  // Deduplicate by (normalizedTitle, extractedYear) to avoid redundant TMDB calls
+  const dedupeKey = (rawTitle: string): string => {
+    const { normalizedTitle, extractedYear } = normalizeTitle(rawTitle)
+    return `${normalizedTitle}::${extractedYear ?? ''}`
+  }
+  const dedupeMap = new Map<string, string>() // key → canonicalId (from first resolved item)
+
+  const pendingItems = items.filter((i) => !alreadyMatchedIds.has(i.providerItemId))
+  const inputs: MatchItemInput[] = pendingItems.map((i) => ({
+    providerId: sourceId,
+    providerItemId: i.providerItemId,
+    rawTitle: i.rawTitle,
+    mediaType: i.mediaType,
+  }))
+
+  let matchedCount = existingMatched.filter((r) => (r.movieId ?? r.seriesId) !== null).length
+  let unmatchedCount = 0
+
+  const results = await matchingService.matchBatch(inputs, {
+    concurrency: MATCH_CONCURRENCY,
+    throttleMs: MATCH_THROTTLE_MS,
+  })
+
+  for (let idx = 0; idx < results.length; idx++) {
+    const result = results[idx]
+    const item = pendingItems[idx]
+    if (!item || !result) continue
+
+    const key = dedupeKey(item.rawTitle)
+    if (result.matchState === 'MATCHED') {
+      const canonicalId = result.movieId ?? result.seriesId ?? null
+      prePassMap.set(item.providerItemId, canonicalId)
+      if (canonicalId) dedupeMap.set(key, canonicalId)
+      matchedCount++
+    } else {
+      // Check dedupe — same normalized title already resolved this sync
+      const deduped = dedupeMap.get(key)
+      if (deduped) {
+        prePassMap.set(item.providerItemId, deduped)
+        matchedCount++
+      } else {
+        prePassMap.set(item.providerItemId, null)
+        unmatchedCount++
+      }
+    }
+  }
+
+  return { prePassMap, matchedCount, unmatchedCount }
 }
 
 async function syncNormalized(
   sourceId: string,
   snapshot: NormalizedSnapshot,
   existingRunId?: string,
+  matchingService?: TitleMatchingService,
 ): Promise<CatalogSyncResult> {
   // Acquire lock by inserting a RUNNING run record (unless caller already did).
   let runId: string
@@ -393,6 +486,8 @@ async function syncNormalized(
     seriesUpdated: 0,
     unavailableCount: 0,
     failedCount: snapshot.failedSeriesProviderIds?.length ?? 0,
+    titleMatchedCount: 0,
+    titleUnmatchedCount: 0,
   }
   let syncError: Error | undefined
 
@@ -456,6 +551,36 @@ async function syncNormalized(
       if (row.tmdbId != null) seriesTmdbCache.set(row.tmdbId, row.id)
     }
 
+    // Title-matching pre-pass: resolve canonical IDs for items without a TMDB ID
+    let moviePrePassMap = new Map<string, string | null>()
+    let seriesPrePassMap = new Map<string, string | null>()
+    if (matchingService) {
+      const moviesWithoutTmdb = snapshot.movies
+        .filter((m) => !movieAvByProviderItemId.has(m.providerItemId) && !parseTmdbId(m.tmdb))
+        .map((m) => ({ providerItemId: m.providerItemId, rawTitle: m.rawTitle ?? m.title, mediaType: 'MOVIE' as const }))
+
+      const seriesWithoutTmdb = snapshot.series
+        .filter((s) => !seriesAvByProviderItemId.has(s.providerItemId) && !parseTmdbId(s.tmdb))
+        .map((s) => ({ providerItemId: s.providerItemId, rawTitle: s.rawTitle ?? s.title, mediaType: 'SERIES' as const }))
+
+      const [moviePass, seriesPass] = await Promise.all([
+        runTitleMatchPrePass(sourceId, moviesWithoutTmdb, matchingService).catch(() => ({
+          prePassMap: new Map<string, string | null>(),
+          matchedCount: 0,
+          unmatchedCount: moviesWithoutTmdb.length,
+        })),
+        runTitleMatchPrePass(sourceId, seriesWithoutTmdb, matchingService).catch(() => ({
+          prePassMap: new Map<string, string | null>(),
+          matchedCount: 0,
+          unmatchedCount: seriesWithoutTmdb.length,
+        })),
+      ])
+      moviePrePassMap = moviePass.prePassMap
+      seriesPrePassMap = seriesPass.prePassMap
+      counts.titleMatchedCount += moviePass.matchedCount + seriesPass.matchedCount
+      counts.titleUnmatchedCount += moviePass.unmatchedCount + seriesPass.unmatchedCount
+    }
+
     const seenMovieProviderItemIds = new Set<string>()
     const totalMovies = snapshot.movies.length
     console.info(
@@ -480,15 +605,23 @@ async function syncNormalized(
             if (tmdbId != null) {
               movieId = await resolveMovieId(tx, movie, movieTmdbCache)
             } else {
-              movieId = randomUUID()
-              moviesToInsert.push({
-                id: movieId,
-                title: movie.title,
-                posterPath: movie.posterPath ?? null,
-                synopsis: movie.synopsis ?? null,
-                year: null,
-                tmdbId: null,
-              })
+              const prePassId = moviePrePassMap.get(providerItemId)
+              if (prePassId != null) {
+                // Title match found a canonical movie for this item
+                movieId = prePassId
+              } else {
+                // No TMDB ID and no title match — create an UNMATCHED local skeleton
+                movieId = randomUUID()
+                moviesToInsert.push({
+                  id: movieId,
+                  title: movie.title,
+                  posterPath: movie.posterPath ?? null,
+                  synopsis: movie.synopsis ?? null,
+                  year: null,
+                  tmdbId: null,
+                  matchStatus: 'UNMATCHED',
+                })
+              }
             }
             const avId = randomUUID()
             newAvails.push({
@@ -583,15 +716,23 @@ async function syncNormalized(
             if (tmdbId != null) {
               seriesId = await resolveSeriesId(tx, s, seriesTmdbCache)
             } else {
-              seriesId = randomUUID()
-              seriesToInsert.push({
-                id: seriesId,
-                title: s.title,
-                posterPath: s.posterPath ?? null,
-                synopsis: s.synopsis ?? null,
-                firstAirYear: s.firstAirYear ?? null,
-                tmdbId: null,
-              })
+              const prePassId = seriesPrePassMap.get(providerItemId)
+              if (prePassId != null) {
+                // Title match found a canonical series for this item
+                seriesId = prePassId
+              } else {
+                // No TMDB ID and no title match — create an UNMATCHED local skeleton
+                seriesId = randomUUID()
+                seriesToInsert.push({
+                  id: seriesId,
+                  title: s.title,
+                  posterPath: s.posterPath ?? null,
+                  synopsis: s.synopsis ?? null,
+                  firstAirYear: s.firstAirYear ?? null,
+                  tmdbId: null,
+                  matchStatus: 'UNMATCHED',
+                })
+              }
             }
             const avId = randomUUID()
             newAvails.push({
@@ -913,6 +1054,8 @@ async function syncNormalized(
       seriesUpdated: counts.seriesUpdated,
       unavailableCount: counts.unavailableCount,
       failedCount: counts.failedCount,
+      titleMatchedCount: counts.titleMatchedCount,
+      titleUnmatchedCount: counts.titleUnmatchedCount,
     })
     .where(eq(syncRuns.id, runId))
 
@@ -923,7 +1066,7 @@ export const CatalogSyncService = {
   async syncCatalog(
     sourceId: string,
     snapshot: XtreamCatalogSnapshot,
-    options?: { runId?: string },
+    options?: { runId?: string; matchingService?: TitleMatchingService },
   ): Promise<CatalogSyncResult> {
     const normalizedEpisodes: NormalizedEpisodeItem[] | undefined = snapshot.seriesInfo
       ? Object.entries(snapshot.seriesInfo).flatMap(([seriesIdStr, info]) =>
@@ -982,6 +1125,7 @@ export const CatalogSyncService = {
         failedSeriesProviderIds: snapshot.failedSeriesIds?.map(String),
       },
       options?.runId,
+      options?.matchingService,
     )
   },
 
