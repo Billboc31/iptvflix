@@ -11,3 +11,8 @@
 [2026-08-13T19:11:07Z] compose: task (canonical prompt)
 [2026-08-13T19:11:07Z] snapshot: runtime-prompt=runs/T068/prompts/planner-attempt-1.md
 [2026-08-13T19:16:55Z] auto-run: step=planner done rc=0
+[2026-08-13T19:47:04Z] conflict-resolver: git rebase origin/main exit=0
+[2026-08-13T19:47:04Z] conflict-resolver: rebase clean — no conflicts
+[2026-08-13T19:47:04Z] conflict-resolver: running tests
+[2026-08-13T19:47:04Z] conflict-resolver: test-report written: runs/T068/conflict/test-report.md
+[2026-08-13T19:47:04Z] conflict-resolver: staging and committing resolution artifacts
