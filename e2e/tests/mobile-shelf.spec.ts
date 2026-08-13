@@ -39,9 +39,15 @@ test.describe('Mobile shelf browsing', () => {
     const box = await scrollContainer.boundingBox()
     if (!box) return
 
-    // Simulate a horizontal swipe gesture
-    await page.touchscreen.tap(box.x + box.width * 0.7, box.y + box.height / 2)
-    await page.touchscreen.tap(box.x + box.width * 0.3, box.y + box.height / 2)
+    // Simulate a horizontal swipe gesture (touch drag from right to left)
+    const startX = box.x + box.width * 0.7
+    const endX = box.x + box.width * 0.3
+    const cy = box.y + box.height / 2
+    await page.mouse.move(startX, cy)
+    await page.mouse.down()
+    await page.mouse.move(startX - (startX - endX) / 2, cy)
+    await page.mouse.move(endX, cy)
+    await page.mouse.up()
 
     // Wait briefly to see if a preview video appears
     await page.waitForTimeout(500)

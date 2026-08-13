@@ -42,14 +42,13 @@ test.describe('Mobile detail page', () => {
 
     const viewportHeight = page.viewportSize()!.height
 
-    // Play button should be above the fold
+    // Play button must be above the fold without scrolling
     const playButton = page.getByRole('button', { name: /lecture/i }).or(
       page.getByRole('link', { name: /lecture/i })
     )
-    if (await playButton.isVisible()) {
-      const box = await playButton.boundingBox()
-      expect(box!.y + box!.height).toBeLessThan(viewportHeight)
-    }
+    await expect(playButton).toBeVisible({ timeout: 5_000 })
+    const box = await playButton.boundingBox()
+    expect(box!.y + box!.height).toBeLessThan(viewportHeight)
   })
 
   test('DevicePickerModal fits within mobile viewport width', async ({ page }) => {

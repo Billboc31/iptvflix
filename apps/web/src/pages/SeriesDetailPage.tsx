@@ -200,9 +200,18 @@ export default function SeriesDetailPage() {
               </div>
             )}
 
+            {/* Primary actions — placed before synopsis so they are above the fold on mobile */}
+            <div className="flex flex-wrap gap-3 mb-6">
+              <Button variant="ghost" className="min-h-[44px]" onClick={() => navigate(-1)}>
+                ← Retour
+              </Button>
+              <WatchlistButton mediaType="SERIES" mediaId={series.id} />
+              <FeedbackButtons mediaType="SERIES" mediaId={series.id} />
+            </div>
+
             {/* Synopsis */}
             {series.synopsis && (
-              <p className="text-gray-300 text-sm leading-relaxed mb-6 max-w-2xl">
+              <p className="text-gray-300 text-sm leading-relaxed mb-6 max-w-2xl line-clamp-4 md:line-clamp-none">
                 {series.synopsis}
               </p>
             )}
@@ -246,13 +255,6 @@ export default function SeriesDetailPage() {
               <SeasonAccordion seriesId={series.id} seasons={series.seasons} profileId={profileId} devices={devices} progressByEpisodeId={progressByEpisodeId} />
             </div>
 
-            <div className="flex flex-wrap gap-3 mt-6">
-              <Button variant="ghost" onClick={() => navigate(-1)}>
-                ← Retour
-              </Button>
-              <WatchlistButton mediaType="SERIES" mediaId={series.id} />
-              <FeedbackButtons mediaType="SERIES" mediaId={series.id} />
-            </div>
           </div>
         </div>
       </div>

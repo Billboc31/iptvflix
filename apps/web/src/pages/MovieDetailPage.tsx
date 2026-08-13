@@ -188,9 +188,37 @@ export default function MovieDetailPage() {
               </div>
             )}
 
+            {/* Primary actions — placed before synopsis so they are above the fold on mobile */}
+            <div className="flex flex-wrap gap-3 mb-6">
+              <Button variant="ghost" className="min-h-[44px]" onClick={() => navigate(-1)}>
+                ← Retour
+              </Button>
+              {movie.availabilityStatus === 'AVAILABLE' && (
+                <Button
+                  className="min-h-[44px]"
+                  onClick={() =>
+                    navigate(
+                      `/player/movie/${movie.id}${
+                        selectedVariantId ? `?availabilityId=${selectedVariantId}` : ''
+                      }`,
+                    )
+                  }
+                >
+                  ▶ Lecture
+                </Button>
+              )}
+              {devices.length > 0 && (
+                <Button variant="secondary" className="min-h-[44px]" onClick={() => setPickerOpen(true)}>
+                  📺 Lire sur TV
+                </Button>
+              )}
+              <WatchlistButton mediaType="MOVIE" mediaId={movie.id} />
+              <FeedbackButtons mediaType="MOVIE" mediaId={movie.id} />
+            </div>
+
             {/* Synopsis */}
             {movie.synopsis && (
-              <p className="text-gray-300 text-sm leading-relaxed mb-6 max-w-2xl">
+              <p className="text-gray-300 text-sm leading-relaxed mb-6 max-w-2xl line-clamp-4 md:line-clamp-none">
                 {movie.synopsis}
               </p>
             )}
@@ -227,33 +255,6 @@ export default function MovieDetailPage() {
 
             {/* Cast */}
             <CastRow cast={movie.cast} director={movie.director} />
-
-            <div className="flex flex-wrap gap-3">
-              <Button variant="ghost" className="min-h-[44px]" onClick={() => navigate(-1)}>
-                ← Retour
-              </Button>
-              {movie.availabilityStatus === 'AVAILABLE' && (
-                <Button
-                  className="min-h-[44px]"
-                  onClick={() =>
-                    navigate(
-                      `/player/movie/${movie.id}${
-                        selectedVariantId ? `?availabilityId=${selectedVariantId}` : ''
-                      }`,
-                    )
-                  }
-                >
-                  ▶ Lecture
-                </Button>
-              )}
-              {devices.length > 0 && (
-                <Button variant="secondary" className="min-h-[44px]" onClick={() => setPickerOpen(true)}>
-                  📺 Lire sur TV
-                </Button>
-              )}
-              <WatchlistButton mediaType="MOVIE" mediaId={movie.id} />
-              <FeedbackButtons mediaType="MOVIE" mediaId={movie.id} />
-            </div>
             <DevicePickerModal
               open={pickerOpen}
               onClose={() => setPickerOpen(false)}
