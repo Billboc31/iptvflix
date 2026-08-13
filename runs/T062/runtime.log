@@ -12,3 +12,25 @@
 [2026-08-13T11:02:20Z] snapshot: runtime-prompt=runs/T062/prompts/planner-attempt-1.md
 [2026-08-13T11:11:21Z] compose: preferring on-disk runs/T062/plan.md over chatty stdout (agent Write beat meta-report)
 [2026-08-13T11:11:21Z] auto-run: step=planner done rc=0
+[2026-08-13T11:47:53Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-13T11:47:53Z] auto-run: running step=tester
+[2026-08-13T11:47:54Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-13T11:47:54Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-13T11:47:54Z] prompt: generic fallback — injecting runs/T062/ticket.md
+[2026-08-13T11:47:54Z] compose: global-context=docs/ai/global-context.md
+[2026-08-13T11:47:54Z] compose: role=ai/roles/tester.md
+[2026-08-13T11:47:54Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-13T11:47:54Z] compose: skill=ai/skills/testing.md
+[2026-08-13T11:47:54Z] compose: skill=ai/skills/debugging.md
+[2026-08-13T11:47:54Z] compose: task (canonical prompt)
+[2026-08-13T11:47:54Z] snapshot: runtime-prompt=runs/T062/prompts/tester-attempt-1.md
+[2026-08-13T11:52:31Z] auto-run: step=tester done rc=0
+[2026-08-13T11:52:31Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-13T11:52:31Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-13T11:52:31Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T062/daemon.lock', 'runs/T062/runtime.log', 'runs/T062/workflow-status.md']
+[2026-08-13T11:52:31Z] commit-checkpoint: sha=b0ea7b7 files=3 title='test(T062/workflow): tester — update 3 file(s)'
+[2026-08-13T11:52:31Z] auto-run: auto-push triggered
+[2026-08-13T11:52:31Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T062/daemon.lock', 'runs/T062/runtime.log', 'runs/T062/workflow-status.md']
+[2026-08-13T11:52:31Z] push: pushing branch=ticket/T062-ingest-and-reconcile-canonical-series-season-episo
+[2026-08-13T11:52:33Z] push: done branch=ticket/T062-ingest-and-reconcile-canonical-series-season-episo
+[2026-08-13T11:52:34Z] auto-run: TEST_COMPLETE — running PR lifecycle
