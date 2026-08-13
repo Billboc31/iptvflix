@@ -43,7 +43,7 @@ export class NotFoundError extends Error {
 }
 
 export async function listMovies(filters: MovieFilters): Promise<PaginatedList<MovieResponse>> {
-  const { q, genreId, year, availability, sortBy = 'title', page = 1, pageSize = 20 } = filters
+  const { q, genreId, year, availability, upcoming, sortBy = 'title', page = 1, pageSize = 20 } = filters
 
   const conditions = []
 
@@ -68,6 +68,11 @@ export async function listMovies(filters: MovieFilters): Promise<PaginatedList<M
       sql`NOT EXISTS (SELECT 1 FROM movie_availabilities WHERE movie_id = ${movies.id} AND status = 'AVAILABLE')`,
     )
   }
+  if (upcoming === true) {
+    conditions.push(
+      sql`(${movies.theatricalReleaseDate} > NOW() OR ${movies.status} IN ('Rumored', 'Planned', 'In Production', 'Post Production'))`,
+    )
+  }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined
 
@@ -82,6 +87,10 @@ export async function listMovies(filters: MovieFilters): Promise<PaginatedList<M
       sql`(SELECT MAX(last_seen_at) FROM movie_availabilities WHERE movie_id = movies.id) DESC NULLS LAST`,
       asc(movies.title),
     ]
+  } else if (sortBy === 'popularity') {
+    orderByClause = [sql`${movies.popularity} DESC NULLS LAST`, asc(movies.title)]
+  } else if (sortBy === 'voteAverage') {
+    orderByClause = [sql`${movies.voteAverage} DESC NULLS LAST`, asc(movies.title)]
   } else {
     orderByClause = [asc(movies.title)]
   }
@@ -236,7 +245,7 @@ export async function getMovie(id: string): Promise<MovieResponse | null> {
 }
 
 export async function listSeries(filters: SeriesFilters): Promise<PaginatedList<SeriesResponse>> {
-  const { q, genreId, year, availability, sortBy = 'title', page = 1, pageSize = 20 } = filters
+  const { q, genreId, year, availability, upcoming, sortBy = 'title', page = 1, pageSize = 20 } = filters
 
   const conditions = []
 
@@ -261,6 +270,11 @@ export async function listSeries(filters: SeriesFilters): Promise<PaginatedList<
       sql`NOT EXISTS (SELECT 1 FROM series_availabilities WHERE series_id = ${series.id} AND status = 'AVAILABLE')`,
     )
   }
+  if (upcoming === true) {
+    conditions.push(
+      sql`(${series.inProduction} = true OR ${series.status} IN ('In Production', 'Planned'))`,
+    )
+  }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined
 
@@ -275,6 +289,10 @@ export async function listSeries(filters: SeriesFilters): Promise<PaginatedList<
       sql`(SELECT MAX(last_seen_at) FROM series_availabilities WHERE series_id = series.id) DESC NULLS LAST`,
       asc(series.title),
     ]
+  } else if (sortBy === 'popularity') {
+    orderByClause = [sql`${series.popularity} DESC NULLS LAST`, asc(series.title)]
+  } else if (sortBy === 'voteAverage') {
+    orderByClause = [sql`${series.voteAverage} DESC NULLS LAST`, asc(series.title)]
   } else {
     orderByClause = [asc(series.title)]
   }

@@ -8,36 +8,61 @@ import Skeleton from '../components/ui/Skeleton.js'
 import { useSeries } from '../hooks/useSeries.js'
 import { useGenres } from '../hooks/useGenres.js'
 
+type AvailabilityMode = 'all' | 'available'
+
+function SeriesShelf({
+  title,
+  sortBy,
+  availability,
+  upcoming,
+  genreId,
+}: {
+  title: string
+  sortBy?: 'popularity' | 'voteAverage' | 'year' | 'recentAvailability'
+  availability?: 'AVAILABLE'
+  upcoming?: boolean
+  genreId?: string
+}) {
+  const navigate = useNavigate()
+  const { data, loading } = useSeries({ pageSize: 20, sortBy, availability, upcoming, genreId })
+
+  if (!loading && (!data?.items.length)) return null
+
+  return (
+    <HorizontalRow title={title}>
+      {loading && (
+        <Skeleton className="shrink-0 w-28 md:w-32 lg:w-36 aspect-[2/3] rounded-lg" />
+      )}
+      {data?.items.map((s) => (
+        <div key={s.id} className="shrink-0 w-28 md:w-32 lg:w-36">
+          <PosterCard
+            title={s.title}
+            year={s.year}
+            posterUrl={s.posterUrl}
+            mediaId={s.id}
+            onClick={() => navigate(`/series/${s.id}`)}
+          />
+        </div>
+      ))}
+    </HorizontalRow>
+  )
+}
+
 export default function SeriesPage() {
   const navigate = useNavigate()
   const [selectedGenreId, setSelectedGenreId] = useState<string | undefined>(undefined)
+  const [availabilityMode, setAvailabilityMode] = useState<AvailabilityMode>('all')
 
   const { genres } = useGenres()
 
-  const { data: heroAvailableData } = useSeries({
-    pageSize: 1,
-    sortBy: 'recentAvailability',
-    availability: 'AVAILABLE',
-  })
-  const { data: heroFallbackData } = useSeries({ pageSize: 1, sortBy: 'recentAvailability' })
-
-  const shelfAFilters = selectedGenreId
-    ? { pageSize: 20, genreId: selectedGenreId }
-    : { pageSize: 20, sortBy: 'recentAvailability' as const, availability: 'AVAILABLE' as const }
-
-  const { data: shelfAData, loading: shelfALoading } = useSeries(shelfAFilters)
-  const { data: shelfBData, loading: shelfBLoading } = useSeries({
-    pageSize: 20,
-    sortBy: 'title',
-  })
-
-  const heroSeries = heroAvailableData?.items[0] ?? heroFallbackData?.items[0]
+  const { data: heroData } = useSeries({ pageSize: 1, sortBy: 'popularity' })
+  const heroSeries = heroData?.items[0]
 
   const selectedGenreName = genres.find((g) => g.id === selectedGenreId)?.name
+  const avail = availabilityMode === 'available' ? 'AVAILABLE' as const : undefined
 
   return (
     <div className="min-h-screen bg-[#0a0a0f]">
-      {/* Cinematic hero — no onPlay for series (episode-driven playability) */}
       {heroSeries && (
         <HeroSection
           title={heroSeries.title}
@@ -49,62 +74,42 @@ export default function SeriesPage() {
         />
       )}
 
-      {/* Compact genre selector */}
+      <div className="flex flex-wrap items-center gap-2 px-4 pt-4">
+        <button
+          onClick={() => setAvailabilityMode('all')}
+          className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+            availabilityMode === 'all'
+              ? 'bg-white text-black'
+              : 'bg-white/10 text-white hover:bg-white/20'
+          }`}
+        >
+          Tout le catalogue
+        </button>
+        <button
+          onClick={() => setAvailabilityMode('available')}
+          className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+            availabilityMode === 'available'
+              ? 'bg-white text-black'
+              : 'bg-white/10 text-white hover:bg-white/20'
+          }`}
+        >
+          Disponible maintenant
+        </button>
+      </div>
+
       <GenreChips genres={genres} selected={selectedGenreId} onSelect={setSelectedGenreId} />
 
-      {/* Shelves */}
       {selectedGenreId ? (
-        <HorizontalRow title={selectedGenreName ?? 'Séries'}>
-          {shelfALoading && (
-            <Skeleton className="shrink-0 w-28 md:w-32 lg:w-36 aspect-[2/3] rounded-lg" />
-          )}
-          {shelfAData?.items.map((series) => (
-            <div key={series.id} className="shrink-0 w-28 md:w-32 lg:w-36">
-              <PosterCard
-                title={series.title}
-                year={series.year}
-                posterUrl={series.posterUrl}
-                mediaId={series.id}
-                onClick={() => navigate(`/series/${series.id}`)}
-              />
-            </div>
-          ))}
-        </HorizontalRow>
+        <SeriesShelf title={selectedGenreName ?? 'Séries'} genreId={selectedGenreId} availability={avail} />
       ) : (
         <>
-          <HorizontalRow title="Disponibles">
-            {shelfALoading && (
-              <Skeleton className="shrink-0 w-28 md:w-32 lg:w-36 aspect-[2/3] rounded-lg" />
-            )}
-            {shelfAData?.items.map((series) => (
-              <div key={series.id} className="shrink-0 w-28 md:w-32 lg:w-36">
-                <PosterCard
-                  title={series.title}
-                  year={series.year}
-                  posterUrl={series.posterUrl}
-                  mediaId={series.id}
-                  onClick={() => navigate(`/series/${series.id}`)}
-                />
-              </div>
-            ))}
-          </HorizontalRow>
-
-          <HorizontalRow title="Toutes les séries">
-            {shelfBLoading && (
-              <Skeleton className="shrink-0 w-28 md:w-32 lg:w-36 aspect-[2/3] rounded-lg" />
-            )}
-            {shelfBData?.items.map((series) => (
-              <div key={series.id} className="shrink-0 w-28 md:w-32 lg:w-36">
-                <PosterCard
-                  title={series.title}
-                  year={series.year}
-                  posterUrl={series.posterUrl}
-                  mediaId={series.id}
-                  onClick={() => navigate(`/series/${series.id}`)}
-                />
-              </div>
-            ))}
-          </HorizontalRow>
+          {availabilityMode === 'available' && (
+            <SeriesShelf title="Disponibles" sortBy="recentAvailability" availability="AVAILABLE" />
+          )}
+          <SeriesShelf title="Populaires" sortBy="popularity" availability={avail} />
+          <SeriesShelf title="Les mieux notées" sortBy="voteAverage" availability={avail} />
+          <SeriesShelf title="Sorties récentes" sortBy="year" availability={avail} />
+          <SeriesShelf title="À venir" upcoming={true} availability={avail} />
         </>
       )}
     </div>

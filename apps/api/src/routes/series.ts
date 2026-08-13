@@ -12,6 +12,7 @@ export async function seriesRoutes(app: FastifyInstance): Promise<void> {
       year?: string
       availability?: string
       sortBy?: string
+      upcoming?: string
       page?: string
       pageSize?: string
     }
@@ -44,11 +45,20 @@ export async function seriesRoutes(app: FastifyInstance): Promise<void> {
       sortBy !== undefined &&
       sortBy !== 'title' &&
       sortBy !== 'year' &&
-      sortBy !== 'recentAvailability'
+      sortBy !== 'recentAvailability' &&
+      sortBy !== 'popularity' &&
+      sortBy !== 'voteAverage'
     ) {
       return reply
         .status(400)
-        .send({ error: 'sortBy must be title, year, or recentAvailability' })
+        .send({ error: 'sortBy must be title, year, recentAvailability, popularity, or voteAverage' })
+    }
+
+    let upcoming: boolean | undefined
+    if (q.upcoming !== undefined) {
+      if (q.upcoming === 'true') upcoming = true
+      else if (q.upcoming === 'false') upcoming = false
+      else return reply.status(400).send({ error: 'upcoming must be true or false' })
     }
 
     let search: string | undefined
@@ -74,6 +84,7 @@ export async function seriesRoutes(app: FastifyInstance): Promise<void> {
       year,
       availability: availability as SeriesFilters['availability'],
       sortBy: sortBy as SeriesFilters['sortBy'],
+      upcoming,
       q: search,
       genreId,
     }

@@ -225,6 +225,20 @@
       "when": 1786398930976,
       "tag": "0031_t067_availability_variants",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1786398940976,
+      "tag": "0032_catalog_refresh",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1786398950976,
+      "tag": "0033_t070_discovery_indexes",
+      "breakpoints": true
     }
   ]
 }

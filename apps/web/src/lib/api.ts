@@ -82,7 +82,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
-function toQuery(params: Record<string, string | number | undefined>): string {
+function toQuery(params: Record<string, string | number | boolean | undefined>): string {
   const q = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined) q.set(k, String(v))
