@@ -17,6 +17,14 @@ import {
   failSyncRun,
 } from './catalog-sync-service.js'
 import { NotFoundError } from './source-service.js'
+import { TMDB_API_KEY } from '../config/env.js'
+import { TmdbClient } from '../providers/metadata/tmdb/client.js'
+import { TitleMatchingService } from './title-matching-service.js'
+
+function createOptionalTitleMatchingService(): TitleMatchingService | undefined {
+  if (!TMDB_API_KEY) return undefined
+  return new TitleMatchingService(new TmdbClient({ apiKey: TMDB_API_KEY }))
+}
 
 type SyncRunRow = typeof syncRuns.$inferSelect
 
@@ -221,10 +229,11 @@ export async function triggerSync(body: TriggerSyncBody): Promise<SyncRunRespons
 
   // Run catalog fetch + DB upsert in the background so the UI can poll RUNNING.
   void (async () => {
+    const matchingService = createOptionalTitleMatchingService()
     try {
       if (source.type === 'PLEX') {
         const snapshot = await fetchPlexSnapshot(source)
-        await CatalogSyncService.syncPlexCatalog(source.id, snapshot, { runId })
+        await CatalogSyncService.syncPlexCatalog(source.id, snapshot, { runId, matchingService })
       } else if (source.type === 'M3U') {
         let snapshot: M3UCatalogSnapshot
         try {
@@ -240,10 +249,10 @@ export async function triggerSync(body: TriggerSyncBody): Promise<SyncRunRespons
           }
           throw fetchErr
         }
-        await CatalogSyncService.syncM3UCatalog(source.id, snapshot, { runId })
+        await CatalogSyncService.syncM3UCatalog(source.id, snapshot, { runId, matchingService })
       } else {
         const snapshot = await fetchXtreamSnapshot(source)
-        await CatalogSyncService.syncCatalog(source.id, snapshot, { runId })
+        await CatalogSyncService.syncCatalog(source.id, snapshot, { runId, matchingService })
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)

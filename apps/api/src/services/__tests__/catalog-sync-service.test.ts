@@ -1735,6 +1735,37 @@ describe('CatalogSyncService', () => {
       const [movie] = await db.select().from(movies).where(eq(movies.id, avRows[0].movieId))
       expect(movie.tmdbId).toBeNull()
       expect(movie.matchStatus).toBe('UNMATCHED')
+      expect(movie.title).toBe('Unknown Movie 2099')
+    })
+
+    it('consolidates IPTV title variants onto one movie without matchingService', async () => {
+      const fetchedAt = new Date('2026-08-01T11:00:00Z')
+
+      const result = await CatalogSyncService.syncCatalog(
+        testSourceId,
+        makeSnapshot(
+          [
+            makeVodStream({ stream_id: 911, name: '4K-FR - Consolidation Test 2024 1080p' }),
+            makeVodStream({ stream_id: 912, name: 'MULTI - Consolidation Test (2024)' }),
+          ],
+          [],
+          fetchedAt,
+        ),
+      )
+
+      expect(result.status).toBe('completed')
+      expect(result.counts.titleMatchedCount).toBe(1)
+
+      const avRows = await db
+        .select()
+        .from(movieAvailabilities)
+        .where(eq(movieAvailabilities.providerId, testSourceId))
+      expect(avRows).toHaveLength(2)
+      expect(avRows[0].movieId).toBe(avRows[1].movieId)
+
+      const [movie] = await db.select().from(movies).where(eq(movies.id, avRows[0].movieId))
+      expect(movie.title).toBe('Consolidation Test')
+      expect(movie.matchStatus).toBe('UNMATCHED')
     })
   })
 

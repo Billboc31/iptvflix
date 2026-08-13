@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeTitle } from '../title-normalizer.js'
+import { normalizeTitle, toCanonicalDisplayTitle } from '../title-normalizer.js'
 
 describe('normalizeTitle', () => {
   it('clean title returns as-is lowercased', () => {
@@ -73,5 +73,25 @@ describe('normalizeTitle', () => {
     expect(result.variantAttributes.audioLanguage).toBeNull()
     expect(result.variantAttributes.subtitleLanguage).toBe('fr')
     expect(result.variantAttributes.videoQuality).toBe('4K')
+  })
+
+  it('strips IPTV channel prefixes so variants consolidate on the same key', () => {
+    const a = normalizeTitle('4K-FR - Dune Part Two 2024 1080p')
+    const b = normalizeTitle('MULTI - Dune Part Two (2024)')
+    const c = normalizeTitle('Dune.Part.Two.2024.MULTi.1080p')
+    expect(a.normalizedTitle).toBe('dune part two')
+    expect(b.normalizedTitle).toBe('dune part two')
+    expect(c.normalizedTitle).toBe('dune part two')
+    expect(a.extractedYear).toBe(2024)
+  })
+
+  it('does not strip real title fragments before a hyphen', () => {
+    const result = normalizeTitle('Spider-Man - No Way Home (2021)')
+    expect(result.normalizedTitle).toBe('spider-man no way home')
+    expect(result.extractedYear).toBe(2021)
+  })
+
+  it('toCanonicalDisplayTitle returns a clean title-cased label', () => {
+    expect(toCanonicalDisplayTitle('4K-FR - Dune Part Two 2024 1080p')).toBe('Dune Part Two')
   })
 })

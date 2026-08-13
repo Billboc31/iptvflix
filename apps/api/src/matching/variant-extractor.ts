@@ -6,8 +6,8 @@ export interface VariantAttributes {
 
 // Order matters: longer/more-specific patterns first to avoid partial matches
 const VOSTFR_RE = /\bVOSTFR\b/i
-const FR_AUDIO_RE = /\b(TRUEFRENCH|FRENCH|VFF|VF)\b/i
-const EN_AUDIO_RE = /\bENG\b/i
+const FR_AUDIO_RE = /\b(TRUEFRENCH|FRENCH|VFF|VF|FR)\b/i
+const EN_AUDIO_RE = /\b(ENG|EN)\b/i
 const QUALITY_4K_RE = /\b(4K|UHD|2160p)\b/i
 const QUALITY_1080_RE = /\b1080p\b/i
 const QUALITY_720_RE = /\b720p\b/i
