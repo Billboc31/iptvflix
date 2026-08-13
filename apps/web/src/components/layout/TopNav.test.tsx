@@ -71,14 +71,21 @@ describe('TopNav', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/search')
   })
 
-  it('renders a profile/settings link', () => {
+  it('renders a settings button with aria-label Paramètres', () => {
     renderNav()
-    expect(screen.getByRole('link', { name: 'Paramètres' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Paramètres' })).toBeInTheDocument()
   })
 
-  it('profile link points to /settings/playback', () => {
+  it('clicking the settings button opens the settings menu with Sources link', () => {
     renderNav()
-    const link = screen.getByRole('link', { name: 'Paramètres' })
-    expect(link).toHaveAttribute('href', '/settings/playback')
+    fireEvent.click(screen.getByRole('button', { name: 'Paramètres' }))
+    expect(screen.getByRole('menuitem', { name: 'Sources' })).toBeInTheDocument()
+  })
+
+  it('clicking a settings menu item closes the menu', () => {
+    renderNav()
+    fireEvent.click(screen.getByRole('button', { name: 'Paramètres' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Sources' }))
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 })

@@ -1,7 +1,7 @@
 {
   "ticket_id": "T063",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T063-restore-source-management-and-administration-acces",
   "issue_number": 127,
-  "updated_at": "2026-08-13T11:59:53Z"
+  "updated_at": "2026-08-13T12:03:48Z"
 }
