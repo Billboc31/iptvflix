@@ -48,6 +48,15 @@ export interface ExternalCreditPerson {
   profilePath: string | null
 }
 
+export interface ExternalSeasonEpisode {
+  episodeNumber: number
+  title: string | null
+  synopsis: string | null
+  airDate: string | null
+  runtimeMinutes: number | null
+  stillPath: string | null
+}
+
 export type DiscoveryFeed = 'popular' | 'trending' | 'upcoming'
 
 export interface MetadataCandidate {
@@ -77,6 +86,7 @@ export interface MetadataProvider {
   getSeriesCredits(tmdbId: number): Promise<ExternalCreditPerson[]>
   getMovieCertification(tmdbId: number): Promise<string | null>
   getSeriesCertification(tmdbId: number): Promise<string | null>
+  getSeasonEpisodes?(tmdbSeriesId: number, seasonNumber: number): Promise<ExternalSeasonEpisode[]>
 }
 
 export class NoopMetadataProvider implements MetadataProvider {
@@ -126,5 +136,9 @@ export class NoopMetadataProvider implements MetadataProvider {
 
   async getSeriesCertification(_tmdbId: number): Promise<string | null> {
     return null
+  }
+
+  async getSeasonEpisodes(_tmdbSeriesId: number, _seasonNumber: number): Promise<ExternalSeasonEpisode[]> {
+    return []
   }
 }

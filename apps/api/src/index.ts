@@ -31,7 +31,7 @@ import { testHelpersRoutes } from './routes/test-helpers.js'
 import { authRoutes } from './routes/auth.js'
 import { schedulerRoutes } from './routes/scheduler.js'
 import { arrivalsRoutes } from './routes/arrivals.js'
-import { reconcileRoutes } from './routes/reconcile.js'
+import { reconcileRoutes, episodeBackfillRoutes } from './routes/reconcile.js'
 import { authenticate } from './plugins/auth.js'
 import {
   PORT,
@@ -52,6 +52,7 @@ import { DiscoveryCandidatePoolService } from './services/discovery-candidate-po
 import { SchedulerService } from './services/scheduler-service.js'
 import { TitleMatchingService } from './services/title-matching-service.js'
 import { MediaReconciliationService } from './services/media-reconciliation-service.js'
+import { EpisodeBackfillService } from './services/episode-backfill-service.js'
 import { triggerSync } from './services/sync-runs-service.js'
 
 const app = Fastify({ logger: true })
@@ -114,6 +115,9 @@ await app.register(async function protectedScope(protectedApp) {
   if (reconciliationService) {
     await protectedApp.register(reconcileRoutes, { reconciliationService })
   }
+
+  const backfillService = new EpisodeBackfillService()
+  await protectedApp.register(episodeBackfillRoutes, { backfillService })
 })
 
 if (process.env.NODE_ENV !== 'production') {

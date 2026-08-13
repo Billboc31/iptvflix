@@ -73,6 +73,7 @@ export const episodeAvailabilities = pgTable(
     subtitleLanguage: text('subtitle_language'),
     videoQuality: text('video_quality'),
     rawTitle: text('raw_title'),
+    containerExtension: text('container_extension'),
   },
   (t) => [
     unique().on(t.episodeId, t.providerId, t.providerItemId),

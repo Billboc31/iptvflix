@@ -3,10 +3,12 @@ import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import type * as schema from '../db/schema/index.js'
 import { movies, movieGenres } from '../db/schema/movies.js'
 import { series, seriesGenres } from '../db/schema/series.js'
+import { seasons } from '../db/schema/seasons.js'
+import { episodes } from '../db/schema/episodes.js'
 import { genres } from '../db/schema/genres.js'
 import { mediaVideos } from '../db/schema/media-videos.js'
 import { mediaCredits } from '../db/schema/media-credits.js'
-import type { MetadataProvider, ExternalVideo, ExternalCreditPerson } from '../providers/metadata/types.js'
+import type { MetadataProvider, ExternalVideo, ExternalCreditPerson, ExternalSeasonEpisode } from '../providers/metadata/types.js'
 
 type Db = PostgresJsDatabase<typeof schema>
 
@@ -188,7 +190,88 @@ export class MetadataEnrichmentService {
     await this.persistVideos('series', seriesId, videos)
     await this.persistCredits('series', seriesId, credits)
 
+    try {
+      await this.enrichSeriesSeasons(seriesId)
+    } catch (err) {
+      console.warn(`[enrichment] enrichSeriesSeasons(${seriesId}) failed:`, err)
+    }
+
     return 'enriched'
+  }
+
+  async enrichSeriesSeasons(
+    seriesId: string,
+  ): Promise<{ result: 'no-tmdb-id' | 'enriched'; episodes: EnrichmentCounters }> {
+    const emptyCounters: EnrichmentCounters = { enriched: 0, skipped: 0, failed: 0 }
+
+    const [seriesRow] = await this.db
+      .select({ id: series.id, tmdbId: series.tmdbId })
+      .from(series)
+      .where(eq(series.id, seriesId))
+
+    if (!seriesRow || seriesRow.tmdbId === null) {
+      return { result: 'no-tmdb-id', episodes: emptyCounters }
+    }
+
+    if (!this.provider.getSeasonEpisodes) {
+      return { result: 'no-tmdb-id', episodes: emptyCounters }
+    }
+
+    const tmdbId = seriesRow.tmdbId
+    const seasonRows = await this.db
+      .select({ id: seasons.id, seasonNumber: seasons.seasonNumber })
+      .from(seasons)
+      .where(eq(seasons.seriesId, seriesId))
+
+    const counters: EnrichmentCounters = { enriched: 0, skipped: 0, failed: 0 }
+
+    let firstCall = true
+    for (const season of seasonRows) {
+      if (!firstCall) await delay(ENRICH_THROTTLE_MS)
+      firstCall = false
+
+      let tmdbEpisodes: ExternalSeasonEpisode[]
+      try {
+        tmdbEpisodes = await this.provider.getSeasonEpisodes(tmdbId, season.seasonNumber)
+      } catch {
+        counters.failed++
+        continue
+      }
+
+      for (const tmdbEp of tmdbEpisodes) {
+        const [existingEp] = await this.db
+          .select({ id: episodes.id })
+          .from(episodes)
+          .where(
+            and(
+              eq(episodes.seasonId, season.id),
+              eq(episodes.episodeNumber, tmdbEp.episodeNumber),
+            ),
+          )
+          .limit(1)
+
+        if (!existingEp) {
+          counters.skipped++
+          continue
+        }
+
+        const updates: Partial<typeof episodes.$inferInsert> = {}
+        if (tmdbEp.title != null) updates.title = tmdbEp.title
+        if (tmdbEp.synopsis != null) updates.synopsis = tmdbEp.synopsis
+        if (tmdbEp.airDate != null) updates.airDate = tmdbEp.airDate
+        if (tmdbEp.runtimeMinutes != null) updates.durationMinutes = tmdbEp.runtimeMinutes
+
+        if (Object.keys(updates).length > 0) {
+          updates.updatedAt = new Date()
+          await this.db.update(episodes).set(updates).where(eq(episodes.id, existingEp.id))
+          counters.enriched++
+        } else {
+          counters.skipped++
+        }
+      }
+    }
+
+    return { result: 'enriched', episodes: counters }
   }
 
   async enrichPending(opts?: {

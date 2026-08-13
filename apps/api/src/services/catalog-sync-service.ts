@@ -79,6 +79,11 @@ interface NormalizedEpisodeItem {
   synopsis?: string | null
   durationMinutes?: number | null
   airDate?: string | null
+  rawTitle?: string | null
+  audioLanguage?: string | null
+  subtitleLanguage?: string | null
+  videoQuality?: string | null
+  containerExtension?: string | null
 }
 
 interface NormalizedSnapshot {
@@ -90,6 +95,8 @@ interface NormalizedSnapshot {
   episodes?: NormalizedEpisodeItem[]
   /** Series whose episode fetch failed — their episodes must not be marked UNAVAILABLE */
   failedSeriesProviderIds?: string[]
+  /** When true, skip UNAVAILABLE lifecycle marking for movies, series, and episodes (used by backfill) */
+  skipLifecycle?: boolean
 }
 
 const STALE_LOCK_MS = 2 * 60 * 60 * 1000 // large Xtream catalogs can run for a long time
@@ -314,6 +321,7 @@ async function resolveEpisodeId(
   seriesId: string,
   seasonNumber: number,
   episodeNumber: number,
+  meta?: { title?: string | null; synopsis?: string | null; durationMinutes?: number | null; airDate?: string | null },
 ): Promise<string> {
   let seasonId: string
   const [existingSeason] = await tx
@@ -349,11 +357,32 @@ async function resolveEpisodeId(
     .where(and(eq(episodes.seasonId, seasonId), eq(episodes.episodeNumber, episodeNumber)))
     .limit(1)
 
-  if (existingEpisode) return existingEpisode.id
+  if (existingEpisode) {
+    if (meta) {
+      const updates: Partial<typeof episodes.$inferInsert> = {}
+      if (meta.title != null) updates.title = meta.title
+      if (meta.synopsis != null) updates.synopsis = meta.synopsis
+      if (meta.durationMinutes != null) updates.durationMinutes = meta.durationMinutes
+      if (meta.airDate != null) updates.airDate = meta.airDate
+      if (Object.keys(updates).length > 0) {
+        updates.updatedAt = new Date()
+        await tx.update(episodes).set(updates).where(eq(episodes.id, existingEpisode.id))
+      }
+    }
+    return existingEpisode.id
+  }
 
   const insertedEp = await tx
     .insert(episodes)
-    .values({ seasonId, seriesId, episodeNumber })
+    .values({
+      seasonId,
+      seriesId,
+      episodeNumber,
+      title: meta?.title ?? null,
+      synopsis: meta?.synopsis ?? null,
+      durationMinutes: meta?.durationMinutes ?? null,
+      airDate: meta?.airDate ?? null,
+    })
     .onConflictDoNothing()
     .returning({ id: episodes.id })
   if (insertedEp[0]) return insertedEp[0].id
@@ -809,10 +838,11 @@ async function syncNormalized(
     }
 
     await db.transaction(async (tx) => {
-      // Mark previously available items not in this snapshot as UNAVAILABLE
-      const missingMovieIds = [...previouslyAvailableMovieIds].filter(
-        (id) => !seenMovieProviderItemIds.has(id),
-      )
+      // Mark previously available items not in this snapshot as UNAVAILABLE.
+      // Skipped in backfill mode to avoid corrupting availability for unrelated items.
+      const missingMovieIds = snapshot.skipLifecycle
+        ? []
+        : [...previouslyAvailableMovieIds].filter((id) => !seenMovieProviderItemIds.has(id))
       if (missingMovieIds.length > 0) {
         const disappearedMovies = await tx
           .update(movieAvailabilities)
@@ -842,9 +872,9 @@ async function syncNormalized(
         counts.unavailableCount += missingMovieIds.length
       }
 
-      const missingSeriesIds = [...previouslyAvailableSeriesIds].filter(
-        (id) => !seenSeriesProviderItemIds.has(id),
-      )
+      const missingSeriesIds = snapshot.skipLifecycle
+        ? []
+        : [...previouslyAvailableSeriesIds].filter((id) => !seenSeriesProviderItemIds.has(id))
       if (missingSeriesIds.length > 0) {
         const disappearedSeries = await tx
           .update(seriesAvailabilities)
@@ -909,6 +939,7 @@ async function syncNormalized(
             seriesAv.seriesId,
             ep.seasonNumber,
             ep.episodeNumber,
+            { title: ep.title, synopsis: ep.synopsis, durationMinutes: ep.durationMinutes, airDate: ep.airDate },
           )
 
           const [existing] = await tx
@@ -934,6 +965,11 @@ async function syncNormalized(
               firstSeenAt: snapshot.fetchedAt,
               lastSeenAt: snapshot.fetchedAt,
               status: 'AVAILABLE',
+              rawTitle: ep.rawTitle ?? null,
+              audioLanguage: ep.audioLanguage ?? null,
+              subtitleLanguage: ep.subtitleLanguage ?? null,
+              videoQuality: ep.videoQuality ?? null,
+              containerExtension: ep.containerExtension ?? null,
             })
             await tx
               .insert(releaseEvents)
@@ -955,7 +991,16 @@ async function syncNormalized(
             const wasUnavailable = existing.status === 'UNAVAILABLE'
             await tx
               .update(episodeAvailabilities)
-              .set({ lastSeenAt: snapshot.fetchedAt, status: 'AVAILABLE', unavailableAt: null })
+              .set({
+                lastSeenAt: snapshot.fetchedAt,
+                status: 'AVAILABLE',
+                unavailableAt: null,
+                rawTitle: ep.rawTitle ?? null,
+                audioLanguage: ep.audioLanguage ?? null,
+                subtitleLanguage: ep.subtitleLanguage ?? null,
+                videoQuality: ep.videoQuality ?? null,
+                containerExtension: ep.containerExtension ?? null,
+              })
               .where(eq(episodeAvailabilities.id, existing.id))
             if (wasUnavailable) {
               await tx
@@ -973,60 +1018,62 @@ async function syncNormalized(
           seenEpisodeProviderItemIds.add(ep.providerItemId)
         }
 
-        const protectedEpisodeIds = new Set<string>()
-        const failedProviderIds = snapshot.failedSeriesProviderIds
-        if (failedProviderIds && failedProviderIds.length > 0) {
-          const protectedRows = await tx
-            .select({ providerItemId: episodeAvailabilities.providerItemId })
-            .from(episodeAvailabilities)
-            .innerJoin(episodes, eq(episodeAvailabilities.episodeId, episodes.id))
-            .innerJoin(
-              seriesAvailabilities,
-              and(
-                eq(episodes.seriesId, seriesAvailabilities.seriesId),
-                eq(seriesAvailabilities.providerId, sourceId),
-                inArray(seriesAvailabilities.providerItemId, failedProviderIds),
-              ),
-            )
-            .where(
-              and(
-                eq(episodeAvailabilities.providerId, sourceId),
-                eq(episodeAvailabilities.status, 'AVAILABLE'),
-              ),
-            )
-          for (const row of protectedRows) {
-            protectedEpisodeIds.add(row.providerItemId)
+        if (!snapshot.skipLifecycle) {
+          const protectedEpisodeIds = new Set<string>()
+          const failedProviderIds = snapshot.failedSeriesProviderIds
+          if (failedProviderIds && failedProviderIds.length > 0) {
+            const protectedRows = await tx
+              .select({ providerItemId: episodeAvailabilities.providerItemId })
+              .from(episodeAvailabilities)
+              .innerJoin(episodes, eq(episodeAvailabilities.episodeId, episodes.id))
+              .innerJoin(
+                seriesAvailabilities,
+                and(
+                  eq(episodes.seriesId, seriesAvailabilities.seriesId),
+                  eq(seriesAvailabilities.providerId, sourceId),
+                  inArray(seriesAvailabilities.providerItemId, failedProviderIds),
+                ),
+              )
+              .where(
+                and(
+                  eq(episodeAvailabilities.providerId, sourceId),
+                  eq(episodeAvailabilities.status, 'AVAILABLE'),
+                ),
+              )
+            for (const row of protectedRows) {
+              protectedEpisodeIds.add(row.providerItemId)
+            }
           }
-        }
 
-        const missingEpisodeIds = [...previouslyAvailableEpisodeIds].filter(
-          (id) => !seenEpisodeProviderItemIds.has(id) && !protectedEpisodeIds.has(id),
-        )
-        if (missingEpisodeIds.length > 0) {
-          const disappearedEpisodes = await tx
-            .update(episodeAvailabilities)
-            .set({ status: 'UNAVAILABLE', unavailableAt: snapshot.fetchedAt })
-            .where(
-              and(
-                eq(episodeAvailabilities.providerId, sourceId),
-                eq(episodeAvailabilities.status, 'AVAILABLE'),
-                inArray(episodeAvailabilities.providerItemId, missingEpisodeIds),
-              ),
-            )
-            .returning({ episodeId: episodeAvailabilities.episodeId })
-          for (const { episodeId } of disappearedEpisodes) {
-            await tx
-              .insert(releaseEvents)
-              .values({
-                mediaType: 'EPISODE',
-                mediaId: episodeId,
-                eventType: 'SOURCE_DISAPPEARED',
-                occurredAt: snapshot.fetchedAt,
-                sourceId,
-              })
-              .onConflictDoNothing()
+          const missingEpisodeIds = [...previouslyAvailableEpisodeIds].filter(
+            (id) => !seenEpisodeProviderItemIds.has(id) && !protectedEpisodeIds.has(id),
+          )
+          if (missingEpisodeIds.length > 0) {
+            const disappearedEpisodes = await tx
+              .update(episodeAvailabilities)
+              .set({ status: 'UNAVAILABLE', unavailableAt: snapshot.fetchedAt })
+              .where(
+                and(
+                  eq(episodeAvailabilities.providerId, sourceId),
+                  eq(episodeAvailabilities.status, 'AVAILABLE'),
+                  inArray(episodeAvailabilities.providerItemId, missingEpisodeIds),
+                ),
+              )
+              .returning({ episodeId: episodeAvailabilities.episodeId })
+            for (const { episodeId } of disappearedEpisodes) {
+              await tx
+                .insert(releaseEvents)
+                .values({
+                  mediaType: 'EPISODE',
+                  mediaId: episodeId,
+                  eventType: 'SOURCE_DISAPPEARED',
+                  occurredAt: snapshot.fetchedAt,
+                  sourceId,
+                })
+                .onConflictDoNothing()
+            }
+            counts.unavailableCount += missingEpisodeIds.length
           }
-          counts.unavailableCount += missingEpisodeIds.length
         }
       }
     })
@@ -1066,23 +1113,31 @@ export const CatalogSyncService = {
   async syncCatalog(
     sourceId: string,
     snapshot: XtreamCatalogSnapshot,
-    options?: { runId?: string; matchingService?: TitleMatchingService },
+    options?: { runId?: string; matchingService?: TitleMatchingService; skipLifecycle?: boolean },
   ): Promise<CatalogSyncResult> {
     const normalizedEpisodes: NormalizedEpisodeItem[] | undefined = snapshot.seriesInfo
       ? Object.entries(snapshot.seriesInfo).flatMap(([seriesIdStr, info]) =>
           Object.entries(info.episodes).flatMap(([seasonKey, episodeList]) => {
             const seasonNumber = parseInt(seasonKey, 10)
-            return episodeList.map((ep) => ({
-              providerItemId: ep.id,
-              seriesProviderItemId: seriesIdStr,
-              seasonNumber,
-              episodeNumber: ep.episode_num,
-              title: ep.title ?? null,
-              durationMinutes: ep.info.duration_secs
-                ? Math.round(ep.info.duration_secs / 60)
-                : null,
-              airDate: ep.info.releasedate ?? null,
-            }))
+            return episodeList.map((ep) => {
+              const { variantAttributes } = normalizeTitle(ep.title)
+              return {
+                providerItemId: ep.id,
+                seriesProviderItemId: seriesIdStr,
+                seasonNumber,
+                episodeNumber: ep.episode_num,
+                title: ep.title ?? null,
+                durationMinutes: ep.info.duration_secs
+                  ? Math.round(ep.info.duration_secs / 60)
+                  : null,
+                airDate: ep.info.releasedate ?? null,
+                rawTitle: ep.title ?? null,
+                containerExtension: ep.container_extension ?? null,
+                audioLanguage: variantAttributes.audioLanguage,
+                subtitleLanguage: variantAttributes.subtitleLanguage,
+                videoQuality: variantAttributes.videoQuality,
+              }
+            })
           }),
         )
       : undefined
@@ -1123,6 +1178,7 @@ export const CatalogSyncService = {
         }),
         episodes: normalizedEpisodes,
         failedSeriesProviderIds: snapshot.failedSeriesIds?.map(String),
+        skipLifecycle: options?.skipLifecycle,
       },
       options?.runId,
       options?.matchingService,
