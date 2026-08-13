@@ -6,13 +6,28 @@ export interface ExternalMovieMetadata {
   posterPath: string | null
   backdropPath: string | null
   genres: string[]
+  genreObjects?: Array<{ name: string; tmdbId: number }>
   runtimeMinutes: number | null
   imdbId: string | null
   popularity: number | null
   voteAverage: number | null
+  voteCount?: number | null
   certification: string | null
   releaseStatus?: string | null
+  status?: string | null
   releaseDate?: string | null
+  originalLanguage?: string | null
+  spokenLanguages?: Array<{ iso639_1: string; name: string }> | null
+  productionCountries?: Array<{ iso3166_1: string; name: string }> | null
+  tagline?: string | null
+  keywords?: string[] | null
+  belongsToCollection?: {
+    tmdbId: number
+    name: string
+    posterPath: string | null
+    backdropPath: string | null
+  } | null
+  externalIds?: Record<string, string | number | null> | null
 }
 
 export interface ExternalSeriesMetadata {
@@ -23,13 +38,32 @@ export interface ExternalSeriesMetadata {
   posterPath: string | null
   backdropPath: string | null
   genres: string[]
+  genreObjects?: Array<{ name: string; tmdbId: number }>
   imdbId: string | null
   popularity: number | null
   voteAverage: number | null
+  voteCount?: number | null
   certification: string | null
   status: string | null
   releaseStatus?: string | null
   firstAirDate?: string | null
+  originalLanguage?: string | null
+  spokenLanguages?: Array<{ iso639_1: string; name: string }> | null
+  productionCountries?: Array<{ iso3166_1: string; name: string }> | null
+  tagline?: string | null
+  inProduction?: boolean | null
+  networks?: Array<{ id: number; name: string; logoPath: string | null; originCountry: string }> | null
+  createdBy?: Array<{ id: number; name: string; profilePath: string | null }> | null
+  numberOfSeasons?: number | null
+  numberOfEpisodes?: number | null
+  keywords?: string[] | null
+  externalIds?: Record<string, string | number | null> | null
+  seasons?: Array<{
+    tmdbId: number
+    seasonNumber: number
+    posterPath: string | null
+    episodeCount: number
+  }> | null
 }
 
 export interface ExternalVideo {
@@ -55,6 +89,9 @@ export interface ExternalSeasonEpisode {
   airDate: string | null
   runtimeMinutes: number | null
   stillPath: string | null
+  tmdbId?: number | null
+  voteAverage?: number | null
+  voteCount?: number | null
 }
 
 export type DiscoveryFeed = 'popular' | 'trending' | 'upcoming'

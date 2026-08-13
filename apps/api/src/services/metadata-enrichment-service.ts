@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, isNull, lt, or } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import type * as schema from '../db/schema/index.js'
 import { movies, movieGenres } from '../db/schema/movies.js'
@@ -6,6 +6,7 @@ import { series, seriesGenres } from '../db/schema/series.js'
 import { seasons } from '../db/schema/seasons.js'
 import { episodes } from '../db/schema/episodes.js'
 import { genres } from '../db/schema/genres.js'
+import { collections } from '../db/schema/collections.js'
 import { mediaVideos } from '../db/schema/media-videos.js'
 import { mediaCredits } from '../db/schema/media-credits.js'
 import type { MetadataProvider, ExternalVideo, ExternalCreditPerson, ExternalSeasonEpisode } from '../providers/metadata/types.js'
@@ -90,6 +91,30 @@ export class MetadataEnrichmentService {
     }
     if (metadata === null) return 'provider-failed'
 
+    // Upsert collection if movie belongs to one
+    let collectionId: string | null = null
+    if (metadata.belongsToCollection) {
+      const bc = metadata.belongsToCollection
+      const [collRow] = await this.db
+        .insert(collections)
+        .values({
+          tmdbId: bc.tmdbId,
+          name: bc.name,
+          posterPath: bc.posterPath,
+          backdropPath: bc.backdropPath,
+        })
+        .onConflictDoUpdate({
+          target: collections.tmdbId,
+          set: {
+            name: bc.name,
+            posterPath: bc.posterPath,
+            backdropPath: bc.backdropPath,
+          },
+        })
+        .returning({ id: collections.id })
+      collectionId = collRow?.id ?? null
+    }
+
     await this.db
       .update(movies)
       .set({
@@ -102,14 +127,25 @@ export class MetadataEnrichmentService {
         durationMinutes: metadata.runtimeMinutes,
         imdbId: metadata.imdbId,
         voteAverage: metadata.voteAverage,
+        voteCount: metadata.voteCount ?? null,
         certification,
         metadataProvider: 'tmdb',
         metadataEnrichedAt: new Date(),
         updatedAt: new Date(),
+        status: metadata.status ?? metadata.releaseStatus ?? null,
+        popularity: metadata.popularity ?? null,
+        originalLanguage: metadata.originalLanguage ?? null,
+        spokenLanguages: metadata.spokenLanguages ?? null,
+        productionCountries: metadata.productionCountries ?? null,
+        tagline: metadata.tagline ?? null,
+        keywords: metadata.keywords ?? null,
+        externalIds: metadata.externalIds ?? null,
+        collectionId,
+        tmdbSyncedAt: new Date(),
       })
       .where(eq(movies.id, movieId))
 
-    await this.upsertGenres(metadata.genres, async (genreIds) => {
+    await this.upsertGenres(metadata.genres, metadata.genreObjects, async (genreIds) => {
       await this.db.delete(movieGenres).where(eq(movieGenres.movieId, movieId))
       if (genreIds.length > 0) {
         await this.db
@@ -170,15 +206,29 @@ export class MetadataEnrichmentService {
         backdropPath: metadata.backdropPath,
         imdbId: metadata.imdbId,
         voteAverage: metadata.voteAverage,
+        voteCount: metadata.voteCount ?? null,
         certification,
         status: metadata.status,
         metadataProvider: 'tmdb',
         metadataEnrichedAt: new Date(),
         updatedAt: new Date(),
+        popularity: metadata.popularity ?? null,
+        originalLanguage: metadata.originalLanguage ?? null,
+        spokenLanguages: metadata.spokenLanguages ?? null,
+        productionCountries: metadata.productionCountries ?? null,
+        tagline: metadata.tagline ?? null,
+        inProduction: metadata.inProduction ?? null,
+        networks: metadata.networks ?? null,
+        createdBy: metadata.createdBy ?? null,
+        numberOfSeasons: metadata.numberOfSeasons ?? null,
+        numberOfEpisodes: metadata.numberOfEpisodes ?? null,
+        keywords: metadata.keywords ?? null,
+        externalIds: metadata.externalIds ?? null,
+        tmdbSyncedAt: new Date(),
       })
       .where(eq(series.id, seriesId))
 
-    await this.upsertGenres(metadata.genres, async (genreIds) => {
+    await this.upsertGenres(metadata.genres, metadata.genreObjects, async (genreIds) => {
       await this.db.delete(seriesGenres).where(eq(seriesGenres.seriesId, seriesId))
       if (genreIds.length > 0) {
         await this.db
@@ -189,6 +239,16 @@ export class MetadataEnrichmentService {
 
     await this.persistVideos('series', seriesId, videos)
     await this.persistCredits('series', seriesId, credits)
+
+    // Update seasons with TMDB season-level data (tmdbId, posterPath, episodeCount)
+    if (metadata.seasons && metadata.seasons.length > 0) {
+      for (const s of metadata.seasons) {
+        await this.db
+          .update(seasons)
+          .set({ tmdbId: s.tmdbId, posterPath: s.posterPath, episodeCount: s.episodeCount })
+          .where(and(eq(seasons.seriesId, seriesId), eq(seasons.seasonNumber, s.seasonNumber)))
+      }
+    }
 
     try {
       await this.enrichSeriesSeasons(seriesId)
@@ -260,6 +320,10 @@ export class MetadataEnrichmentService {
         if (tmdbEp.synopsis != null) updates.synopsis = tmdbEp.synopsis
         if (tmdbEp.airDate != null) updates.airDate = tmdbEp.airDate
         if (tmdbEp.runtimeMinutes != null) updates.durationMinutes = tmdbEp.runtimeMinutes
+        if (tmdbEp.tmdbId != null) updates.tmdbId = tmdbEp.tmdbId
+        if (tmdbEp.stillPath != null) updates.posterPath = tmdbEp.stillPath
+        if (tmdbEp.voteAverage != null) updates.voteAverage = tmdbEp.voteAverage
+        if (tmdbEp.voteCount != null) updates.voteCount = tmdbEp.voteCount
 
         if (Object.keys(updates).length > 0) {
           updates.updatedAt = new Date()
@@ -385,6 +449,7 @@ export class MetadataEnrichmentService {
 
   private async upsertGenres(
     genreNames: string[],
+    genreObjects: Array<{ name: string; tmdbId: number }> | undefined,
     linkFn: (genreIds: string[]) => Promise<void>,
   ): Promise<void> {
     if (genreNames.length === 0) {
@@ -392,10 +457,20 @@ export class MetadataEnrichmentService {
       return
     }
 
-    const genreValues = genreNames.map((name) => ({ name, slug: slugify(name) }))
-    const slugs = genreValues.map((g) => g.slug)
+    let slugs: string[]
 
-    await this.db.insert(genres).values(genreValues).onConflictDoNothing()
+    if (genreObjects && genreObjects.length > 0) {
+      const genreValues = genreObjects.map((g) => ({ name: g.name, slug: slugify(g.name), tmdbId: g.tmdbId }))
+      slugs = genreValues.map((g) => g.slug)
+      await this.db
+        .insert(genres)
+        .values(genreValues)
+        .onConflictDoUpdate({ target: genres.slug, set: { tmdbId: sql`EXCLUDED.tmdb_id` } })
+    } else {
+      const genreValues = genreNames.map((name) => ({ name, slug: slugify(name) }))
+      slugs = genreValues.map((g) => g.slug)
+      await this.db.insert(genres).values(genreValues).onConflictDoNothing()
+    }
 
     const genreRows = await this.db
       .select({ id: genres.id, slug: genres.slug })

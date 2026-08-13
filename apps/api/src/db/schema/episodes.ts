@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, integer, date, timestamp, unique } from 'drizzle-orm/pg-core'
+import { pgTable, text, uuid, integer, date, timestamp, unique, real } from 'drizzle-orm/pg-core'
 import { seasons } from './seasons.js'
 import { series } from './series.js'
 
@@ -19,6 +19,11 @@ export const episodes = pgTable(
     airDate: date('air_date'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    // TMDB-first catalog fields
+    tmdbId: integer('tmdb_id'),
+    posterPath: text('poster_path'),
+    voteAverage: real('vote_average'),
+    voteCount: integer('vote_count'),
   },
   (t) => [unique().on(t.seasonId, t.episodeNumber)],
 )
