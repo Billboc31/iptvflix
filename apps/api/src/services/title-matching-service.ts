@@ -243,7 +243,8 @@ export class TitleMatchingService {
   /**
    * Match a batch of items using a bounded-concurrency sliding window.
    * When opts is omitted, runs sequentially (preserves test isolation).
-   * throttleMs introduces a delay between calls within each worker slot.
+   * Per-item errors (e.g. TMDB network failures) produce a synthetic UNMATCHED
+   * result instead of aborting the whole batch.
    */
   async matchBatch(
     inputs: MatchItemInput[],
@@ -259,7 +260,24 @@ export class TitleMatchingService {
     const worker = async (): Promise<void> => {
       while (queue.length > 0) {
         const item = queue.shift()!
-        results[item.i] = await this.matchItem(item.input)
+        try {
+          results[item.i] = await this.matchItem(item.input)
+        } catch {
+          const { normalizedTitle, extractedYear } = normalizeTitle(item.input.rawTitle)
+          results[item.i] = {
+            id: '',
+            providerId: item.input.providerId,
+            providerItemId: item.input.providerItemId,
+            matchState: 'UNMATCHED',
+            confidence: null,
+            movieId: null,
+            seriesId: null,
+            normalizedTitle,
+            extractedYear,
+            candidateCount: 0,
+            notes: 'match failed: provider error',
+          }
+        }
         if (throttleMs > 0 && queue.length > 0) {
           await new Promise<void>((resolve) => setTimeout(resolve, throttleMs))
         }

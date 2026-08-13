@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest'
 import { eq, and, inArray } from 'drizzle-orm'
 import { db } from '../../db/client.js'
 import { sources } from '../../db/schema/sources.js'
@@ -362,6 +362,53 @@ describe('TitleMatchingService', () => {
 
     await svc.matchBatch(inputs, { concurrency: limit })
     expect(peak).toBeLessThanOrEqual(limit)
+  })
+
+  it('re-calling matchItem for an already-MATCHED item returns cached result without a new TMDB API call', async () => {
+    const searchFn = vi.fn(async () => [movieCandidate(String(T.inception), 'Inception', 2010)])
+    const svc = new TitleMatchingService(makeProvider(searchFn))
+
+    await svc.matchItem({
+      providerId: testSourceId,
+      providerItemId: 'vod-guard',
+      rawTitle: 'Inception.2010.BluRay.1080p',
+      mediaType: 'MOVIE',
+    })
+    expect(searchFn).toHaveBeenCalledTimes(1)
+
+    const r2 = await svc.matchItem({
+      providerId: testSourceId,
+      providerItemId: 'vod-guard',
+      rawTitle: 'Inception.2010.BluRay.1080p',
+      mediaType: 'MOVIE',
+    })
+    expect(r2.matchState).toBe('MATCHED')
+    expect(searchFn).toHaveBeenCalledTimes(1)
+  })
+
+  it('matchBatch per-item TMDB failure returns UNMATCHED for failing item without aborting the batch', async () => {
+    let callCount = 0
+    const searchMock = vi.fn(async () => {
+      callCount++
+      if (callCount === 2) throw new Error('simulated TMDB outage')
+      return []
+    })
+    const svc = new TitleMatchingService(makeProvider(searchMock))
+
+    const inputs = [
+      { providerId: testSourceId, providerItemId: 'vod-fail-0', rawTitle: 'Movie.One.1080p', mediaType: 'MOVIE' as const },
+      { providerId: testSourceId, providerItemId: 'vod-fail-1', rawTitle: 'Movie.Two.1080p', mediaType: 'MOVIE' as const },
+      { providerId: testSourceId, providerItemId: 'vod-fail-2', rawTitle: 'Movie.Three.1080p', mediaType: 'MOVIE' as const },
+    ]
+
+    const results = await svc.matchBatch(inputs, { concurrency: 1 })
+
+    expect(results).toHaveLength(3)
+    expect(results[1].matchState).toBe('UNMATCHED')
+    expect(results[1].notes).toContain('provider error')
+    // Items 0 and 2 processed normally (zero candidates → UNMATCHED, but not error path)
+    expect(results[0].notes).not.toContain('provider error')
+    expect(results[2].notes).not.toContain('provider error')
   })
 
   it('same title different year — provider title year breaks the tie to correct candidate', async () => {
