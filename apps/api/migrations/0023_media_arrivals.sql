@@ -11,8 +11,6 @@ CREATE TABLE "media_arrivals" (
 	CONSTRAINT "media_arrivals_profile_id_release_event_id_unique" UNIQUE("profile_id","release_event_id")
 );
 --> statement-breakpoint
-ALTER TABLE "media_arrivals" ADD CONSTRAINT "media_arrivals_profile_id_profiles_id_fk" FOREIGN KEY ("profile_id") REFERENCES "public"."profiles"("id") ON DELETE cascade ON UPDATE no action;
---> statement-breakpoint
-ALTER TABLE "media_arrivals" ADD CONSTRAINT "media_arrivals_source_id_sources_id_fk" FOREIGN KEY ("source_id") REFERENCES "public"."sources"("id") ON DELETE set null ON UPDATE no action;
---> statement-breakpoint
+ALTER TABLE "media_arrivals" ADD CONSTRAINT "media_arrivals_profile_id_profiles_id_fk" FOREIGN KEY ("profile_id") REFERENCES "public"."profiles"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "media_arrivals" ADD CONSTRAINT "media_arrivals_source_id_sources_id_fk" FOREIGN KEY ("source_id") REFERENCES "public"."sources"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "media_arrivals" ADD CONSTRAINT "media_arrivals_release_event_id_release_events_id_fk" FOREIGN KEY ("release_event_id") REFERENCES "public"."release_events"("id") ON DELETE restrict ON UPDATE no action;

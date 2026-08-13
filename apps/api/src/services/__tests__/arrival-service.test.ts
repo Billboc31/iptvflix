@@ -179,7 +179,10 @@ describe('recordReleaseEvent SOURCE_APPEARED integration', () => {
         ),
       )
 
-    const arrivals = await db.select().from(mediaArrivals).where(eq(mediaArrivals.releaseEventId, event.id))
+    const arrivals = await db
+      .select()
+      .from(mediaArrivals)
+      .where(and(eq(mediaArrivals.releaseEventId, event.id), eq(mediaArrivals.profileId, profileId)))
     expect(arrivals).toHaveLength(1)
   })
 
@@ -201,7 +204,10 @@ describe('recordReleaseEvent SOURCE_APPEARED integration', () => {
         ),
       )
 
-    const arrivals = await db.select().from(mediaArrivals).where(eq(mediaArrivals.releaseEventId, newEvent.id))
+    const arrivals = await db
+      .select()
+      .from(mediaArrivals)
+      .where(and(eq(mediaArrivals.releaseEventId, newEvent.id), eq(mediaArrivals.profileId, profileId)))
     expect(arrivals).toHaveLength(1)
   })
 })
