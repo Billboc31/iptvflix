@@ -48,3 +48,7 @@
 [2026-08-13T19:57:42Z] push: pushing branch=ticket/T068-implement-hybrid-local-tmdb-search-with-automatic
 [2026-08-13T19:57:45Z] push: done branch=ticket/T068-implement-hybrid-local-tmdb-search-with-automatic
 [2026-08-13T19:57:45Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-13T19:58:54Z] conflict-resolver: rebase clean — no conflicts
+[2026-08-13T19:58:54Z] conflict-resolver: running tests
+[2026-08-13T19:58:54Z] conflict-resolver: test-report written: runs/T068/conflict/test-report.md
+[2026-08-13T19:58:54Z] conflict-resolver: staging and committing resolution artifacts
