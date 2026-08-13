@@ -52,3 +52,10 @@
 [2026-08-13T19:58:54Z] conflict-resolver: running tests
 [2026-08-13T19:58:54Z] conflict-resolver: test-report written: runs/T068/conflict/test-report.md
 [2026-08-13T19:58:54Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-13T19:58:54Z] conflict-resolver: commit: sha=93ffd04
+[2026-08-13T19:58:54Z] conflict-resolver: git push --force-with-lease origin ticket/T068-implement-hybrid-local-tmdb-search-with-automatic
+[2026-08-13T19:58:56Z] conflict-resolver: push succeeded
+[2026-08-13T19:58:56Z] conflict-resolver: state → CONFLICT_RESOLVED_REVIEW_NEEDED
+[2026-08-13T19:58:56Z] auto-finalize-conflict: gate disabled for project='iptvflix'
+[2026-08-13T19:58:56Z] conflict-resolver: transition CONFLICT_RESOLVED_REVIEW_NEEDED → TEST_COMPLETE (auto, PROJECT_SETTING)
+[2026-08-13T19:58:56Z] auto-run: TEST_COMPLETE — running PR lifecycle
