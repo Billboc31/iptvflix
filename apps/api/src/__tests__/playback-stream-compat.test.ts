@@ -121,7 +121,7 @@ describe('playback stream handler — compat path', () => {
     ))
   })
 
-  it('REMUX: Safari UA triggers compat path with stream-copy ffmpeg args', async () => {
+  it('REMUX: ?compat=1 triggers compat path with stream-copy ffmpeg args', async () => {
     const sessionId = createSession({
       profileId: DEFAULT_PROFILE_ID,
       mediaType: 'movie',
@@ -134,7 +134,7 @@ describe('playback stream handler — compat path', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: `/playback/stream/${sessionId}`,
+      url: `/playback/stream/${sessionId}?compat=1`,
       headers: { 'user-agent': SAFARI_IOS_UA },
     })
 
@@ -191,7 +191,7 @@ describe('playback stream handler — compat path', () => {
 
     await app.inject({
       method: 'GET',
-      url: `/playback/stream/${sessionId}`,
+      url: `/playback/stream/${sessionId}?compat=1`,
       headers: { 'user-agent': SAFARI_IOS_UA },
     })
 
@@ -222,7 +222,7 @@ describe('playback stream handler — compat path', () => {
 
     await app.inject({
       method: 'GET',
-      url: `/playback/stream/${sessionId}`,
+      url: `/playback/stream/${sessionId}?compat=1`,
       headers: { 'user-agent': SAFARI_IOS_UA },
     })
 
@@ -251,7 +251,7 @@ describe('playback stream handler — compat path', () => {
 
     await app.inject({
       method: 'GET',
-      url: `/playback/stream/${sessionId}`,
+      url: `/playback/stream/${sessionId}?compat=1`,
       headers: { 'user-agent': SAFARI_IOS_UA },
     })
 

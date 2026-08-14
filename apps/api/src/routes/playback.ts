@@ -8,7 +8,7 @@ import { DEFAULT_PROFILE_ID } from '../services/profile-service.js'
 import { ValidationError, ForbiddenError, NotFoundError } from '../errors.js'
 import { probeMedia } from '../services/media-prober.js'
 import { getProbe, setProbe } from '../services/probe-cache.js'
-import { isSafariOrIOS, classifyDelivery, buildFfmpegArgs } from '../services/playback-compat.js'
+import { classifyDelivery, buildFfmpegArgs } from '../services/playback-compat.js'
 import type { DeliveryMode } from '../services/playback-compat.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -66,8 +66,8 @@ async function runFfmpegStream(
   onDisconnect: (cb: () => void) => void,
 ): Promise<PassThrough | null> {
   const ffmpegArgs = buildFfmpegArgs(mode)
-  const fullArgs = ['-i', 'pipe:0', ...ffmpegArgs, 'pipe:1']
-  const sanitizedArgs = ['-i', '<stdin>', ...ffmpegArgs, 'pipe:1']
+  const fullArgs = ['-analyzeduration', '5000000', '-probesize', '5000000', '-i', 'pipe:0', ...ffmpegArgs, 'pipe:1']
+  const sanitizedArgs = ['-analyzeduration', '5000000', '-probesize', '5000000', '-i', '<stdin>', ...ffmpegArgs, 'pipe:1']
 
   const spawnStart = Date.now()
   const ffmpeg = spawn('ffmpeg', fullArgs, { stdio: ['pipe', 'pipe', 'pipe'] })
@@ -203,8 +203,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
       const logCtx = { sessionId, mediaId, availabilityId, sourceId, containerExtension }
 
       // Determine whether to use the compat path
-      const userAgent = request.headers['user-agent'] ?? ''
-      const useCompat = request.query.compat === '1' || isSafariOrIOS(userAgent)
+      const useCompat = request.query.compat === '1'
 
       let deliveryMode: DeliveryMode | null = null
 
