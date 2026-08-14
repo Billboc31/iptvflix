@@ -345,7 +345,7 @@ railwayPath:      <PENDING>
 
 Based on code-level analysis, ranked by probability:
 
-### Candidate 1 (CONFIRMED FROM CODE — no production trace required): compat fallback is structurally inert on Safari
+### Candidate 1 (CONFIRMED FROM CODE — AWAITING RUNTIME VERIFICATION): compat fallback is structurally inert on Safari
 
 **Static evidence**:
 - `apps/api/src/routes/playback.ts:207`: `const useCompat = request.query.compat === '1' || isSafariOrIOS(userAgent)`
