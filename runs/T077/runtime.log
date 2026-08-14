@@ -47,3 +47,10 @@
 [2026-08-14T13:34:42Z] conflict-resolver: running tests
 [2026-08-14T13:34:42Z] conflict-resolver: test-report written: runs/T077/conflict/test-report.md
 [2026-08-14T13:34:42Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-14T13:34:43Z] conflict-resolver: commit: sha=3b2fc24
+[2026-08-14T13:34:43Z] conflict-resolver: git push --force-with-lease origin ticket/T077-fix-xtream-vod-playback-url-resolution-for-movies
+[2026-08-14T13:34:45Z] conflict-resolver: push succeeded
+[2026-08-14T13:34:45Z] conflict-resolver: state → CONFLICT_RESOLVED_REVIEW_NEEDED
+[2026-08-14T13:34:45Z] auto-finalize-conflict: gate disabled for project='iptvflix'
+[2026-08-14T13:34:45Z] conflict-resolver: transition CONFLICT_RESOLVED_REVIEW_NEEDED → TEST_COMPLETE (auto, PROJECT_SETTING)
+[2026-08-14T13:34:45Z] auto-run: TEST_COMPLETE — running PR lifecycle
