@@ -5,7 +5,7 @@ import { resolvePlayback, ApiError } from '../lib/api.js'
 type Status = 'idle' | 'loading' | 'ready' | 'error'
 
 export type UsePlaybackState = {
-  streamUrl: string | null
+  gatewayUrl: string | null
   startPositionSeconds: number
   alternatives: AvailabilityVariantResponse[]
   availabilityId: string | null
@@ -19,7 +19,7 @@ export function usePlayback(
   mediaId: string,
   initialAvailabilityId?: string,
 ): UsePlaybackState {
-  const [streamUrl, setStreamUrl] = useState<string | null>(null)
+  const [gatewayUrl, setGatewayUrl] = useState<string | null>(null)
   const [startPositionSeconds, setStartPositionSeconds] = useState(0)
   const [alternatives, setAlternatives] = useState<AvailabilityVariantResponse[]>([])
   const [availabilityId, setAvailabilityId] = useState<string | null>(initialAvailabilityId ?? null)
@@ -36,7 +36,7 @@ export function usePlayback(
           mediaId,
           explicitId ? { availabilityId: explicitId } : {},
         )
-        setStreamUrl(session.streamUrl)
+        setGatewayUrl(session.gatewayUrl)
         setStartPositionSeconds(session.startPositionSeconds)
         setAlternatives(session.alternatives)
         setAvailabilityId(session.availabilityId)
@@ -61,5 +61,5 @@ export function usePlayback(
     [resolve],
   )
 
-  return { streamUrl, startPositionSeconds, alternatives, availabilityId, status, error, switchVariant }
+  return { gatewayUrl, startPositionSeconds, alternatives, availabilityId, status, error, switchVariant }
 }

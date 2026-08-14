@@ -4,6 +4,11 @@ import { buildM3UStreamUrl } from '../../providers/m3u/playback.js'
 import { ValidationError, ForbiddenError, NotFoundError } from '../../errors.js'
 import type { ProfilePreferences } from '@iptvflix/api-contracts'
 
+// Mock session store so resolver tests don't depend on it
+vi.mock('../playback-session-store.js', () => ({
+  createSession: vi.fn(() => 'test-session-id'),
+}))
+
 // ---------------------------------------------------------------------------
 // URL builders — pure unit tests (no DB needed)
 // ---------------------------------------------------------------------------
@@ -113,6 +118,7 @@ vi.mock('../profile-service.js', () => ({
 // Import after mocks are defined
 import { resolvePlayback } from '../playback-resolver.js'
 import { getDefaultProfilePreferences } from '../profile-service.js'
+import { createSession } from '../playback-session-store.js'
 
 const EMPTY_PREFS: ProfilePreferences = {
   preferredAudioLanguages: [],
@@ -190,7 +196,9 @@ describe('preferred-variant selection', () => {
     expect(session.availabilityId).toBe('av-1')
     expect(session.startPositionSeconds).toBe(0)
     expect(session.alternatives).toHaveLength(0)
-    expect(session.streamUrl).toBe('http://xtream.example.com/user/pass/999.ts')
+    expect(session.gatewayUrl).toBe('/api/playback/stream/test-session-id')
+    // Provider URL must NOT appear in the response (credentials stay server-side)
+    expect(JSON.stringify(session)).not.toContain('xtream.example.com')
   })
 
   it('picks the highest-quality variant when multiple are available', async () => {
@@ -228,7 +236,7 @@ describe('explicit availabilityId', () => {
     const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1', 'av-2')
 
     expect(session.availabilityId).toBe('av-2')
-    expect(session.streamUrl).toBe('http://xtream.example.com/user/pass/2.ts')
+    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
   })
 
   it('rejects an explicit availabilityId not found in this media', async () => {
@@ -280,7 +288,10 @@ describe('explicit availabilityId', () => {
 
     const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1', 'av-1')
 
-    expect(session.streamUrl).toBe('http://xtream.example.com/user/pass/500.mkv')
+    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
+    expect(vi.mocked(createSession)).toHaveBeenCalledWith(
+      expect.objectContaining({ containerExtension: 'mkv' }),
+    )
   })
 })
 
@@ -299,8 +310,10 @@ describe('Xtream movie URL construction', () => {
 
     const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1')
 
-    expect(session.streamUrl).toMatch(/\.mp4$/)
-    expect(session.streamUrl).toBe('http://xtream.example.com/user/pass/100.mp4')
+    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
+    expect(vi.mocked(createSession)).toHaveBeenCalledWith(
+      expect.objectContaining({ containerExtension: 'mp4' }),
+    )
   })
 
   it('uses mkv extension when containerExtension is mkv', async () => {
@@ -313,7 +326,10 @@ describe('Xtream movie URL construction', () => {
 
     const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1')
 
-    expect(session.streamUrl).toBe('http://xtream.example.com/user/pass/101.mkv')
+    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
+    expect(vi.mocked(createSession)).toHaveBeenCalledWith(
+      expect.objectContaining({ containerExtension: 'mkv' }),
+    )
   })
 
   it('falls back to ts when containerExtension is null', async () => {
@@ -326,7 +342,10 @@ describe('Xtream movie URL construction', () => {
 
     const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1')
 
-    expect(session.streamUrl).toMatch(/\.ts$/)
+    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
+    expect(vi.mocked(createSession)).toHaveBeenCalledWith(
+      expect.objectContaining({ containerExtension: 'ts' }),
+    )
   })
 })
 
@@ -341,8 +360,10 @@ describe('Xtream episode URL construction', () => {
 
     const session = await resolvePlayback('profile-1', 'episode', 'episode-uuid-1')
 
-    expect(session.streamUrl).toContain('/series/')
-    expect(session.streamUrl).toBe('http://xtream.example.com/series/user/pass/200.mp4')
+    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
+    expect(vi.mocked(createSession)).toHaveBeenCalledWith(
+      expect.objectContaining({ containerExtension: 'mp4', mediaType: 'episode' }),
+    )
   })
 
   it('falls back to ts when episode containerExtension is null', async () => {
@@ -355,7 +376,10 @@ describe('Xtream episode URL construction', () => {
 
     const session = await resolvePlayback('profile-1', 'episode', 'episode-uuid-1')
 
-    expect(session.streamUrl).toBe('http://xtream.example.com/series/user/pass/201.ts')
+    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
+    expect(vi.mocked(createSession)).toHaveBeenCalledWith(
+      expect.objectContaining({ containerExtension: 'ts', mediaType: 'episode' }),
+    )
   })
 })
 
@@ -407,7 +431,9 @@ describe('M3U provider', () => {
 
     const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1')
 
-    expect(session.streamUrl).toBe(streamUrl)
+    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
+    // The raw M3U URL must not appear in the response
+    expect(JSON.stringify(session)).not.toContain(streamUrl)
   })
 })
 
@@ -446,8 +472,11 @@ describe('secret redaction', () => {
       expect(entry).not.toContain('secret_user')
       expect(entry).not.toContain('secret_pass')
     }
-    // Confirm the URL was built correctly
-    expect(session.streamUrl).toContain('secret_user')
+    // Confirm the gateway URL is returned (not the raw provider URL)
+    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
+    // Provider credentials must NOT appear in the response
+    expect(JSON.stringify(session)).not.toContain('secret_user')
+    expect(JSON.stringify(session)).not.toContain('secret_pass')
   })
 })
 
