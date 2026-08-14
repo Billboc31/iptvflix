@@ -8,7 +8,7 @@ import HorizontalRow from '../components/content/HorizontalRow.js'
 import EmptyState from '../components/ui/EmptyState.js'
 import Spinner from '../components/ui/Spinner.js'
 import Button from '../components/ui/Button.js'
-import { useMovies } from '../hooks/useMovies.js'
+import { useFeaturedMedia } from '../hooks/useFeaturedMedia.js'
 import { useHome } from '../hooks/useHome.js'
 import { useArrivals } from '../hooks/useArrivals.js'
 import { useOpenDetail } from '../hooks/useOpenDetail.js'
@@ -18,14 +18,15 @@ const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
 export default function HomePage() {
   const navigate = useNavigate()
   const openDetail = useOpenDetail()
-  const { data: movies, loading: moviesLoading } = useMovies({ pageSize: 1 })
+  const { media: hero, loading: heroLoading } = useFeaturedMedia()
   const { data: homeData, isLoading: homeLoading } = useHome(DEFAULT_PROFILE_ID)
   const { arrivals, refresh: refreshArrivals } = useArrivals('unread')
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false)
 
   const shelves = homeData?.shelves ?? []
-  const isLoading = moviesLoading || homeLoading
-  const hasContent = (movies?.items.length ?? 0) > 0 || shelves.length > 0
+  const isLoading = heroLoading || homeLoading
+  const hasContent = hero !== null || shelves.length > 0
+  const isColdStart = homeData?.coldStart === true && shelves.length === 0
 
   if (!isLoading && !hasContent) {
     return (
@@ -40,9 +41,6 @@ export default function HomePage() {
     )
   }
 
-  const hero = movies?.items[0]
-  const isColdStart = homeData?.coldStart === true && shelves.length === 0
-
   return (
     <div>
       {/* Hero */}
@@ -51,16 +49,16 @@ export default function HomePage() {
           title={hero.title}
           synopsis={hero.synopsis}
           backdropUrl={hero.backdropUrl}
+          posterUrl={hero.posterUrl}
           mediaId={hero.id}
           trailerKey={hero.trailerKey}
           availabilityStatus={hero.availabilityStatus}
           onPlay={
-            hero.availabilityStatus === 'AVAILABLE'
+            hero.availabilityStatus === 'AVAILABLE' && hero.mediaType === 'movie'
               ? () => navigate(`/player/movie/${hero.id}`)
               : undefined
           }
-          onDetails={() => openDetail('movie', hero.id)}
-          onAddToList={() => {}}
+          onDetails={() => openDetail(hero.mediaType, hero.id)}
         />
       )}
 
@@ -68,7 +66,7 @@ export default function HomePage() {
 
       {/* New arrivals shelf */}
       {arrivals.length > 0 && (
-        <div className="px-8 mt-8">
+        <div className="px-8 mt-2">
           <HorizontalRow title="Nouveautés disponibles">
             {arrivals.map((arrival) => (
               <ArrivalCard

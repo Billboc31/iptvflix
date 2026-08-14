@@ -1,0 +1,10 @@
+{
+  "ticket_id": "T076",
+  "state": "TEST_COMPLETE",
+  "branch": "ticket/T076-replace-home-featured-card-with-a-full-width-cinem",
+  "issue_number": 154,
+  "updated_at": "2026-08-14T09:40:29Z",
+  "pre_conflict_state": "IMPLEMENTATION_APPROVED",
+  "conflict_detected_at": "2026-08-14T09:28:15Z",
+  "conflicted_files": []
+}
