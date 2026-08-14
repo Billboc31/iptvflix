@@ -28,7 +28,6 @@ vi.mock('../services/profile-service.js', () => ({
   getDefaultProfilePreferences: vi.fn(),
 }))
 
-
 import { spawn } from 'node:child_process'
 import { probeMedia } from '../services/media-prober.js'
 import { getProbe } from '../services/probe-cache.js'
