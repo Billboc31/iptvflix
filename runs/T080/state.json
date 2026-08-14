@@ -1,7 +1,7 @@
 {
   "ticket_id": "T080",
-  "state": "IMPLEMENTATION_FIX_REQUIRED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T080-diagnose-production-safari-ios-playback-failure-af",
   "issue_number": 170,
-  "updated_at": "2026-08-14T17:00:31Z"
+  "updated_at": "2026-08-14T17:05:16Z"
 }
