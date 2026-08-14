@@ -53,6 +53,7 @@ import { db } from './db/client.js'
 import { TmdbClient } from './providers/metadata/tmdb/client.js'
 import { MetadataEnrichmentService } from './services/metadata-enrichment-service.js'
 import { ExternalDiscoveryService } from './services/external-discovery-service.js'
+import { SimilarTitlesService } from './services/similar-titles-service.js'
 import { DiscoveryCandidatePoolService } from './services/discovery-candidate-pool-service.js'
 import { SchedulerService } from './services/scheduler-service.js'
 import { TitleMatchingService } from './services/title-matching-service.js'
@@ -74,11 +75,15 @@ await app.register(cors, { origin: CORS_ORIGIN, credentials: true })
 await app.register(jwt, { secret: JWT_SECRET })
 await app.register(cookie)
 
+const similarTitlesService = TMDB_API_KEY
+  ? new SimilarTitlesService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
+  : undefined
+
 // Public routes
 await app.register(healthRoutes)
 await app.register(authRoutes)
-await app.register(moviesRoutes)
-await app.register(seriesRoutes)
+await app.register(moviesRoutes, { similarTitlesService })
+await app.register(seriesRoutes, { similarTitlesService })
 await app.register(genresRoutes)
 await app.register(catalogRoutes, {
   enrichmentService: TMDB_API_KEY
