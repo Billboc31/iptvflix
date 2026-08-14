@@ -126,4 +126,18 @@ describe('buildFfmpegArgs', () => {
       expect(args).toContain('mp4')
     }
   })
+
+  it('REMUX includes -max_interleave_delta 0 for TS PTS-gap tolerance (T081)', () => {
+    const args = buildFfmpegArgs('REMUX')
+    const idx = args.indexOf('-max_interleave_delta')
+    expect(idx).toBeGreaterThanOrEqual(0)
+    expect(args[idx + 1]).toBe('0')
+  })
+
+  it('TRANSCODE_AUDIO includes -max_interleave_delta 0 for TS PTS-gap tolerance (T081)', () => {
+    const args = buildFfmpegArgs('TRANSCODE_AUDIO')
+    const idx = args.indexOf('-max_interleave_delta')
+    expect(idx).toBeGreaterThanOrEqual(0)
+    expect(args[idx + 1]).toBe('0')
+  })
 })

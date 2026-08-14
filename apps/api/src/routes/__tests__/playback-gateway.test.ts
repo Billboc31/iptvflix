@@ -7,10 +7,22 @@ import Fastify from 'fastify'
 // ---------------------------------------------------------------------------
 
 const mockGetSession = vi.hoisted(() => vi.fn())
+const mockProbeMedia = vi.hoisted(() => vi.fn())
+const mockGetProbe = vi.hoisted(() => vi.fn())
+const mockSetProbe = vi.hoisted(() => vi.fn())
 
 vi.mock('../../services/playback-session-store.js', () => ({
   getSession: mockGetSession,
   createSession: vi.fn(() => 'mock-session-id'),
+}))
+
+vi.mock('../../services/media-prober.js', () => ({
+  probeMedia: mockProbeMedia,
+}))
+
+vi.mock('../../services/probe-cache.js', () => ({
+  getProbe: mockGetProbe,
+  setProbe: mockSetProbe,
 }))
 
 // Mock the resolver so POST /playback/resolve doesn't hit the DB
@@ -273,5 +285,88 @@ describe('GET /playback/stream/:sessionId — ts container remux', () => {
     if (res.statusCode === 200) {
       expect(res.headers['content-type']).toContain('video/mp4')
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Regression: compat path selection structural defect (T081)
+// Before fix: Safari UA without ?compat=1 incorrectly triggered the compat path
+// (isSafariOrIOS was OR-ed into useCompat), making the auto-retry a no-op.
+// After fix: only ?compat=1 query param triggers the compat path.
+// ---------------------------------------------------------------------------
+
+const SAFARI_IOS_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+
+const MP4_PROBE_RESULT = {
+  videoCodec: 'h264',
+  audioCodec: 'aac',
+  containerFormat: 'mov,mp4,m4a,3gp,3g2,mj2',
+}
+
+describe('compat path selection — structural defect regression (T081)', () => {
+  it('Safari UA without ?compat=1 uses extension-based (non-compat) routing', async () => {
+    mockGetSession.mockReturnValue(makeSession({ containerExtension: 'mp4' }))
+    mockFetch.mockResolvedValue(makeFetchOk('fake-mp4-bytes'))
+    mockGetProbe.mockReturnValue(null)
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/playback/stream/${SESSION_ID}`,
+      headers: { 'user-agent': SAFARI_IOS_UA },
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('video/mp4')
+    expect(res.headers['accept-ranges']).toBe('bytes')
+    expect(mockProbeMedia).not.toHaveBeenCalled()
+  })
+
+  it('Safari UA with ?compat=1 triggers compat path (probeMedia called)', async () => {
+    mockGetSession.mockReturnValue(makeSession({ containerExtension: 'mp4' }))
+    mockFetch.mockResolvedValue(makeFetchOk('fake-mp4-bytes'))
+    mockGetProbe.mockReturnValue(null)
+    mockProbeMedia.mockResolvedValue(MP4_PROBE_RESULT)
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/playback/stream/${SESSION_ID}?compat=1`,
+      headers: { 'user-agent': SAFARI_IOS_UA },
+    })
+
+    expect(mockProbeMedia).toHaveBeenCalledOnce()
+    expect(res.statusCode).toBe(200)
+  })
+
+  it('Non-Safari UA without ?compat=1 uses extension-based routing', async () => {
+    mockGetSession.mockReturnValue(makeSession({ containerExtension: 'mp4' }))
+    mockFetch.mockResolvedValue(makeFetchOk('fake-mp4-bytes'))
+    mockGetProbe.mockReturnValue(null)
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/playback/stream/${SESSION_ID}`,
+      headers: { 'user-agent': CHROME_UA },
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('video/mp4')
+    expect(mockProbeMedia).not.toHaveBeenCalled()
+  })
+
+  it('?compat=1 without Safari UA still triggers compat path', async () => {
+    mockGetSession.mockReturnValue(makeSession({ containerExtension: 'mp4' }))
+    mockFetch.mockResolvedValue(makeFetchOk('fake-mp4-bytes'))
+    mockGetProbe.mockReturnValue(null)
+    mockProbeMedia.mockResolvedValue(MP4_PROBE_RESULT)
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/playback/stream/${SESSION_ID}?compat=1`,
+      headers: { 'user-agent': CHROME_UA },
+    })
+
+    expect(mockProbeMedia).toHaveBeenCalledOnce()
+    expect(res.statusCode).toBe(200)
   })
 })

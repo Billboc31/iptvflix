@@ -45,7 +45,7 @@ export function classifyDelivery(mediaInfo: MediaInfo, isSafari: boolean): Deliv
 }
 
 export function buildFfmpegArgs(mode: DeliveryMode): string[] {
-  const OUTPUT_FLAGS = ['-movflags', 'frag_keyframe+empty_moov+default_base_moof', '-f', 'mp4']
+  const OUTPUT_FLAGS = ['-movflags', 'frag_keyframe+empty_moov+default_base_moof', '-f', 'mp4', '-max_interleave_delta', '0']
 
   switch (mode) {
     case 'REMUX':

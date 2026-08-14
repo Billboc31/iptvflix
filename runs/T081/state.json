@@ -1,7 +1,7 @@
 {
   "ticket_id": "T081",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T081-fix-production-safari-ios-playback-based-on-diagno",
   "issue_number": 171,
-  "updated_at": "2026-08-14T17:14:36Z"
+  "updated_at": "2026-08-14T17:24:33Z"
 }

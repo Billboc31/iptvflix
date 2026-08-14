@@ -27,7 +27,6 @@ import { pairingRoutes } from './routes/pairing.js'
 import { devicesRoutes } from './routes/devices.js'
 import { commandsRoutes } from './routes/commands.js'
 import { playbackRoutes } from './routes/playback.js'
-import { diagnosticsRoutes } from './routes/diagnostics.js'
 import { testHelpersRoutes } from './routes/test-helpers.js'
 import { authRoutes } from './routes/auth.js'
 import { schedulerRoutes } from './routes/scheduler.js'
@@ -161,8 +160,6 @@ await app.register(async function protectedScope(protectedApp) {
     catalogRefreshServiceRef = refreshService
   }
 })
-
-await app.register(diagnosticsRoutes)
 
 if (process.env.NODE_ENV !== 'production') {
   await app.register(testHelpersRoutes)
