@@ -3,5 +3,17 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T073-unify-mobile-navigation-with-desktop-top-navigatio",
   "issue_number": 151,
-  "updated_at": "2026-08-14T07:09:04Z"
+  "updated_at": "2026-08-14T07:10:22Z",
+  "pr_number": 156,
+  "pr_synced": true,
+  "pre_conflict_state": "TEST_COMPLETE",
+  "conflict_detected_at": "2026-08-14T07:09:15Z",
+  "conflict_pr_number": 156,
+  "conflicted_files": [
+    "apps/web/src/components/layout/AppShell.tsx",
+    "apps/web/src/components/layout/BottomNav.test.tsx",
+    "apps/web/src/components/layout/BottomNav.tsx",
+    "apps/web/src/components/layout/TopNav.test.tsx",
+    "apps/web/src/components/layout/TopNav.tsx"
+  ]
 }
