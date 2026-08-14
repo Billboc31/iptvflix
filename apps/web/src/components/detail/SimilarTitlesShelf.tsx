@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
+import type { Location } from 'react-router-dom'
 import type { MovieResponse, SeriesResponse } from '@iptvflix/api-contracts'
 import { getSimilarMovies, getSimilarSeries } from '../../lib/api.js'
 import HorizontalRow from '../content/HorizontalRow.js'
@@ -17,6 +18,7 @@ type Props = {
 
 export default function SimilarTitlesShelf({ mediaType, mediaId }: Props) {
   const navigate = useNavigate()
+  const location = useLocation()
   const [items, setItems] = useState<SimilarEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -53,15 +55,29 @@ export default function SimilarTitlesShelf({ mediaType, mediaId }: Props) {
 
   if (error || items.length === 0) return null
 
+  const modalState = location.state as { background?: Location; scrollY?: number } | null
+  const modalBackground = modalState?.background
+  const modalScrollY = modalState?.scrollY
+
+  function openSimilar(kind: 'MOVIE' | 'SERIES', id: string) {
+    const route = kind === 'MOVIE' ? `/movies/${id}` : `/series/${id}`
+    if (modalBackground) {
+      // Inside modal: replace current entry, preserving original background so × exits to browsing context
+      navigate(route, { state: { background: modalBackground, scrollY: modalScrollY }, replace: true })
+    } else {
+      // Direct page view: open as new modal with current page as background
+      navigate(route, { state: { background: location, scrollY: window.scrollY } })
+    }
+  }
+
   return (
     <HorizontalRow title="Titres similaires">
       {items.map((item) => {
-        const route = item._kind === 'MOVIE' ? `/movies/${item.id}` : `/series/${item.id}`
         const badge =
           item.availabilityStatus === 'UNAVAILABLE'
             ? { label: 'Indisponible', variant: 'unavailable' as const }
             : undefined
-        const quality = '_kind' in item && item._kind === 'MOVIE' ? (item as SimilarMovie).quality : undefined
+        const quality = item._kind === 'MOVIE' ? (item as SimilarMovie).quality : undefined
         return (
           <div key={item.id} className="flex-shrink-0 w-32 snap-start">
             <PosterCard
@@ -70,7 +86,7 @@ export default function SimilarTitlesShelf({ mediaType, mediaId }: Props) {
               posterUrl={item.posterUrl}
               quality={quality ?? null}
               badge={badge}
-              onClick={() => navigate(route)}
+              onClick={() => openSimilar(item._kind, item.id)}
             />
           </div>
         )

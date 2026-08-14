@@ -12,10 +12,12 @@ import Spinner from '../components/ui/Spinner.js'
 import EmptyState from '../components/ui/EmptyState.js'
 import ErrorState from '../components/ui/ErrorState.js'
 import { useDebounce } from '../hooks/useDebounce.js'
+import { useOpenDetail } from '../hooks/useOpenDetail.js'
 
 export default function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
+  const openDetail = useOpenDetail()
   const initial = searchParams.get('q') ?? ''
 
   const [query, setQuery] = useState(initial)
@@ -85,7 +87,7 @@ export default function SearchPage() {
     setExternalError(null)
     try {
       const { id } = await materializeMovie(candidate.tmdbId)
-      navigate(`/movies/${id}`)
+      openDetail('movie', id)
     } catch {
       setExternalError("Impossible d'ouvrir ce titre. Veuillez réessayer.")
     }
@@ -95,7 +97,7 @@ export default function SearchPage() {
     setExternalError(null)
     try {
       const { id } = await materializeSeries(candidate.tmdbId)
-      navigate(`/series/${id}`)
+      openDetail('series', id)
     } catch {
       setExternalError("Impossible d'ouvrir ce titre. Veuillez réessayer.")
     }
@@ -164,7 +166,7 @@ export default function SearchPage() {
                 year={m.year}
                 posterUrl={m.posterUrl}
                 quality={m.quality}
-                onClick={() => navigate(`/movies/${m.id}`)}
+                onClick={() => openDetail('movie', m.id)}
               />
             ))}
           </div>
@@ -183,7 +185,7 @@ export default function SearchPage() {
                 title={s.title}
                 year={s.year}
                 posterUrl={s.posterUrl}
-                onClick={() => navigate(`/series/${s.id}`)}
+                onClick={() => openDetail('series', s.id)}
               />
             ))}
           </div>

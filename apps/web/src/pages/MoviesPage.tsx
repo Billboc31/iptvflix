@@ -7,6 +7,7 @@ import PosterCard from '../components/content/PosterCard.js'
 import Skeleton from '../components/ui/Skeleton.js'
 import { useMovies } from '../hooks/useMovies.js'
 import { useGenres } from '../hooks/useGenres.js'
+import { useOpenDetail } from '../hooks/useOpenDetail.js'
 
 type AvailabilityMode = 'all' | 'available'
 
@@ -23,7 +24,7 @@ function MovieShelf({
   upcoming?: boolean
   genreId?: string
 }) {
-  const navigate = useNavigate()
+  const openDetail = useOpenDetail()
   const { data, loading } = useMovies({ pageSize: 20, sortBy, availability, upcoming, genreId })
 
   if (!loading && (!data?.items.length)) return null
@@ -47,7 +48,7 @@ function MovieShelf({
             }
             mediaId={movie.id}
             trailerKey={movie.trailerKey}
-            onClick={() => navigate(`/movies/${movie.id}`)}
+            onClick={() => openDetail('movie', movie.id)}
           />
         </div>
       ))}
@@ -57,6 +58,7 @@ function MovieShelf({
 
 export default function MoviesPage() {
   const navigate = useNavigate()
+  const openDetail = useOpenDetail()
   const [selectedGenreId, setSelectedGenreId] = useState<string | undefined>(undefined)
   const [availabilityMode, setAvailabilityMode] = useState<AvailabilityMode>('all')
 
@@ -83,7 +85,7 @@ export default function MoviesPage() {
               ? () => navigate(`/player/movie/${heroMovie.id}`)
               : undefined
           }
-          onDetails={() => navigate(`/movies/${heroMovie.id}`)}
+          onDetails={() => openDetail('movie', heroMovie.id)}
         />
       )}
 

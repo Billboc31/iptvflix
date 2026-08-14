@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useEffect, useState, type ReactElement } from 'react'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import type { Location } from 'react-router-dom'
 import type { MovieDetailResponse } from '@iptvflix/api-contracts'
 import { getMovie, fetchContinueWatching, ApiError } from '../lib/api.js'
 import { useDevices } from '../hooks/useDevices.js'
@@ -15,6 +16,7 @@ import MediaMetadata from '../components/detail/MediaMetadata.js'
 import MediaActions from '../components/detail/MediaActions.js'
 import AvailabilityPanel from '../components/detail/AvailabilityPanel.js'
 import SimilarTitlesShelf from '../components/detail/SimilarTitlesShelf.js'
+import MediaDetailShell from '../components/detail/MediaDetailShell.js'
 
 function DetailSkeleton() {
   return (
@@ -45,6 +47,7 @@ function DetailSkeleton() {
 export default function MovieDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const toast = useToast()
   const { devices } = useDevices()
   const [movie, setMovie] = useState<MovieDetailResponse | null>(null)
@@ -54,6 +57,23 @@ export default function MovieDetailPage() {
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [progressMs, setProgressMs] = useState(0)
+
+  const modalState = location.state as { background?: Location; scrollY?: number } | null
+  const isModal = !!modalState?.background
+  const savedScrollY = modalState?.scrollY
+
+  function handleClose() {
+    navigate(-1)
+  }
+
+  function modal(content: ReactElement) {
+    if (!isModal) return content
+    return (
+      <MediaDetailShell onClose={handleClose} scrollY={savedScrollY}>
+        {content}
+      </MediaDetailShell>
+    )
+  }
 
   useEffect(() => {
     if (!id) return
@@ -114,23 +134,23 @@ export default function MovieDetailPage() {
     }
   }, [id])
 
-  if (loading) return <DetailSkeleton />
+  if (loading) return modal(<DetailSkeleton />)
 
   if (notFound) {
-    return (
+    return modal(
       <div className="flex flex-col items-center justify-center h-64 gap-4">
         <p className="text-gray-300 text-lg">Ce film est introuvable.</p>
-        <Button variant="ghost" onClick={() => navigate(-1)}>← Retour</Button>
-      </div>
+        <Button variant="ghost" onClick={handleClose}>← Retour</Button>
+      </div>,
     )
   }
 
-  if (error) return <ErrorState message={error.message} onRetry={() => navigate(-1)} />
+  if (error) return modal(<ErrorState message={error.message} onRetry={handleClose} />)
   if (!movie) return null
 
   const playRoute = `/player/movie/${movie.id}${selectedVariantId ? `?availabilityId=${selectedVariantId}` : ''}`
 
-  return (
+  return modal(
     <div className="bg-[#0a0a0f] min-h-screen">
       <MediaHero
         backdropUrl={movie.backdropUrl}
@@ -212,6 +232,6 @@ export default function MovieDetailPage() {
           }
         }}
       />
-    </div>
+    </div>,
   )
 }
