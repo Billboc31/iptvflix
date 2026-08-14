@@ -6,6 +6,7 @@ type Status = 'idle' | 'loading' | 'ready' | 'error'
 
 export type UsePlaybackState = {
   gatewayUrl: string | null
+  compatUrl: string | null
   containerExtension: string | null
   startPositionSeconds: number
   alternatives: AvailabilityVariantResponse[]
@@ -21,6 +22,7 @@ export function usePlayback(
   initialAvailabilityId?: string,
 ): UsePlaybackState {
   const [gatewayUrl, setGatewayUrl] = useState<string | null>(null)
+  const [compatUrl, setCompatUrl] = useState<string | null>(null)
   const [containerExtension, setContainerExtension] = useState<string | null>(null)
   const [startPositionSeconds, setStartPositionSeconds] = useState(0)
   const [alternatives, setAlternatives] = useState<AvailabilityVariantResponse[]>([])
@@ -39,6 +41,7 @@ export function usePlayback(
           explicitId ? { availabilityId: explicitId } : {},
         )
         setGatewayUrl(session.gatewayUrl)
+        setCompatUrl(session.compatGatewayUrl)
         setContainerExtension(session.containerExtension)
         setStartPositionSeconds(session.startPositionSeconds)
         setAlternatives(session.alternatives)
@@ -64,5 +67,5 @@ export function usePlayback(
     [resolve],
   )
 
-  return { gatewayUrl, containerExtension, startPositionSeconds, alternatives, availabilityId, status, error, switchVariant }
+  return { gatewayUrl, compatUrl, containerExtension, startPositionSeconds, alternatives, availabilityId, status, error, switchVariant }
 }

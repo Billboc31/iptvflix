@@ -14,7 +14,7 @@ function videoErrorMessage(video: HTMLVideoElement | null, httpStatus?: number):
   if (video?.error) {
     const code = video.error.code
     if (code === MediaError.MEDIA_ERR_DECODE || code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
-      return 'Erreur de décodage vidéo'
+      return 'Impossible de lire ce contenu sur ce navigateur'
     }
   }
   return 'Erreur de lecture'
@@ -26,13 +26,15 @@ export default function PlayerPage() {
   const navigate = useNavigate()
   const videoRef = useRef<HTMLVideoElement>(null)
   const httpStatusRef = useRef<number | undefined>(undefined)
+  // Tracks whether we've already attempted the compat fallback to avoid an infinite retry loop
+  const isUsingCompatRef = useRef(false)
 
   const initialAvailabilityId = searchParams.get('availabilityId') ?? undefined
   const resolvedMediaType = mediaType === 'movie' ? 'movie' : 'episode'
 
   const [videoError, setVideoError] = useState<string | null>(null)
 
-  const { gatewayUrl, containerExtension, startPositionSeconds, alternatives, status, error, switchVariant } = usePlayback(
+  const { gatewayUrl, compatUrl, containerExtension, startPositionSeconds, alternatives, status, error, switchVariant } = usePlayback(
     resolvedMediaType as 'movie' | 'episode',
     mediaId!,
     initialAvailabilityId,
@@ -51,6 +53,7 @@ export default function PlayerPage() {
     let cancelled = false
 
     httpStatusRef.current = undefined
+    isUsingCompatRef.current = false
     setVideoError(null)
 
     const ext = containerExtension?.toLowerCase()
@@ -94,6 +97,24 @@ export default function PlayerPage() {
     }
 
     function onError() {
+      const errorCode = videoRef.current?.error?.code
+
+      // On decode/unsupported error: try compat fallback automatically before showing an error
+      if (
+        (errorCode === MediaError.MEDIA_ERR_DECODE || errorCode === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) &&
+        compatUrl &&
+        !isUsingCompatRef.current
+      ) {
+        isUsingCompatRef.current = true
+        const video = videoRef.current
+        if (video) {
+          video.src = compatUrl
+          video.load()
+          video.play().catch(() => {})
+        }
+        return
+      }
+
       if (!httpStatusRef.current) {
         checkGatewayStatus()
           .then(() => setVideoError(videoErrorMessage(videoRef.current, httpStatusRef.current)))
@@ -105,7 +126,7 @@ export default function PlayerPage() {
 
     video.addEventListener('error', onError)
     return () => video.removeEventListener('error', onError)
-  }, [gatewayUrl])
+  }, [gatewayUrl, compatUrl])
 
   // Set resume position on metadata ready
   useEffect(() => {
@@ -157,7 +178,19 @@ export default function PlayerPage() {
       {/* Stream-level error overlay — gateway/decode failures after resolve */}
       {videoError && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <ErrorState message={videoError} onRetry={handleBack} />
+          <ErrorState
+            message={videoError}
+            onRetry={() => {
+              isUsingCompatRef.current = false
+              setVideoError(null)
+              const video = videoRef.current
+              if (video && gatewayUrl) {
+                video.src = gatewayUrl
+                video.load()
+                video.play().catch(() => {})
+              }
+            }}
+          />
         </div>
       )}
 

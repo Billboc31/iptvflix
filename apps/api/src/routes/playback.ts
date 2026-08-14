@@ -1,11 +1,15 @@
 import { spawn } from 'node:child_process'
-import { Readable } from 'node:stream'
+import { Readable, PassThrough } from 'node:stream'
 import type { FastifyInstance } from 'fastify'
 import type { PlaybackResolveRequest } from '@iptvflix/api-contracts'
 import { resolvePlayback } from '../services/playback-resolver.js'
 import { getSession } from '../services/playback-session-store.js'
 import { DEFAULT_PROFILE_ID } from '../services/profile-service.js'
 import { ValidationError, ForbiddenError, NotFoundError } from '../errors.js'
+import { probeMedia } from '../services/media-prober.js'
+import { getProbe, setProbe } from '../services/probe-cache.js'
+import { isSafariOrIOS, classifyDelivery, buildFfmpegArgs } from '../services/playback-compat.js'
+import type { DeliveryMode } from '../services/playback-compat.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -54,6 +58,50 @@ function rewriteHlsManifest(manifest: string, sessionId: string, manifestUrl: st
     .join('\n')
 }
 
+async function runFfmpegStream(
+  upstreamBody: ReadableStream,
+  mode: DeliveryMode,
+  logCtx: Record<string, unknown>,
+  app: FastifyInstance,
+  onDisconnect: (cb: () => void) => void,
+): Promise<PassThrough | null> {
+  const ffmpegArgs = buildFfmpegArgs(mode)
+  const ffmpeg = spawn('ffmpeg', [
+    '-i', 'pipe:0',
+    ...ffmpegArgs,
+    'pipe:1',
+  ], { stdio: ['pipe', 'pipe', 'pipe'] })
+
+  ffmpeg.stderr.on('data', () => {})
+
+  const inputStream = Readable.fromWeb(upstreamBody as import('stream/web').ReadableStream)
+  inputStream.pipe(ffmpeg.stdin)
+  inputStream.on('error', () => {
+    if (!ffmpeg.killed) ffmpeg.kill('SIGKILL')
+  })
+
+  onDisconnect(() => {
+    if (!ffmpeg.killed) ffmpeg.kill('SIGKILL')
+  })
+
+  const firstChunk = await Promise.race<Buffer | null>([
+    new Promise<Buffer>((resolve) => ffmpeg.stdout.once('data', (chunk: Buffer) => resolve(chunk))),
+    new Promise<null>((resolve) => ffmpeg.once('error', () => resolve(null))),
+    new Promise<null>((resolve) => ffmpeg.once('close', (code) => { if (code !== 0) resolve(null) })),
+  ])
+
+  if (firstChunk === null) {
+    if (!ffmpeg.killed) ffmpeg.kill('SIGKILL')
+    app.log.warn({ ...logCtx }, 'playback-gateway: ffmpeg unavailable or failed to start')
+    return null
+  }
+
+  const outputStream = new PassThrough()
+  outputStream.write(firstChunk)
+  ffmpeg.stdout.pipe(outputStream)
+  return outputStream
+}
+
 export async function playbackRoutes(app: FastifyInstance): Promise<void> {
   app.post<{
     Params: { mediaType: string; mediaId: string }
@@ -95,7 +143,10 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
     },
   )
 
-  app.get<{ Params: { sessionId: string } }>(
+  app.get<{
+    Params: { sessionId: string }
+    Querystring: { compat?: string }
+  }>(
     '/playback/stream/:sessionId',
     async (request, reply) => {
       const { sessionId } = request.params
@@ -113,6 +164,30 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
       const { providerStreamUrl, containerExtension, mediaId, availabilityId, sourceId } = session
 
       const logCtx = { sessionId, mediaId, availabilityId, sourceId, containerExtension }
+
+      // Determine whether to use the compat path
+      const userAgent = request.headers['user-agent'] ?? ''
+      const useCompat = request.query.compat === '1' || isSafariOrIOS(userAgent)
+
+      let deliveryMode: DeliveryMode | null = null
+
+      if (useCompat) {
+        let mediaInfo = getProbe(availabilityId)
+        if (!mediaInfo) {
+          app.log.info({ ...logCtx }, 'playback-gateway: probing media for compat')
+          try {
+            mediaInfo = await probeMedia(providerStreamUrl)
+            setProbe(availabilityId, mediaInfo)
+            app.log.info({ ...logCtx, videoCodec: mediaInfo.videoCodec, audioCodec: mediaInfo.audioCodec }, 'playback-gateway: probe complete')
+          } catch {
+            app.log.warn({ ...logCtx }, 'playback-gateway: probe failed, using extension-based routing')
+          }
+        }
+        if (mediaInfo) {
+          deliveryMode = classifyDelivery(mediaInfo, true)
+          app.log.info({ ...logCtx, deliveryMode }, 'playback-gateway: compat delivery mode')
+        }
+      }
 
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS)
@@ -156,6 +231,53 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(502).send({ error: 'Erreur fournisseur' })
       }
 
+      // Compat path: probe-classified delivery
+      if (deliveryMode !== null) {
+        if (deliveryMode === 'DIRECT') {
+          // Pass-through: let the browser handle it natively
+          const ext = containerExtension.toLowerCase()
+          if (ext === 'm3u8' || ext === 'm3u') {
+            app.log.info({ ...logCtx }, 'playback-gateway: compat DIRECT — hls pass-through')
+            reply.header('Content-Type', 'application/vnd.apple.mpegurl')
+            const body = await upstreamRes.text()
+            const rewritten = rewriteHlsManifest(body, sessionId, providerStreamUrl)
+            return reply.status(upstreamRes.status).send(rewritten)
+          }
+          app.log.info({ ...logCtx }, 'playback-gateway: compat DIRECT — mp4 pass-through')
+          reply.header('Content-Type', upstreamRes.headers.get('Content-Type') ?? 'video/mp4')
+          const contentLength = upstreamRes.headers.get('Content-Length')
+          if (contentLength) reply.header('Content-Length', contentLength)
+          const contentRange = upstreamRes.headers.get('Content-Range')
+          if (contentRange) reply.header('Content-Range', contentRange)
+          reply.header('Accept-Ranges', 'bytes')
+          reply.status(upstreamRes.status)
+          if (!upstreamRes.body) return reply.send('')
+          return reply.send(Readable.fromWeb(upstreamRes.body as import('stream/web').ReadableStream))
+        }
+
+        // REMUX / TRANSCODE_* — run ffmpeg with the classified args
+        if (!upstreamRes.body) {
+          return reply.status(415).send({ error: 'Format non supporté par votre navigateur' })
+        }
+
+        const outputStream = await runFfmpegStream(
+          upstreamRes.body,
+          deliveryMode,
+          logCtx,
+          app,
+          (cb) => request.raw.on('close', cb),
+        )
+
+        if (outputStream === null) {
+          return reply.status(415).send({ error: 'Format non supporté par votre navigateur' })
+        }
+
+        reply.header('Content-Type', 'video/mp4')
+        reply.status(200)
+        return reply.send(outputStream)
+      }
+
+      // Non-compat path: existing extension-based routing (unchanged)
       const ext = containerExtension.toLowerCase()
 
       // HLS manifest pass-through with segment URL rewriting
@@ -233,7 +355,6 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         }
 
         // ffmpeg started producing output — write the first chunk back and stream the rest
-        const { PassThrough } = await import('node:stream')
         const outputStream = new PassThrough()
         outputStream.write(firstChunk)
         ffmpeg.stdout.pipe(outputStream)

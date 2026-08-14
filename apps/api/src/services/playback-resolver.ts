@@ -196,5 +196,6 @@ export async function resolvePlayback(
       rawTitle: r.rawTitle,
     }))
 
-  return { gatewayUrl: `/api/playback/stream/${sessionId}`, containerExtension, availabilityId: selectedId, startPositionSeconds, alternatives }
+  const gatewayUrl = `/api/playback/stream/${sessionId}`
+  return { gatewayUrl, compatGatewayUrl: `${gatewayUrl}?compat=1`, containerExtension, availabilityId: selectedId, startPositionSeconds, alternatives }
 }
