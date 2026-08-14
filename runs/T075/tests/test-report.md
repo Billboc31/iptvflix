@@ -1,41 +1,36 @@
-Here is the test report summary:
-
 ---
 
-## T075 Test Report — IMPLEMENTATION_VALIDATED
+## Test Report — T075: PASS
 
-### Tests executed
+All 11 acceptance criteria are satisfied. Here's the summary:
 
-| Suite | Result |
-|---|---|
-| `similar-titles-service.test.ts` (12 tests) | ✅ All pass |
-| `similar-titles.test.ts` route integration (13 tests) | ✅ All pass |
-| Full test suite (758 tests) | 754 pass, 4 fail (pre-existing) |
-| TypeScript check | 0 errors in T075 files |
+### Tests: 25 / 25 pass
 
-### All 11 acceptance criteria: PASS
+**Service tests (12):** merging, deduplication, source exclusion, series support, `isAvailable: false` for zero-source titles, materialization cap (5 max), materialization error skip, TMDB network fallback to genre query, cache hit, limit enforcement, NotFoundError for both types.
+
+**Route integration tests (13):** 200 with correct card shape, empty result, 404 for unknown ids (movies and series), limit param forwarding, 400 for `limit=0`, `limit=99`, and non-UUID ids.
+
+### Acceptance criteria: all PASS
 
 | Criterion | Status |
 |---|---|
-| Every canonical Movie returns similar titles | ✅ |
-| Every canonical Series returns similar titles | ✅ |
-| Results deduplicated by canonical identity | ✅ |
-| Results not limited to playable sources | ✅ |
-| Zero-source titles appear with `isAvailable: false` | ✅ |
-| Existing recommendation infrastructure reused | ✅ |
-| Missing TMDB titles safely materialized (capped at 5) | ✅ |
-| API reusable by #150 (`GET /movies/:id/similar`, `GET /series/:id/similar`) | ✅ |
-| TMDB failure degrades gracefully to genre fallback | ✅ |
-| Cache hit avoids repeated TMDB calls (5-min TTL) | ✅ |
-| Automated tests cover all required scenarios | ✅ |
+| Movie similar titles | PASS |
+| Series similar titles | PASS |
+| Deduplication by canonical TMDB identity | PASS |
+| Results not restricted to playable sources | PASS |
+| Zero-source titles appear (`isAvailable: false`) | PASS |
+| Existing infrastructure reused (TmdbClient extended) | PASS |
+| Missing titles materialized safely (capped at 5/request) | PASS |
+| API reusable by #150 (`GET /movies/:id/similar`, `GET /series/:id/similar`) | PASS |
+| TMDB failure → graceful genre-based fallback | PASS |
+| Cache hit avoids repeated TMDB calls (5-min TTL) | PASS |
+| Automated tests cover all required scenarios | PASS |
 
 ### No regressions
 
-The 4 failures in `vertical-slice.test.ts` are confirmed pre-existing: the file was not modified by T075 and the same tests fail on the merge-base commit.
+The 4 `vertical-slice.test.ts` failures and 2 TypeScript errors are confirmed pre-existing on `main`.
 
-### Minor residuals (non-blocking, noted from review)
+### Minor residuals (non-blocking)
 
-- `TmdbRateLimitError` detected via `err.name` check (functional, constructor sets `this.name`)
-- Check-then-insert in materialization without `ON CONFLICT DO NOTHING` (protected by try/catch, acceptable)
-
-**Report written to `runs/T075/test-report.md`.**
+- `TmdbRateLimitError` caught via `err.name` string match — functional but slightly fragile
+- Materialize uses check-then-insert without `ON CONFLICT` — acceptable since errors are caught per-entry
