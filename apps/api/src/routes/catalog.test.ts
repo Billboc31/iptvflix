@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi, beforeEach, afterEach } from 'vitest'
 import Fastify from 'fastify'
+import type { MetadataEnrichmentService } from '../services/metadata-enrichment-service.js'
 
 const mockDb = vi.hoisted(() => ({ select: vi.fn() }))
 vi.mock('../db/client.js', () => ({ db: mockDb }))
@@ -707,5 +708,103 @@ describe('GET /series/:id/seasons/:seasonNumber/episodes', () => {
     expect(body[0].availabilityStatus).toBe('UNAVAILABLE')
     expect(body[0].availabilityCount).toBe(0)
     expect(body[0].watchState).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GET /series/:id — on-demand hierarchy hydration
+// ---------------------------------------------------------------------------
+
+describe('GET /series/:id — on-demand hierarchy hydration', () => {
+  const SERIES_WITH_TMDB = {
+    id: '00000000-0000-0000-0000-000000000099',
+    title: 'Source-Free Series',
+    originalTitle: null,
+    firstAirYear: 2024,
+    synopsis: 'No sources yet.',
+    posterPath: null,
+    backdropPath: null,
+    tmdbId: 9999,
+    imdbId: null,
+    voteAverage: null,
+    certification: null,
+    status: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+
+  let hydrationApp: ReturnType<typeof Fastify>
+  const mockEnrichSeries = vi.fn().mockResolvedValue('enriched')
+  const mockEnrichmentService = {
+    enrichSeries: mockEnrichSeries,
+  } as unknown as MetadataEnrichmentService
+
+  beforeAll(async () => {
+    hydrationApp = Fastify({ logger: false })
+    await hydrationApp.register(catalogRoutes, { enrichmentService: mockEnrichmentService })
+    await hydrationApp.ready()
+  })
+
+  afterAll(async () => {
+    await hydrationApp.close()
+  })
+
+  afterEach(() => {
+    mockEnrichSeries.mockClear()
+  })
+
+  it('sets X-Hierarchy-Hydrating header and calls enrichSeries when seasons empty and tmdbId set', async () => {
+    mockDb.select
+      .mockReturnValueOnce(selectChain([SERIES_WITH_TMDB]))  // series
+      .mockReturnValueOnce(selectChain([]))                   // genres
+      .mockReturnValueOnce(selectChain([]))                   // avail count
+      .mockReturnValueOnce(selectChain([]))                   // seasons (empty!)
+      .mockReturnValueOnce(selectChain([]))                   // variants
+      .mockReturnValueOnce(selectChain([]))                   // avail ep count
+      .mockReturnValueOnce(selectChain([]))                   // videos
+      .mockReturnValueOnce(selectChain([]))                   // credits
+
+    const res = await hydrationApp.inject({ method: 'GET', url: `/series/${SERIES_WITH_TMDB.id}` })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['x-hierarchy-hydrating']).toBe('true')
+    // fire-and-forget: may not be called synchronously, but it is triggered
+    // use a small flush to let the microtask queue drain
+    await new Promise((r) => setTimeout(r, 0))
+    expect(mockEnrichSeries).toHaveBeenCalledWith(SERIES_WITH_TMDB.id)
+  })
+
+  it('does not set X-Hierarchy-Hydrating when seasons already exist', async () => {
+    mockDb.select
+      .mockReturnValueOnce(selectChain([SERIES_WITH_TMDB]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([SEASON_ROW]))  // seasons present
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+
+    const res = await hydrationApp.inject({ method: 'GET', url: `/series/${SERIES_WITH_TMDB.id}` })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['x-hierarchy-hydrating']).toBeUndefined()
+    expect(mockEnrichSeries).not.toHaveBeenCalled()
+  })
+
+  it('does not set X-Hierarchy-Hydrating when tmdbId is null', async () => {
+    const seriesNoTmdb = { ...SERIES_WITH_TMDB, tmdbId: null }
+    mockDb.select
+      .mockReturnValueOnce(selectChain([seriesNoTmdb]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))  // seasons empty
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+
+    const res = await hydrationApp.inject({ method: 'GET', url: `/series/${SERIES_WITH_TMDB.id}` })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['x-hierarchy-hydrating']).toBeUndefined()
+    expect(mockEnrichSeries).not.toHaveBeenCalled()
   })
 })

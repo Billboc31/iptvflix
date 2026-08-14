@@ -61,6 +61,8 @@ export interface ExternalSeriesMetadata {
   seasons?: Array<{
     tmdbId: number
     seasonNumber: number
+    name: string | null
+    airDate: string | null
     posterPath: string | null
     episodeCount: number
   }> | null

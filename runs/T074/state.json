@@ -1,7 +1,7 @@
 {
   "ticket_id": "T074",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T074-populate-canonical-tv-seasons-and-episodes-from-tm",
   "issue_number": 152,
-  "updated_at": "2026-08-14T06:56:15Z"
+  "updated_at": "2026-08-14T07:12:56Z"
 }

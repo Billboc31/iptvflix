@@ -242,13 +242,31 @@ export class MetadataEnrichmentService {
     await this.persistCredits('series', seriesId, credits)
     await this.persistFrenchLocalization('series', seriesId, seriesRow.tmdbId, metadata.title, metadata.synopsis ?? null, metadata.tagline ?? null)
 
-    // Update seasons with TMDB season-level data (tmdbId, posterPath, episodeCount)
+    // Upsert canonical season rows from TMDB — creates them if absent, updates if present
     if (metadata.seasons && metadata.seasons.length > 0) {
       for (const s of metadata.seasons) {
         await this.db
-          .update(seasons)
-          .set({ tmdbId: s.tmdbId, posterPath: s.posterPath, episodeCount: s.episodeCount })
-          .where(and(eq(seasons.seriesId, seriesId), eq(seasons.seasonNumber, s.seasonNumber)))
+          .insert(seasons)
+          .values({
+            seriesId,
+            seasonNumber: s.seasonNumber,
+            tmdbId: s.tmdbId ?? null,
+            title: s.name ?? null,
+            posterPath: s.posterPath ?? null,
+            episodeCount: s.episodeCount ?? null,
+            airYear: s.airDate ? new Date(s.airDate).getFullYear() : null,
+          })
+          .onConflictDoUpdate({
+            target: [seasons.seriesId, seasons.seasonNumber],
+            set: {
+              tmdbId: sql`EXCLUDED.tmdb_id`,
+              title: sql`EXCLUDED.title`,
+              posterPath: sql`EXCLUDED.poster_path`,
+              episodeCount: sql`EXCLUDED.episode_count`,
+              airYear: sql`EXCLUDED.air_year`,
+              updatedAt: sql`now()`,
+            },
+          })
       }
     }
 
@@ -301,38 +319,39 @@ export class MetadataEnrichmentService {
       }
 
       for (const tmdbEp of tmdbEpisodes) {
-        const [existingEp] = await this.db
-          .select({ id: episodes.id })
-          .from(episodes)
-          .where(
-            and(
-              eq(episodes.seasonId, season.id),
-              eq(episodes.episodeNumber, tmdbEp.episodeNumber),
-            ),
-          )
-          .limit(1)
-
-        if (!existingEp) {
-          counters.skipped++
-          continue
-        }
-
-        const updates: Partial<typeof episodes.$inferInsert> = {}
-        if (tmdbEp.title != null) updates.title = tmdbEp.title
-        if (tmdbEp.synopsis != null) updates.synopsis = tmdbEp.synopsis
-        if (tmdbEp.airDate != null) updates.airDate = tmdbEp.airDate
-        if (tmdbEp.runtimeMinutes != null) updates.durationMinutes = tmdbEp.runtimeMinutes
-        if (tmdbEp.tmdbId != null) updates.tmdbId = tmdbEp.tmdbId
-        if (tmdbEp.stillPath != null) updates.posterPath = tmdbEp.stillPath
-        if (tmdbEp.voteAverage != null) updates.voteAverage = tmdbEp.voteAverage
-        if (tmdbEp.voteCount != null) updates.voteCount = tmdbEp.voteCount
-
-        if (Object.keys(updates).length > 0) {
-          updates.updatedAt = new Date()
-          await this.db.update(episodes).set(updates).where(eq(episodes.id, existingEp.id))
+        try {
+          await this.db
+            .insert(episodes)
+            .values({
+              seasonId: season.id,
+              seriesId,
+              episodeNumber: tmdbEp.episodeNumber,
+              title: tmdbEp.title ?? null,
+              synopsis: tmdbEp.synopsis ?? null,
+              airDate: tmdbEp.airDate ?? null,
+              durationMinutes: tmdbEp.runtimeMinutes ?? null,
+              tmdbId: tmdbEp.tmdbId ?? null,
+              posterPath: tmdbEp.stillPath ?? null,
+              voteAverage: tmdbEp.voteAverage ?? null,
+              voteCount: tmdbEp.voteCount ?? null,
+            })
+            .onConflictDoUpdate({
+              target: [episodes.seasonId, episodes.episodeNumber],
+              set: {
+                title: sql`EXCLUDED.title`,
+                synopsis: sql`EXCLUDED.synopsis`,
+                airDate: sql`EXCLUDED.air_date`,
+                durationMinutes: sql`EXCLUDED.duration_minutes`,
+                tmdbId: sql`EXCLUDED.tmdb_id`,
+                posterPath: sql`EXCLUDED.poster_path`,
+                voteAverage: sql`EXCLUDED.vote_average`,
+                voteCount: sql`EXCLUDED.vote_count`,
+                updatedAt: sql`now()`,
+              },
+            })
           counters.enriched++
-        } else {
-          counters.skipped++
+        } catch {
+          counters.failed++
         }
       }
     }
