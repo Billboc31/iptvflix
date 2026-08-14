@@ -49,3 +49,8 @@
 [2026-08-14T08:22:20Z] push: pushing branch=ticket/T075-add-canonical-similar-title-recommendations-to-eve
 [2026-08-14T08:22:22Z] push: done branch=ticket/T075-add-canonical-similar-title-recommendations-to-eve
 [2026-08-14T08:22:22Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-14T08:27:46Z] conflict-resolver: [pass 2/3] conflicted=['apps/api/src/providers/metadata/tmdb/client.ts'] | staged=['apps/api/src/providers/metadata/tmdb/client.ts'] | unresolved=[] | continue_rc=1 | next_source=[]
+[2026-08-14T08:27:46Z] conflict-resolver: all conflicts resolved after 2 pass(es)
+[2026-08-14T08:27:46Z] conflict-resolver: running tests
+[2026-08-14T08:27:46Z] conflict-resolver: test-report written: runs/T075/conflict/test-report.md
+[2026-08-14T08:27:46Z] conflict-resolver: staging and committing resolution artifacts
