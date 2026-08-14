@@ -215,41 +215,38 @@ describe('TitleMatchingService', () => {
   })
 
   it('UNMATCHED row is upgraded to MATCHED on retry with a clear winner', async () => {
-    const [movie] = await db
-      .insert(movies)
-      .values({ title: 'The Matrix', year: 1999, tmdbId: T.matrix })
-      .returning()
-    cleanupMovieIds.push(movie.id)
-
-    // First pass — no candidates → UNMATCHED
+    // First pass — title not in local catalog, no TMDB candidates → UNMATCHED
     const svc1 = new TitleMatchingService(makeProvider())
     await svc1.matchItem({
       providerId: testSourceId,
       providerItemId: 'vod-matrix',
-      rawTitle: 'The.Matrix.1999.BluRay.1080p',
+      rawTitle: 'XZQ.Matrix.Retry.1999.BluRay.1080p',
       mediaType: 'MOVIE',
     })
 
-    // Verify UNMATCHED
     const [before] = await db
       .select({ state: titleMatchResults.matchState })
       .from(titleMatchResults)
       .where(eq(titleMatchResults.providerId, testSourceId))
     expect(before.state).toBe('UNMATCHED')
 
-    // Retry — provider now has a clear winner
-    const svc2 = new TitleMatchingService(
-      makeProvider(async () => [movieCandidate(String(T.matrix), 'The Matrix', 1999)]),
-    )
+    const [movie] = await db
+      .insert(movies)
+      .values({ title: 'XZQ Matrix Retry', year: 1999, tmdbId: T.matrix })
+      .returning()
+    cleanupMovieIds.push(movie.id)
+
+    const svc2 = new TitleMatchingService(makeProvider())
     const result = await svc2.matchItem({
       providerId: testSourceId,
       providerItemId: 'vod-matrix',
-      rawTitle: 'The.Matrix.1999.BluRay.1080p',
+      rawTitle: 'XZQ.Matrix.Retry.1999.BluRay.1080p',
       mediaType: 'MOVIE',
     })
 
     expect(result.matchState).toBe('MATCHED')
     expect(result.movieId).toBe(movie.id)
+    expect(result.notes).toContain('source:local')
   })
 
   it('MATCHED and AMBIGUOUS rows both carry non-empty diagnostic notes', async () => {
@@ -275,14 +272,14 @@ describe('TitleMatchingService', () => {
 
     const ambigSvc = new TitleMatchingService(
       makeProvider(async () => [
-        movieCandidate('9000200', 'Interstellar', 2014),
-        movieCandidate('9000201', 'Interstellar', 2014),
+        movieCandidate('9000200', 'Zzz Ambiguous Clone', 2014),
+        movieCandidate('9000201', 'Zzz Ambiguous Clone', 2014),
       ]),
     )
     const ambigResult = await ambigSvc.matchItem({
       providerId: testSourceId,
       providerItemId: 'vod-interstellar-ambig',
-      rawTitle: 'Interstellar.2014.BluRay.1080p',
+      rawTitle: 'Zzz.Ambiguous.Clone.2014.BluRay.1080p',
       mediaType: 'MOVIE',
     })
     expect(ambigResult.notes.length).toBeGreaterThan(0)
@@ -292,7 +289,7 @@ describe('TitleMatchingService', () => {
     const unmatchedResult = await unmatchedSvc.matchItem({
       providerId: testSourceId,
       providerItemId: 'vod-interstellar-unmatched',
-      rawTitle: 'Interstellar.2014.BluRay.1080p',
+      rawTitle: 'XZQ.NoSuchFilm.2099.1080p',
       mediaType: 'MOVIE',
     })
     expect(unmatchedResult.notes).toContain('no candidates')
@@ -445,5 +442,28 @@ describe('TitleMatchingService', () => {
 
     expect(result.matchState).toBe('MATCHED')
     expect(result.movieId).toBe(movie2024.id)
+  })
+
+  it('matches an existing local movie without calling TMDB search', async () => {
+    const [movie] = await db
+      .insert(movies)
+      .values({ title: 'XZQ Local Only Film', year: 2024, tmdbId: T.dunePt2 })
+      .returning()
+    cleanupMovieIds.push(movie.id)
+
+    const searchMovies = vi.fn(async () => [movieCandidate('999', 'Should Not Be Used', 2024)])
+    const svc = new TitleMatchingService(makeProvider(searchMovies))
+
+    const result = await svc.matchItem({
+      providerId: testSourceId,
+      providerItemId: 'vod-dune-local',
+      rawTitle: '4K-FR - XZQ Local Only Film 2024 1080p',
+      mediaType: 'MOVIE',
+    })
+
+    expect(result.matchState).toBe('MATCHED')
+    expect(result.movieId).toBe(movie.id)
+    expect(result.notes).toContain('source:local')
+    expect(searchMovies).not.toHaveBeenCalled()
   })
 })

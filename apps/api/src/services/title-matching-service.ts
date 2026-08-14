@@ -1,4 +1,4 @@
-import { eq, and, ne } from 'drizzle-orm'
+import { eq, and, ne, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { titleMatchResults } from '../db/schema/title-match-results.js'
 import { movies } from '../db/schema/movies.js'
@@ -36,6 +36,88 @@ export interface MatchResult {
 }
 
 type MatchRow = typeof titleMatchResults.$inferSelect
+
+/** Punctuation-insensitive key so "Dune: Part Two" matches "Dune Part Two". */
+export function catalogMatchKey(raw: string): string {
+  const { normalizedTitle } = normalizeTitle(raw)
+  return normalizedTitle.replace(/[^a-z0-9àâäéèêëïîôùûüç\s]/gi, ' ').replace(/\s+/g, ' ').trim()
+}
+
+type LocalCatalogRow = {
+  id: string
+  title: string
+  originalTitle: string | null
+  year: number | null
+  frTitle?: string | null
+}
+
+function rowTitles(row: LocalCatalogRow): string[] {
+  return [row.title, row.originalTitle, row.frTitle].filter((t): t is string => !!t && t.trim().length > 0)
+}
+
+function toLocalCandidates(rows: LocalCatalogRow[], mediaType: 'MOVIE' | 'SERIES'): MetadataCandidate[] {
+  const out: MetadataCandidate[] = []
+  for (const row of rows) {
+    for (const title of rowTitles(row)) {
+      out.push({
+        externalId: row.id,
+        title,
+        year: row.year,
+        mediaType,
+      })
+    }
+  }
+  return out
+}
+
+function collapseScoredById(
+  scored: ReturnType<typeof scoreCandidates>,
+): ReturnType<typeof scoreCandidates> {
+  const best = new Map<string, (typeof scored)[number]>()
+  for (const s of scored) {
+    const id = s.candidate.externalId
+    const prev = best.get(id)
+    if (!prev || s.rawScore > prev.rawScore) best.set(id, s)
+  }
+  return [...best.values()].sort((a, b) => b.rawScore - a.rawScore)
+}
+
+function buildMatchIndex(rows: LocalCatalogRow[]): Map<string, LocalCatalogRow[]> {
+  const index = new Map<string, LocalCatalogRow[]>()
+  for (const row of rows) {
+    for (const title of rowTitles(row)) {
+      const key = catalogMatchKey(title)
+      if (!key) continue
+      const list = index.get(key) ?? []
+      if (!list.some((r) => r.id === row.id)) list.push(row)
+      index.set(key, list)
+    }
+  }
+  return index
+}
+
+async function loadAllLocalRows(mediaType: 'MOVIE' | 'SERIES'): Promise<LocalCatalogRow[]> {
+  if (mediaType === 'MOVIE') {
+    return db
+      .select({
+        id: movies.id,
+        title: movies.title,
+        originalTitle: movies.originalTitle,
+        year: movies.year,
+        frTitle: sql<string | null>`${movies.localizations} #>> '{fr,title}'`,
+      })
+      .from(movies)
+  }
+  return db
+    .select({
+      id: series.id,
+      title: series.title,
+      originalTitle: series.originalTitle,
+      year: series.firstAirYear,
+      frTitle: sql<string | null>`${series.localizations} #>> '{fr,title}'`,
+    })
+    .from(series)
+}
 
 function toMatchResult(row: MatchRow): MatchResult {
   return {
@@ -114,6 +196,18 @@ async function resolveSeriesId(candidate: MetadataCandidate): Promise<string | n
 export class TitleMatchingService {
   constructor(private readonly metadataProvider: MetadataProvider) {}
 
+  private movieIndex: Map<string, LocalCatalogRow[]> | null = null
+  private seriesIndex: Map<string, LocalCatalogRow[]> | null = null
+
+  private async localIndex(mediaType: 'MOVIE' | 'SERIES'): Promise<Map<string, LocalCatalogRow[]>> {
+    if (mediaType === 'MOVIE') {
+      if (!this.movieIndex) this.movieIndex = buildMatchIndex(await loadAllLocalRows('MOVIE'))
+      return this.movieIndex
+    }
+    if (!this.seriesIndex) this.seriesIndex = buildMatchIndex(await loadAllLocalRows('SERIES'))
+    return this.seriesIndex
+  }
+
   async matchItem(input: MatchItemInput): Promise<MatchResult> {
     // Step 1: Guard — do not re-evaluate a confirmed match
     const [existing] = await db
@@ -133,69 +227,84 @@ export class TitleMatchingService {
 
     // Step 2: Normalize
     const { normalizedTitle, extractedYear } = normalizeTitle(input.rawTitle)
-
-    // Step 3: Effective year for metadata lookup
     const effectiveYear = extractedYear ?? input.providerYear ?? null
-
-    // Step 4: Fetch candidates
-    const candidates =
-      input.mediaType === 'MOVIE'
-        ? await this.metadataProvider.searchMovies(normalizedTitle, effectiveYear)
-        : await this.metadataProvider.searchSeries(normalizedTitle, effectiveYear)
-
-    // Step 5: Score
-    const scored = scoreCandidates(
-      {
-        normalizedTitle,
-        extractedYear,
-        providerYear: input.providerYear,
-        mediaType: input.mediaType,
-      },
-      candidates,
-    )
-
-    // Step 6: Determine match state
-    const top = scored[0]
-    const second = scored[1]
-    const top1Raw = top ? top.rawScore : 0
-    const top2Raw = second ? second.rawScore : 0
-    const rawGap = top1Raw - top2Raw
-
-    let matchState: 'MATCHED' | 'UNMATCHED' | 'AMBIGUOUS'
-    if (top && top.confidence >= MATCH_THRESHOLD && (scored.length === 1 || rawGap >= AMBIGUITY_GAP)) {
-      matchState = 'MATCHED'
-    } else if (top && top.confidence >= CANDIDATE_THRESHOLD) {
-      matchState = 'AMBIGUOUS'
-    } else {
-      matchState = 'UNMATCHED'
+    const scoreInput = {
+      normalizedTitle,
+      extractedYear,
+      providerYear: input.providerYear,
+      mediaType: input.mediaType,
     }
 
-    // Step 7: Resolve canonical record (only for MATCHED; fall back to AMBIGUOUS if not found)
+    const decide = (scored: ReturnType<typeof scoreCandidates>) => {
+      const top = scored[0]
+      const second = scored[1]
+      const top1Raw = top ? top.rawScore : 0
+      const top2Raw = second ? second.rawScore : 0
+      const rawGap = top1Raw - top2Raw
+      let matchState: 'MATCHED' | 'UNMATCHED' | 'AMBIGUOUS'
+      if (top && top.confidence >= MATCH_THRESHOLD && (scored.length === 1 || rawGap >= AMBIGUITY_GAP)) {
+        matchState = 'MATCHED'
+      } else if (top && top.confidence >= CANDIDATE_THRESHOLD) {
+        matchState = 'AMBIGUOUS'
+      } else {
+        matchState = 'UNMATCHED'
+      }
+      return { top, second, rawGap, matchState }
+    }
+
+    // Step 3: Local catalog first — no TMDB if a unique high-confidence row already exists
+    const index = await this.localIndex(input.mediaType)
+    const localRows = index.get(catalogMatchKey(input.rawTitle)) ?? []
+    const localScored = collapseScoredById(scoreCandidates(scoreInput, toLocalCandidates(localRows, input.mediaType)))
+    const localDecision = decide(localScored)
+
+    let matchState = localDecision.matchState
+    let top = localDecision.top
+    let second = localDecision.second
+    let rawGap = localDecision.rawGap
+    let candidates: MetadataCandidate[] = toLocalCandidates(localRows, input.mediaType)
     let movieId: string | null = null
     let seriesId: string | null = null
+    let source: 'local' | 'tmdb' = 'local'
 
     if (matchState === 'MATCHED' && top) {
-      if (input.mediaType === 'MOVIE') {
-        movieId = await resolveMovieId(top.candidate)
-        if (movieId === null) matchState = 'AMBIGUOUS'
-      } else {
-        seriesId = await resolveSeriesId(top.candidate)
-        if (seriesId === null) matchState = 'AMBIGUOUS'
+      if (input.mediaType === 'MOVIE') movieId = top.candidate.externalId
+      else seriesId = top.candidate.externalId
+    } else {
+      // Step 4: Fall back to TMDB search when local miss or ambiguous
+      source = 'tmdb'
+      candidates =
+        input.mediaType === 'MOVIE'
+          ? await this.metadataProvider.searchMovies(normalizedTitle, effectiveYear)
+          : await this.metadataProvider.searchSeries(normalizedTitle, effectiveYear)
+      const scored = scoreCandidates(scoreInput, candidates)
+      const remote = decide(scored)
+      matchState = remote.matchState
+      top = remote.top
+      second = remote.second
+      rawGap = remote.rawGap
+
+      if (matchState === 'MATCHED' && top) {
+        if (input.mediaType === 'MOVIE') {
+          movieId = await resolveMovieId(top.candidate)
+          if (movieId === null) matchState = 'AMBIGUOUS'
+        } else {
+          seriesId = await resolveSeriesId(top.candidate)
+          if (seriesId === null) matchState = 'AMBIGUOUS'
+        }
       }
     }
 
-    // Step 8: Build diagnostic notes (no credentials, no secrets)
     const top1Conf = top ? top.confidence.toFixed(4) : 'n/a'
     const top2Conf = second ? second.confidence.toFixed(4) : 'n/a'
     const yearInfo = `extracted=${extractedYear ?? 'none'},provider=${input.providerYear ?? 'none'}`
     let notes: string
     if (candidates.length === 0) {
-      notes = `no candidates returned by metadata provider; year:${yearInfo}`
+      notes = `source:${source}; no candidates; year:${yearInfo}`
     } else {
-      notes = `candidates:${candidates.length}, top-2:[${top1Conf},${top2Conf}], gap:${rawGap.toFixed(4)}, year:${yearInfo}, state:${matchState}`
+      notes = `source:${source}; candidates:${candidates.length}, top-2:[${top1Conf},${top2Conf}], gap:${rawGap.toFixed(4)}, year:${yearInfo}, state:${matchState}`
     }
 
-    // Step 9: Upsert with upgrade-only rule (never replace MATCHED with a lower state)
     const now = new Date()
     const row = {
       providerId: input.providerId,
@@ -229,7 +338,6 @@ export class TitleMatchingService {
       .returning()
 
     if (!result) {
-      // WHERE clause prevented update — concurrent process already matched this item
       const [current] = await db
         .select()
         .from(titleMatchResults)
@@ -262,6 +370,8 @@ export class TitleMatchingService {
     const throttleMs = opts?.throttleMs ?? 0
     const results: MatchResult[] = new Array(inputs.length)
     const queue = inputs.map((input, i) => ({ input, i }))
+    this.movieIndex = null
+    this.seriesIndex = null
 
     const worker = async (): Promise<void> => {
       while (queue.length > 0) {
@@ -284,7 +394,8 @@ export class TitleMatchingService {
             notes: 'match failed: provider error',
           }
         }
-        if (throttleMs > 0 && queue.length > 0) {
+        const usedRemote = results[item.i]?.notes.includes('source:tmdb')
+        if (throttleMs > 0 && usedRemote && queue.length > 0) {
           await new Promise<void>((resolve) => setTimeout(resolve, throttleMs))
         }
       }
