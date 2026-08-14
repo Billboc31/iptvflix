@@ -38,6 +38,20 @@ export interface TmdbSimilarResponse {
   results: TmdbSimilarItem[]
 }
 
+export interface TmdbSimilarItem {
+  id: number
+  title?: string
+  name?: string
+  poster_path: string | null
+  release_date?: string
+  first_air_date?: string
+  vote_average: number
+}
+
+export interface TmdbSimilarResponse {
+  results: TmdbSimilarItem[]
+}
+
 const BASE_URL = 'https://api.themoviedb.org/3'
 
 function deriveReleaseStatus(dateStr?: string): string | null {
