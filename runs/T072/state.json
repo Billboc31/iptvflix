@@ -1,0 +1,10 @@
+{
+  "ticket_id": "T072",
+  "state": "TEST_COMPLETE",
+  "branch": "ticket/T072-immersive-modal-movie-series-detail-experience",
+  "issue_number": 150,
+  "updated_at": "2026-08-14T09:04:15Z",
+  "pre_conflict_state": "PLAN_APPROVED",
+  "conflict_detected_at": "2026-08-14T08:28:37Z",
+  "conflicted_files": []
+}

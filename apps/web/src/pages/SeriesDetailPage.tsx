@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useEffect, useState, type ReactElement } from 'react'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import type { Location } from 'react-router-dom'
 import type { SeriesDetailResponse } from '@iptvflix/api-contracts'
 import { getSeries, getProfile, fetchContinueWatching, ApiError } from '../lib/api.js'
 import { useDevices } from '../hooks/useDevices.js'
@@ -14,6 +15,7 @@ import MediaActions from '../components/detail/MediaActions.js'
 import AvailabilityPanel from '../components/detail/AvailabilityPanel.js'
 import SeasonSelector from '../components/detail/SeasonSelector.js'
 import SimilarTitlesShelf from '../components/detail/SimilarTitlesShelf.js'
+import MediaDetailShell from '../components/detail/MediaDetailShell.js'
 
 function DetailSkeleton() {
   return (
@@ -43,8 +45,26 @@ function DetailSkeleton() {
 export default function SeriesDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const { devices } = useDevices()
   const [series, setSeries] = useState<SeriesDetailResponse | null>(null)
+
+  const modalState = location.state as { background?: Location; scrollY?: number } | null
+  const isModal = !!modalState?.background
+  const savedScrollY = modalState?.scrollY
+
+  function handleClose() {
+    navigate(-1)
+  }
+
+  function modal(content: ReactElement) {
+    if (!isModal) return content
+    return (
+      <MediaDetailShell onClose={handleClose} scrollY={savedScrollY}>
+        {content}
+      </MediaDetailShell>
+    )
+  }
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [notFound, setNotFound] = useState(false)
@@ -114,21 +134,21 @@ export default function SeriesDetailPage() {
     }
   }, [id])
 
-  if (loading) return <DetailSkeleton />
+  if (loading) return modal(<DetailSkeleton />)
 
   if (notFound) {
-    return (
+    return modal(
       <div className="flex flex-col items-center justify-center h-64 gap-4">
         <p className="text-gray-300 text-lg">Cette série est introuvable.</p>
-        <Button variant="ghost" onClick={() => navigate(-1)}>← Retour</Button>
-      </div>
+        <Button variant="ghost" onClick={handleClose}>← Retour</Button>
+      </div>,
     )
   }
 
-  if (error) return <ErrorState message={error.message} onRetry={() => navigate(-1)} />
+  if (error) return modal(<ErrorState message={error.message} onRetry={handleClose} />)
   if (!series) return null
 
-  return (
+  return modal(
     <div className="bg-[#0a0a0f] min-h-screen">
       <MediaHero
         backdropUrl={series.backdropUrl}
@@ -202,6 +222,6 @@ export default function SeriesDetailPage() {
       </div>
 
       <SimilarTitlesShelf mediaType="SERIES" mediaId={series.id} />
-    </div>
+    </div>,
   )
 }

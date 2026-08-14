@@ -1,9 +1,11 @@
 import { useWatchlist } from '../hooks/useWatchlist.js'
 import EmptyState from '../components/ui/EmptyState.js'
 import PosterCard from '../components/content/PosterCard.js'
+import { useOpenDetail } from '../hooks/useOpenDetail.js'
 
 export default function MyListPage() {
   const { entries, loading, remove } = useWatchlist()
+  const openDetail = useOpenDetail()
 
   if (loading) {
     return (
@@ -32,6 +34,7 @@ export default function MyListPage() {
             <PosterCard
               title={entry.title}
               posterUrl={entry.posterUrl}
+              onClick={() => openDetail(entry.mediaType === 'MOVIE' ? 'movie' : 'series', entry.mediaId)}
             />
             <button
               onClick={() => remove(entry.mediaType, entry.mediaId)}

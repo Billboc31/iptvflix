@@ -1,6 +1,6 @@
-import { useNavigate } from 'react-router-dom'
 import { markArrivalRead } from '../../lib/api.js'
 import type { ArrivalItem } from '@iptvflix/api-contracts'
+import { useOpenDetail } from '../../hooks/useOpenDetail.js'
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -18,8 +18,11 @@ type ArrivalCardProps = {
 }
 
 export default function ArrivalCard({ arrival, onDismiss }: ArrivalCardProps) {
-  const navigate = useNavigate()
-  const path = arrival.mediaType === 'MOVIE' ? `/movies/${arrival.mediaId}` : `/series/${arrival.mediaId}`
+  const openDetail = useOpenDetail()
+
+  function handleClick() {
+    openDetail(arrival.mediaType === 'MOVIE' ? 'movie' : 'series', arrival.mediaId)
+  }
 
   async function handleDismiss(e: React.MouseEvent) {
     e.stopPropagation()
@@ -29,11 +32,11 @@ export default function ArrivalCard({ arrival, onDismiss }: ArrivalCardProps) {
 
   return (
     <div
-      onClick={() => navigate(path)}
+      onClick={handleClick}
       className="relative flex-shrink-0 w-44 cursor-pointer group"
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => e.key === 'Enter' && navigate(path)}
+      onKeyDown={(e) => e.key === 'Enter' && handleClick()}
     >
       {/* Poster placeholder */}
       <div className="aspect-[2/3] bg-[#1a1a24] rounded-lg overflow-hidden relative flex flex-col items-center justify-center gap-1 text-gray-500">

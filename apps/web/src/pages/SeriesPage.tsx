@@ -7,6 +7,7 @@ import PosterCard from '../components/content/PosterCard.js'
 import Skeleton from '../components/ui/Skeleton.js'
 import { useSeries } from '../hooks/useSeries.js'
 import { useGenres } from '../hooks/useGenres.js'
+import { useOpenDetail } from '../hooks/useOpenDetail.js'
 
 type AvailabilityMode = 'all' | 'available'
 
@@ -23,7 +24,7 @@ function SeriesShelf({
   upcoming?: boolean
   genreId?: string
 }) {
-  const navigate = useNavigate()
+  const openDetail = useOpenDetail()
   const { data, loading } = useSeries({ pageSize: 20, sortBy, availability, upcoming, genreId })
 
   if (!loading && (!data?.items.length)) return null
@@ -45,7 +46,7 @@ function SeriesShelf({
                 : undefined
             }
             mediaId={s.id}
-            onClick={() => navigate(`/series/${s.id}`)}
+            onClick={() => openDetail('series', s.id)}
           />
         </div>
       ))}
@@ -55,6 +56,7 @@ function SeriesShelf({
 
 export default function SeriesPage() {
   const navigate = useNavigate()
+  const openDetail = useOpenDetail()
   const [selectedGenreId, setSelectedGenreId] = useState<string | undefined>(undefined)
   const [availabilityMode, setAvailabilityMode] = useState<AvailabilityMode>('all')
 
@@ -75,7 +77,7 @@ export default function SeriesPage() {
           backdropUrl={heroSeries.backdropUrl}
           mediaId={heroSeries.id}
           availabilityStatus={heroSeries.availabilityStatus}
-          onDetails={() => navigate(`/series/${heroSeries.id}`)}
+          onDetails={() => openDetail('series', heroSeries.id)}
         />
       )}
 

@@ -1,14 +1,14 @@
-import { useNavigate } from 'react-router-dom'
 import HorizontalRow from './HorizontalRow.js'
 import PosterCard from './PosterCard.js'
 import type { ShelfResponse } from '@iptvflix/api-contracts'
+import { useOpenDetail } from '../../hooks/useOpenDetail.js'
 
 type ShelfRowProps = {
   shelf: ShelfResponse
 }
 
 export default function ShelfRow({ shelf }: ShelfRowProps) {
-  const navigate = useNavigate()
+  const openDetail = useOpenDetail()
   if (shelf.items.length === 0) return null
 
   return (
@@ -35,7 +35,7 @@ export default function ShelfRow({ shelf }: ShelfRowProps) {
                     ? { label: 'Indisponible', variant: 'unavailable' }
                     : undefined
                 }
-                onClick={() => navigate(`/${item.mediaType === 'MOVIE' ? 'movies' : 'series'}/${item.mediaId}`)}
+                onClick={() => openDetail(item.mediaType === 'MOVIE' ? 'movie' : 'series', item.mediaId)}
               />
               {hasProgress && (
                 <div
