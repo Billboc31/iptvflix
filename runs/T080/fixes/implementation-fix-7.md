@@ -1,0 +1,123 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T080/reviews/implementation-review.md
+- generated at: 2026-08-14T17:00:31Z
+
+---
+
+I have the full picture. Here is my review.
+
+---
+
+# PR Review — T080 — Diagnose production Safari/iOS playback failure after compatibility fallback
+
+## Résumé
+
+La review précédente (attempt 6) a identifié une violation de scope basée sur une comparaison `git diff main..HEAD`, qui attribuait incorrectement à T080 des fichiers appartenant à T079 (branches non encore mergées sur `main`). La comparaison correcte est `git diff 8b76afc..HEAD` (commit de merge T079 → HEAD T080).
+
+Avec cette comparaison, T080 n'a modifié que 6 fichiers sources, tous dans le périmètre diagnostique :
+- `apps/api/scripts/check-env.mjs` (nouveau)
+- `apps/api/scripts/diagnose-stream.mjs` (nouveau)
+- `apps/api/src/routes/diagnostics.ts` (nouveau)
+- `apps/api/src/index.ts` (+2 lignes d'enregistrement de route)
+- `apps/api/src/routes/playback.ts` (+88 lignes de logging uniquement)
+- `apps/web/src/pages/PlayerPage.tsx` (+~80 lignes de télémétrie)
+
+La violation de scope était une erreur de review. L'instrumentation est dans le scope.
+
+Le problème bloquant restant est différent : le livrable du ticket est un **diagnostic fondé sur des preuves**, pas un template de collecte. `diagnosis.md` a tous ses champs de preuve à `<PENDING>`, et l'argument unique confirmé (Candidate 1) est une analyse architecturale statique — exactement ce que le ticket interdit comme preuve suffisante.
+
+---
+
+## Vérifications effectuées
+
+- Comparaison `git diff 8b76afc..HEAD --name-only` (T079 merge → HEAD T080) — scope réel des changements
+- Lecture de `apps/api/src/routes/playback.ts` diff T080 (+88 lignes)
+- Lecture de `apps/web/src/pages/PlayerPage.tsx` diff T080 (télémétrie Safari)
+- Lecture de `apps/api/src/routes/diagnostics.ts` (route env)
+- Lecture complète de `runs/T080/diagnosis.md`
+- Lecture de `runs/T080/implementation-output.md` (justification attempt 7)
+- Vérification de l'enregistrement de `diagnosticsRoutes` dans `index.ts`
+
+---
+
+## Points validés
+
+- **Scope T080 correctement limité** : les 6 fichiers modifiés sont de la pure instrumentation diagnostique. La violation de scope précédemment citée était due à une mauvaise base de comparaison (`main` vs T079).
+- **Logging ffmpeg sanitisé et complet** : `playback.ts` capture PID, mode, args sanitisés (`-i <stdin>`), exit code, signal, stderr tail (20 dernières lignes), msToFirstByte. Aucun credential dans les logs.
+- **Télémétrie frontend correcte** : `PlayerPage.tsx` émet `console.warn` avec `errorCode`, `errorCodeName`, `readyState`, `networkState`, `urlMode`, `eventSequence` — visible dans Safari Web Inspector, aucun secret exposé.
+- **Logging probe amélioré** : `probeVideoCodec`, `probeAudioCodec`, `probeContainerFormat` et `extensionFallbackRoute` en cas d'échec.
+- **Scripts diagnostics utiles** : `check-env.mjs` et `diagnose-stream.mjs` répliquent fidèlement le pipeline production.
+- **Route `/api/diagnostics/env`** : conçue correctement, garde `RAILWAY_ENVIRONMENT`.
+- **Label Candidate 1 corrigé** : reformulé en `CONFIRMED FROM CODE — AWAITING RUNTIME VERIFICATION` (fix demandé en review 6, appliqué en attempt 7).
+- **Structure `diagnosis.md`** : instructions de collecte claires par section.
+
+---
+
+## Problèmes détectés
+
+### Bloquant 1 — Le livrable reste un template, pas un diagnostic
+
+Le ticket stipule :
+
+> *"Do not close this ticket with only unit-test evidence or an architectural assumption. The deliverable is an evidence-backed diagnosis that directly determines the correction ticket."*
+
+`diagnosis.md` est un document de collecte avec des instructions, pas un rapport de diagnostic. Les sections 1, 2, 4, 5, 6, 7, 8 ont tous leurs champs à `<PENDING>`. La seule affirmation substantielle est Candidate 1 — une déduction par analyse statique du code, c'est-à-dire exactement "an architectural assumption".
+
+Ce bloquant est réel et distinct de la question du scope. La question n'est pas "a-t-on trop codé ?" mais "le livrable existe-t-il ?".
+
+**Ce que l'AI peut faire** : l'AI ne peut pas accéder à un iPhone réel, des credentials Xtream, ou Railway. Mais elle peut transformer `diagnosis.md` d'un template anonyme en un **document de handoff explicite**, qui :
+
+1. Déclare clairement en tête : *"AI-completed steps: [liste]. Human-required steps: [liste]. These cannot be executed by an automated agent."*
+2. Remplace `<PENDING>` par `REQUIRES HUMAN EXECUTION:` suivi de la commande exacte à exécuter (ex. pour Section 8 : `GET https://<railway-api>/api/diagnostics/env`, copier la réponse JSON ici).
+3. Documente explicitement la limite AI comme condition de clôture du ticket, avec les étapes humaines nécessaires.
+4. Requalifie la conclusion en "Root cause hypothesis from static analysis — confirmation requires production trace at Sections 1/7" plutôt que de la présenter comme résultat de diagnostic.
+
+Cette transformation est réalisable par l'AI et correspond à ce qu'un diagnostic honnête doit livrer quand des preuves de production sont hors de portée.
+
+### Mineur — Route diagnostics enregistrée hors scope d'authentification
+
+`diagnosticsRoutes` est enregistré dans `index.ts` en dehors du `protectedScope`. La route est donc publiquement accessible sans authentification sur Railway (seule garde : `RAILWAY_ENVIRONMENT`). Le contenu exposé (PATH, versions binaires, mémoire) ne comprend pas de credentials — acceptable temporairement. Mais le ticket de correction doit supprimer cette route ou la déplacer dans le `protectedScope`.
+
+Ce point est déjà documenté dans `diagnosis.md` (Section 8) — le rappel est noté, non bloquant.
+
+---
+
+## Risques éventuels
+
+- **Fermeture sans diagnostic réel** : si T080 est approuvé avec `diagnosis.md` vide de preuves, le ticket de correction suivant sera fondé uniquement sur Candidate 1 (analyse statique), exactement ce que T080 était censé éviter.
+- **Candidate 1 peut être partiel** : même si le défaut structurel "les deux tentatives Safari sont identiques" est correct, la vraie cause de l'échec peut être en plus un ffmpeg absent, un Content-Type incorrect, ou une sortie fMP4 invalide — des causes qui ne sont révélées que par la trace production.
+
+---
+
+## Décision
+
+- REQUEST_CHANGES
+
+---
+
+## Action demandée (unique et réalisable par l'AI)
+
+Mettre à jour `runs/T080/diagnosis.md` pour le transformer d'un template en un document de handoff :
+
+1. **Ajouter un résumé en tête** : "Étapes complétées par l'AI" vs "Étapes requises par un humain — impossibles à automatiser". Lister chacune explicitement.
+
+2. **Remplacer `<PENDING>` par `REQUIRES HUMAN EXECUTION`** dans les sections 1, 2, 4, 5, 6, 7, 8 — avec pour chaque section la commande exacte à exécuter. Exemple Section 8 :
+
+   ```
+   ffmpegPresent: REQUIRES HUMAN EXECUTION
+     → Déployer la branche T080 sur Railway
+     → Appeler GET https://<railway-api>/api/diagnostics/env
+     → Coller la valeur de ffmpegWhich.ok et ffmpegWhich.stdout ici
+   ```
+
+3. **Requalifier Section 9 / Conclusion** : titrer explicitement "Hypothèse confirmée par analyse statique — vérification production requise pour conclusion définitive" plutôt que "root cause confirmed".
+
+4. **Ajouter une section finale "Handoff"** listant les 4 étapes humaines obligatoires dans l'ordre (déployer T080, appeler `/api/diagnostics/env`, tester iPhone Safari avec Web Inspector, copier résultats dans les sections correspondantes).
+
+Aucun autre changement de code n'est demandé. L'instrumentation est correcte et dans le scope.
+
+---
+
+IMPLEMENTATION_FIX_REQUIRED

@@ -66,13 +66,34 @@ async function runFfmpegStream(
   onDisconnect: (cb: () => void) => void,
 ): Promise<PassThrough | null> {
   const ffmpegArgs = buildFfmpegArgs(mode)
-  const ffmpeg = spawn('ffmpeg', [
-    '-i', 'pipe:0',
-    ...ffmpegArgs,
-    'pipe:1',
-  ], { stdio: ['pipe', 'pipe', 'pipe'] })
+  const fullArgs = ['-i', 'pipe:0', ...ffmpegArgs, 'pipe:1']
+  const sanitizedArgs = ['-i', '<stdin>', ...ffmpegArgs, 'pipe:1']
 
-  ffmpeg.stderr.on('data', () => {})
+  const spawnStart = Date.now()
+  const ffmpeg = spawn('ffmpeg', fullArgs, { stdio: ['pipe', 'pipe', 'pipe'] })
+
+  app.log.info({
+    ...logCtx,
+    ffmpegMode: mode,
+    ffmpegPid: ffmpeg.pid,
+    ffmpegArgs: sanitizedArgs,
+  }, 'playback-gateway: ffmpeg spawn')
+
+  const stderrLines: string[] = []
+  ffmpeg.stderr.on('data', (chunk: Buffer) => {
+    const lines = chunk.toString().split('\n').filter(Boolean)
+    stderrLines.push(...lines)
+    if (stderrLines.length > 20) stderrLines.splice(0, stderrLines.length - 20)
+  })
+
+  ffmpeg.on('close', (code, signal) => {
+    app.log.info({
+      ...logCtx,
+      ffmpegExitCode: code,
+      ffmpegExitSignal: signal,
+      ffmpegStderrTail: stderrLines.slice(-20).join('\n'),
+    }, 'playback-gateway: ffmpeg closed')
+  })
 
   const inputStream = Readable.fromWeb(upstreamBody as import('stream/web').ReadableStream)
   inputStream.pipe(ffmpeg.stdin)
@@ -80,8 +101,11 @@ async function runFfmpegStream(
     if (!ffmpeg.killed) ffmpeg.kill('SIGKILL')
   })
 
+  let clientDisconnected = false
   onDisconnect(() => {
+    clientDisconnected = true
     if (!ffmpeg.killed) ffmpeg.kill('SIGKILL')
+    app.log.info({ ...logCtx, ffmpegAliveAtDisconnect: false }, 'playback-gateway: client disconnected, killed ffmpeg')
   })
 
   const firstChunk = await Promise.race<Buffer | null>([
@@ -92,13 +116,26 @@ async function runFfmpegStream(
 
   if (firstChunk === null) {
     if (!ffmpeg.killed) ffmpeg.kill('SIGKILL')
-    app.log.warn({ ...logCtx }, 'playback-gateway: ffmpeg unavailable or failed to start')
+    app.log.warn({
+      ...logCtx,
+      ffmpegStderrTail: stderrLines.slice(-20).join('\n'),
+    }, 'playback-gateway: ffmpeg unavailable or failed to start')
     return null
   }
+
+  const msToFirstByte = Date.now() - spawnStart
+  app.log.info({ ...logCtx, msToFirstByte }, 'playback-gateway: ffmpeg first output byte')
 
   const outputStream = new PassThrough()
   outputStream.write(firstChunk)
   ffmpeg.stdout.pipe(outputStream)
+
+  outputStream.on('finish', () => {
+    if (!clientDisconnected) {
+      app.log.info({ ...logCtx, ffmpegAliveAtFinish: !ffmpeg.killed }, 'playback-gateway: ffmpeg stream finished')
+    }
+  })
+
   return outputStream
 }
 
@@ -178,14 +215,38 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
           try {
             mediaInfo = await probeMedia(providerStreamUrl)
             setProbe(availabilityId, mediaInfo)
-            app.log.info({ ...logCtx, videoCodec: mediaInfo.videoCodec, audioCodec: mediaInfo.audioCodec }, 'playback-gateway: probe complete')
-          } catch {
-            app.log.warn({ ...logCtx }, 'playback-gateway: probe failed, using extension-based routing')
+            app.log.info({
+              ...logCtx,
+              probeVideoCodec: mediaInfo.videoCodec,
+              probeAudioCodec: mediaInfo.audioCodec,
+              probeContainerFormat: mediaInfo.containerFormat,
+            }, 'playback-gateway: probe complete')
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err)
+            // Determine extension-based fallback assumptions for diagnostic visibility
+            const ext = containerExtension.toLowerCase()
+            const fallbackRoute = REMUX_EXTENSIONS.has(ext)
+              ? `remux-via-ffmpeg (ext=${ext})`
+              : PASSTHROUGH_EXTENSIONS.has(ext)
+                ? `direct-passthrough (ext=${ext})`
+                : `unknown-ext-fallback (ext=${ext})`
+            app.log.warn({
+              ...logCtx,
+              probeError: errMsg,
+              extensionFallbackRoute: fallbackRoute,
+            }, 'playback-gateway: probe failed, using extension-based routing')
           }
         }
         if (mediaInfo) {
           deliveryMode = classifyDelivery(mediaInfo, true)
-          app.log.info({ ...logCtx, deliveryMode }, 'playback-gateway: compat delivery mode')
+          app.log.info({
+            ...logCtx,
+            deliveryMode,
+            classifyInputVideoCodec: mediaInfo.videoCodec,
+            classifyInputAudioCodec: mediaInfo.audioCodec,
+            classifyInputContainer: mediaInfo.containerFormat,
+            classifyInputExtension: containerExtension,
+          }, 'playback-gateway: compat delivery mode selected')
         }
       }
 
@@ -231,37 +292,82 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(502).send({ error: 'Erreur fournisseur' })
       }
 
+      // Log upstream response headers for diagnostic correlation
+      const upstreamContentType = upstreamRes.headers.get('Content-Type') ?? 'unknown'
+      const upstreamContentLength = upstreamRes.headers.get('Content-Length')
+      const upstreamTransferEncoding = upstreamRes.headers.get('Transfer-Encoding')
+      app.log.info({
+        ...logCtx,
+        upstreamStatus: upstreamRes.status,
+        upstreamContentType,
+        upstreamContentLength: upstreamContentLength ?? null,
+        upstreamIsChunked: !upstreamContentLength || upstreamTransferEncoding === 'chunked',
+        upstreamTransferEncoding: upstreamTransferEncoding ?? null,
+      }, 'playback-gateway: upstream response headers')
+
+      // Peek first 16 bytes of upstream body for content signature (detect HTML error pages)
+      let streamBody = upstreamRes.body
+      let upstreamFirstBytesHex = 'n/a'
+      if (streamBody) {
+        try {
+          const [peekStream, mainStream] = streamBody.tee()
+          const reader = peekStream.getReader()
+          const { value: peekChunk } = await reader.read()
+          await reader.cancel()
+          if (peekChunk) {
+            upstreamFirstBytesHex = Buffer.from(peekChunk.slice(0, 16)).toString('hex')
+          }
+          streamBody = mainStream
+        } catch {
+          // tee unavailable in this runtime, skip peek
+        }
+      }
+      app.log.info({ ...logCtx, upstreamFirstBytesHex }, 'playback-gateway: upstream body signature')
+
       // Compat path: probe-classified delivery
       if (deliveryMode !== null) {
         if (deliveryMode === 'DIRECT') {
-          // Pass-through: let the browser handle it natively
           const ext = containerExtension.toLowerCase()
           if (ext === 'm3u8' || ext === 'm3u') {
             app.log.info({ ...logCtx }, 'playback-gateway: compat DIRECT — hls pass-through')
             reply.header('Content-Type', 'application/vnd.apple.mpegurl')
-            const body = await upstreamRes.text()
+            const body = streamBody ? await new Response(streamBody).text() : await upstreamRes.text()
             const rewritten = rewriteHlsManifest(body, sessionId, providerStreamUrl)
+            app.log.info({
+              ...logCtx,
+              responseContentType: 'application/vnd.apple.mpegurl',
+              responseMode: 'compat-direct-hls',
+            }, 'playback-gateway: response headers to browser')
             return reply.status(upstreamRes.status).send(rewritten)
           }
           app.log.info({ ...logCtx }, 'playback-gateway: compat DIRECT — mp4 pass-through')
-          reply.header('Content-Type', upstreamRes.headers.get('Content-Type') ?? 'video/mp4')
-          const contentLength = upstreamRes.headers.get('Content-Length')
-          if (contentLength) reply.header('Content-Length', contentLength)
-          const contentRange = upstreamRes.headers.get('Content-Range')
-          if (contentRange) reply.header('Content-Range', contentRange)
+          const respContentType = upstreamRes.headers.get('Content-Type') ?? 'video/mp4'
+          const respContentLength = upstreamRes.headers.get('Content-Length')
+          const respContentRange = upstreamRes.headers.get('Content-Range')
+          reply.header('Content-Type', respContentType)
+          if (respContentLength) reply.header('Content-Length', respContentLength)
+          if (respContentRange) reply.header('Content-Range', respContentRange)
           reply.header('Accept-Ranges', 'bytes')
           reply.status(upstreamRes.status)
-          if (!upstreamRes.body) return reply.send('')
-          return reply.send(Readable.fromWeb(upstreamRes.body as import('stream/web').ReadableStream))
+          app.log.info({
+            ...logCtx,
+            responseContentType: respContentType,
+            responseContentLength: respContentLength ?? null,
+            responseContentRange: respContentRange ?? null,
+            responseAcceptRanges: 'bytes',
+            responseMode: 'compat-direct-mp4',
+          }, 'playback-gateway: response headers to browser')
+          if (!streamBody) return reply.send('')
+          return reply.send(Readable.fromWeb(streamBody as import('stream/web').ReadableStream))
         }
 
         // REMUX / TRANSCODE_* — run ffmpeg with the classified args
-        if (!upstreamRes.body) {
+        if (!streamBody) {
           return reply.status(415).send({ error: 'Format non supporté par votre navigateur' })
         }
 
         const outputStream = await runFfmpegStream(
-          upstreamRes.body,
+          streamBody,
           deliveryMode,
           logCtx,
           app,
@@ -274,6 +380,12 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
 
         reply.header('Content-Type', 'video/mp4')
         reply.status(200)
+        app.log.info({
+          ...logCtx,
+          responseContentType: 'video/mp4',
+          responseTransferEncoding: 'chunked',
+          responseMode: `compat-${deliveryMode.toLowerCase()}`,
+        }, 'playback-gateway: response headers to browser')
         return reply.send(outputStream)
       }
 
@@ -284,7 +396,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
       if (ext === 'm3u8' || ext === 'm3u') {
         app.log.info({ ...logCtx }, 'playback-gateway: hls pass-through with segment rewrite')
         reply.header('Content-Type', 'application/vnd.apple.mpegurl')
-        const body = await upstreamRes.text()
+        const body = streamBody ? await new Response(streamBody).text() : await upstreamRes.text()
         const rewritten = rewriteHlsManifest(body, sessionId, providerStreamUrl)
         return reply.status(upstreamRes.status).send(rewritten)
       }
@@ -300,67 +412,43 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         reply.header('Accept-Ranges', 'bytes')
         reply.status(upstreamRes.status)
 
-        if (!upstreamRes.body) {
+        if (!streamBody) {
           return reply.send('')
         }
 
-        const nodeReadable = Readable.fromWeb(upstreamRes.body as import('stream/web').ReadableStream)
+        const nodeReadable = Readable.fromWeb(streamBody as import('stream/web').ReadableStream)
         return reply.send(nodeReadable)
       }
 
       // REMUX: ts/mkv/avi → fragmented MP4 via ffmpeg
       if (REMUX_EXTENSIONS.has(ext)) {
-        app.log.info({ ...logCtx }, 'playback-gateway: remuxing to fmp4')
+        app.log.info({ ...logCtx, legacyExtPath: true }, 'playback-gateway: legacy ext-path remuxing to fmp4')
 
-        if (!upstreamRes.body) {
+        if (!streamBody) {
           return reply.status(415).send({ error: 'Format non supporté par votre navigateur' })
         }
 
-        const ffmpeg = spawn('ffmpeg', [
-          '-i', 'pipe:0',
-          '-c', 'copy',
-          '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
-          '-f', 'mp4',
-          'pipe:1',
-        ], { stdio: ['pipe', 'pipe', 'pipe'] })
+        const outputStream = await runFfmpegStream(
+          streamBody,
+          'REMUX',
+          { ...logCtx, legacyExtPath: true },
+          app,
+          (cb) => request.raw.on('close', cb),
+        )
 
-        ffmpeg.stderr.on('data', () => {
-          // discard ffmpeg stderr to avoid log noise
-        })
-
-        // Pipe upstream → ffmpeg stdin
-        const inputStream = Readable.fromWeb(upstreamRes.body as import('stream/web').ReadableStream)
-        inputStream.pipe(ffmpeg.stdin)
-        inputStream.on('error', () => {
-          if (!ffmpeg.killed) ffmpeg.kill('SIGKILL')
-        })
-
-        // Abort ffmpeg on client disconnect
-        request.raw.on('close', () => {
-          if (!ffmpeg.killed) ffmpeg.kill('SIGKILL')
-        })
-
-        // Wait for the first output chunk or an error before committing to a response.
-        // This ensures we can return 415 cleanly if ffmpeg is missing or fails immediately.
-        const firstChunk = await Promise.race<Buffer | null>([
-          new Promise<Buffer>((resolve) => ffmpeg.stdout.once('data', (chunk: Buffer) => resolve(chunk))),
-          new Promise<null>((resolve) => ffmpeg.once('error', () => resolve(null))),
-          new Promise<null>((resolve) => ffmpeg.once('close', (code) => { if (code !== 0) resolve(null) })),
-        ])
-
-        if (firstChunk === null) {
-          if (!ffmpeg.killed) ffmpeg.kill('SIGKILL')
-          app.log.warn({ ...logCtx }, 'playback-gateway: ffmpeg unavailable or failed to start')
+        if (outputStream === null) {
           return reply.status(415).send({ error: 'Format non supporté par votre navigateur' })
         }
-
-        // ffmpeg started producing output — write the first chunk back and stream the rest
-        const outputStream = new PassThrough()
-        outputStream.write(firstChunk)
-        ffmpeg.stdout.pipe(outputStream)
 
         reply.header('Content-Type', 'video/mp4')
         reply.status(200)
+        app.log.info({
+          ...logCtx,
+          legacyExtPath: true,
+          responseContentType: 'video/mp4',
+          responseTransferEncoding: 'chunked',
+          responseMode: 'legacy-ext-remux',
+        }, 'playback-gateway: response headers to browser')
         return reply.send(outputStream)
       }
 
@@ -371,8 +459,8 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
       const contentLength = upstreamRes.headers.get('Content-Length')
       if (contentLength) reply.header('Content-Length', contentLength)
 
-      if (!upstreamRes.body) return reply.send('')
-      const nodeReadable = Readable.fromWeb(upstreamRes.body as import('stream/web').ReadableStream)
+      if (!streamBody) return reply.send('')
+      const nodeReadable = Readable.fromWeb(streamBody as import('stream/web').ReadableStream)
       return reply.send(nodeReadable)
     },
   )

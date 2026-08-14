@@ -20,6 +20,31 @@ function videoErrorMessage(video: HTMLVideoElement | null, httpStatus?: number):
   return 'Erreur de lecture'
 }
 
+// Named map for MediaError codes (Safari Web Inspector visibility)
+const MEDIA_ERROR_NAMES: Record<number, string> = {
+  1: 'MEDIA_ERR_ABORTED',
+  2: 'MEDIA_ERR_NETWORK',
+  3: 'MEDIA_ERR_DECODE',
+  4: 'MEDIA_ERR_SRC_NOT_SUPPORTED',
+}
+
+// Named map for readyState values
+const READY_STATE_NAMES: Record<number, string> = {
+  0: 'HAVE_NOTHING',
+  1: 'HAVE_METADATA',
+  2: 'HAVE_CURRENT_DATA',
+  3: 'HAVE_FUTURE_DATA',
+  4: 'HAVE_ENOUGH_DATA',
+}
+
+// Named map for networkState values
+const NETWORK_STATE_NAMES: Record<number, string> = {
+  0: 'NETWORK_EMPTY',
+  1: 'NETWORK_IDLE',
+  2: 'NETWORK_LOADING',
+  3: 'NETWORK_NO_SOURCE',
+}
+
 export default function PlayerPage() {
   const { mediaType, mediaId } = useParams<{ mediaType: string; mediaId: string }>()
   const [searchParams] = useSearchParams()
@@ -28,6 +53,9 @@ export default function PlayerPage() {
   const httpStatusRef = useRef<number | undefined>(undefined)
   // Tracks whether we've already attempted the compat fallback to avoid an infinite retry loop
   const isUsingCompatRef = useRef(false)
+
+  // Diagnostic: event sequence log reset on each load()
+  const eventLogRef = useRef<Array<{ event: string; t: number }>>([])
 
   const initialAvailabilityId = searchParams.get('availabilityId') ?? undefined
   const resolvedMediaType = mediaType === 'movie' ? 'movie' : 'episode'
@@ -54,6 +82,7 @@ export default function PlayerPage() {
 
     httpStatusRef.current = undefined
     isUsingCompatRef.current = false
+    eventLogRef.current = []
     setVideoError(null)
 
     const ext = containerExtension?.toLowerCase()
@@ -81,6 +110,28 @@ export default function PlayerPage() {
     }
   }, [gatewayUrl, containerExtension])
 
+  // Diagnostic: track video events for Safari Web Inspector correlation
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    const TRACKED_EVENTS = ['loadstart', 'loadedmetadata', 'canplay', 'stalled', 'waiting', 'error'] as const
+
+    function recordEvent(name: string) {
+      eventLogRef.current.push({ event: name, t: Date.now() })
+    }
+
+    const handlers = TRACKED_EVENTS.map((name) => {
+      const handler = () => recordEvent(name)
+      video.addEventListener(name, handler)
+      return { name, handler }
+    })
+
+    return () => {
+      handlers.forEach(({ name, handler }) => video.removeEventListener(name, handler))
+    }
+  }, [gatewayUrl])
+
   // Detect gateway HTTP error codes via HEAD or fetch-error event
   useEffect(() => {
     const video = videoRef.current
@@ -98,6 +149,20 @@ export default function PlayerPage() {
 
     function onError() {
       const errorCode = videoRef.current?.error?.code
+      const urlMode = isUsingCompatRef.current ? 'compat' : 'normal'
+
+      // Emit diagnostic telemetry visible in Safari Web Inspector
+      console.warn('[iptvflix:player] video error event', {
+        errorCode,
+        errorCodeName: errorCode != null ? (MEDIA_ERROR_NAMES[errorCode] ?? `unknown(${errorCode})`) : null,
+        errorMessage: videoRef.current?.error?.message ?? null,
+        readyState: videoRef.current?.readyState,
+        readyStateName: videoRef.current?.readyState != null ? (READY_STATE_NAMES[videoRef.current.readyState] ?? null) : null,
+        networkState: videoRef.current?.networkState,
+        networkStateName: videoRef.current?.networkState != null ? (NETWORK_STATE_NAMES[videoRef.current.networkState] ?? null) : null,
+        urlMode,
+        eventSequence: eventLogRef.current.map((e) => `${e.event}+${e.t - (eventLogRef.current[0]?.t ?? e.t)}ms`),
+      })
 
       // On decode/unsupported error: try compat fallback automatically before showing an error
       if (
@@ -106,6 +171,7 @@ export default function PlayerPage() {
         !isUsingCompatRef.current
       ) {
         isUsingCompatRef.current = true
+        eventLogRef.current = []
         const video = videoRef.current
         if (video) {
           video.src = compatUrl
@@ -182,6 +248,7 @@ export default function PlayerPage() {
             message={videoError}
             onRetry={() => {
               isUsingCompatRef.current = false
+              eventLogRef.current = []
               setVideoError(null)
               const video = videoRef.current
               if (video && gatewayUrl) {

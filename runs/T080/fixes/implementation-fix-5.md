@@ -1,0 +1,128 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T080/reviews/implementation-review.md
+- generated at: 2026-08-14T16:46:08Z
+
+---
+
+I now have a complete picture of the implementation. Let me write the review.
+
+---
+
+# PR Review — T080: Diagnose Safari/iOS Playback Failure
+
+## Résumé
+
+T080 est un ticket **purement diagnostique** dont le livrable est un rapport d'analyse fondé sur des preuves de production réelles (`runs/T080/diagnosis.md`). L'implémentation a déployé une infrastructure d'instrumentation solide (logging backend, télémétrie frontend, route de diagnostic Railway, script local) et a identifié un défaut structurel via analyse statique du code. Cependant, **toutes les sections d'evidence de production dans `diagnosis.md` restent `<PENDING>`** — aucune session Safari/iOS réelle n'a été tracée, aucune métadonnée de stream upstream n'a été collectée, et la présence de ffmpeg sur Railway n'a pas été vérifiée.
+
+---
+
+## Vérifications effectuées
+
+- Lecture complète de `runs/T080/diagnosis.md`
+- Lecture de `apps/api/src/routes/playback.ts` (instrumentation backend)
+- Lecture de `apps/api/src/routes/diagnostics.ts` (route Railway)
+- Lecture de `apps/web/src/pages/PlayerPage.tsx` (télémétrie Safari)
+- Lecture de `apps/api/scripts/diagnose-stream.mjs` (script diagnostic local)
+- Lecture du plan `runs/T080/plan.md`
+- `git diff main --stat` pour vérifier le périmètre réel des changements
+
+---
+
+## Points validés
+
+**1. Instrumentation backend (`playback.ts`)** — Correcte et complète :
+- `runFfmpegStream()` extrait proprement et loggue : PID, args sanitisés (`-i <stdin>`), exit code/signal, stderr tail (20 lignes), `msToFirstByte`, `ffmpegAliveAtDisconnect`.
+- Upstream headers loggués : Content-Type, Content-Length, Transfer-Encoding.
+- Signature des premiers 16 bytes du body upstream (détecte les pages HTML d'erreur).
+- Headers envoyés au browser loggués pour chaque mode (`compat-direct-hls`, `compat-direct-mp4`, `compat-remux`, `compat-transcode-*`).
+- `logCtx` cohérent (`sessionId`, `mediaId`, `availabilityId`, `sourceId`, `containerExtension`) sur toutes les lignes.
+- Probe failure path loggué avec `extensionFallbackRoute`.
+
+**2. Télémétrie frontend (`PlayerPage.tsx`)** — Correcte :
+- `console.warn` avec `errorCode`, `errorCodeName`, `readyState`, `networkState`, `urlMode`, `eventSequence` (timestamps relatifs).
+- Guard `isUsingCompatRef` évite la boucle de retry infinie.
+- Aucun secret ou URL provider exposé dans le log.
+
+**3. Route de diagnostic (`diagnostics.ts`)** — Correcte :
+- Guard `RAILWAY_ENVIRONMENT` empêche l'exposition sur les environnements locaux.
+- Retourne ffmpeg/ffprobe path + version + tmp writability + PATH résolu.
+- Timeout de 10s sur les execs shell.
+- Sécurité : ne logue pas les credentials, expose uniquement path/version/mem.
+
+**4. Script local (`diagnose-stream.mjs`)** — Pertinent :
+- Réplique exactement le pipeline de production (`fetch → pipe → ffmpeg stdin`).
+- Couvre les Sections 2/3/4/6 sans nécessiter Railway.
+- URL provider jamais émise dans le JSON de sortie.
+
+**5. Candidate 1 — Défaut structurel identifié par analyse statique** :
+- `playback.ts:207` : `const useCompat = request.query.compat === '1' || isSafariOrIOS(userAgent)` — pour tout UA Safari, le `gatewayUrl` initial ET le retry `compatUrl` (`?compat=1`) suivent le chemin identique. Le "fallback compat" frontend est structurellement inerte sur Safari.
+- Correctement documenté avec les références de code exactes.
+
+---
+
+## Problèmes détectés
+
+### [BLOQUANT] Toutes les sections d'evidence de production sont PENDING
+
+Le rapport `diagnosis.md` lui-même annonce : _"awaiting production trace for Sections 1/5/7/8 evidence fields"_. Les sections suivantes ne contiennent que `<PENDING>` :
+
+- **Section 1** — aucune session réelle tracée (`sessionId`, `availabilityId`, `deliveryMode`, `ffmpegExitCode`, `Safari errorCode`… tous PENDING)
+- **Section 2** — métadonnées upstream non collectées (`containerFormat`, `videoCodec`, `audioCodec`… tous PENDING)
+- **Section 3** — mode `classifyDelivery()` réel non observé (PENDING)
+- **Section 4** — exécution ffmpeg non capturée (PENDING)
+- **Section 5** — headers HTTP réels reçus par Safari non enregistrés (PENDING)
+- **Section 6** — validité indépendante de la sortie compat non vérifiée (PENDING)
+- **Section 7** — MediaError Safari non capturé (PENDING)
+- **Section 8** — présence ffmpeg/ffprobe sur Railway non vérifiée (PENDING)
+
+**Critères d'acceptation du ticket directement violés :**
+> "A real production-like failing iPhone/Safari stream has been traced end-to-end."  
+> "Railway ffmpeg/ffprobe deployment is verified, not assumed."  
+> "Ticket is NOT marked complete merely because automated compatibility unit tests pass."
+
+Ce dernier point s'applique par analogie à l'analyse statique : la Candidate 1 est une observation de code valide, mais le ticket exige des preuves de production, pas seulement une inférence architecturale.
+
+### [BLOQUANT] Root cause non confirmée par les preuves requises
+
+La Candidate 1 est très vraisemblable mais n'est pas encore la "root cause unambiguous statement" exigée. Le rapport admet lui-même qu'une session de production est nécessaire pour identifier quel sous-échec du chemin compat se produit (probe timeout, ffmpeg exit non-zéro, fMP4 malformé, Content-Type mismatch). Sans cette information, le ticket de correction ne peut pas cibler le bon problème.
+
+### [MINEUR] Double import dans `diagnose-stream.mjs`
+
+`execFile` est importé deux fois (lignes 22 et 23 sont deux `import { ... } from 'node:child_process'`). N'affecte pas le fonctionnement mais doit être corrigé.
+
+### [MINEUR] `classifyDelivery` dupliqué dans le script local
+
+Le script `diagnose-stream.mjs` duplique la logique de `playback-compat.ts` en inline. Si la logique évolue, la copie locale divergera. Acceptable pour un script de diagnostic temporaire, mais à noter.
+
+---
+
+## Risques éventuels
+
+- **Route `/api/diagnostics/env` non authentifiée** : L'URL est devinable, et bien que les informations exposées (PATH, versions binaires, mémoire) ne contiennent pas de credentials, elles donnent une vue de l'infrastructure à un attaquant potentiel. Le guard `RAILWAY_ENVIRONMENT` est correct mais insuffisant pour une production partagée. La note dans le rapport reconnaît ce risque et prévoit la suppression dans le ticket de correction — acceptable comme mesure temporaire strictement bornée.
+- **`diagnose-stream.mjs` non exécuté** : Le script existe mais les Sections 2/3/4/6 qui devaient être collectables localement ne l'ont pas été. Ces sections auraient pu être remplies sans Railway.
+
+---
+
+## Décision
+
+- REQUEST_CHANGES
+
+---
+
+## Actions demandées
+
+**Obligatoires avant approbation :**
+
+1. **Exécuter le script local** sur au moins un stream Xtream réel (même en environnement local avec les credentials du provider) et remplir les sections 2, 3, 4 et 6 de `diagnosis.md` avec les résultats réels. Ces sections ne nécessitent pas de Railway.
+
+2. **Déployer la branche sur Railway** et appeler `GET /api/diagnostics/env` pour remplir la Section 8 (présence confirmée ou non de ffmpeg/ffprobe).
+
+3. **Tracer une session réelle en échec sur iPhone Safari** avec Safari Web Inspector connecté, puis remplir les Sections 1, 5 et 7 de `diagnosis.md` avec les valeurs réelles (errorCode, urlMode, eventSequence, responseContentType, ffmpegExitCode, etc.).
+
+4. **Formuler une root cause unambiguë** sous la forme d'une phrase unique dans le rapport (ex: _"ffmpeg spawns successfully but exits with code 1 on TS streams because of missing sync frame in the first 2 seconds"_ ou _"compat fallback is structurally inert on Safari — both gatewayUrl and compatUrl follow the identical compat code path"_), fondée sur les preuves collectées aux points 1–3.
+
+5. **Corriger le double import** dans `diagnose-stream.mjs`.
+
+IMPLEMENTATION_FIX_REQUIRED

@@ -1,0 +1,142 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T080/reviews/implementation-review.md
+- generated at: 2026-08-14T16:50:42Z
+
+---
+
+# PR Review — T080 — Diagnose production Safari/iOS playback failure after compatibility fallback
+
+## Résumé
+
+T080 est un ticket **diagnostic uniquement**. Le livrable attendu est un rapport de root-cause basé sur des preuves issues d'une vraie session de lecture iPhone/Safari sur Railway, PAS sur une analyse statique du code. L'implémentation livre une infrastructure d'instrumentation complète (routes, services, tests) et un rapport `diagnosis.md` dont les 8 sections de preuves sont intégralement `<PENDING>`. Les critères d'acceptation requis par le ticket ne sont pas satisfaits.
+
+---
+
+## Vérifications effectuées
+
+- Lecture du ticket T080 complet (description, critères d'acceptation)
+- Lecture de `runs/T080/diagnosis.md`
+- Review de tous les fichiers modifiés sur la branche vs `main` : `playback.ts`, `playback-compat.ts`, `media-prober.ts`, `probe-cache.ts`, `playback-session-store.ts`, `playback-resolver.ts`, `diagnostics.ts`, `PlayerPage.tsx`, `diagnose-stream.mjs`, `nixpacks.toml`
+- Vérification de la couverture de test produite
+- Comparaison du contenu du rapport `diagnosis.md` avec les critères d'acceptation
+
+---
+
+## Points validés
+
+- **Instrumentation backend cohérente** : `sessionId`, `availabilityId`, `sourceId`, `deliveryMode`, headers upstream/réponse, signature hex, PID/exitCode/stderr ffmpeg — tous loggés et sanitisés (pas de credentials dans les logs).
+- **Télémétrie frontend correcte** : `console.warn` dans `PlayerPage.tsx` capture `errorCode`, `readyState`, `networkState`, `urlMode`, `eventSequence` sans exposer de secrets.
+- **Script local `diagnose-stream.mjs`** : réplique fidèlement le pipeline production et permettrait de collecter les sections 2/3/4/6 sans Railway.
+- **Route `/api/diagnostics/env`** : conception adéquate pour vérifier la présence de ffmpeg/ffprobe au runtime Railway.
+- **Candidate 1 logiquement cohérent** : `useCompat = request.query.compat === '1' || isSafariOrIOS(userAgent)` implique effectivement que les deux tentatives Safari suivent le même code path. C'est un défaut structurel réel.
+- **Structure du rapport** : bien organisée, avec instructions de collecte claires pour chaque section.
+
+---
+
+## Problèmes détectés
+
+### Bloquant 1 — Livrable principal absent : zéro preuve de production
+
+Le ticket stipule explicitement :
+
+> *"Do not close this ticket with only unit-test evidence or an architectural assumption. The deliverable is an evidence-backed diagnosis that directly determines the correction ticket."*
+
+Le rapport `runs/T080/diagnosis.md` a **tous les champs de preuve à `<PENDING>`** :
+
+```
+Section 1  — sessionId, deliveryMode, ffmpegExitCode, Safari errorCode : <PENDING>
+Section 2  — containerFormat, videoCodec, audioCodec, duration :         <PENDING>
+Section 3  — classifyDelivery résultat réel :                            <PENDING>
+Section 4  — ffmpegPid, exitCode, stderrTail, msToFirstByte :           <PENDING>
+Section 5  — responseContentType, httpStatus, Transfer-Encoding :        <PENDING>
+Section 6  — outputIsValidMedia, outputContainer :                       <PENDING>
+Section 7  — errorCode (URL normale/compat), eventSequence Safari :      <PENDING>
+Section 8  — ffmpegPresent, ffmpegVersion (runtime Railway) :            <PENDING>
+```
+
+La seule affirmation marquée `CONFIRMED` est le Candidate 1 — une déduction issue du code, présentée comme preuve alors que le ticket interdit explicitement cette approche. Aucune des 11 cases d'acceptation listées dans le ticket n'est cochée.
+
+### Bloquant 2 — Violation de scope : implémentation fonctionnelle dans un ticket purement diagnostique
+
+Le ticket autorise uniquement *"a tiny instrumentation fix required to obtain evidence"*. L'implémentation a produit :
+
+| Fichier | Nature | Scope |
+|---|---|---|
+| `playback-compat.ts` (62 lignes) | Classification de delivery + construction des args ffmpeg | **Correction ticket** |
+| `media-prober.ts` (45 lignes) | Service ffprobe complet | **Correction ticket** |
+| `probe-cache.ts` (21 lignes) | Cache avec TTL 24h | **Correction ticket** |
+| `playback-session-store.ts` (43 lignes) | Session store | **Correction ticket** |
+| `playback.ts` (477 lignes, réécrit) | Route complète refactorisée | Partiellement instrumentation |
+| 7 fichiers de tests + E2E | Suite de tests complète | **Correction ticket** |
+
+Ces services constituent la **correction** du problème T079/T080, pas son diagnostic. Ils seront potentiellement en conflit ou redondants avec le ticket de correction qui suivra.
+
+### Bloquant 3 — Critères d'acceptation non satisfaits
+
+Le ticket liste 11 critères. Aucun n'est satisfait avec des preuves réelles :
+
+- [ ] Real iPhone/Safari stream traced end-to-end → non fait
+- [ ] Actual upstream container/codecs known → non fait
+- [ ] Actual compatibility mode selected known → non fait
+- [ ] ffmpeg execution result known → non fait
+- [ ] HTTP/MIME output delivered by compat gateway known → non fait
+- [ ] Compat output is valid media known → non fait
+- [ ] Safari media error/event evidence captured → non fait
+- [ ] Railway ffmpeg/ffprobe verified (not assumed) → non fait (build config ≠ runtime)
+- [ ] Root cause stated unambiguously with evidence → non fait (hypothèse code)
+- [ ] Concrete correction plan exists → partiel (multiple candidates)
+- [ ] NOT closed merely because unit tests pass → violé
+
+### Mineur — Route diagnostics non protégée
+
+`GET /api/diagnostics/env` est publiquement accessible sur Railway (guard `RAILWAY_ENVIRONMENT` insuffisant). Expose PATH, versions binaires, mémoire disponible. Acceptable temporairement mais doit être retiré avant merge — rappel bien noté dans le rapport, mais bloquant si déployé en production sans suivi immédiat.
+
+---
+
+## Risques éventuels
+
+- **Conflit avec le ticket de correction** : `playback-compat.ts`, `media-prober.ts` et la réécriture de `playback.ts` vont directement entrer en conflit ou dupliquer le travail du ticket suivant.
+- **Diagnostic jamais complété** : si ce ticket est approuvé tel quel, les preuves de production ne seront jamais collectées, et le ticket de correction sera basé sur des hypothèses — exactement ce que T080 est censé éviter.
+- **Tests valident du code non encore validé en production** : la suite de tests unitaires couvre `classifyDelivery` et `buildFfmpegArgs`, mais ces fonctions n'ont pas encore été confirmées correctes pour les streams réels Xtream (le Candidate 3 mentionne que ffmpeg peut produire une sortie invalide).
+
+---
+
+## Décision
+
+- REQUEST_CHANGES
+
+---
+
+## Actions demandées
+
+### Obligatoire — Collecter les preuves de production manquantes
+
+Le script `diagnose-stream.mjs` est prêt. Il faut maintenant l'exécuter avec une vraie URL Xtream défaillante et remplir les sections 2, 3, 4, 6 du rapport. Pour les sections 1, 5, 7, 8 : déployer sur Railway et tester sur iPhone Safari réel avec Web Inspector connecté.
+
+Le rapport ne peut pas rester avec tous les champs `<PENDING>`. Le diagnostic n'est pas terminé.
+
+### Obligatoire — Retirer le code fonctionnel du scope de ce ticket
+
+Les fichiers suivants dépassent le scope diagnostic et doivent être soit retirés de cette PR, soit déplacés vers le ticket de correction :
+- `apps/api/src/services/playback-compat.ts`
+- `apps/api/src/services/media-prober.ts`
+- `apps/api/src/services/probe-cache.ts`
+- `apps/api/src/services/playback-session-store.ts`
+- Tous les fichiers `*.test.ts` ajoutés pour ces services
+- La réécriture complète de `playback.ts` — conserver uniquement l'instrumentation de logging
+
+Ce ticket doit livrer : instrumentation minimale + preuves collectées + rapport complété. La correction vient après.
+
+### Obligatoire — Compléter la section 8 (Railway runtime)
+
+`nixpacks.toml` confirme la configuration du build, pas la présence au runtime. Déployer, appeler `/api/diagnostics/env`, coller la réponse dans la section 8.
+
+### Recommandé — Reformuler le Candidate 1 comme hypothèse, non comme "CONFIRMED"
+
+Le Candidate 1 est une déduction logiquement valide mais reste une hypothèse jusqu'à ce qu'une trace réelle confirme que la session Safari prend bien le chemin compat dès la première requête. Marquer `CONFIRMED FROM CODE — AWAITING RUNTIME VERIFICATION` plutôt que `CONFIRMED`.
+
+---
+
+IMPLEMENTATION_FIX_REQUIRED

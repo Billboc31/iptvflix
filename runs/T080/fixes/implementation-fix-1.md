@@ -1,0 +1,133 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T080/reviews/implementation-review.md
+- generated at: 2026-08-14T16:15:04Z
+
+---
+
+Now I have everything I need. Let me write the structured review.
+
+---
+
+# PR Review — T080
+
+## Résumé
+
+L'implémentation ajoute de l'instrumentation de diagnostic bien conçue (backend logs, telemetry Safari, route Railway, script env) et une analyse statique du code qui identifie deux défauts structurels plausibles. Cependant, le `diagnosis.md` contient **zéro evidence de production** — tous les champs de Section 1 à 8 sont explicitement `<PENDING>`. Le ticket exige une "evidence-backed diagnosis" avec au moins une session réelle tracée, les codecs réels connus par ffprobe, le mode de delivery confirmé, et une cause racine énoncée en une seule phrase non-ambiguë. Aucune de ces conditions n'est remplie.
+
+---
+
+## Vérifications effectuées
+
+- Lecture complète de `runs/T080/plan.md` et `runs/T080/diagnosis.md`
+- Relecture de `apps/api/src/routes/playback.ts` (complet)
+- Relecture de `apps/web/src/pages/PlayerPage.tsx` (complet)
+- Relecture de `apps/api/src/routes/diagnostics.ts` (complet)
+- Vérification de la conformité au plan et aux critères d'acceptance du ticket
+
+---
+
+## Points validés
+
+**Instrumentation backend (`playback.ts`) — correcte**
+
+- `runFfmpegStream()` est une extraction propre qui centralise le logging ffmpeg. Les champs couverts (`ffmpegPid`, `ffmpegArgs` sanitized, `ffmpegExitCode`, `ffmpegExitSignal`, `ffmpegStderrTail`, `msToFirstByte`, `ffmpegAliveAtDisconnect`) correspondent exactement aux exigences du plan.
+- Sanitisation des arguments ffmpeg : `-i <stdin>` au lieu de l'URL réelle — correct.
+- Le peek des 16 premiers bytes upstream (`upstreamFirstBytesHex`) via `tee()` avec fallback gracieux est techniquement solide.
+- Les log lines `upstream response headers` et `response headers to browser` couvrent les champs HTTP requis.
+- `logCtx = { sessionId, mediaId, availabilityId, sourceId, containerExtension }` garantit la corrélabilité.
+
+**Telemetry frontend (`PlayerPage.tsx`) — correcte**
+
+- `eventLogRef` resetté à chaque `load()` — logique de timing correcte.
+- `console.warn` visible dans Safari Web Inspector avec `errorCode`, `readyStateName`, `networkStateName`, `urlMode`, `eventSequence` — conforme au plan.
+- Aucun appel serveur, aucune URL exposée dans les logs.
+
+**Route diagnostique (`diagnostics.ts`) — acceptable**
+
+- Guard `process.env.RAILWAY_ENVIRONMENT` → 404 hors Railway.
+- `execFile` (pas `exec`) — pas d'injection shell.
+- Marqué comme temporaire, suppression prévue dans le ticket correctif.
+
+**Découverte code-level de valeur (Candidate 1)**
+
+L'observation Section 3 est confirmée par lecture de `playback.ts:207` :
+
+```typescript
+const useCompat = request.query.compat === '1' || isSafariOrIOS(userAgent)
+```
+
+Safari UA active `useCompat = true` dès la première requête sur `gatewayUrl`. Le retry frontend sur `compatUrl` (`?compat=1`) passe par le **même** code path compat. Les deux tentatives sont comportementalement identiques. C'est un défaut structurel réel, identifiable par analyse statique seule.
+
+---
+
+## Problèmes détectés
+
+### Bloquant 1 — diagnosis.md vide d'evidence : critères d'acceptance non atteints
+
+Le ticket exige explicitement :
+
+> "Do not close this ticket with only unit-test evidence or an architectural assumption. The deliverable is an evidence-backed diagnosis."
+
+Le plan exige (entre autres) :
+
+> "At least one real failing Xtream Movie or Episode stream is traced with a correlated `sessionId`, `availabilityId`, `sourceId`, and `containerExtension`."
+> "Root cause is stated as a single unambiguous sentence."
+
+Le `diagnosis.md` :
+- Header : `Status: Instrumentation deployed — awaiting production trace` — reconnaissance explicite que l'evidence n'a pas été collectée
+- Sections 1–8 : **tous les champs sont `<PENDING>`**
+- Section 9 : "Root cause candidates ranked by probability" — des hypothèses, pas une cause racine confirmée
+
+Les steps 4 et 5 du plan (probe ffprobe d'un vrai stream Xtream, validation indépendante de l'output compat via curl+ffprobe) **n'ont pas été exécutés**.
+
+L'implémentation a livré la Phase 1 (instrumentation) mais pas la Phase 2 (collecte d'evidence) ni la Phase 3 (rapport rempli).
+
+### Bloquant 2 — Gap de couverture diagnostique sur le chemin probe-fail
+
+Le code (`playback.ts:224–251`) montre : si `probeMedia()` lève une exception, `deliveryMode` reste `null` et le code **tombe dans le legacy extension path** (lignes 392–488). Ce legacy path contient encore l'ancien spawn ffmpeg avec :
+
+```typescript
+// playback.ts:439
+ffmpeg.stderr.on('data', () => {
+  // discard ffmpeg stderr to avoid log noise
+})
+```
+
+Le nouveau `runFfmpegStream()` avec logging complet n'est utilisé que si `deliveryMode !== null`. Si ffprobe échoue sur Railway (absent, timeout, provider redirige vers HTML) — scénario plausible — toute la valeur du logging ffmpeg est bypassée. Le diagnostic capture le probe failure (`extensionFallbackRoute`) mais rate ensuite le comportement ffmpeg dans ce chemin, qui est potentiellement le cas d'échec le plus fréquent.
+
+### Mineur — Route diagnostique non authentifiée
+
+`GET /api/diagnostics/env` est unauthentifiée : tout client connaissant l'URL sur Railway peut interroger PATH, versions, mémoire. L'information n'est pas critique (pas de credentials), mais ce n'est pas anodin pour un endpoint public. La guard `RAILWAY_ENVIRONMENT` limite le risque à l'environnement Railway. Acceptable pour une route temporaire, mais à documenter explicitement comme limitation dans le rapport.
+
+---
+
+## Risques éventuels
+
+- **Régression streaming** : l'opération `tee()` sur `streamBody` (`playback.ts:313-324`) introduit une dépendance à l'implémentation de `ReadableStream.tee()` du runtime Node.js. Le fallback silencieux (`catch {}`) est présent, mais si `tee()` fonctionne partiellement, le stream principal pourrait être altéré. Risque faible compte tenu du fallback, à monitorer.
+- **Back-pressure** : le `stderrLines.splice(0, ...)` (ligne 86) pour garder les 20 dernières lignes est correct mais exécuté sur chaque chunk — potentiellement fréquent pour ffmpeg verbeux. Impact négligeable en pratique.
+
+---
+
+## Décision
+
+- REQUEST_CHANGES
+
+## Actions demandées
+
+### Obligatoires (bloquants)
+
+1. **Déployer sur Railway et exécuter le protocole d'evidence** : appeler `GET /api/diagnostics/env` pour confirmer ffmpeg/ffprobe, tracer une session Safari réelle avec les Railway logs, capturer les champs Web Inspector, remplir toutes les sections PENDING du `diagnosis.md`.
+
+2. **Remplir diagnosis.md avec l'evidence réelle** : chaque section doit contenir des valeurs observées, pas des templates. La Section 9 doit aboutir à **une phrase de cause racine non-ambiguë** avec l'evidence à l'appui.
+
+3. **Corriger le gap de logging sur le chemin probe-fail** : dans le legacy extension path (`playback.ts:424-476`), remplacer le `ffmpeg.stderr.on('data', () => {})` silencieux par un collecteur analogue à `runFfmpegStream` — ou extraire ce chemin dans `runFfmpegStream` pour unifier la couverture diagnostique.
+
+### Non-bloquant
+
+4. Documenter dans `diagnosis.md` Section 8 (Railway prerequisites) que la route `/api/diagnostics/env` est unauthentifiée et que l'accès doit être restreint ou le chemin rendu non-devinable si le deployment est public.
+
+---
+
+IMPLEMENTATION_FIX_REQUIRED
