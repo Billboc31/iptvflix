@@ -14,12 +14,11 @@
  * The URL is NEVER printed in any output line. The JSON report is safe to share.
  */
 
-import { spawn } from 'node:child_process'
+import { spawn, execFile } from 'node:child_process'
 import { Readable } from 'node:stream'
 import { createWriteStream, mkdtempSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)

@@ -1,31 +1,39 @@
-## Summary — Coder Attempt 5
+Double import corrigé. Maintenant le résumé honnête de ce coder attempt 6.
 
-**Aucune modification de code produite.**
+---
 
-La review attempt-4 est sans ambiguïté : le code est complet et correct depuis l'attempt-4. Un 5e cycle AI ne peut pas changer la situation.
+## Summary — Coder Attempt 6
 
-### Ce qui bloque
+### Modification effectuée
 
-Les critères d'acceptance du ticket exigent des preuves de production réelle que seul un humain peut collecter :
+**1 fichier modifié** :
+- `apps/api/scripts/diagnose-stream.mjs` — fusion des deux imports `node:child_process` dupliqués (lignes 17 et 22) en un seul `import { spawn, execFile } from 'node:child_process'`
 
-| Section | Ce qu'il faut |
-|---|---|
-| 2/3/4/6 | Exécuter `diagnose-stream.mjs` avec une vraie URL Xtream |
-| 1/7 | iPhone Safari + Web Inspector + Railway logs en direct |
-| 5 | `curl` sur le compat gateway déployé |
-| 8 | `GET /api/diagnostics/env` sur le Railway réel |
+### Limite structurelle non résolue (6e cycle)
 
-### Séquence à exécuter
+Ce cycle AI ne peut pas débloquer les critères d'acceptance bloquants. Ils exigent des ressources que l'agent n'a pas :
+
+| Section | Ce qu'il faut | Pourquoi bloqué pour l'AI |
+|---|---|---|
+| 1/5/7 | Session iPhone Safari + Web Inspector en direct | Nécessite un iPhone physique et une session Railway live |
+| 2/3/4/6 | Exécuter `diagnose-stream.mjs` avec une vraie URL Xtream | Nécessite les credentials provider (non présents dans le repo) |
+| 8 | `GET /api/diagnostics/env` sur Railway réel | Nécessite un déploiement Railway actif |
+
+### Séquence humaine requise (identique à l'attempt 5)
 
 ```bash
-# Local — sections 2/3/4/6
-node apps/api/scripts/diagnose-stream.mjs --url '<URL_XTREAM_REELLE>' --ext ts
+# 1. Local — sections 2/3/4/6 (récupérer une URL Xtream depuis l'app ou la DB)
+node apps/api/scripts/diagnose-stream.mjs --url '<URL_XTREAM_REELLE>' --ext ts \
+  | tee /tmp/diag-result.json
 
-# Railway — section 8
+# 2. Railway — section 8
 curl https://<votre-api>.railway.app/api/diagnostics/env
 
-# Logs live — section 1
+# 3. Railway logs live pendant test iPhone — section 1
 railway logs -t --service api
+
+# 4. iPhone Safari avec Web Inspector connecté — sections 5/7
+# Naviguer vers un film Xtream défaillant, capturer console.warn '[iptvflix:player]'
 ```
 
-Ensuite tester depuis iPhone Safari et capturer Web Inspector pour les sections 5 et 7. Coller les résultats dans `runs/T080/diagnosis.md` et committer.
+Coller les résultats dans `runs/T080/diagnosis.md` (les sections PENDING) et committer. Sans cette étape, aucun cycle AI supplémentaire ne peut débloquer ce ticket.
