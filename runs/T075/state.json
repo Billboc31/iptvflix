@@ -3,8 +3,22 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T075-add-canonical-similar-title-recommendations-to-eve",
   "issue_number": 153,
-  "updated_at": "2026-08-14T08:21:07Z",
-  "pre_conflict_state": "IMPLEMENTATION_FIX_REQUIRED",
-  "conflict_detected_at": "2026-08-14T08:02:16Z",
-  "conflicted_files": []
+  "updated_at": "2026-08-14T08:27:49Z",
+  "pre_conflict_state": "TEST_COMPLETE",
+  "conflict_detected_at": "2026-08-14T08:22:33Z",
+  "conflicted_files": [
+    "apps/api/src/index.ts",
+    "apps/api/src/lib/parse-year.ts",
+    "apps/api/src/providers/metadata/tmdb/client.ts",
+    "apps/api/src/routes/__tests__/similar-titles.test.ts",
+    "apps/api/src/routes/movies.ts",
+    "apps/api/src/routes/series.ts",
+    "apps/api/src/services/__tests__/similar-titles-service.test.ts",
+    "apps/api/src/services/catalog-service.ts",
+    "apps/api/src/services/not-found-error.ts",
+    "apps/api/src/services/similar-titles-service.ts"
+  ],
+  "pr_number": 159,
+  "pr_synced": true,
+  "conflict_pr_number": 159
 }
