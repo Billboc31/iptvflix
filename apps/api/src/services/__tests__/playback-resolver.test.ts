@@ -461,11 +461,15 @@ describe('secret redaction', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation((msg: string) => {
       logged.push(String(msg))
     })
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation((msg: string) => {
+      logged.push(String(msg))
+    })
 
     const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1')
 
     consoleSpy.mockRestore()
     errorSpy.mockRestore()
+    infoSpy.mockRestore()
 
     // Verify no logged message contains the credential-bearing URL
     for (const entry of logged) {

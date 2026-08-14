@@ -6,6 +6,7 @@ export type PlaybackResolveRequest = {
 
 export type PlaybackSessionResponse = {
   gatewayUrl: string
+  containerExtension: string
   availabilityId: string
   startPositionSeconds: number
   alternatives: AvailabilityVariantResponse[]

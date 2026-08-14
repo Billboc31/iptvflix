@@ -18,6 +18,42 @@ const REMUX_EXTENSIONS = new Set(['ts', 'mkv', 'avi', 'flv', 'wmv'])
 const PASSTHROUGH_EXTENSIONS = new Set(['mp4', 'm3u8', 'm3u'])
 
 
+function rewriteHlsManifest(manifest: string, sessionId: string, manifestUrl: string): string {
+  // Resolve a segment URI (relative or absolute) to an absolute URL
+  function toAbsolute(uri: string): string {
+    if (uri.startsWith('http://') || uri.startsWith('https://')) return uri
+    try {
+      const base = new URL(manifestUrl)
+      // Resolve relative to the directory of the manifest URL
+      return new URL(uri, base).toString()
+    } catch {
+      return uri
+    }
+  }
+
+  function proxyUri(uri: string): string {
+    const abs = toAbsolute(uri)
+    const encoded = Buffer.from(abs).toString('base64url')
+    return `/api/playback/stream/${sessionId}/segment?uri=${encoded}`
+  }
+
+  return manifest
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim()
+      if (!trimmed) return line
+
+      // Lines starting with # may contain URI="..." attributes
+      if (trimmed.startsWith('#')) {
+        return line.replace(/URI="([^"]+)"/g, (_match, uri: string) => `URI="${proxyUri(uri)}"`)
+      }
+
+      // Plain segment URI line
+      return proxyUri(trimmed)
+    })
+    .join('\n')
+}
+
 export async function playbackRoutes(app: FastifyInstance): Promise<void> {
   app.post<{
     Params: { mediaType: string; mediaId: string }
@@ -122,12 +158,13 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
 
       const ext = containerExtension.toLowerCase()
 
-      // HLS manifest pass-through
+      // HLS manifest pass-through with segment URL rewriting
       if (ext === 'm3u8' || ext === 'm3u') {
-        app.log.info({ ...logCtx }, 'playback-gateway: hls pass-through')
+        app.log.info({ ...logCtx }, 'playback-gateway: hls pass-through with segment rewrite')
         reply.header('Content-Type', 'application/vnd.apple.mpegurl')
         const body = await upstreamRes.text()
-        return reply.status(upstreamRes.status).send(body)
+        const rewritten = rewriteHlsManifest(body, sessionId, providerStreamUrl)
+        return reply.status(upstreamRes.status).send(rewritten)
       }
 
       // MP4 pass-through with Range support
@@ -202,7 +239,6 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         ffmpeg.stdout.pipe(outputStream)
 
         reply.header('Content-Type', 'video/mp4')
-        reply.header('Transfer-Encoding', 'chunked')
         reply.status(200)
         return reply.send(outputStream)
       }
@@ -217,6 +253,65 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
       if (!upstreamRes.body) return reply.send('')
       const nodeReadable = Readable.fromWeb(upstreamRes.body as import('stream/web').ReadableStream)
       return reply.send(nodeReadable)
+    },
+  )
+
+  // HLS segment proxy — fetches an individual segment on behalf of the client,
+  // keeping provider credentials server-side and avoiding CORS/mixed-content issues.
+  app.get<{ Params: { sessionId: string }; Querystring: { uri?: string } }>(
+    '/playback/stream/:sessionId/segment',
+    async (request, reply) => {
+      const { sessionId } = request.params
+      const { uri } = request.query
+
+      if (!uri) {
+        return reply.status(400).send({ error: 'Missing uri parameter' })
+      }
+
+      const session = getSession(sessionId)
+      if (!session) {
+        return reply.status(404).send({ error: 'Playback session not found or expired' })
+      }
+
+      let segmentUrl: string
+      try {
+        segmentUrl = Buffer.from(uri, 'base64url').toString('utf8')
+      } catch {
+        return reply.status(400).send({ error: 'Invalid uri encoding' })
+      }
+
+      if (!segmentUrl.startsWith('http://') && !segmentUrl.startsWith('https://')) {
+        return reply.status(400).send({ error: 'Invalid segment URL' })
+      }
+
+      const logCtx = { sessionId, mediaId: session.mediaId, segmentUrl: segmentUrl.slice(0, 80) }
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS)
+      request.raw.on('close', () => controller.abort())
+
+      let upstreamRes: Response
+      try {
+        upstreamRes = await fetch(segmentUrl, { signal: controller.signal })
+        clearTimeout(timeoutId)
+      } catch (err) {
+        clearTimeout(timeoutId)
+        const isAbort = err instanceof Error && err.name === 'AbortError'
+        app.log.warn({ ...logCtx }, `playback-gateway: segment ${isAbort ? 'timeout' : 'fetch error'}`)
+        return reply.status(504).send({ error: 'Fournisseur ne répond pas' })
+      }
+
+      if (!upstreamRes.ok) {
+        app.log.warn({ ...logCtx, upstreamStatus: upstreamRes.status }, 'playback-gateway: segment upstream error')
+        return reply.status(upstreamRes.status).send({ error: 'Segment unavailable' })
+      }
+
+      reply.header('Content-Type', upstreamRes.headers.get('Content-Type') ?? 'video/MP2T')
+      const contentLength = upstreamRes.headers.get('Content-Length')
+      if (contentLength) reply.header('Content-Length', contentLength)
+
+      if (!upstreamRes.body) return reply.send('')
+      return reply.send(Readable.fromWeb(upstreamRes.body as import('stream/web').ReadableStream))
     },
   )
 }

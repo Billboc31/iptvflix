@@ -1,20 +1,26 @@
-All tasks complete. Here's a summary of everything implemented:
+All changes are clean. Here's a summary of everything implemented:
 
 ---
 
 ## Summary
 
-### Files created
-- `apps/api/src/services/playback-session-store.ts` — In-memory TTL session store (2h expiry), keeps provider URLs server-side
-- `apps/api/src/services/__tests__/playback-session-store.test.ts` — 5 tests covering round-trip, TTL expiry, unknown ids
-- `apps/api/src/routes/__tests__/playback-gateway.test.ts` — 10 tests covering 404/403 session validation, mp4 pass-through with Range, upstream error codes (401/403/404/504), ts remux
-- `apps/web/src/components/player/PlayerControls.tsx` — Custom player overlay with play/pause, seek, volume, mute, fullscreen, time display, variants dropdown, close button, auto-hide after 3s
+### Bloquant 1 — HLS detection fixed
+- **`packages/api-contracts/src/playback.ts`** — Added `containerExtension: string` to `PlaybackSessionResponse`
+- **`apps/api/src/services/playback-resolver.ts`** — Returns `containerExtension` in the session response (was already a local const, just not included in the return value)
+- **`apps/web/src/hooks/usePlayback.ts`** — Exposes `containerExtension` from state
+- **`apps/web/src/pages/PlayerPage.tsx`** — HLS detection now uses `containerExtension?.toLowerCase() === 'm3u8'` instead of checking `gatewayUrl.includes('.m3u8')` (which was always false)
 
-### Files modified
-- `packages/api-contracts/src/playback.ts` — `streamUrl` → `gatewayUrl`
-- `apps/api/src/services/playback-resolver.ts` — Creates session after building provider URL, returns `gatewayUrl: /api/playback/stream/:sessionId`; logs correlate `mediaId+availabilityId+sourceId` without credentials
-- `apps/api/src/routes/playback.ts` — Added `GET /playback/stream/:sessionId`: mp4 pass-through (Range-aware), `.m3u8` pass-through, `.ts`/`.mkv` remux to fmp4 via ffmpeg (awaits first chunk before committing response; 415 if ffmpeg unavailable), upstream error → HTTP status mapping
-- `apps/api/src/services/__tests__/playback-resolver.test.ts` — Updated all `streamUrl` assertions to `gatewayUrl`; added session store mock; credential-not-in-response assertions
-- `apps/web/src/hooks/usePlayback.ts` — `streamUrl` → `gatewayUrl`
-- `apps/web/src/pages/PlayerPage.tsx` — Switched to `gatewayUrl`, replaced native `controls` with `PlayerControls`, added error category display
-- `apps/web/src/hooks/useProgressSync.ts` — Added `pause` event handler and unmount cleanup for final progress persistence
+### Bloquant 2 — HLS segment URL rewriting
+- **`apps/api/src/routes/playback.ts`** — Added `rewriteHlsManifest()` helper that rewrites segment URIs (including `URI="..."` attributes in `#EXT-X-KEY` etc.) to point at a new segment proxy sub-route; added `GET /playback/stream/:sessionId/segment?uri=<base64url>` endpoint that validates the session, decodes the segment URL, and proxies bytes from the provider — keeping credentials server-side
+
+### Mineur — Transfer-Encoding removed
+- **`apps/api/src/routes/playback.ts`** — Removed `reply.header('Transfer-Encoding', 'chunked')` from the fmp4 remux path
+
+### Mineur — console.info spy added
+- **`apps/api/src/services/__tests__/playback-resolver.test.ts`** — Added `vi.spyOn(console, 'info')` alongside the existing `log`/`error` spies in the secret redaction test
+
+### E2E test created
+- **`e2e/fixtures/xtream-server.ts`** — Extended to serve fake stream bytes (200 + content-type) for paths like `/:user/:pass/:id.ext`
+- **`e2e/tests/playback.spec.ts`** — API-level smoke test: create source → sync → list movies → resolve playback (asserts `gatewayUrl` pattern + `containerExtension: 'mp4'`) → GET gateway stream (asserts 200 + `video/mp4`) + asserts credentials not in gatewayUrl; plus a 404 test for expired sessions
+
+All 46 T078 unit tests continue to pass. Pre-existing unrelated failures are unchanged.

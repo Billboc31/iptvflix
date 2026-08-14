@@ -30,7 +30,7 @@ export default function PlayerPage() {
   const initialAvailabilityId = searchParams.get('availabilityId') ?? undefined
   const resolvedMediaType = mediaType === 'movie' ? 'movie' : 'episode'
 
-  const { gatewayUrl, startPositionSeconds, alternatives, status, error, switchVariant } = usePlayback(
+  const { gatewayUrl, containerExtension, startPositionSeconds, alternatives, status, error, switchVariant } = usePlayback(
     resolvedMediaType as 'movie' | 'episode',
     mediaId!,
     initialAvailabilityId,
@@ -50,7 +50,8 @@ export default function PlayerPage() {
 
     httpStatusRef.current = undefined
 
-    if (gatewayUrl.includes('.m3u8') || gatewayUrl.includes('.m3u')) {
+    const ext = containerExtension?.toLowerCase()
+    if (ext === 'm3u8' || ext === 'm3u') {
       import('hls.js').then(({ default: Hls }) => {
         if (cancelled) return
         if (Hls.isSupported()) {
@@ -72,7 +73,7 @@ export default function PlayerPage() {
       hlsInstance?.destroy()
       video.src = ''
     }
-  }, [gatewayUrl])
+  }, [gatewayUrl, containerExtension])
 
   // Detect gateway HTTP error codes via HEAD or fetch-error event
   useEffect(() => {
