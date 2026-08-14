@@ -75,6 +75,30 @@ export default function TopNav() {
           <SettingsMenu />
         </div>
       </div>
+
+      {/* Mobile nav strip — all five destinations, horizontally scrollable, mobile only */}
+      <nav
+        className="flex md:hidden overflow-x-auto border-t border-white/5"
+        aria-label="Navigation mobile"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        {NAV_ITEMS.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            className={({ isActive }) =>
+              `shrink-0 px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
+                isActive
+                  ? 'text-white border-b-2 border-[#e50914]'
+                  : 'text-gray-400 hover:text-white'
+              }`
+            }
+          >
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
     </header>
   )
 }
