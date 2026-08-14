@@ -96,6 +96,8 @@ interface CatalogRoutesOptions {
   enrichmentService?: MetadataEnrichmentService
 }
 
+const hydrationInProgress = new Set<string>()
+
 export async function catalogRoutes(app: FastifyInstance, opts: CatalogRoutesOptions = {}): Promise<void> {
   // ---------------------------------------------------------------------------
   // GET /movies/:id
@@ -290,9 +292,10 @@ export async function catalogRoutes(app: FastifyInstance, opts: CatalogRoutesOpt
     ])
 
     // Fire-and-forget hierarchy hydration when canonical seasons are missing
-    if (seasonRows.length === 0 && seriesRow.tmdbId != null && opts.enrichmentService) {
+    if (seasonRows.length === 0 && seriesRow.tmdbId != null && opts.enrichmentService && !hydrationInProgress.has(id)) {
       console.info(`[catalog] Triggering async hierarchy hydration for series ${id}`)
-      void opts.enrichmentService.enrichSeries(id)
+      hydrationInProgress.add(id)
+      void opts.enrichmentService.enrichSeries(id).finally(() => hydrationInProgress.delete(id))
       reply.header('X-Hierarchy-Hydrating', 'true')
     }
 

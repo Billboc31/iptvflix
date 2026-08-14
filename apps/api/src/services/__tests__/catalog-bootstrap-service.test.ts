@@ -20,6 +20,7 @@ const config: BootstrapConfig = {
   maxPagesFrench: 8,
   movieGenreIds: [28, 35],
   tvGenreIds: [18, 10765],
+  hierarchyPriorityCount: 200,
 }
 
 import type { MetadataEnrichmentService } from '../metadata-enrichment-service.js'
