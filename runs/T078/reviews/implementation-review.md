@@ -1,4 +1,4 @@
-I have read all the key files. Now I can write the full review.
+I have all the information needed for a complete review. Let me write the final review.
 
 ---
 
@@ -6,103 +6,66 @@ I have read all the key files. Now I can write the full review.
 
 ## Résumé
 
-La deuxième tentative d'implémentation résout l'ensemble des 5 issues bloquants ou significatifs identifiés lors de la première review. L'architecture est solide : session store TTL, gateway mp4 Range-aware, remux ffmpeg ts/mkv→fmp4, réécriture des segments HLS, player custom complet, persistance de progression. Les 46 tests unitaires passent.
-
-Un nouveau problème bloquant est détecté dans `PlayerPage.tsx` : la fonction `videoErrorMessage` est du code mort — les erreurs de lecture au niveau de l'élément `<video>` (erreurs HTTP upstream pendant le stream, échecs de décodage navigateur) ne sont jamais affichées à l'utilisateur.
+Troisième itération. L'unique point bloquant de la review précédente (`videoErrorMessage` code mort) est maintenant résolu : un `useState<string | null>` pour `videoError` a été ajouté, `setVideoError` est correctement appelé dans la chaîne `.then()` après `checkGatewayStatus()`, et l'overlay d'erreur est rendu quand `videoError !== null`. Toutes les corrections des reviews 1 et 2 restent en place. L'architecture est solide et complète.
 
 ---
 
 ## Vérifications effectuées
 
-- Session store — TTL 2h, pruning, UUID, credentials server-side uniquement
-- Resolver — `gatewayUrl`, logs sans credentials, alternatives, resume position
-- Gateway — mp4 Range-aware, HLS manifest rewrite + segment proxy, remux fmp4, mappings d'erreurs
-- Contrats API — `gatewayUrl` propre, `streamUrl` absent
-- `PlayerPage.tsx` — chargement source, détection HLS via `containerExtension`, reprise de position
-- `PlayerControls.tsx` — tous les contrôles requis, auto-hide 3s, seek désactivé live
-- `useProgressSync.ts` — debounce 10s, pause/ended/unmount
-- `usePlayback.ts` — résolution, switchVariant, gestion erreurs resolve
-- Points d'entrée : HeroSection, HomePage, EpisodeCard (non lus directement mais comportement déduit des fichiers)
-- Tests gateway, session store, resolver : structure et couverture vérifiées
-- Test e2e : `e2e/tests/playback.spec.ts` — créé, couvre le flow complet mp4
-
----
-
-## Issues précédentes — toutes résolues ✅
-
-| Issue | Status |
-|---|---|
-| HLS detection via `gatewayUrl.includes('.m3u8')` (toujours false) | ✅ Corrigé : `containerExtension?.toLowerCase() === 'm3u8'` |
-| HLS segments non proxifiés (credentials exposés, CORS) | ✅ Corrigé : `rewriteHlsManifest()` + `/segment` sub-route |
-| Test e2e absent | ✅ Créé : `e2e/tests/playback.spec.ts` (fake Xtream server, resolve → gateway → mp4) |
-| `Transfer-Encoding: chunked` dans le remux path | ✅ Supprimé |
-| `console.info` non intercepté dans le test secret redaction | ✅ Spy ajouté (ligne 464) |
-
----
-
-## Problèmes détectés
-
-### 🔴 Bloquant — `videoErrorMessage` est du code mort : les erreurs de lecture ne s'affichent jamais
-
-**Fichier** : `apps/web/src/pages/PlayerPage.tsx`
-
-La fonction `videoErrorMessage` est définie (lignes 9–21) et `httpStatusRef` est mis à jour dans l'handler `onError` via une requête HEAD asynchrone. Mais aucun état React n'est mis à jour après cette résolution : il n'y a ni `setVideoError(...)` ni `useState` pour les erreurs vidéo. La page ne se re-rend pas quand `httpStatusRef.current` est positionné.
-
-**Conséquence** : si le gateway retourne 401/404/504 **pendant** le streaming (credentials expirés après le resolve, item supprimé chez le provider), ou si le navigateur échoue à décoder le média, l'utilisateur voit un player vide, sans aucun message d'erreur.
-
-```ts
-// onError: sets httpStatusRef.current but NEVER triggers a re-render
-async function checkGatewayStatus() {
-  const res = await fetch(gatewayUrl, { method: 'HEAD' })
-  if (!res.ok) httpStatusRef.current = res.status  // ref, not state
-}
-function onError() {
-  if (!httpStatusRef.current) {
-    checkGatewayStatus().catch(() => undefined)
-    // Nothing reads httpStatusRef.current to update the UI
-  }
-}
-```
-
-Le rendu conditionnel `if (status === 'error')` ne couvre que les échecs de l'appel `/resolve` (géré par `usePlayback`). Les erreurs de stream sont silencieuses.
-
-**Critère d'acceptation violé** : *"Playback failures surface a distinct, readable category string to the user rather than a silent empty player."*
-
-**Correction attendue** : Ajouter un `useState<string | null>(null)` pour `videoError`, appeler `setVideoError(videoErrorMessage(video, httpStatusRef.current))` dans `onError` (après `checkGatewayStatus()`), et afficher l'`ErrorState` correspondant.
-
----
-
-### 🟡 Mineur — Segment proxy : vérification de profil absente
-
-**Fichier** : `apps/api/src/routes/playback.ts`, handler `GET /playback/stream/:sessionId/segment`
-
-Le endpoint stream principal valide `session.profileId !== DEFAULT_PROFILE_ID` (→ 403). Le segment proxy valide uniquement l'existence de la session, pas son appartenance au profil. Cohérent pour un système single-profile, mais asymétrie avec le comportement du parent.
+- `PlayerPage.tsx` — fix `videoError` : `useState`, reset sur nouvelle URL, `setVideoError` appelé après HEAD probe, `ErrorState` rendu, contrôles masqués pendant l'erreur
+- `playback-session-store.ts` — TTL 2h, UUID, pruning, `expiresAt` absent de l'entrée retournée
+- `playback-resolver.ts` — `gatewayUrl` retourné, credentials absents des logs, alternatives, resume position
+- `playback.ts` (gateway) — 404/403 session, mp4 Range-aware, HLS rewrite + segment proxy, remux fmp4, mappings d'erreurs 401/403/404/504/415
+- `PlayerControls.tsx` — play/pause, seek (désactivé si durée infinie), volume+mute, fullscreen, timer, variantes, retour, buffering spinner, auto-hide 3s
+- `useProgressSync.ts` — debounce 10s, immédiat sur pause, durée totale sur ended, position courante à l'unmount
+- `usePlayback.ts` — resolve, switchVariant sans navigation, états d'erreur
+- Entry points : HeroSection (movie only), MovieDetailPage, EpisodeCard, SeriesDetailPage (sans playRoute série = correct)
+- Tests : `playback-gateway.test.ts`, `playback-session-store.test.ts`, `e2e/tests/playback.spec.ts`
 
 ---
 
 ## Points validés
 
-- **Credentials jamais exposés** : `providerStreamUrl` reste dans le session store ; le browser ne voit jamais `username/password` dans l'URL ou les logs.
-- **Gateway mp4 Range-aware** : `Range` forwardée, `Accept-Ranges: bytes`, `Content-Range` retournée. Le seek VOD mp4 fonctionnera.
-- **Remux fmp4** : `frag_keyframe+empty_moov+default_base_moof`. Attente du premier chunk avant commit réponse → 415 propre si ffmpeg absent.
-- **HLS gateway** : `rewriteHlsManifest()` réécrit les URIs absolues et relatives en `/api/playback/stream/:sessionId/segment?uri=<base64url>`. Sous-route segment proxy décodage + fetch upstream.
-- **Validation URI segment** : vérification `startsWith('http://') || startsWith('https://')`. Pas d'SSRF vers URLs non-HTTP.
-- **Déconnexion client** : `request.raw.on('close', abort)` pour fetch + `ffmpeg.kill('SIGKILL')`. Propre.
-- **Erreurs resolve** : `status === 'error'` + message localisé via `usePlayback` — fonctionnel.
-- **Reprise de position** : `video.currentTime = startPositionSeconds` sur `loadedmetadata`. Correct.
-- **Persistance progression** : debounce 10s, immédiat sur pause, durée totale sur ended, position courante au unmount.
-- **Switching variantes** : `switchVariant(id)` re-résout sans navigation.
-- **hls.js** présent dans `apps/web/package.json` (`"hls.js": "^1.7.0"`). Import dynamique avec fallback `video.src` si absent. ✅
-- **Tests e2e** : crédit credentials exclus du `gatewayUrl` (assertion explicite), session expirée → 404. ✅
+- **Blocker review-2 corrigé** : `videoError` est du vrai state React. `onError` → `checkGatewayStatus()` → `.then(() => setVideoError(...))` / `.catch(() => setVideoError(...))`. Re-render garanti. Overlay `ErrorState` affiché. Critère *"Playback failures surface a distinct, readable category string"* respecté.
+- **Credentials** : `providerStreamUrl` confiné au session store côté serveur. Le browser ne voit que `/api/playback/stream/<uuid>`. Assertion explicite dans l'e2e.
+- **Range/seek mp4** : `Range` forwardé, `Accept-Ranges: bytes`, `Content-Range` retourné. Seek VOD fonctionnel.
+- **HLS** : `rewriteHlsManifest()` réécrit URIs absolues et relatives en `/segment?uri=<base64url>`. Sous-route segment proxy avec timeout + client disconnect.
+- **Remux fmp4** : `frag_keyframe+empty_moov+default_base_moof`, attente du premier chunk avant commit — 415 propre si ffmpeg absent.
+- **SSRF** : segment proxy valide `startsWith('http://')` ou `https://`. Pas de redirection vers URLs non-HTTP.
+- **Disconnect** : `AbortController` + `request.raw.on('close')` pour fetch upstream et `ffmpeg.kill('SIGKILL')` pour le remux.
+- **Entry points** : 5 chemins vérifiés, tous convergent sur `PlayerPage` via `navigate('/player/:type/:id?availabilityId=...')`.
+- **Progress** : debounce 10s sur `timeupdate`, immédiat sur `pause`, durée totale sur `ended`, position courante à l'unmount.
+- **Switching variantes** : `switchVariant(id)` re-résout via `usePlayback.resolve(id)` sans quitter PlayerPage.
+- **Tests** : `playback-gateway` couvre 7 scénarios (404/403/mp4/Range/Accept-Ranges/upstream-errors/ts-remux). `playback-session-store` couvre round-trip, unknown, TTL, sessions indépendantes. E2e couvre resolve → gateway → stream bytes + guard credentials.
+
+---
+
+## Problèmes détectés
+
+### 🟡 Mineur — `console.info` dans `playback-resolver.ts` (ligne 178)
+
+Le log de création de session utilise `console.info` plutôt qu'un logger Fastify/structuré. Pas de risque sécurité (aucun credential loggué), mais sort du pattern structuré du reste du gateway. Acceptable pour cette itération.
+
+### 🟡 Mineur — Segment proxy : vérification de profil absente
+
+`GET /playback/stream/:sessionId/segment` valide l'existence de la session mais pas son `profileId`. Cohérent pour un système single-profile mais asymétrique avec le handler parent. Déjà noté en review-2, confirmé non bloquant.
+
+### 🟡 Mineur — HEAD probe HLS : erreur de segment produit `'Erreur de lecture'`
+
+Si une erreur survient sur un segment HLS (403 upstream), le HEAD sur le manifest retourne 200 (manifest OK). `httpStatusRef.current` reste `undefined`, `videoErrorMessage` retourne `'Erreur de lecture'` (fallback) au lieu d'un message spécifique. L'erreur est bien visible côté utilisateur — pas silencieuse. Limitation acceptable de l'approche HEAD probe.
+
+---
+
+## Risques éventuels
+
+- **ffmpeg non disponible en production** : la gateway retourne 415 avec message utilisateur lisible. Risque contrôlé.
+- **Session store en mémoire** : redémarrage serveur invalide toutes les sessions actives. Acceptable — TTL 2h et le client re-resolve au besoin.
+- **HLS manifest complet en mémoire** (`upstreamRes.text()`) : pour de très grands manifests VOD multi-bitrate, la lecture complète en mémoire est nécessaire pour la réécriture. Impact négligeable pour des manifests VOD typiques (< quelques Ko).
 
 ---
 
 ## Décision
 
-L'architecture globale est correcte et les blocages de la première review ont été résolus. Un seul point bloquant subsiste : les erreurs de lecture au niveau `<video>` ne déclenchent aucun affichage à l'utilisateur. C'est une exigence explicite du ticket et un critère d'acceptation direct.
+Les trois reviews successives ont progressivement résolu tous les problèmes : HLS detection, segment credentials, e2e test, chunked encoding, console spy, puis video error state. La version actuelle satisfait l'ensemble des critères d'acceptation du ticket. Les points mineurs restants ne bloquent aucune exigence fonctionnelle.
 
-**Action unique requise** :
-
-Dans `PlayerPage.tsx`, ajouter un `useState` pour `videoError`, mettre à jour cet état dans l'handler `onError` (après la résolution de `checkGatewayStatus()`), et rendre l'`ErrorState` quand `videoError !== null`.
-
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
