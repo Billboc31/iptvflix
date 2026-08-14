@@ -34,7 +34,9 @@ import { arrivalsRoutes } from './routes/arrivals.js'
 import { reconcileRoutes, episodeBackfillRoutes } from './routes/reconcile.js'
 import { catalogBootstrapRoutes } from './routes/catalog-bootstrap.js'
 import { catalogRefreshRoutes } from './routes/catalog-refresh.js'
+import { failRunningJobsRoutes } from './routes/fail-running-jobs.js'
 import { authenticate } from './plugins/auth.js'
+import { failInterruptedRuns } from './services/fail-interrupted-runs.js'
 import {
   PORT,
   CORS_ORIGIN,
@@ -109,6 +111,7 @@ await app.register(async function protectedScope(protectedApp) {
 
   await protectedApp.register(sourcesRoutes)
   await protectedApp.register(syncRunsRoutes)
+  await protectedApp.register(failRunningJobsRoutes)
   await protectedApp.register(profileRoutes)
   await protectedApp.register(watchlistRoutes)
   await protectedApp.register(viewingProgressRoutes)
@@ -192,6 +195,13 @@ const scheduler = new SchedulerService(
   },
   catalogRefreshServiceRef,
 )
+try {
+  const cleared = await failInterruptedRuns(db)
+  app.log.info(cleared, 'cleared interrupted RUNNING jobs')
+} catch (err) {
+  app.log.error(err, 'failed to clear interrupted RUNNING jobs')
+}
+
 scheduler.start()
 
 try {
