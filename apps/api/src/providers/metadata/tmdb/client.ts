@@ -23,6 +23,20 @@ import type {
 } from './types.js'
 import { TmdbRateLimitError, TmdbNetworkError } from './errors.js'
 
+export interface TmdbSimilarItem {
+  id: number
+  title?: string
+  name?: string
+  poster_path: string | null
+  release_date?: string
+  first_air_date?: string
+  vote_average: number
+}
+
+export interface TmdbSimilarResponse {
+  results: TmdbSimilarItem[]
+}
+
 const BASE_URL = 'https://api.themoviedb.org/3'
 
 function parseYear(dateStr: string | undefined): number | null {
@@ -356,6 +370,50 @@ export class TmdbClient implements MetadataProvider {
       }))
     } catch {
       return []
+    }
+  }
+
+  async getMovieSimilar(tmdbId: number, page = 1): Promise<TmdbSimilarResponse> {
+    const params = new URLSearchParams({ page: String(page) })
+    const response = await this.fetchWithRetry(`${BASE_URL}/movie/${tmdbId}/similar?${params}`)
+    if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
+    try {
+      return (await response.json()) as TmdbSimilarResponse
+    } catch {
+      throw new TmdbNetworkError('Could not parse TMDB movie similar response')
+    }
+  }
+
+  async getMovieRecommendations(tmdbId: number, page = 1): Promise<TmdbSimilarResponse> {
+    const params = new URLSearchParams({ page: String(page) })
+    const response = await this.fetchWithRetry(`${BASE_URL}/movie/${tmdbId}/recommendations?${params}`)
+    if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
+    try {
+      return (await response.json()) as TmdbSimilarResponse
+    } catch {
+      throw new TmdbNetworkError('Could not parse TMDB movie recommendations response')
+    }
+  }
+
+  async getSeriesSimilar(tmdbId: number, page = 1): Promise<TmdbSimilarResponse> {
+    const params = new URLSearchParams({ page: String(page) })
+    const response = await this.fetchWithRetry(`${BASE_URL}/tv/${tmdbId}/similar?${params}`)
+    if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
+    try {
+      return (await response.json()) as TmdbSimilarResponse
+    } catch {
+      throw new TmdbNetworkError('Could not parse TMDB series similar response')
+    }
+  }
+
+  async getSeriesRecommendations(tmdbId: number, page = 1): Promise<TmdbSimilarResponse> {
+    const params = new URLSearchParams({ page: String(page) })
+    const response = await this.fetchWithRetry(`${BASE_URL}/tv/${tmdbId}/recommendations?${params}`)
+    if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
+    try {
+      return (await response.json()) as TmdbSimilarResponse
+    } catch {
+      throw new TmdbNetworkError('Could not parse TMDB series recommendations response')
     }
   }
 

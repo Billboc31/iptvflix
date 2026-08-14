@@ -36,12 +36,7 @@ import {
   seriesGenres,
 } from '../db/schema/index.js'
 
-export class NotFoundError extends Error {
-  readonly statusCode = 404
-  constructor(entity: string, id: string) {
-    super(`${entity} ${id} not found`)
-  }
-}
+export { NotFoundError } from './not-found-error.js'
 
 export async function listMovies(filters: MovieFilters): Promise<PaginatedList<MovieResponse>> {
   const { q, genreId, year, availability, upcoming, sortBy = 'title', page = 1, pageSize = 20 } = filters

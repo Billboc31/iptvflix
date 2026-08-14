@@ -1,10 +1,16 @@
 import type { FastifyInstance } from 'fastify'
 import type { SeriesFilters } from '@iptvflix/api-contracts'
-import { listSeries, getSeries } from '../services/catalog-service.js'
+import { listSeries, getSeries, NotFoundError } from '../services/catalog-service.js'
+import type { SimilarTitlesService } from '../services/similar-titles-service.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export async function seriesRoutes(app: FastifyInstance): Promise<void> {
+interface SeriesRouteOptions {
+  similarTitlesService?: SimilarTitlesService
+}
+
+export async function seriesRoutes(app: FastifyInstance, opts: SeriesRouteOptions = {}): Promise<void> {
+  const { similarTitlesService } = opts
   app.get('/series', async (request, reply) => {
     const q = request.query as {
       q?: string
@@ -90,6 +96,36 @@ export async function seriesRoutes(app: FastifyInstance): Promise<void> {
     }
 
     return listSeries(filters)
+  })
+
+  app.get('/series/:id/similar', async (request, reply) => {
+    if (!similarTitlesService) {
+      return reply.status(503).send({ error: 'Similar titles service not configured' })
+    }
+
+    const { id } = request.params as { id: string }
+    if (!UUID_RE.test(id)) {
+      return reply.status(400).send({ error: 'id must be a valid UUID' })
+    }
+
+    const q = request.query as { limit?: string }
+    let limit = 20
+    if (q.limit !== undefined) {
+      limit = Number(q.limit)
+      if (!Number.isInteger(limit) || limit < 1 || limit > 40) {
+        return reply.status(400).send({ error: 'limit must be an integer between 1 and 40' })
+      }
+    }
+
+    try {
+      const items = await similarTitlesService.getSimilarSeries(id, limit)
+      return { items }
+    } catch (err) {
+      if (err instanceof NotFoundError) {
+        return reply.status(404).send({ error: err.message })
+      }
+      throw err
+    }
   })
 
 }
