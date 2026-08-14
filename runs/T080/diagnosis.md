@@ -1,18 +1,40 @@
 # T080 — Diagnostic Report: Safari/iOS Playback Failure
 
-**Status**: Instrumentation deployed — code fix applied (legacy REMUX path now uses unified logging) — static code analysis confirms Candidate 1 as structural defect — local diagnostic script added (Sections 2/3/4/6 collectable without Railway) — awaiting production trace for Sections 1/5/7/8 evidence fields
+**Status**: HANDOFF DOCUMENT — AI-completed instrumentation + static analysis done. Production evidence requires human execution. See Handoff section.
+
+---
+
+## AI-Completed vs Human-Required Steps
+
+| Step | Executor | Status |
+|---|---|---|
+| Deploy diagnostic instrumentation (logging in `playback.ts`, telemetry in `PlayerPage.tsx`) | AI | DONE |
+| Add `GET /api/diagnostics/env` route | AI | DONE |
+| Add `apps/api/scripts/check-env.mjs` local env checker | AI | DONE |
+| Add `apps/api/scripts/diagnose-stream.mjs` local pipeline replicator | AI | DONE |
+| Static code analysis → identify Candidate 1 structural defect | AI | DONE |
+| Static code analysis → largely disprove Candidate 2 (nixpacks.toml) | AI | DONE |
+| Deploy T080 branch to Railway | **HUMAN** | PENDING |
+| Call `GET /api/diagnostics/env` on Railway deployment | **HUMAN** | PENDING |
+| Run `diagnose-stream.mjs` against a real failing Xtream URL | **HUMAN** | PENDING |
+| Test failing stream on iPhone Safari with Web Inspector open | **HUMAN** | PENDING |
+| Copy results into Sections 1–8 of this document | **HUMAN** | PENDING |
+
+**The following sections contain evidence blocks marked `REQUIRES HUMAN EXECUTION`. These fields cannot be filled by an automated agent — they require a physical iPhone, real Xtream provider credentials, and an active Railway deployment.**
 
 ---
 
 ## Executive Summary
 
-Static code analysis of the T079 compat pipeline has **confirmed one structural defect from code alone** (no production trace required):
+Static code analysis of the T079 compat pipeline has **confirmed one structural defect from code alone**:
 
-**Confirmed (code-level)**: `apps/api/src/routes/playback.ts:207` — `useCompat = request.query.compat === '1' || isSafariOrIOS(userAgent)`. For any Safari/iOS User-Agent, BOTH the initial `gatewayUrl` and the retry `compatUrl` (`?compat=1`) execute the **identical** compat code path. The frontend "fallback" fires on `MEDIA_ERR_DECODE`/`MEDIA_ERR_SRC_NOT_SUPPORTED`, retries with `compatUrl`, which appends `?compat=1` — but for Safari UA, the `?compat=1` flag is redundant since `isSafariOrIOS()` already triggers compat. The two attempts are behaviorally identical. If the compat path fails once, it will fail twice.
+**Root cause hypothesis (confirmed from static code analysis — production verification required)**: `apps/api/src/routes/playback.ts:207` — `useCompat = request.query.compat === '1' || isSafariOrIOS(userAgent)`. For any Safari/iOS User-Agent, BOTH the initial `gatewayUrl` and the retry `compatUrl` (`?compat=1`) execute the **identical** compat code path. The frontend "fallback" fires on `MEDIA_ERR_DECODE`/`MEDIA_ERR_SRC_NOT_SUPPORTED`, retries with `compatUrl`, which appends `?compat=1` — but for Safari UA, the `?compat=1` flag is redundant since `isSafariOrIOS()` already triggers compat. The two attempts are behaviorally identical. If the compat path fails once, it will fail twice.
+
+**This remains a hypothesis until confirmed by the production trace in Sections 1 and 7.**
 
 **Largely disproved (code-level)**: `apps/api/nixpacks.toml:2` — `nixPkgs = ["ffmpeg"]` is present. ffmpeg (and bundled ffprobe) is configured in the Railway build. This makes Candidate 2 (ffmpeg absent) unlikely, though runtime PATH still requires `/api/diagnostics/env` to fully rule out.
 
-Sections 2, 3, 4, and 6 are now collectable locally (without Railway) using `apps/api/scripts/diagnose-stream.mjs`. This script replicates the exact production pipeline (`fetch() → pipe → ffmpeg stdin`). A production trace is still required for Sections 1, 5, 7, and 8 (session correlation, HTTP headers delivered to Safari, Safari MediaError, Railway runtime presence).
+Sections 2, 3, 4, and 6 are collectable locally (without Railway) using `apps/api/scripts/diagnose-stream.mjs`. A production trace is still required for Sections 1, 5, 7, and 8.
 
 ---
 
@@ -42,23 +64,39 @@ Sections 2, 3, 4, and 6 are now collectable locally (without Railway) using `app
 | `errorCode` / `urlMode` | Safari Web Inspector: `console.warn` |
 | `eventSequence` | Safari Web Inspector: `console.warn` |
 
-### Production Evidence (to fill after Railway deployment)
+### Production Evidence (requires Steps 2–3 in Handoff section)
 
 ```
-sessionId:           <PENDING>
-availabilityId:      <PENDING>
-sourceId:            <PENDING>
-containerExtension:  <PENDING>
-deliveryMode:        <PENDING>
-upstreamStatus:      <PENDING>
-upstreamContentType: <PENDING>
-upstreamFirstBytes:  <PENDING>
-ffmpegExitCode:      <PENDING>
-ffmpegStderrTail:    <PENDING>
-responseContentType: <PENDING>
-Safari errorCode:    <PENDING>
-Safari urlMode:      <PENDING>
-Safari eventSequence:<PENDING>
+sessionId:           REQUIRES HUMAN EXECUTION
+                       → Stream a failing movie/episode on iPhone Safari
+                       → Run: railway logs -t --service api | grep "playback-gateway"
+                       → Paste sessionId from log line here
+
+availabilityId:      REQUIRES HUMAN EXECUTION — paste from Railway log
+
+sourceId:            REQUIRES HUMAN EXECUTION — paste from Railway log
+
+containerExtension:  REQUIRES HUMAN EXECUTION — paste from Railway log
+
+deliveryMode:        REQUIRES HUMAN EXECUTION — paste from Railway log (classifyDelivery result)
+
+upstreamStatus:      REQUIRES HUMAN EXECUTION — paste from Railway log
+
+upstreamContentType: REQUIRES HUMAN EXECUTION — paste from Railway log
+
+upstreamFirstBytes:  REQUIRES HUMAN EXECUTION — paste from Railway log
+
+ffmpegExitCode:      REQUIRES HUMAN EXECUTION — paste from Railway log (ffmpeg closed event)
+
+ffmpegStderrTail:    REQUIRES HUMAN EXECUTION — paste from Railway log (ffmpeg closed event)
+
+responseContentType: REQUIRES HUMAN EXECUTION — paste from Railway log (response headers to browser)
+
+Safari errorCode:    REQUIRES HUMAN EXECUTION — paste from Safari Web Inspector console.warn
+
+Safari urlMode:      REQUIRES HUMAN EXECUTION — paste from Safari Web Inspector console.warn
+
+Safari eventSequence:REQUIRES HUMAN EXECUTION — paste from Safari Web Inspector console.warn
 ```
 
 ---
@@ -90,22 +128,36 @@ Most Xtream providers serve either:
 - **TS container / HEVC + AAC** → `classifyDelivery` returns `REMUX` (for Safari) → ffmpeg remux to fMP4
 - **MP4 container / H.264 + AAC** → `classifyDelivery` returns `DIRECT` → Safari should play natively
 
-### Production Metadata (to fill after trace)
+### Production Metadata (requires Step 3 in Handoff section)
 
 ```
-containerFormat:  <PENDING>
-videoCodec:       <PENDING>
-videoProfile:     <PENDING>
-videoLevel:       <PENDING>
-pixelFormat:      <PENDING>
-resolution:       <PENDING>
-frameRate:        <PENDING>
-audioCodec:       <PENDING>
-audioChannels:    <PENDING>
-sampleRate:       <PENDING>
-duration:         <PENDING>
-firstBytesHex:    <PENDING>
-isValidMedia:     <PENDING>
+containerFormat:  REQUIRES HUMAN EXECUTION
+                    → node apps/api/scripts/diagnose-stream.mjs --url '<xtream-url>' --ext <ext>
+                    → Paste section2_upstreamProbe.containerFormat here
+
+videoCodec:       REQUIRES HUMAN EXECUTION — paste section2_upstreamProbe.videoCodec
+
+videoProfile:     REQUIRES HUMAN EXECUTION — paste section2_upstreamProbe.videoProfile
+
+videoLevel:       REQUIRES HUMAN EXECUTION — paste section2_upstreamProbe.videoLevel
+
+pixelFormat:      REQUIRES HUMAN EXECUTION — paste section2_upstreamProbe.pixelFormat
+
+resolution:       REQUIRES HUMAN EXECUTION — paste section2_upstreamProbe.resolution
+
+frameRate:        REQUIRES HUMAN EXECUTION — paste section2_upstreamProbe.frameRate
+
+audioCodec:       REQUIRES HUMAN EXECUTION — paste section2_upstreamProbe.audioCodec
+
+audioChannels:    REQUIRES HUMAN EXECUTION — paste section2_upstreamProbe.audioChannels
+
+sampleRate:       REQUIRES HUMAN EXECUTION — paste section2_upstreamProbe.sampleRate
+
+duration:         REQUIRES HUMAN EXECUTION — paste section2_upstreamProbe.duration
+
+firstBytesHex:    REQUIRES HUMAN EXECUTION — paste section2_upstreamProbe.firstBytesHex
+
+isValidMedia:     REQUIRES HUMAN EXECUTION — paste section2_upstreamProbe.isValidMedia
 ```
 
 ---
@@ -140,14 +192,20 @@ classifyDelivery(mediaInfo, isSafari=true)
 
 This is a structural defect: the "compat fallback" in the frontend provides no diagnostic differentiation and no actual second chance with a different strategy.
 
-### Production Decision (to fill after trace)
+### Production Decision (requires Step 3 in Handoff section)
 
 ```
-deliveryMode:              <PENDING>
-classifyInputVideoCodec:   <PENDING>
-classifyInputAudioCodec:   <PENDING>
-classifyInputContainer:    <PENDING>
-classifyInputExtension:    <PENDING>
+deliveryMode:              REQUIRES HUMAN EXECUTION
+                             → node apps/api/scripts/diagnose-stream.mjs --url '<xtream-url>' --ext <ext>
+                             → Paste section3_compatDecision.deliveryMode here
+
+classifyInputVideoCodec:   REQUIRES HUMAN EXECUTION — paste section3_compatDecision.videoCodec
+
+classifyInputAudioCodec:   REQUIRES HUMAN EXECUTION — paste section3_compatDecision.audioCodec
+
+classifyInputContainer:    REQUIRES HUMAN EXECUTION — paste section3_compatDecision.container
+
+classifyInputExtension:    REQUIRES HUMAN EXECUTION — paste section3_compatDecision.extension
 ```
 
 ---
@@ -186,15 +244,22 @@ If ffmpeg spawns successfully but:
 
 Then `firstChunk` resolves to `null` (exit before output) or Safari receives malformed data.
 
-### Production Evidence (to fill after trace)
+### Production Evidence (requires Step 3 in Handoff section)
 
 ```
-ffmpegPid:          <PENDING>
-ffmpegExitCode:     <PENDING>
-ffmpegExitSignal:   <PENDING>
-ffmpegStderrTail:   <PENDING>
-msToFirstByte:      <PENDING>
-ffmpegSpawnSuccess: <PENDING>
+ffmpegPid:          REQUIRES HUMAN EXECUTION
+                      → node apps/api/scripts/diagnose-stream.mjs --url '<xtream-url>' --ext <ext>
+                      → Paste section4_ffmpegExecution.pid here
+
+ffmpegExitCode:     REQUIRES HUMAN EXECUTION — paste section4_ffmpegExecution.exitCode
+
+ffmpegExitSignal:   REQUIRES HUMAN EXECUTION — paste section4_ffmpegExecution.exitSignal
+
+ffmpegStderrTail:   REQUIRES HUMAN EXECUTION — paste section4_ffmpegExecution.stderrTail
+
+msToFirstByte:      REQUIRES HUMAN EXECUTION — paste section4_ffmpegExecution.msToFirstByte
+
+ffmpegSpawnSuccess: REQUIRES HUMAN EXECUTION — paste section4_ffmpegExecution.spawnSuccess
 ```
 
 ---
@@ -224,15 +289,25 @@ Safari's MSE (Media Source Extensions) and native `<video>` require either:
 
 The current ffmpeg args use `frag_keyframe+empty_moov+default_base_moof` which is correct for streaming. However, if the `Content-Type` sent to Safari does not match the actual container format, Safari may refuse to play.
 
-### Production Evidence (to fill after trace)
+### Production Evidence (requires Steps 2–3 in Handoff section)
 
 ```
-responseContentType:       <PENDING>
-responseContentLength:     <PENDING>
-responseTransferEncoding:  <PENDING>
-responseAcceptRanges:      <PENDING>
-responseMode:              <PENDING>
-httpStatus:                <PENDING>
+responseContentType:       REQUIRES HUMAN EXECUTION
+                             → Deploy T080 to Railway (Step 1 in Handoff)
+                             → curl -v -H "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" \
+                                  "https://<railway-api>/api/playback/stream/<sessionId>?compat=1" \
+                                  -o /dev/null 2>&1 | grep -E "Content-Type|Transfer-Encoding|Content-Length|Accept-Ranges|HTTP/"
+                             → Paste Content-Type header value here
+
+responseContentLength:     REQUIRES HUMAN EXECUTION — paste Content-Length header value (or "absent")
+
+responseTransferEncoding:  REQUIRES HUMAN EXECUTION — paste Transfer-Encoding header value
+
+responseAcceptRanges:      REQUIRES HUMAN EXECUTION — paste Accept-Ranges header value
+
+responseMode:              REQUIRES HUMAN EXECUTION — REMUX / TRANSCODE_AUDIO / DIRECT (from Railway log)
+
+httpStatus:                REQUIRES HUMAN EXECUTION — paste HTTP status code (e.g. 200, 415, 500)
 ```
 
 ---
@@ -251,14 +326,20 @@ curl -s -H "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) A
   | ffprobe -v quiet -print_format json -show_streams -show_format -i pipe:0
 ```
 
-### Production Evidence (to fill after trace)
+### Production Evidence (requires Step 3 in Handoff section)
 
 ```
-outputContainer:    <PENDING>
-outputVideoCodec:   <PENDING>
-outputAudioCodec:   <PENDING>
-outputIsValidMedia: <PENDING>
-ffprobeExitCode:    <PENDING>
+outputContainer:    REQUIRES HUMAN EXECUTION
+                      → node apps/api/scripts/diagnose-stream.mjs --url '<xtream-url>' --ext <ext>
+                      → Paste section6_outputValidation.outputContainer here
+
+outputVideoCodec:   REQUIRES HUMAN EXECUTION — paste section6_outputValidation.outputVideoCodec
+
+outputAudioCodec:   REQUIRES HUMAN EXECUTION — paste section6_outputValidation.outputAudioCodec
+
+outputIsValidMedia: REQUIRES HUMAN EXECUTION — paste section6_outputValidation.outputIsValidMedia
+
+ffprobeExitCode:    REQUIRES HUMAN EXECUTION — paste section6_outputValidation.ffprobeExitCode
 ```
 
 ---
@@ -285,15 +366,24 @@ After deploying this ticket, every `error` event on `<video>` emits `console.war
 | `loadedmetadata` fires then `error` | Codec negotiation failed after container was accepted |
 | No `loadedmetadata` before `error` | Container not recognized at all |
 
-### Production Evidence (to fill after trace)
+### Production Evidence (requires Steps 3–4 in Handoff section)
 
 ```
-errorCode (normal URL):    <PENDING>
-errorCode (compat URL):    <PENDING>
-urlMode at failure:        <PENDING>
-readyState:                <PENDING>
-networkState:              <PENDING>
-eventSequence:             <PENDING>
+errorCode (normal URL):    REQUIRES HUMAN EXECUTION
+                             → Connect iPhone via USB, open Safari Web Inspector
+                             → Navigate to failing stream on iPhone Safari
+                             → In Web Inspector → Console, find: console.warn('[iptvflix:player] video error event', ...)
+                             → Paste errorCode where urlMode = "normal" here
+
+errorCode (compat URL):    REQUIRES HUMAN EXECUTION — paste errorCode where urlMode = "compat"
+
+urlMode at failure:        REQUIRES HUMAN EXECUTION — paste urlMode from final error event
+
+readyState:                REQUIRES HUMAN EXECUTION — paste readyState from error event
+
+networkState:              REQUIRES HUMAN EXECUTION — paste networkState from error event
+
+eventSequence:             REQUIRES HUMAN EXECUTION — paste full eventSequence array from console.warn
 ```
 
 ---
@@ -328,24 +418,34 @@ ffmpeg is configured. In Nix packages, `ffmpeg` includes `ffprobe`. Build config
 
 `GET /api/diagnostics/env` is publicly accessible to any client that knows the URL on Railway. The information exposed (PATH, binary versions, memory) does not include credentials or secrets, and the `RAILWAY_ENVIRONMENT` guard limits it to Railway deployments. However, the path is guessable. This is acceptable for a temporary diagnostic route, but the follow-up correction ticket must remove or protect this endpoint before merging to a long-lived branch.
 
-### Production Evidence (to fill after trace)
+### Production Evidence (requires Step 2 in Handoff section)
 
 ```
-ffmpegPresent:    <PENDING>
-ffmpegVersion:    <PENDING>
-ffprobePresent:   <PENDING>
-ffprobeVersion:   <PENDING>
-tmpDirWritable:   <PENDING>
-railwayPath:      <PENDING>
+ffmpegPresent:    REQUIRES HUMAN EXECUTION
+                    → Deploy T080 branch to Railway (Step 1 in Handoff)
+                    → Call: GET https://<railway-api>/api/diagnostics/env
+                    → Paste ffmpegWhich.ok value here
+
+ffmpegVersion:    REQUIRES HUMAN EXECUTION — paste ffmpegVersion.stdout here
+
+ffprobePresent:   REQUIRES HUMAN EXECUTION — paste ffprobeWhich.ok here
+
+ffprobeVersion:   REQUIRES HUMAN EXECUTION — paste ffprobeVersion.stdout here
+
+tmpDirWritable:   REQUIRES HUMAN EXECUTION — paste tmpDirWritable.ok here
+
+railwayPath:      REQUIRES HUMAN EXECUTION — paste resolvedPath here
 ```
 
 ---
 
 ## Section 9 — Root Cause Candidates
 
+**Note: The analysis below is based on static code analysis alone. Section 9 constitutes a hypothesis, not a confirmed root cause. Production evidence from Sections 1–8 is required to confirm or disprove each candidate.**
+
 Based on code-level analysis, ranked by probability:
 
-### Candidate 1 (CONFIRMED FROM CODE — AWAITING RUNTIME VERIFICATION): compat fallback is structurally inert on Safari
+### Candidate 1 (ROOT CAUSE HYPOTHESIS — CONFIRMED FROM CODE, AWAITING PRODUCTION VERIFICATION): compat fallback is structurally inert on Safari
 
 **Static evidence**:
 - `apps/api/src/routes/playback.ts:207`: `const useCompat = request.query.compat === '1' || isSafariOrIOS(userAgent)`
@@ -358,7 +458,7 @@ Based on code-level analysis, ranked by probability:
 
 The two attempts are behaviorally identical. If compat path fails on attempt 1, it will fail the same way on attempt 2. The user always sees the error.
 
-**What the production trace will add**: Which specific compat sub-failure occurs (probe fails → extension routing, ffmpeg exits with error, fMP4 malformed, Content-Type mismatch). The structural defect is confirmed; the specific execution failure is what production evidence will reveal.
+**What the production trace will add**: Which specific compat sub-failure occurs (probe fails → extension routing, ffmpeg exits with error, fMP4 malformed, Content-Type mismatch). The structural defect is visible from code; the specific execution failure requires production evidence.
 
 **Correction**: The frontend should not retry with `compatUrl` on Safari (since both URLs already use compat). Instead, it should either switch to a different variant via `alternatives`, show the error immediately, or use a truly different delivery strategy on retry.
 
@@ -407,3 +507,55 @@ After production evidence is collected, the follow-up ticket should implement on
 
 - **File**: `apps/api/src/routes/playback.ts`, probe failure path
 - **Change**: When `deliveryMode` stays `null` after probe failure, apply extension-based compat defaults (force REMUX for .ts files, DIRECT for .mp4) rather than falling through to the legacy non-compat routing
+
+---
+
+## Handoff — Required Human Steps
+
+**These 4 steps must be executed by a human with access to a physical iPhone, Xtream provider credentials, and the Railway deployment.**
+
+### Step 1 — Deploy T080 branch to Railway
+
+```bash
+# Push T080 branch and trigger Railway deployment
+git push origin ticket/T080-diagnose-production-safari-ios-playback-failure-af
+# Trigger deploy via Railway dashboard or: railway up --service api
+# Wait for deployment to complete and verify new revision is live
+```
+
+### Step 2 — Verify Railway runtime environment
+
+```bash
+# Call the diagnostics endpoint on the Railway API
+curl -s "https://<railway-api-url>/api/diagnostics/env" | jq .
+# Copy full JSON response into Section 8 evidence fields
+# Key fields to check: ffmpegWhich.ok, ffmpegVersion.stdout, ffprobeWhich.ok, tmpDirWritable.ok
+```
+
+### Step 3 — Run local pipeline against a real failing Xtream URL
+
+```bash
+# Use a known-failing Xtream Movie/Episode URL from the app
+node apps/api/scripts/diagnose-stream.mjs \
+  --url 'http://<xtream-provider>/movie/<user>/<pass>/<id>.ts' \
+  --ext ts \
+  > runs/T080/diagnose-output.json
+
+# Paste section2, section3, section4, section6 fields into their respective evidence blocks above
+cat runs/T080/diagnose-output.json | jq '{s2: .section2_upstreamProbe, s3: .section3_compatDecision, s4: .section4_ffmpegExecution, s6: .section6_outputValidation}'
+```
+
+### Step 4 — Test on iPhone Safari with Web Inspector
+
+```bash
+# 1. Connect iPhone to Mac via USB
+# 2. On iPhone: Settings → Safari → Advanced → Web Inspector → ON
+# 3. On Mac: Safari → Develop → [your iPhone] → [tab with iptvflix]
+# 4. Navigate to a failing Movie/Episode on iPhone Safari
+# 5. In Web Inspector → Console, capture all console.warn lines containing "[iptvflix:player]"
+# 6. Run: railway logs -t --service api | grep "playback-gateway"
+# 7. Correlate sessionId between Railway logs and Web Inspector output
+# 8. Paste all captured values into Section 1 and Section 7 evidence fields
+```
+
+After completing all 4 steps, update this document's Status line to: `COMPLETE — production evidence collected` and commit the updated file.
