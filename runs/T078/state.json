@@ -1,9 +1,9 @@
 {
   "ticket_id": "T078",
-  "state": "IMPLEMENTATION_REVIEW_NEEDED",
+  "state": "IMPLEMENTATION_FIX_REQUIRED",
   "branch": "ticket/T078-make-web-playback-actually-play-resolved-xtream-st",
   "issue_number": 163,
-  "updated_at": "2026-08-14T13:56:46Z",
+  "updated_at": "2026-08-14T14:01:40Z",
   "pre_conflict_state": "PLAN_APPROVED",
   "conflict_detected_at": "2026-08-14T13:37:57Z",
   "conflicted_files": []
