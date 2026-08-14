@@ -3,7 +3,7 @@ import { db } from '../db/client.js'
 import { movieAvailabilities, episodeAvailabilities } from '../db/schema/availabilities.js'
 import { sources } from '../db/schema/sources.js'
 import { viewingProgress } from '../db/schema/viewing-progress.js'
-import { buildXtreamStreamUrl } from '../providers/xtream/playback.js'
+import { buildXtreamMovieUrl, buildXtreamEpisodeUrl } from '../providers/xtream/playback.js'
 import { buildM3UStreamUrl } from '../providers/m3u/playback.js'
 import { resolveVariant } from './availability-resolver.js'
 import { getDefaultProfilePreferences } from './profile-service.js'
@@ -21,6 +21,7 @@ type AvailabilityRow = {
   subtitleLanguage: string | null
   videoQuality: string | null
   rawTitle: string | null
+  containerExtension: string | null
 }
 
 async function fetchAvailabilities(mediaType: PlaybackMediaType, mediaId: string): Promise<AvailabilityRow[]> {
@@ -35,6 +36,7 @@ async function fetchAvailabilities(mediaType: PlaybackMediaType, mediaId: string
         subtitleLanguage: movieAvailabilities.subtitleLanguage,
         videoQuality: movieAvailabilities.videoQuality,
         rawTitle: movieAvailabilities.rawTitle,
+        containerExtension: movieAvailabilities.containerExtension,
       })
       .from(movieAvailabilities)
       .where(eq(movieAvailabilities.movieId, mediaId))
@@ -49,6 +51,7 @@ async function fetchAvailabilities(mediaType: PlaybackMediaType, mediaId: string
       subtitleLanguage: episodeAvailabilities.subtitleLanguage,
       videoQuality: episodeAvailabilities.videoQuality,
       rawTitle: episodeAvailabilities.rawTitle,
+      containerExtension: episodeAvailabilities.containerExtension,
     })
     .from(episodeAvailabilities)
     .where(eq(episodeAvailabilities.episodeId, mediaId))
@@ -129,15 +132,34 @@ export async function resolvePlayback(
 
   let streamUrl: string
   if (source.type === 'XTREAM') {
-    streamUrl = buildXtreamStreamUrl(
-      source.baseUrl,
-      source.username ?? '',
-      source.password ?? '',
-      selected.providerItemId,
-    )
+    if (mediaType === 'movie') {
+      streamUrl = buildXtreamMovieUrl(
+        source.baseUrl,
+        source.username ?? '',
+        source.password ?? '',
+        selected.providerItemId,
+        selected.containerExtension,
+      )
+    } else {
+      streamUrl = buildXtreamEpisodeUrl(
+        source.baseUrl,
+        source.username ?? '',
+        source.password ?? '',
+        selected.providerItemId,
+        selected.containerExtension,
+      )
+    }
   } else if (source.type === 'M3U') {
     streamUrl = buildM3UStreamUrl(selected.providerItemId)
   } else {
+    console.error('playback-resolver: unknown source type', {
+      mediaType,
+      mediaId,
+      availabilityId: selected.id,
+      providerId: selected.providerId,
+      providerItemId: selected.providerItemId,
+      containerExtension: selected.containerExtension,
+    })
     throw new ValidationError('Variant not available')
   }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { buildXtreamStreamUrl } from '../../providers/xtream/playback.js'
+import { buildXtreamMovieUrl, buildXtreamEpisodeUrl } from '../../providers/xtream/playback.js'
 import { buildM3UStreamUrl } from '../../providers/m3u/playback.js'
 import { ValidationError, ForbiddenError, NotFoundError } from '../../errors.js'
 import type { ProfilePreferences } from '@iptvflix/api-contracts'
@@ -8,33 +8,75 @@ import type { ProfilePreferences } from '@iptvflix/api-contracts'
 // URL builders — pure unit tests (no DB needed)
 // ---------------------------------------------------------------------------
 
-describe('buildXtreamStreamUrl', () => {
-  it('produces the expected path format', () => {
-    const url = buildXtreamStreamUrl('http://srv.example.com', 'user', 'pass', '12345')
+describe('buildXtreamMovieUrl', () => {
+  it('produces the expected movie path format', () => {
+    const url = buildXtreamMovieUrl('http://srv.example.com', 'user', 'pass', '12345', 'ts')
     expect(url).toBe('http://srv.example.com/user/pass/12345.ts')
   })
 
   it('strips trailing slash from baseUrl', () => {
-    const url = buildXtreamStreamUrl('http://srv.example.com/', 'user', 'pass', '42')
+    const url = buildXtreamMovieUrl('http://srv.example.com/', 'user', 'pass', '42', 'ts')
     expect(url).toBe('http://srv.example.com/user/pass/42.ts')
   })
 
-  it('respects explicit ext parameter', () => {
-    const url = buildXtreamStreamUrl('http://srv.example.com', 'u', 'p', '99', 'mp4')
+  it('respects mp4 extension', () => {
+    const url = buildXtreamMovieUrl('http://srv.example.com', 'u', 'p', '99', 'mp4')
     expect(url).toBe('http://srv.example.com/u/p/99.mp4')
   })
 
-  it('does not throw or log credentials', () => {
+  it('respects mkv extension', () => {
+    const url = buildXtreamMovieUrl('http://srv.example.com', 'u', 'p', '99', 'mkv')
+    expect(url).toBe('http://srv.example.com/u/p/99.mkv')
+  })
+
+  it('falls back to ts when extension is null', () => {
+    const url = buildXtreamMovieUrl('http://srv.example.com', 'u', 'p', '99', null)
+    expect(url).toBe('http://srv.example.com/u/p/99.ts')
+  })
+
+  it('falls back to ts when extension is omitted', () => {
+    const url = buildXtreamMovieUrl('http://srv.example.com', 'u', 'p', '99')
+    expect(url).toBe('http://srv.example.com/u/p/99.ts')
+  })
+
+  it('does not log credentials', () => {
     const logged: string[] = []
     const spy = vi.spyOn(console, 'log').mockImplementation((msg: string) => {
       logged.push(msg)
     })
-    buildXtreamStreamUrl('http://x.example.com', 'secret_user', 'secret_pass', '1')
+    buildXtreamMovieUrl('http://x.example.com', 'secret_user', 'secret_pass', '1', 'mp4')
     spy.mockRestore()
     for (const entry of logged) {
       expect(entry).not.toContain('secret_user')
       expect(entry).not.toContain('secret_pass')
     }
+  })
+})
+
+describe('buildXtreamEpisodeUrl', () => {
+  it('includes /series/ prefix in the path', () => {
+    const url = buildXtreamEpisodeUrl('http://srv.example.com', 'user', 'pass', '55', 'mkv')
+    expect(url).toBe('http://srv.example.com/series/user/pass/55.mkv')
+  })
+
+  it('strips trailing slash from baseUrl', () => {
+    const url = buildXtreamEpisodeUrl('http://srv.example.com/', 'user', 'pass', '55', 'mp4')
+    expect(url).toBe('http://srv.example.com/series/user/pass/55.mp4')
+  })
+
+  it('respects the container extension', () => {
+    const url = buildXtreamEpisodeUrl('http://srv.example.com', 'u', 'p', '77', 'avi')
+    expect(url).toBe('http://srv.example.com/series/u/p/77.avi')
+  })
+
+  it('falls back to ts when extension is null', () => {
+    const url = buildXtreamEpisodeUrl('http://srv.example.com', 'u', 'p', '77', null)
+    expect(url).toBe('http://srv.example.com/series/u/p/77.ts')
+  })
+
+  it('falls back to ts when extension is omitted', () => {
+    const url = buildXtreamEpisodeUrl('http://srv.example.com', 'u', 'p', '77')
+    expect(url).toBe('http://srv.example.com/series/u/p/77.ts')
   })
 })
 
@@ -77,6 +119,7 @@ const EMPTY_PREFS: ProfilePreferences = {
   preferredSubtitleLanguages: [],
   preferredSourceIds: [],
   maxVideoQuality: null,
+  autoplayPreviews: false,
 }
 
 function makeAvailability(overrides: {
@@ -88,6 +131,7 @@ function makeAvailability(overrides: {
   subtitleLanguage?: string | null
   videoQuality?: string | null
   rawTitle?: string | null
+  containerExtension?: string | null
 }) {
   return {
     id: overrides.id,
@@ -98,6 +142,7 @@ function makeAvailability(overrides: {
     subtitleLanguage: overrides.subtitleLanguage ?? null,
     videoQuality: overrides.videoQuality ?? null,
     rawTitle: overrides.rawTitle ?? null,
+    containerExtension: overrides.containerExtension ?? null,
   }
 }
 
@@ -223,6 +268,94 @@ describe('explicit availabilityId', () => {
     await expect(
       resolvePlayback('profile-1', 'movie', 'movie-uuid-1', 'av-1'),
     ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('uses containerExtension from explicitly selected availability', async () => {
+    const av = makeAvailability({ id: 'av-1', providerItemId: '500', containerExtension: 'mkv' })
+    const src = makeSource({ id: 'source-uuid-1' })
+
+    dbResultQueue.push([av])
+    dbResultQueue.push([src])
+    dbResultQueue.push([])
+
+    const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1', 'av-1')
+
+    expect(session.streamUrl).toBe('http://xtream.example.com/user/pass/500.mkv')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Xtream VOD URL construction — container extension
+// ---------------------------------------------------------------------------
+
+describe('Xtream movie URL construction', () => {
+  it('uses mp4 extension when containerExtension is mp4', async () => {
+    const av = makeAvailability({ id: 'av-1', providerItemId: '100', containerExtension: 'mp4' })
+    const src = makeSource({ id: 'source-uuid-1' })
+
+    dbResultQueue.push([av])
+    dbResultQueue.push([src])
+    dbResultQueue.push([])
+
+    const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1')
+
+    expect(session.streamUrl).toMatch(/\.mp4$/)
+    expect(session.streamUrl).toBe('http://xtream.example.com/user/pass/100.mp4')
+  })
+
+  it('uses mkv extension when containerExtension is mkv', async () => {
+    const av = makeAvailability({ id: 'av-1', providerItemId: '101', containerExtension: 'mkv' })
+    const src = makeSource({ id: 'source-uuid-1' })
+
+    dbResultQueue.push([av])
+    dbResultQueue.push([src])
+    dbResultQueue.push([])
+
+    const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1')
+
+    expect(session.streamUrl).toBe('http://xtream.example.com/user/pass/101.mkv')
+  })
+
+  it('falls back to ts when containerExtension is null', async () => {
+    const av = makeAvailability({ id: 'av-1', providerItemId: '102', containerExtension: null })
+    const src = makeSource({ id: 'source-uuid-1' })
+
+    dbResultQueue.push([av])
+    dbResultQueue.push([src])
+    dbResultQueue.push([])
+
+    const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1')
+
+    expect(session.streamUrl).toMatch(/\.ts$/)
+  })
+})
+
+describe('Xtream episode URL construction', () => {
+  it('includes /series/ in the path for episodes', async () => {
+    const av = makeAvailability({ id: 'av-1', providerItemId: '200', containerExtension: 'mp4' })
+    const src = makeSource({ id: 'source-uuid-1' })
+
+    dbResultQueue.push([av])
+    dbResultQueue.push([src])
+    dbResultQueue.push([])
+
+    const session = await resolvePlayback('profile-1', 'episode', 'episode-uuid-1')
+
+    expect(session.streamUrl).toContain('/series/')
+    expect(session.streamUrl).toBe('http://xtream.example.com/series/user/pass/200.mp4')
+  })
+
+  it('falls back to ts when episode containerExtension is null', async () => {
+    const av = makeAvailability({ id: 'av-1', providerItemId: '201', containerExtension: null })
+    const src = makeSource({ id: 'source-uuid-1' })
+
+    dbResultQueue.push([av])
+    dbResultQueue.push([src])
+    dbResultQueue.push([])
+
+    const session = await resolvePlayback('profile-1', 'episode', 'episode-uuid-1')
+
+    expect(session.streamUrl).toBe('http://xtream.example.com/series/user/pass/201.ts')
   })
 })
 
