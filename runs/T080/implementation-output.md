@@ -1,22 +1,51 @@
-## Summary — Coder Attempt 3
+## Summary — Coder Attempt 4
 
-The remaining review blocker (`IMPLEMENTATION_FIX_REQUIRED`) was operational, not a code issue. Rather than produce another no-op cycle, I extracted static evidence from the codebase to meaningfully advance the diagnosis.
-
-**What changed** (`runs/T080/diagnosis.md`):
-
-- **Executive Summary** rewritten to lead with confirmed findings vs. pending ones
-- **Section 8** updated: `apps/api/nixpacks.toml:2` confirms `nixPkgs = ["ffmpeg"]` — ffmpeg IS configured in the Railway build (ffprobe bundled). Runtime PATH still needs `/api/diagnostics/env` to rule out edge cases.
-- **Section 9 — Candidate 1** promoted from HIGH hypothesis to **CONFIRMED STRUCTURAL DEFECT**: `playback.ts:207` proves `useCompat = request.query.compat === '1' || isSafariOrIOS(userAgent)`. For Safari UA, both `gatewayUrl` and `compatUrl` (`?compat=1`) execute the **identical** compat code path. The "fallback" is inert — no production trace needed to confirm this.
-- **Section 9 — Candidate 2** demoted from MEDIUM to **LOW**: nixpacks.toml largely rules out ffmpeg absence.
+Attempts 1–3 confirmed that production evidence (Railway + iPhone Safari) is required for Sections 1, 5, 7, 8 and cannot be collected by an AI agent. Rather than produce another no-op cycle, this attempt adds a **local diagnostic script** that replicates the exact production pipeline, allowing Sections 2, 3, 4, and 6 to be filled **without Railway deployment**.
 
 ---
 
-**What still requires human action** (unchanged from attempt-2):
+### What changed
 
-The production trace collecting Sections 1–8 evidence (`sessionId`, `ffmpegExitCode`, `ffmpegStderrTail`, Safari `errorCode`, etc.) requires:
-1. Deploy this branch to Railway
-2. Call `GET /api/diagnostics/env` to confirm ffmpeg runtime presence
-3. Play a failing Xtream stream on iPhone Safari with Railway log stream + Web Inspector open
-4. Fill the `<PENDING>` fields in `diagnosis.md` Sections 1–8
+**`apps/api/scripts/diagnose-stream.mjs`** (new file)
 
-The instrumentation to collect that evidence is fully in place.
+Local script that exercises the compat pipeline end-to-end:
+
+- **Section 2** — runs `ffprobe` with the same invocation as `probeMedia()` (same args, same URL passing approach), extracting `videoCodec`, `audioCodec`, `containerFormat`, profile, resolution, frameRate, audioChannels, sampleRate, duration
+- **Section 3** — applies inline copy of `classifyDelivery(isSafari=true)` on the probed result, reporting which mode is selected and why
+- **Section 4** — fetches the URL via `fetch()`, pipes `response.body` via `Readable.fromWeb()` to `ffmpeg.stdin` — **identical to `runFfmpegStream()`** — captures `exitCode`, `exitSignal`, `stderrTail`, `msToFirstByte`, `firstOutputBytesHex`
+- **Section 6** — runs `ffprobe` on the ffmpeg output file to confirm whether it is valid fMP4
+
+Output is structured JSON with the URL never printed. Report is safe to share.
+
+**`runs/T080/diagnosis.md`** (updated)
+
+- Status line updated: Sections 2/3/4/6 now collectable locally
+- Executive Summary updated: local script bridges 4 of the 9 pending sections
+- Sections 2, 3, 4, 6 updated with "How to Collect (LOCAL)" instructions referencing the script
+- Sections 1, 5, 7, 8 remain `<PENDING>` — still require Railway + iPhone Safari
+
+---
+
+### Sections still requiring human action
+
+| Section | Requires |
+|---|---|
+| 1 — Session trace | Running app (any environment) + real playback |
+| 5 — HTTP response to Safari | Actual HTTP request from Safari or curl |
+| 7 — Safari MediaError | iPhone Safari + Web Inspector |
+| 8 — Railway runtime | Railway deployment + `/api/diagnostics/env` |
+
+Sections 2, 3, 4, 6 can now be filled by running:
+```bash
+node apps/api/scripts/diagnose-stream.mjs --url '<XTREAM_URL>' --ext ts
+```
+
+---
+
+### Files modified
+
+| File | Action |
+|---|---|
+| `apps/api/scripts/diagnose-stream.mjs` | Created |
+| `runs/T080/diagnosis.md` | Updated (executive summary + sections 2/3/4/6) |
+| `runs/T080/implementation-output.md` | Updated |

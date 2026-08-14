@@ -1,6 +1,6 @@
 # T080 — Diagnostic Report: Safari/iOS Playback Failure
 
-**Status**: Instrumentation deployed — code fix applied (legacy REMUX path now uses unified logging) — static code analysis confirms Candidate 1 as structural defect — awaiting production trace for Sections 1–8 evidence fields
+**Status**: Instrumentation deployed — code fix applied (legacy REMUX path now uses unified logging) — static code analysis confirms Candidate 1 as structural defect — local diagnostic script added (Sections 2/3/4/6 collectable without Railway) — awaiting production trace for Sections 1/5/7/8 evidence fields
 
 ---
 
@@ -12,7 +12,7 @@ Static code analysis of the T079 compat pipeline has **confirmed one structural 
 
 **Largely disproved (code-level)**: `apps/api/nixpacks.toml:2` — `nixPkgs = ["ffmpeg"]` is present. ffmpeg (and bundled ffprobe) is configured in the Railway build. This makes Candidate 2 (ffmpeg absent) unlikely, though runtime PATH still requires `/api/diagnostics/env` to fully rule out.
 
-A production trace is still required to fill Sections 1–8 and confirm which compat execution path (probe success vs. probe failure → extension routing) is taken, and what the ffmpeg/HTTP response actually delivers to Safari.
+Sections 2, 3, 4, and 6 are now collectable locally (without Railway) using `apps/api/scripts/diagnose-stream.mjs`. This script replicates the exact production pipeline (`fetch() → pipe → ffmpeg stdin`). A production trace is still required for Sections 1, 5, 7, and 8 (session correlation, HTTP headers delivered to Safari, Safari MediaError, Railway runtime presence).
 
 ---
 
@@ -65,29 +65,22 @@ Safari eventSequence:<PENDING>
 
 ## Section 2 — Upstream Media Metadata
 
-### How to Collect
+### How to Collect (LOCAL — no Railway needed)
 
-After deploying the instrumentation, Railway logs will emit `playback-gateway: probe complete` with:
-- `probeVideoCodec`
-- `probeAudioCodec`
-- `probeContainerFormat`
-
-If probe fails, the log `playback-gateway: probe failed, using extension-based routing` will emit `extensionFallbackRoute` and `probeError`.
-
-### Independent Verification (manual)
-
-Run `ffprobe` (with credentials redacted in the report) against the failing stream URL from a machine with ffprobe installed:
+Run the local diagnostic script (uses the same ffprobe invocation as `probeMedia()`):
 
 ```bash
-ffprobe -v quiet -print_format json -show_streams -show_format <XTREAM_URL_REDACTED>
+node apps/api/scripts/diagnose-stream.mjs --url 'http://provider/stream' --ext ts
 ```
 
-Expected output fields to record:
-- `streams[].codec_type` / `codec_name` / `profile` / `level` / `pix_fmt`
-- `streams[].width` / `height` / `r_frame_rate`
-- `streams[].sample_rate` / `channels`
-- `format.format_name` / `duration`
-- Whether response starts with `<!DOCTYPE html>` (first bytes hex)
+The `section2_upstreamProbe` field of the JSON output gives:
+`videoCodec`, `audioCodec`, `containerFormat`, `videoProfile`, `videoLevel`, `pixelFormat`, `resolution`, `frameRate`, `audioChannels`, `sampleRate`, `duration`
+
+Copy those values into the evidence block below.
+
+### Also Collectable from Railway Logs (after deployment)
+
+Railway logs will emit `playback-gateway: probe complete` with `probeVideoCodec`, `probeAudioCodec`, `probeContainerFormat`. If probe fails: `playback-gateway: probe failed, using extension-based routing` with `extensionFallbackRoute` and `probeError`.
 
 ### Known Xtream IPTV Common Formats
 
@@ -118,6 +111,10 @@ isValidMedia:     <PENDING>
 ---
 
 ## Section 3 — Compatibility Decision (classifyDelivery)
+
+### How to Collect (LOCAL — no Railway needed)
+
+The `section3_compatDecision` field from `diagnose-stream.mjs` shows the exact mode selected by the inline copy of `classifyDelivery(isSafari=true)` using the probed codec info.
 
 ### Code Path (from `playback-compat.ts`)
 
@@ -156,6 +153,10 @@ classifyInputExtension:    <PENDING>
 ---
 
 ## Section 4 — ffmpeg Execution
+
+### How to Collect (LOCAL — no Railway needed)
+
+The `section4_ffmpegExecution` field from `diagnose-stream.mjs` captures `exitCode`, `exitSignal`, `stderrTail`, `msToFirstByte`, `firstOutputBytesHex`. The script replicates the production pipeline exactly: `fetch(url) → Readable.fromWeb → pipe → ffmpeg stdin` with the same args as `runFfmpegStream()`.
 
 ### Critical Observation: stderr was silently discarded (pre-T080)
 
@@ -238,17 +239,17 @@ httpStatus:                <PENDING>
 
 ## Section 6 — Independent Compat Output Validation
 
-### How to Collect
+### How to Collect (LOCAL — no Railway needed)
 
-From a machine with `ffprobe` installed, while the Railway compat endpoint is streaming:
+The `section6_outputValidation` field from `diagnose-stream.mjs` runs ffprobe on the ffmpeg output file and reports `outputIsValidMedia`, `outputContainer`, `outputVideoCodec`, `outputAudioCodec`. This directly answers whether the pipeline produces valid fMP4 independent of Safari integration.
+
+### Also Collectable from Railway (after deployment)
 
 ```bash
 curl -s -H "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15" \
   "https://<railway-api>/api/playback/stream/<sessionId>?compat=1" \
   | ffprobe -v quiet -print_format json -show_streams -show_format -i pipe:0
 ```
-
-This will confirm whether the ffmpeg output is valid fMP4 that any player could decode, independent of Safari integration.
 
 ### Production Evidence (to fill after trace)
 
