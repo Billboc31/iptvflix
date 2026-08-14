@@ -1,12 +1,18 @@
 # T080 — Diagnostic Report: Safari/iOS Playback Failure
 
-**Status**: Instrumentation deployed — code fix applied (legacy REMUX path now uses unified logging) — awaiting production trace to fill evidence fields
+**Status**: Instrumentation deployed — code fix applied (legacy REMUX path now uses unified logging) — static code analysis confirms Candidate 1 as structural defect — awaiting production trace for Sections 1–8 evidence fields
 
 ---
 
 ## Executive Summary
 
-Code-level analysis of the T079 compat pipeline reveals two structural defects that collectively explain why iPhone Safari ends in `MEDIA_ERR_DECODE` / `MEDIA_ERR_SRC_NOT_SUPPORTED` even after the compat fallback fires. The instrumentation added in this ticket (structured backend logs + Safari `console.warn` telemetry + `/api/diagnostics/env`) must be deployed to Railway and a real session traced before the root cause can be confirmed with production evidence. The two primary suspects are documented below; the correction ticket should address whichever one (or both) the production trace confirms.
+Static code analysis of the T079 compat pipeline has **confirmed one structural defect from code alone** (no production trace required):
+
+**Confirmed (code-level)**: `apps/api/src/routes/playback.ts:207` — `useCompat = request.query.compat === '1' || isSafariOrIOS(userAgent)`. For any Safari/iOS User-Agent, BOTH the initial `gatewayUrl` and the retry `compatUrl` (`?compat=1`) execute the **identical** compat code path. The frontend "fallback" fires on `MEDIA_ERR_DECODE`/`MEDIA_ERR_SRC_NOT_SUPPORTED`, retries with `compatUrl`, which appends `?compat=1` — but for Safari UA, the `?compat=1` flag is redundant since `isSafariOrIOS()` already triggers compat. The two attempts are behaviorally identical. If the compat path fails once, it will fail twice.
+
+**Largely disproved (code-level)**: `apps/api/nixpacks.toml:2` — `nixPkgs = ["ffmpeg"]` is present. ffmpeg (and bundled ffprobe) is configured in the Railway build. This makes Candidate 2 (ffmpeg absent) unlikely, though runtime PATH still requires `/api/diagnostics/env` to fully rule out.
+
+A production trace is still required to fill Sections 1–8 and confirm which compat execution path (probe success vs. probe failure → extension routing) is taken, and what the ffmpeg/HTTP response actually delivers to Safari.
 
 ---
 
@@ -305,9 +311,17 @@ This returns:
 - `resolvedPath` (full PATH env)
 - `railwayEnvironment`
 
-### nixpacks Configuration Check
+### nixpacks Configuration Check — VERIFIED FROM CODE
 
-Verify `nixpacks.toml` or `railway.json` in the repo root includes ffmpeg in providers/packages.
+`apps/api/nixpacks.toml` (line 2) contains:
+```toml
+[phases.setup]
+nixPkgs = ["ffmpeg"]
+```
+
+ffmpeg is configured. In Nix packages, `ffmpeg` includes `ffprobe`. Build config also confirmed via `apps/api/railway.toml`: `builder = "NIXPACKS"`. The build pipeline will install ffmpeg from nixpkgs.
+
+**Remaining gap**: This confirms build config, not runtime presence. `/api/diagnostics/env` still needed to confirm ffmpeg is on PATH at runtime (no PATH override, no Docker layer mismatch).
 
 ### Security Limitation — Unauthenticated diagnostics route
 
@@ -330,19 +344,30 @@ railwayPath:      <PENDING>
 
 Based on code-level analysis, ranked by probability:
 
-### Candidate 1 (HIGH): compat fallback is structurally inert on Safari
+### Candidate 1 (CONFIRMED FROM CODE — no production trace required): compat fallback is structurally inert on Safari
 
-**Evidence**: `isSafariOrIOS(userAgent)` triggers compat mode for ALL Safari requests to `gatewayUrl`, including the initial load. When this fails and the frontend retries with `compatUrl` (`?compat=1`), the backend executes the **same** compat code path again. There is no behavioral difference between the two attempts for Safari. If the compat path fails once, it will fail twice.
+**Static evidence**:
+- `apps/api/src/routes/playback.ts:207`: `const useCompat = request.query.compat === '1' || isSafariOrIOS(userAgent)`
+- `apps/api/src/services/playback-resolver.ts:200`: `compatGatewayUrl: \`${gatewayUrl}?compat=1\``
+- `apps/web/src/pages/PlayerPage.tsx:171-181`: on `MEDIA_ERR_DECODE`/`MEDIA_ERR_SRC_NOT_SUPPORTED`, retries with `compatUrl` (= `?compat=1`)
 
-**Consequence**: The frontend "fallback" provides no additional recovery opportunity on Safari. The user always sees the error after two identical failures.
+**Consequence**: For any Safari/iOS UA:
+1. Initial request to `gatewayUrl` → `isSafariOrIOS()` = true → `useCompat = true` → full compat path
+2. Frontend fallback fires → retries `compatUrl` (`?compat=1`) → `request.query.compat === '1'` = true → `useCompat = true` → **identical compat path**
+
+The two attempts are behaviorally identical. If compat path fails on attempt 1, it will fail the same way on attempt 2. The user always sees the error.
+
+**What the production trace will add**: Which specific compat sub-failure occurs (probe fails → extension routing, ffmpeg exits with error, fMP4 malformed, Content-Type mismatch). The structural defect is confirmed; the specific execution failure is what production evidence will reveal.
 
 **Correction**: The frontend should not retry with `compatUrl` on Safari (since both URLs already use compat). Instead, it should either switch to a different variant via `alternatives`, show the error immediately, or use a truly different delivery strategy on retry.
 
-### Candidate 2 (MEDIUM): ffmpeg absent or misconfigured on Railway
+### Candidate 2 (LOW — largely disproved from code): ffmpeg absent or misconfigured on Railway
 
-**Evidence**: The legacy extension-based remux path (`REMUX_EXTENSIONS`, lines 312–365 in pre-T080 code) also silently discards ffmpeg stderr and does not log exit codes. No Railway deployment verification existed. If ffmpeg is absent, the gateway returns 415, which Safari may interpret inconsistently (network error vs. decode error).
+**Static evidence**: `apps/api/nixpacks.toml:2` confirms `nixPkgs = ["ffmpeg"]`. nixpkgs `ffmpeg` package includes both `ffmpeg` and `ffprobe` binaries. `apps/api/railway.toml` confirms `builder = "NIXPACKS"`.
 
-**Correction**: Verify via `/api/diagnostics/env`. If absent, update nixpacks config. If present but failing, the stderr tail from `runFfmpegStream` will identify the specific error.
+**Remaining gap**: Build config confirmed, runtime PATH not yet verified. Edge cases still possible (nixpacks builder version mismatch, Nix store path not on PATH at runtime). Verify via `/api/diagnostics/env` — if `ffmpegWhich.ok = false`, this escalates to HIGH.
+
+**If confirmed**: Update `nixpacks.toml` to explicitly pin `ffmpeg` version or add a `[phases.install]` PATH verification step. Though at current evidence level this is unlikely.
 
 ### Candidate 3 (MEDIUM): Wrong Content-Type for ffmpeg output
 
