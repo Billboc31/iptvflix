@@ -1,7 +1,7 @@
 {
   "ticket_id": "T077",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T077-fix-xtream-vod-playback-url-resolution-for-movies",
   "issue_number": 162,
-  "updated_at": "2026-08-14T13:06:32Z"
+  "updated_at": "2026-08-14T13:16:37Z"
 }
