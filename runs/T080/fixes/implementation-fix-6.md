@@ -1,3 +1,11 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T080/reviews/implementation-review.md
+- generated at: 2026-08-14T16:50:42Z
+
+---
+
 # PR Review — T080 — Diagnose production Safari/iOS playback failure after compatibility fallback
 
 ## Résumé
