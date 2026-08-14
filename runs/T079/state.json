@@ -3,7 +3,5 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T079-fix-safari-ios-video-decode-failures-with-automati",
   "issue_number": 167,
-  "updated_at": "2026-08-14T15:33:17Z",
-  "pr_number": 168,
-  "pr_synced": true
+  "updated_at": "2026-08-14T15:34:37Z"
 }
