@@ -1,6 +1,6 @@
 # T080 — Diagnostic Report: Safari/iOS Playback Failure
 
-**Status**: Instrumentation deployed — awaiting production trace
+**Status**: Instrumentation deployed — code fix applied (legacy REMUX path now uses unified logging) — awaiting production trace to fill evidence fields
 
 ---
 
@@ -308,6 +308,10 @@ This returns:
 ### nixpacks Configuration Check
 
 Verify `nixpacks.toml` or `railway.json` in the repo root includes ffmpeg in providers/packages.
+
+### Security Limitation — Unauthenticated diagnostics route
+
+`GET /api/diagnostics/env` is publicly accessible to any client that knows the URL on Railway. The information exposed (PATH, binary versions, memory) does not include credentials or secrets, and the `RAILWAY_ENVIRONMENT` guard limits it to Railway deployments. However, the path is guessable. This is acceptable for a temporary diagnostic route, but the follow-up correction ticket must remove or protect this endpoint before merging to a long-lived branch.
 
 ### Production Evidence (to fill after trace)
 

@@ -422,57 +422,33 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
 
       // REMUX: ts/mkv/avi → fragmented MP4 via ffmpeg
       if (REMUX_EXTENSIONS.has(ext)) {
-        app.log.info({ ...logCtx }, 'playback-gateway: remuxing to fmp4')
+        app.log.info({ ...logCtx, legacyExtPath: true }, 'playback-gateway: legacy ext-path remuxing to fmp4')
 
         if (!streamBody) {
           return reply.status(415).send({ error: 'Format non supporté par votre navigateur' })
         }
 
-        const ffmpeg = spawn('ffmpeg', [
-          '-i', 'pipe:0',
-          '-c', 'copy',
-          '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
-          '-f', 'mp4',
-          'pipe:1',
-        ], { stdio: ['pipe', 'pipe', 'pipe'] })
+        const outputStream = await runFfmpegStream(
+          streamBody,
+          'REMUX',
+          { ...logCtx, legacyExtPath: true },
+          app,
+          (cb) => request.raw.on('close', cb),
+        )
 
-        ffmpeg.stderr.on('data', () => {
-          // discard ffmpeg stderr to avoid log noise
-        })
-
-        // Pipe upstream → ffmpeg stdin
-        const inputStream = Readable.fromWeb(streamBody as import('stream/web').ReadableStream)
-        inputStream.pipe(ffmpeg.stdin)
-        inputStream.on('error', () => {
-          if (!ffmpeg.killed) ffmpeg.kill('SIGKILL')
-        })
-
-        // Abort ffmpeg on client disconnect
-        request.raw.on('close', () => {
-          if (!ffmpeg.killed) ffmpeg.kill('SIGKILL')
-        })
-
-        // Wait for the first output chunk or an error before committing to a response.
-        // This ensures we can return 415 cleanly if ffmpeg is missing or fails immediately.
-        const firstChunk = await Promise.race<Buffer | null>([
-          new Promise<Buffer>((resolve) => ffmpeg.stdout.once('data', (chunk: Buffer) => resolve(chunk))),
-          new Promise<null>((resolve) => ffmpeg.once('error', () => resolve(null))),
-          new Promise<null>((resolve) => ffmpeg.once('close', (code) => { if (code !== 0) resolve(null) })),
-        ])
-
-        if (firstChunk === null) {
-          if (!ffmpeg.killed) ffmpeg.kill('SIGKILL')
-          app.log.warn({ ...logCtx }, 'playback-gateway: ffmpeg unavailable or failed to start')
+        if (outputStream === null) {
           return reply.status(415).send({ error: 'Format non supporté par votre navigateur' })
         }
 
-        // ffmpeg started producing output — write the first chunk back and stream the rest
-        const outputStream = new PassThrough()
-        outputStream.write(firstChunk)
-        ffmpeg.stdout.pipe(outputStream)
-
         reply.header('Content-Type', 'video/mp4')
         reply.status(200)
+        app.log.info({
+          ...logCtx,
+          legacyExtPath: true,
+          responseContentType: 'video/mp4',
+          responseTransferEncoding: 'chunked',
+          responseMode: 'legacy-ext-remux',
+        }, 'playback-gateway: response headers to browser')
         return reply.send(outputStream)
       }
 
