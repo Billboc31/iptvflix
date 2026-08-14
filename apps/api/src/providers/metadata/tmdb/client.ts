@@ -22,6 +22,7 @@ import type {
   TmdbCollection,
 } from './types.js'
 import { TmdbRateLimitError, TmdbNetworkError } from './errors.js'
+import { parseYear } from '../../../lib/parse-year.js'
 
 export interface TmdbSimilarItem {
   id: number
@@ -38,12 +39,6 @@ export interface TmdbSimilarResponse {
 }
 
 const BASE_URL = 'https://api.themoviedb.org/3'
-
-function parseYear(dateStr: string | undefined): number | null {
-  if (!dateStr || dateStr.length < 4) return null
-  const n = parseInt(dateStr.substring(0, 4), 10)
-  return isNaN(n) ? null : n
-}
 
 function deriveReleaseStatus(dateStr?: string): string | null {
   if (!dateStr) return null

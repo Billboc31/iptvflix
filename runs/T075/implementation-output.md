@@ -1,18 +1,20 @@
-All tests pass. Here's a summary of what was implemented:
+All 25 tests pass. Here's a summary of what was fixed:
 
 ---
 
-## Files modified or created
+## Changes applied
 
-### New files
-- **`apps/api/src/services/not-found-error.ts`** — extracted `NotFoundError` to a standalone module to avoid transitive DB import in unit tests
-- **`apps/api/src/services/similar-titles-service.ts`** — `SimilarTitlesService` class with `getSimilarMovies` / `getSimilarSeries`, 5-minute in-memory cache, up to 5 materializations per request, TMDB fallback to local genre query on network error
-- **`apps/api/src/services/__tests__/similar-titles-service.test.ts`** — 12 unit tests covering TMDB hit, deduplication, source exclusion, zero-source availability, materialization cap, failure resilience, network fallback, cache hit, and limit
-- **`apps/api/src/routes/__tests__/similar-titles.test.ts`** — 13 route integration tests covering both endpoints: 200 shape, 404 for unknown id, limit validation (0/99 → 400), non-UUID id → 400
+### `apps/api/src/lib/parse-year.ts` (new)
+Extracted the duplicated `parseYear` utility into a shared module.
 
-### Modified files
-- **`apps/api/src/providers/metadata/tmdb/client.ts`** — added `TmdbSimilarItem`, `TmdbSimilarResponse` types and 4 methods: `getMovieSimilar`, `getMovieRecommendations`, `getSeriesSimilar`, `getSeriesRecommendations`
-- **`apps/api/src/services/catalog-service.ts`** — replaced inline `NotFoundError` class with re-export from `not-found-error.ts`
-- **`apps/api/src/routes/movies.ts`** — added `MoviesRouteOptions`, opts parameter, `GET /movies/:id/similar` route
-- **`apps/api/src/routes/series.ts`** — added `SeriesRouteOptions`, opts parameter, `GET /series/:id/similar` route
-- **`apps/api/src/index.ts`** — instantiates `SimilarTitlesService` and passes it to `moviesRoutes` and `seriesRoutes`
+### `apps/api/src/providers/metadata/tmdb/client.ts`
+Removed the local `parseYear` function; imports from `../../../lib/parse-year.js` instead.
+
+### `apps/api/src/services/similar-titles-service.ts`
+Three fixes:
+1. **Local DB metadata** — `resolveMovieCandidates` and `resolveSeriesCandidates` now select `title`, `posterPath`, `year`, `voteAverage` from the local catalog tables. The card mapping uses local DB values as primary, falling back to TMDB candidate data only for nullable fields (`posterPath`, `year`, `voteAverage`). `title` (notNull in schema) always comes from the local catalog.
+2. **Genre inserts after materialization** — `materializeMovie` and `materializeSeries` now use `.returning({ id })` to get the inserted row's ID, then call `upsertMovieGenres` / `upsertSeriesGenres` when the TMDB metadata includes genre data. This ensures materialized entries participate in the genre-based fallback.
+3. **`parseYear` de-duplicated** — removed local copy, uses shared `lib/parse-year.ts`. Added local `slugify` helper (3 lines, not worth a shared module).
+
+### `apps/api/src/services/__tests__/similar-titles-service.test.ts`
+Updated the `getSimilarSeries` mock row to include `title`, `posterPath`, `year`, `voteAverage` so the assertion `expect(result[0].title).toBe('Similar Series 1')` correctly tests local-DB data priority.

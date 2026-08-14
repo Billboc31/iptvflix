@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, not } from 'drizzle-orm'
+import { and, desc, eq, inArray, not, sql } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import type * as schema from '../db/schema/index.js'
 import {
@@ -8,10 +8,12 @@ import {
   series,
   seriesAvailabilities,
   seriesGenres,
+  genres,
 } from '../db/schema/index.js'
 import type { TmdbClient } from '../providers/metadata/tmdb/client.js'
 import { TmdbNetworkError } from '../providers/metadata/tmdb/errors.js'
 import { NotFoundError } from './not-found-error.js'
+import { parseYear } from '../lib/parse-year.js'
 
 type Db = PostgresJsDatabase<typeof schema>
 
@@ -132,9 +134,17 @@ export class SimilarTitlesService {
     if (candidates.length === 0) return []
 
     const candidateTmdbIds = candidates.map((c) => c.tmdbId)
+    const localFields = {
+      id: movies.id,
+      tmdbId: movies.tmdbId,
+      title: movies.title,
+      posterPath: movies.posterPath,
+      year: movies.year,
+      voteAverage: movies.voteAverage,
+    } as const
 
     const localRows = await this.db
-      .select({ id: movies.id, tmdbId: movies.tmdbId })
+      .select(localFields)
       .from(movies)
       .where(inArray(movies.tmdbId, candidateTmdbIds))
 
@@ -153,12 +163,12 @@ export class SimilarTitlesService {
     const allLocalRows =
       toMaterialize.length > 0
         ? await this.db
-            .select({ id: movies.id, tmdbId: movies.tmdbId })
+            .select(localFields)
             .from(movies)
             .where(inArray(movies.tmdbId, candidateTmdbIds))
         : localRows
 
-    const localIdByTmdbId = new Map(allLocalRows.map((r) => [r.tmdbId!, r.id]))
+    const localByTmdbId = new Map(allLocalRows.map((r) => [r.tmdbId!, r]))
     const resolvedIds = allLocalRows.map((r) => r.id)
 
     if (resolvedIds.length === 0) return []
@@ -168,18 +178,18 @@ export class SimilarTitlesService {
     const tmdbById = new Map(candidates.map((c) => [c.tmdbId, c]))
 
     return candidateTmdbIds
-      .filter((tmdbId) => localIdByTmdbId.has(tmdbId))
+      .filter((tmdbId) => localByTmdbId.has(tmdbId))
       .map((tmdbId) => {
-        const localId = localIdByTmdbId.get(tmdbId)!
+        const local = localByTmdbId.get(tmdbId)!
         const candidate = tmdbById.get(tmdbId)!
         return {
-          id: localId,
+          id: local.id,
           tmdbId,
-          title: candidate.title,
-          posterPath: candidate.posterPath,
-          year: candidate.year,
-          voteAverage: candidate.voteAverage,
-          isAvailable: availSet.has(localId),
+          title: local.title,
+          posterPath: local.posterPath ?? candidate.posterPath,
+          year: local.year ?? candidate.year,
+          voteAverage: local.voteAverage ?? candidate.voteAverage,
+          isAvailable: availSet.has(local.id),
         }
       })
       .filter((card) => card.id !== sourceId)
@@ -192,9 +202,17 @@ export class SimilarTitlesService {
     if (candidates.length === 0) return []
 
     const candidateTmdbIds = candidates.map((c) => c.tmdbId)
+    const localFields = {
+      id: series.id,
+      tmdbId: series.tmdbId,
+      title: series.title,
+      posterPath: series.posterPath,
+      year: series.firstAirYear,
+      voteAverage: series.voteAverage,
+    } as const
 
     const localRows = await this.db
-      .select({ id: series.id, tmdbId: series.tmdbId })
+      .select(localFields)
       .from(series)
       .where(inArray(series.tmdbId, candidateTmdbIds))
 
@@ -213,12 +231,12 @@ export class SimilarTitlesService {
     const allLocalRows =
       toMaterialize.length > 0
         ? await this.db
-            .select({ id: series.id, tmdbId: series.tmdbId })
+            .select(localFields)
             .from(series)
             .where(inArray(series.tmdbId, candidateTmdbIds))
         : localRows
 
-    const localIdByTmdbId = new Map(allLocalRows.map((r) => [r.tmdbId!, r.id]))
+    const localByTmdbId = new Map(allLocalRows.map((r) => [r.tmdbId!, r]))
     const resolvedIds = allLocalRows.map((r) => r.id)
 
     if (resolvedIds.length === 0) return []
@@ -228,18 +246,18 @@ export class SimilarTitlesService {
     const tmdbById = new Map(candidates.map((c) => [c.tmdbId, c]))
 
     return candidateTmdbIds
-      .filter((tmdbId) => localIdByTmdbId.has(tmdbId))
+      .filter((tmdbId) => localByTmdbId.has(tmdbId))
       .map((tmdbId) => {
-        const localId = localIdByTmdbId.get(tmdbId)!
+        const local = localByTmdbId.get(tmdbId)!
         const candidate = tmdbById.get(tmdbId)!
         return {
-          id: localId,
+          id: local.id,
           tmdbId,
-          title: candidate.title,
-          posterPath: candidate.posterPath,
-          year: candidate.year,
-          voteAverage: candidate.voteAverage,
-          isAvailable: availSet.has(localId),
+          title: local.title,
+          posterPath: local.posterPath ?? candidate.posterPath,
+          year: local.year ?? candidate.year,
+          voteAverage: local.voteAverage ?? candidate.voteAverage,
+          isAvailable: availSet.has(local.id),
         }
       })
       .filter((card) => card.id !== sourceId)
@@ -378,19 +396,52 @@ export class SimilarTitlesService {
       metadata = null
     }
 
-    await this.db.insert(movies).values({
-      title: metadata?.title ?? `tmdb:${tmdbId}`,
-      originalTitle: metadata?.originalTitle ?? null,
-      year: metadata?.year ?? null,
-      synopsis: metadata?.synopsis ?? null,
-      posterPath: metadata?.posterPath ?? null,
-      backdropPath: metadata?.backdropPath ?? null,
-      durationMinutes: metadata?.runtimeMinutes ?? null,
-      imdbId: metadata?.imdbId ?? null,
-      tmdbId,
-      metadataProvider: metadata ? 'tmdb' : null,
-      metadataEnrichedAt: metadata ? new Date() : null,
-    })
+    const [inserted] = await this.db
+      .insert(movies)
+      .values({
+        title: metadata?.title ?? `tmdb:${tmdbId}`,
+        originalTitle: metadata?.originalTitle ?? null,
+        year: metadata?.year ?? null,
+        synopsis: metadata?.synopsis ?? null,
+        posterPath: metadata?.posterPath ?? null,
+        backdropPath: metadata?.backdropPath ?? null,
+        durationMinutes: metadata?.runtimeMinutes ?? null,
+        imdbId: metadata?.imdbId ?? null,
+        tmdbId,
+        metadataProvider: metadata ? 'tmdb' : null,
+        metadataEnrichedAt: metadata ? new Date() : null,
+      })
+      .returning({ id: movies.id })
+
+    if (inserted && metadata?.genreObjects?.length) {
+      await this.upsertMovieGenres(inserted.id, metadata.genreObjects)
+    }
+  }
+
+  private async upsertMovieGenres(
+    movieId: string,
+    genreObjects: Array<{ name: string; tmdbId: number }>,
+  ): Promise<void> {
+    const genreValues = genreObjects.map((g) => ({
+      name: g.name,
+      slug: slugify(g.name),
+      tmdbId: g.tmdbId,
+    }))
+    await this.db
+      .insert(genres)
+      .values(genreValues)
+      .onConflictDoUpdate({ target: genres.slug, set: { tmdbId: sql`EXCLUDED.tmdb_id` } })
+    const slugs = genreValues.map((g) => g.slug)
+    const genreRows = await this.db
+      .select({ id: genres.id })
+      .from(genres)
+      .where(inArray(genres.slug, slugs))
+    if (genreRows.length > 0) {
+      await this.db
+        .insert(movieGenres)
+        .values(genreRows.map((r) => ({ movieId, genreId: r.id })))
+        .onConflictDoNothing()
+    }
   }
 
   private async materializeSeries(tmdbId: number): Promise<void> {
@@ -408,18 +459,51 @@ export class SimilarTitlesService {
       metadata = null
     }
 
-    await this.db.insert(series).values({
-      title: metadata?.title ?? `tmdb:${tmdbId}`,
-      originalTitle: metadata?.originalTitle ?? null,
-      firstAirYear: metadata?.firstAirYear ?? null,
-      synopsis: metadata?.synopsis ?? null,
-      posterPath: metadata?.posterPath ?? null,
-      backdropPath: metadata?.backdropPath ?? null,
-      imdbId: metadata?.imdbId ?? null,
-      tmdbId,
-      metadataProvider: metadata ? 'tmdb' : null,
-      metadataEnrichedAt: metadata ? new Date() : null,
-    })
+    const [inserted] = await this.db
+      .insert(series)
+      .values({
+        title: metadata?.title ?? `tmdb:${tmdbId}`,
+        originalTitle: metadata?.originalTitle ?? null,
+        firstAirYear: metadata?.firstAirYear ?? null,
+        synopsis: metadata?.synopsis ?? null,
+        posterPath: metadata?.posterPath ?? null,
+        backdropPath: metadata?.backdropPath ?? null,
+        imdbId: metadata?.imdbId ?? null,
+        tmdbId,
+        metadataProvider: metadata ? 'tmdb' : null,
+        metadataEnrichedAt: metadata ? new Date() : null,
+      })
+      .returning({ id: series.id })
+
+    if (inserted && metadata?.genreObjects?.length) {
+      await this.upsertSeriesGenres(inserted.id, metadata.genreObjects)
+    }
+  }
+
+  private async upsertSeriesGenres(
+    seriesId: string,
+    genreObjects: Array<{ name: string; tmdbId: number }>,
+  ): Promise<void> {
+    const genreValues = genreObjects.map((g) => ({
+      name: g.name,
+      slug: slugify(g.name),
+      tmdbId: g.tmdbId,
+    }))
+    await this.db
+      .insert(genres)
+      .values(genreValues)
+      .onConflictDoUpdate({ target: genres.slug, set: { tmdbId: sql`EXCLUDED.tmdb_id` } })
+    const slugs = genreValues.map((g) => g.slug)
+    const genreRows = await this.db
+      .select({ id: genres.id })
+      .from(genres)
+      .where(inArray(genres.slug, slugs))
+    if (genreRows.length > 0) {
+      await this.db
+        .insert(seriesGenres)
+        .values(genreRows.map((r) => ({ seriesId, genreId: r.id })))
+        .onConflictDoNothing()
+    }
   }
 }
 
@@ -427,10 +511,11 @@ function isTmdbError(err: unknown): boolean {
   return err instanceof TmdbNetworkError || (err instanceof Error && err.name === 'TmdbRateLimitError')
 }
 
-function parseYear(dateStr: string | undefined): number | null {
-  if (!dateStr || dateStr.length < 4) return null
-  const n = parseInt(dateStr.substring(0, 4), 10)
-  return isNaN(n) ? null : n
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
 }
 
 function mergeCandidates(

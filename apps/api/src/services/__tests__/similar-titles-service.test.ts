@@ -158,7 +158,7 @@ describe('SimilarTitlesService', () => {
       const db: any = {
         select: vi.fn()
           .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ id: SERIES_ID, tmdbId: SERIES_TMDB_ID }]) }) })
-          .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ id: 's1', tmdbId: 2001 }]) }) })
+          .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ id: 's1', tmdbId: 2001, title: 'Similar Series 1', posterPath: '/series1.jpg', year: 2021, voteAverage: 8.1 }]) }) })
           .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ seriesId: 's1' }]) }) }),
       }
 
