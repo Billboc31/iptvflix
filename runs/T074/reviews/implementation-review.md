@@ -1,112 +1,71 @@
-Good, the TypeScript error is confirmed. Now I have everything needed to write the review.
+All checks complete. I now have a full picture of the post-fix state.
 
 ---
 
-# PR Review — T074: Populate canonical TV seasons and episodes from TMDB
+# PR Review — T074: Populate canonical TV seasons and episodes from TMDB (attempt 2)
 
-## Résumé
+## Summary
 
-L'implémentation couvre l'essentiel du ticket de manière propre et focalisée : upsert canonique des saisons et épisodes, hydratation prioritaire au bootstrap, trigger on-demand, et tests ciblés. Un défaut TypeScript bloquant est introduit dans les tests, et un garde de concurrence manque pour le trigger on-demand (déviation explicite du plan). Le reste est correct.
+This is a re-review after `IMPLEMENTATION_FIX_REQUIRED`. Both blocking issues flagged in the previous review have been correctly addressed. The implementation is functionally complete, TypeScript-clean (for T074 changes), and all 67 related tests pass.
 
 ---
 
 ## Vérifications effectuées
 
-- `metadata-enrichment-service.ts` : logique d'upsert saisons et épisodes
-- `catalog-bootstrap-service.ts` : configuration, tier prioritaire, checkpoint
-- `routes/catalog.ts` : trigger fire-and-forget, header `X-Hierarchy-Hydrating`
-- `index.ts` : câblage des services
-- `providers/metadata/types.ts` et `tmdb/client.ts` : champs `name` et `airDate` sur les saisons
-- `config/env.ts` : nouvelle variable `CATALOG_BOOTSTRAP_HIERARCHY_PRIORITY_COUNT`
-- Tests : `metadata-enrichment-service.test.ts`, `catalog-bootstrap-service.test.ts`, `catalog.test.ts`
-- Vérification TypeScript (`tsc --noEmit`)
+- `metadata-enrichment-service.ts` — upsert seasons + upsert episodes
+- `catalog-bootstrap-service.ts` — priority tier, checkpoint, config
+- `routes/catalog.ts` — fire-and-forget, concurrency guard, header
+- `config/env.ts` — new env var
+- `providers/metadata/types.ts` + `tmdb/client.ts` — `name`/`airDate` on seasons
+- `index.ts` — wiring
+- Tests: `metadata-enrichment-service.test.ts`, `catalog-bootstrap-service.test.ts`, `catalog.test.ts`
+- TypeScript: `tsc --noEmit` (T074-scope errors only)
+- Test run: `vitest run` — 67/67 passed
 
 ---
 
-## Points validés
+## Fixes from previous review — verified
 
-**Upsert canonique (`metadata-enrichment-service.ts`)**
-- `enrichSeries()` : `INSERT ... ON CONFLICT (seriesId, seasonNumber) DO UPDATE` correct avec `sql\`EXCLUDED.*\`` pour les champs ; season 0 gérée nativement sans filtre.
-- `enrichSeriesSeasons()` : `INSERT ... ON CONFLICT (seasonId, episodeNumber) DO UPDATE` ; `episodeAvailabilities` et watch-state intacts (tables séparées non touchées).
-- `updatedAt: sql\`now()\`` inclus dans les deux upserts — propre.
-- Throttle 250ms entre saisons dans `enrichSeriesSeasons()`.
+### [BLOQUANT → RÉSOLU] TypeScript type error dans `catalog-bootstrap-service.test.ts`
 
-**Bootstrap (`catalog-bootstrap-service.ts`)**
-- Tier prioritaire post-étapes : top-N par `popularity`, batches de 5, délai 500ms inter-batch, checkpoint `hierarchy:priority`, logs clairs.
-- Résumabilité : `checkpoint[hierarchyKey]?.done` évite de rejouer le tier en cas de reprise.
-- `BootstrapConfig.hierarchyPriorityCount` avec défaut 200 via `env.ts`.
+`const config: BootstrapConfig` at line 16 now includes `hierarchyPriorityCount: 200` (line 23). The required interface field is satisfied. The `tsc --noEmit` output shows only two pre-existing errors in unrelated files (`authenticateDevice.test.ts` and `playback-resolver.test.ts`) — neither introduced by T074.
 
-**On-demand hydration (`routes/catalog.ts`)**
-- Condition triple correcte : `seasonRows.length === 0 && seriesRow.tmdbId != null && opts.enrichmentService`.
-- Fire-and-forget via `void` ; `X-Hierarchy-Hydrating: true` retourné immédiatement.
-- Câblage `index.ts` correct : `enrichmentService` passé aux deux services.
+### [MINEUR → RÉSOLU] Concurrency guard for on-demand hydration
 
-**Tests**
-- 5 nouveaux cas dans `metadata-enrichment-service.test.ts` : upsert sans source, idempotence, épisodes source-free, épisode TMDB crée une ligne.
-- 3 cas d'hydratation on-demand dans `catalog.test.ts` (trigger, non-trigger si saisons présentes, non-trigger si `tmdbId` null).
-- Coverage fonctionnel suffisant pour les acceptance criteria.
-
-**Types TMDB**
-- `ExternalSeriesMetadata.seasons[].name` et `.airDate` ajoutés dans `types.ts`; `mapSeriesDetail()` les popule depuis `raw.seasons`.
+`catalog.ts:99` declares `const hydrationInProgress = new Set<string>()` at module level. The trigger block at line 295 checks `!hydrationInProgress.has(id)`, adds the id at line 297, and removes it via `.finally(() => hydrationInProgress.delete(id))` at line 298. Concurrent requests for the same un-hydrated series now fire exactly one TMDB call. Implementation matches the plan specification.
 
 ---
 
-## Problèmes détectés
+## Acceptance criteria — full check
 
-### [BLOQUANT] TypeScript type error dans `catalog-bootstrap-service.test.ts`
-
-`tsc --noEmit` confirme :
-
-```
-src/services/__tests__/catalog-bootstrap-service.test.ts(16,7): error TS2741:
-Property 'hierarchyPriorityCount' is missing in type '{ maxPagesPerFeed: number;
-... }' but required in type 'BootstrapConfig'.
-```
-
-Le champ `hierarchyPriorityCount: number` a été ajouté comme requis dans l'interface `BootstrapConfig`, mais l'objet `config` du test (ligne 16) n'a pas été mis à jour. Le CI type-check échouera.
-
-**Fix requis** : ajouter `hierarchyPriorityCount: 200` à l'objet `config` du test (ligne 23), ou rendre le champ optionnel dans l'interface avec une valeur par défaut dans le constructeur.
-
----
-
-### [MINEUR] Garde de concurrence absent pour le trigger on-demand
-
-Le plan spécifiait explicitement : *"AND enrichment is not already running"*. L'implémentation déclenche `enrichSeries(id)` à chaque requête `GET /series/:id` quand `seasonRows.length === 0`. Si N requêtes simultanées arrivent pour la même série non hydratée, N appels TMDB concurrents sont déclenchés.
-
-Les upserts étant idempotents, aucune donnée corrompue ne résulte. Mais cela gaspille le quota TMDB et pourrait déclencher du rate-limiting sur des séries très demandées au démarrage. L'impact est faible en pratique, mais c'est une déviation documentée du plan.
-
-**Fix suggéré** : un `Set<string>` en mémoire (ou un champ de module) des IDs en cours d'hydratation suffit. Pas de persistance DB nécessaire.
+| Criterion | Status |
+|---|---|
+| TMDB-imported Series can have seasons/episodes before any source | ✅ `enrichSeries()` upserts season rows; `enrichSeriesSeasons()` upserts episode rows |
+| Canonical TMDB identity, not Xtream | ✅ Upsert keys are `(seriesId, seasonNumber)` / `(seasonId, episodeNumber)` from TMDB |
+| Series with zero sources returns hierarchy via API | ✅ `GET /series/:id` returns `seasons[]` independent of availabilities |
+| Bootstrap documents and implements scalable strategy | ✅ Priority tier (top-200 by popularity) + refresh scheduler for remainder; strategy documented in code comment |
+| On-demand hydration without full bootstrap rerun | ✅ Fire-and-forget in `GET /series/:id`; `enrichSeries()` also callable directly |
+| Scheduled refresh discovers new seasons/episodes | ✅ Refresh buckets already call `enrichSeries()`; upsert now creates hierarchy |
+| Specials/season 0, miniseries, future/partial metadata | ✅ No filter on `seasonNumber`; nullable fields default to `null` |
+| Repeated hydration is idempotent, no duplicates | ✅ `INSERT ... ON CONFLICT DO UPDATE` on both seasons and episodes; tested |
+| Progress/watch-state/source links preserved on refresh | ✅ `episodeAvailabilities` and `viewingProgress` tables untouched by upserts |
+| Xtream/Plex attach to canonical episodes, not define them | ✅ Source sync path not modified; enrichment is the write path |
+| TMDB rate limits/retries handled | ✅ 250ms per-season throttle; 500ms inter-batch delay in bootstrap; client retry/backoff in place |
+| Progress/observability for large hydration | ✅ `console.log` counts in bootstrap tier; `console.info` on on-demand trigger |
+| Automated tests for all key scenarios | ✅ 5 enrichment tests, 3 on-demand hydration tests, 2 bootstrap config tests — all green |
 
 ---
 
-### [OBSERVATION] Tier bootstrap prioritaire peut sauter des séries récemment enrichies sans saisons
+## Observations (non-blocking, unchanged from previous review)
 
-`enrichSeries()` retourne `'skipped'` si `metadataEnrichedAt` est dans la fenêtre `staleDays`. Une série enrichie avant ce fix (donc sans saisons) et dont `metadataEnrichedAt` est récent sera sautée par le tier prioritaire. Le refresh scheduler la ramassera à sa prochaine fenêtre de staleness.
+**Bootstrap may skip recently-enriched series without hierarchy**: `enrichSeries()` returns `'skipped'` when `metadataEnrichedAt` is within the stale window. A series enriched before this fix with a recent timestamp will be skipped by the priority tier and picked up at the next refresh cycle. Acceptable for an initial bootstrap; no code change required.
 
-Pour un bootstrap initial (toutes séries nouvelles, `metadataEnrichedAt = null`), ce cas ne se produit pas. Pour un re-bootstrap sur un catalogue existant, certaines séries resteront sans hiérarchie jusqu'au prochain cycle de refresh. Ce comportement est acceptable mais mériterait un commentaire dans le code.
-
----
-
-### [OBSERVATION] Parallélisme bootstrap × rate-limit TMDB
-
-Le tier prioritaire lance 5 séries en `Promise.all`. Chaque `enrichSeries()` fait 4 appels TMDB parallèles (metadata, videos, credits, certification). Cela représente jusqu'à 20 requêtes TMDB simultanées par batch, au-delà de la fenêtre TMDB de ~40 req/10s. Le retry/backoff du client TMDB absorbe les 429, mais le bruit sera visible. Acceptable compte tenu de la stratégie documentée ; à surveiller en prod.
+**Parallelism in bootstrap tier**: 5 concurrent `enrichSeries()` calls, each triggering 4 parallel TMDB calls = up to 20 simultaneous requests per batch. TMDB client backoff handles 429s. Acceptable given the documented strategy.
 
 ---
 
-## Risques éventuels
+## Decision
 
-- Aucun risque de régression sur les `episodeAvailabilities` ou watch-state (tables distinctes, non touchées par les upserts).
-- L'idempotence des upserts est correctement garantie par les contraintes DB `(seriesId, seasonNumber)` et `(seasonId, episodeNumber)`.
-- Le fire-and-forget ne propage aucune erreur à l'appelant HTTP.
+Both blocking issues from the previous review are resolved. TypeScript is clean for T074 scope. All 67 tests pass. Implementation correctly satisfies all acceptance criteria. No new issues introduced.
 
----
-
-## Décision
-
-L'implémentation est fonctionnellement correcte et bien structurée. Un défaut TypeScript bloquant introduit dans les tests doit être corrigé avant fusion. La déviation sur le garde de concurrence est mineure mais documentée dans le plan ; elle devrait être adressée dans le même fix.
-
-**Actions requises :**
-1. **[Bloquant]** Ajouter `hierarchyPriorityCount: 200` à l'objet `const config: BootstrapConfig` dans `catalog-bootstrap-service.test.ts` ligne 16.
-2. **[Conseillé]** Ajouter un garde simple contre les hydrations concurrentes dans le handler `GET /series/:id`.
-
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
