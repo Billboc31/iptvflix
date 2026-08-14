@@ -17,3 +17,25 @@
 [2026-08-14T08:29:39Z] conflict-resolver: running tests
 [2026-08-14T08:29:39Z] conflict-resolver: test-report written: runs/T072/conflict/test-report.md
 [2026-08-14T08:29:39Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-14T08:54:36Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-14T08:54:36Z] auto-run: running step=tester
+[2026-08-14T08:54:37Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-14T08:54:37Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-14T08:54:37Z] prompt: generic fallback — injecting runs/T072/ticket.md
+[2026-08-14T08:54:37Z] compose: global-context=docs/ai/global-context.md
+[2026-08-14T08:54:37Z] compose: role=ai/roles/tester.md
+[2026-08-14T08:54:37Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-14T08:54:37Z] compose: skill=ai/skills/testing.md
+[2026-08-14T08:54:37Z] compose: skill=ai/skills/debugging.md
+[2026-08-14T08:54:37Z] compose: task (canonical prompt)
+[2026-08-14T08:54:37Z] snapshot: runtime-prompt=runs/T072/prompts/tester-attempt-1.md
+[2026-08-14T09:04:15Z] auto-run: step=tester done rc=0
+[2026-08-14T09:04:15Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-14T09:04:15Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-14T09:04:15Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.vite/vitest/results.json', 'apps/web/node_modules/.vite/vitest/results.json', 'runs/T072/daemon.lock', 'runs/T072/runtime.log', 'runs/T072/workflow-status.md']
+[2026-08-14T09:04:15Z] commit-checkpoint: sha=20ceec9 files=4 title='test(T072/workflow): tester — update 4 file(s)'
+[2026-08-14T09:04:15Z] auto-run: auto-push triggered
+[2026-08-14T09:04:15Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.vite/vitest/results.json', 'apps/web/node_modules/.vite/vitest/results.json', 'runs/T072/daemon.lock', 'runs/T072/runtime.log', 'runs/T072/workflow-status.md']
+[2026-08-14T09:04:15Z] push: pushing branch=ticket/T072-immersive-modal-movie-series-detail-experience
+[2026-08-14T09:04:17Z] push: done branch=ticket/T072-immersive-modal-movie-series-detail-experience
+[2026-08-14T09:04:18Z] auto-run: TEST_COMPLETE — running PR lifecycle
