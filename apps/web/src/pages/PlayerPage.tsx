@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import type { ProgressMediaType } from '@iptvflix/api-contracts'
 import { usePlayback } from '../hooks/usePlayback.js'
@@ -30,6 +30,8 @@ export default function PlayerPage() {
   const initialAvailabilityId = searchParams.get('availabilityId') ?? undefined
   const resolvedMediaType = mediaType === 'movie' ? 'movie' : 'episode'
 
+  const [videoError, setVideoError] = useState<string | null>(null)
+
   const { gatewayUrl, containerExtension, startPositionSeconds, alternatives, status, error, switchVariant } = usePlayback(
     resolvedMediaType as 'movie' | 'episode',
     mediaId!,
@@ -49,6 +51,7 @@ export default function PlayerPage() {
     let cancelled = false
 
     httpStatusRef.current = undefined
+    setVideoError(null)
 
     const ext = containerExtension?.toLowerCase()
     if (ext === 'm3u8' || ext === 'm3u') {
@@ -92,7 +95,11 @@ export default function PlayerPage() {
 
     function onError() {
       if (!httpStatusRef.current) {
-        checkGatewayStatus().catch(() => undefined)
+        checkGatewayStatus()
+          .then(() => setVideoError(videoErrorMessage(videoRef.current, httpStatusRef.current)))
+          .catch(() => setVideoError(videoErrorMessage(videoRef.current, undefined)))
+      } else {
+        setVideoError(videoErrorMessage(videoRef.current, httpStatusRef.current))
       }
     }
 
@@ -147,8 +154,15 @@ export default function PlayerPage() {
         playsInline
       />
 
+      {/* Stream-level error overlay — gateway/decode failures after resolve */}
+      {videoError && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <ErrorState message={videoError} onRetry={handleBack} />
+        </div>
+      )}
+
       {/* Custom controls overlay — only when URL is loaded */}
-      {(status === 'ready' || status === 'idle') && (
+      {!videoError && (status === 'ready' || status === 'idle') && (
         <PlayerControls
           videoRef={videoRef}
           alternatives={alternatives}
