@@ -55,8 +55,12 @@ describe('classifyDelivery', () => {
     expect(classifyDelivery(info('hevc', 'aac', 'matroska,webm'), false)).toBe<DeliveryMode>('TRANSCODE_VIDEO')
   })
 
-  it('any + HEVC + AAC, Safari iOS → DIRECT', () => {
-    expect(classifyDelivery(info('hevc', 'aac', 'matroska,webm'), true)).toBe<DeliveryMode>('DIRECT')
+  it('MP4 + HEVC + AAC, Safari iOS → DIRECT', () => {
+    expect(classifyDelivery(info('hevc', 'aac', 'mov,mp4,m4a,3gp,3g2,mj2'), true)).toBe<DeliveryMode>('DIRECT')
+  })
+
+  it('MKV + HEVC + AAC, Safari iOS → REMUX (not DIRECT)', () => {
+    expect(classifyDelivery(info('hevc', 'aac', 'matroska,webm'), true)).toBe<DeliveryMode>('REMUX')
   })
 
   it('any + HEVC + AC3, Safari → TRANSCODE_AUDIO (video stays, audio transcoded)', () => {

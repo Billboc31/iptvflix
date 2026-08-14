@@ -32,7 +32,8 @@ export function classifyDelivery(mediaInfo: MediaInfo, isSafari: boolean): Deliv
   }
 
   if (isHEVC) {
-    if (isSafari && isAAC) return 'DIRECT'
+    if (isSafari && isAAC && isMp4Container) return 'DIRECT'
+    if (isSafari && isAAC) return 'REMUX'
     if (isSafari && !isAAC) return 'TRANSCODE_AUDIO'
     if (isAAC) return 'TRANSCODE_VIDEO'
     return 'TRANSCODE_FULL'
