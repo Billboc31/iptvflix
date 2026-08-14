@@ -3,5 +3,24 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T079-fix-safari-ios-video-decode-failures-with-automati",
   "issue_number": 167,
-  "updated_at": "2026-08-14T15:34:37Z"
+  "updated_at": "2026-08-14T15:39:31Z",
+  "pr_number": 169,
+  "pr_synced": true,
+  "pre_conflict_state": "TEST_COMPLETE",
+  "conflict_detected_at": "2026-08-14T15:34:50Z",
+  "conflict_pr_number": 169,
+  "conflicted_files": [
+    "apps/api/nixpacks.toml",
+    "apps/api/src/__tests__/playback-compat.test.ts",
+    "apps/api/src/__tests__/playback-stream-compat.test.ts",
+    "apps/api/src/__tests__/probe-cache.test.ts",
+    "apps/api/src/routes/playback.ts",
+    "apps/api/src/services/media-prober.ts",
+    "apps/api/src/services/playback-compat.ts",
+    "apps/api/src/services/playback-resolver.ts",
+    "apps/api/src/services/probe-cache.ts",
+    "apps/web/src/hooks/usePlayback.ts",
+    "apps/web/src/pages/PlayerPage.tsx",
+    "packages/api-contracts/src/playback.ts"
+  ]
 }

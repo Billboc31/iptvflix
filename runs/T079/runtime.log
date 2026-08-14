@@ -49,3 +49,10 @@
 [2026-08-14T15:39:29Z] conflict-resolver: running tests
 [2026-08-14T15:39:29Z] conflict-resolver: test-report written: runs/T079/conflict/test-report.md
 [2026-08-14T15:39:29Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-14T15:39:29Z] conflict-resolver: commit: sha=f921fe3
+[2026-08-14T15:39:29Z] conflict-resolver: git push --force-with-lease origin ticket/T079-fix-safari-ios-video-decode-failures-with-automati
+[2026-08-14T15:39:31Z] conflict-resolver: push succeeded
+[2026-08-14T15:39:31Z] conflict-resolver: state → CONFLICT_RESOLVED_REVIEW_NEEDED
+[2026-08-14T15:39:31Z] auto-finalize-conflict: gate disabled for project='iptvflix'
+[2026-08-14T15:39:31Z] conflict-resolver: transition CONFLICT_RESOLVED_REVIEW_NEEDED → TEST_COMPLETE (auto, PROJECT_SETTING)
+[2026-08-14T15:39:32Z] auto-run: TEST_COMPLETE — running PR lifecycle
