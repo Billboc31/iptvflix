@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import TopNav from './TopNav.js'
@@ -28,13 +28,14 @@ describe('TopNav', () => {
     expect(screen.getByText('IPTVFlix')).toBeInTheDocument()
   })
 
-  it('renders all primary nav links', () => {
+  it('renders all primary nav links in the desktop nav', () => {
     renderNav()
-    expect(screen.getByRole('link', { name: 'Accueil' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Films' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Séries' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Ma Liste' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Nouveautés' })).toBeInTheDocument()
+    const desktopNav = screen.getByRole('navigation', { name: 'Navigation principale' })
+    expect(within(desktopNav).getByRole('link', { name: 'Accueil' })).toBeInTheDocument()
+    expect(within(desktopNav).getByRole('link', { name: 'Films' })).toBeInTheDocument()
+    expect(within(desktopNav).getByRole('link', { name: 'Séries' })).toBeInTheDocument()
+    expect(within(desktopNav).getByRole('link', { name: 'Ma Liste' })).toBeInTheDocument()
+    expect(within(desktopNav).getByRole('link', { name: 'Nouveautés' })).toBeInTheDocument()
   })
 
   it('primary nav links are inside the desktop-only nav element', () => {
@@ -87,5 +88,62 @@ describe('TopNav', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Paramètres' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Sources' }))
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  describe('mobile nav strip', () => {
+    it('renders all five destinations', () => {
+      renderNav()
+      const mobileNav = screen.getByRole('navigation', { name: 'Navigation mobile' })
+      expect(within(mobileNav).getByRole('link', { name: 'Accueil' })).toBeInTheDocument()
+      expect(within(mobileNav).getByRole('link', { name: 'Films' })).toBeInTheDocument()
+      expect(within(mobileNav).getByRole('link', { name: 'Séries' })).toBeInTheDocument()
+      expect(within(mobileNav).getByRole('link', { name: 'Ma Liste' })).toBeInTheDocument()
+      expect(within(mobileNav).getByRole('link', { name: 'Nouveautés' })).toBeInTheDocument()
+    })
+
+    it('is mobile-only (flex md:hidden)', () => {
+      renderNav()
+      const mobileNav = screen.getByRole('navigation', { name: 'Navigation mobile' })
+      expect(mobileNav.className).toContain('flex')
+      expect(mobileNav.className).toContain('md:hidden')
+    })
+
+    it('has overflow-x-auto to contain horizontal scroll within the strip', () => {
+      renderNav()
+      const mobileNav = screen.getByRole('navigation', { name: 'Navigation mobile' })
+      expect(mobileNav.className).toContain('overflow-x-auto')
+    })
+
+    it('active link on / route receives active classes', () => {
+      renderNav('/')
+      const mobileNav = screen.getByRole('navigation', { name: 'Navigation mobile' })
+      const accueilLink = within(mobileNav).getByRole('link', { name: 'Accueil' })
+      expect(accueilLink.className).toContain('text-white')
+      expect(accueilLink.className).toContain('border-[#e50914]')
+    })
+
+    it('inactive links do not receive active classes', () => {
+      renderNav('/')
+      const mobileNav = screen.getByRole('navigation', { name: 'Navigation mobile' })
+      const filmsLink = within(mobileNav).getByRole('link', { name: 'Films' })
+      expect(filmsLink.className).toContain('text-gray-400')
+      expect(filmsLink.className).not.toContain('border-[#e50914]')
+    })
+
+    it('active link updates when route changes to /movies', () => {
+      renderNav('/movies')
+      const mobileNav = screen.getByRole('navigation', { name: 'Navigation mobile' })
+      const filmsLink = within(mobileNav).getByRole('link', { name: 'Films' })
+      expect(filmsLink.className).toContain('text-white')
+      expect(filmsLink.className).toContain('border-[#e50914]')
+    })
+
+    it('nav items have whitespace-nowrap and shrink-0 to prevent wrapping', () => {
+      renderNav()
+      const mobileNav = screen.getByRole('navigation', { name: 'Navigation mobile' })
+      const filmsLink = within(mobileNav).getByRole('link', { name: 'Films' })
+      expect(filmsLink.className).toContain('whitespace-nowrap')
+      expect(filmsLink.className).toContain('shrink-0')
+    })
   })
 })
