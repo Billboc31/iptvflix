@@ -1,7 +1,7 @@
 {
   "ticket_id": "T079",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T079-fix-safari-ios-video-decode-failures-with-automati",
   "issue_number": 167,
-  "updated_at": "2026-08-14T14:54:03Z"
+  "updated_at": "2026-08-14T15:16:21Z"
 }

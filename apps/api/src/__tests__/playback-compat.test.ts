@@ -104,7 +104,7 @@ describe('buildFfmpegArgs', () => {
     expect(args).toContain('libx264')
     expect(args).toContain('-c:a')
     expect(args).toContain('copy')
-    expect(args).not.toContain('-c:v')
+    expect(args).not.toContain('aac')
   })
 
   it('TRANSCODE_FULL transcodes both video and audio', () => {

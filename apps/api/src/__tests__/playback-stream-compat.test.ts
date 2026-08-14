@@ -3,7 +3,9 @@ import { PassThrough } from 'node:stream'
 import Fastify from 'fastify'
 import { createSession } from '../services/playback-session-store.js'
 
-// These mocks are hoisted by Vitest above the static imports below
+// These mocks are hoisted by Vitest above the static imports below.
+// Mocking playback-resolver and profile-service prevents loading db/client
+// (which requires DATABASE_URL) since these tests are pure unit tests.
 vi.mock('node:child_process', () => ({
   spawn: vi.fn(),
 }))
@@ -15,6 +17,15 @@ vi.mock('../services/media-prober.js', () => ({
 vi.mock('../services/probe-cache.js', () => ({
   getProbe: vi.fn(() => null),
   setProbe: vi.fn(),
+}))
+
+vi.mock('../services/playback-resolver.js', () => ({
+  resolvePlayback: vi.fn(),
+}))
+
+vi.mock('../services/profile-service.js', () => ({
+  DEFAULT_PROFILE_ID: '00000000-0000-0000-0000-000000000001',
+  getDefaultProfilePreferences: vi.fn(),
 }))
 
 import { spawn } from 'node:child_process'
@@ -132,7 +143,7 @@ describe('playback stream handler — compat path', () => {
     expect(vi.mocked(probeMedia)).toHaveBeenCalledOnce()
     expect(vi.mocked(spawn)).toHaveBeenCalledOnce()
 
-    const [, spawnArgs] = vi.mocked(spawn).mock.calls[0] as [string, string[]]
+    const spawnArgs = vi.mocked(spawn).mock.calls[0][1] as string[]
     // REMUX: stream copy
     expect(spawnArgs).toContain('-c')
     expect(spawnArgs).toContain('copy')
@@ -184,7 +195,7 @@ describe('playback stream handler — compat path', () => {
       headers: { 'user-agent': SAFARI_IOS_UA },
     })
 
-    const [, spawnArgs] = vi.mocked(spawn).mock.calls[0] as [string, string[]]
+    const spawnArgs = vi.mocked(spawn).mock.calls[0][1] as string[]
     expect(spawnArgs).toContain('-c:v')
     expect(spawnArgs).toContain('copy')
     expect(spawnArgs).toContain('-c:a')
@@ -215,7 +226,7 @@ describe('playback stream handler — compat path', () => {
       headers: { 'user-agent': SAFARI_IOS_UA },
     })
 
-    const [, spawnArgs] = vi.mocked(spawn).mock.calls[0] as [string, string[]]
+    const spawnArgs = vi.mocked(spawn).mock.calls[0][1] as string[]
     expect(spawnArgs).toContain('libx264')
     expect(spawnArgs).toContain('-c:a')
     expect(spawnArgs).toContain('copy')
@@ -244,7 +255,7 @@ describe('playback stream handler — compat path', () => {
       headers: { 'user-agent': SAFARI_IOS_UA },
     })
 
-    const [, spawnArgs] = vi.mocked(spawn).mock.calls[0] as [string, string[]]
+    const spawnArgs = vi.mocked(spawn).mock.calls[0][1] as string[]
     expect(spawnArgs).toContain('libx264')
     expect(spawnArgs).toContain('aac')
   })
@@ -333,11 +344,15 @@ describe('playback stream handler — compat path', () => {
   })
 
   it('client disconnect kills ffmpeg process', async () => {
-    let capturedFfmpeg: ReturnType<typeof createFakeFfmpeg> | null = null
-    vi.mocked(spawn).mockImplementation((() => {
-      capturedFfmpeg = createFakeFfmpeg()
-      return capturedFfmpeg as any
-    }) as typeof spawn)
+    // Hooks must be registered before app.ready(), so this test uses its own Fastify instance.
+    const disconnectApp = Fastify({ logger: false })
+    let capturedRaw: import('http').IncomingMessage | null = null
+    disconnectApp.addHook('preHandler', async (req) => { capturedRaw = req.raw })
+    await disconnectApp.register(playbackRoutes)
+    await disconnectApp.ready()
+
+    const mockFfmpegInstance = createFakeFfmpeg()
+    vi.mocked(spawn).mockReturnValue(mockFfmpegInstance as any)
 
     const sessionId = createSession({
       profileId: DEFAULT_PROFILE_ID,
@@ -349,16 +364,21 @@ describe('playback stream handler — compat path', () => {
       containerExtension: 'mkv',
     })
 
-    // app.inject() closes the connection after the response ends, which triggers 'close'
-    // The route listens to request.raw.on('close', ...) → kills ffmpeg
-    await app.inject({
+    const res = await disconnectApp.inject({
       method: 'GET',
       url: `/playback/stream/${sessionId}`,
       headers: { 'user-agent': SAFARI_IOS_UA },
     })
 
-    // After inject completes the connection closes, so kill should have been called
-    expect(capturedFfmpeg).not.toBeNull()
-    expect(capturedFfmpeg!.kill).toHaveBeenCalled()
+    expect(res.statusCode).toBe(200)
+    expect(capturedRaw).not.toBeNull()
+
+    // Simulate client disconnect: the route registered request.raw.on('close', killFfmpeg).
+    // Emitting 'close' exercises that handler. Since ffmpeg.killed is still false
+    // (process ended normally via stdout.end(), kill was never called), kill() fires now.
+    capturedRaw!.emit('close')
+
+    expect(mockFfmpegInstance.kill).toHaveBeenCalled()
+    await disconnectApp.close()
   })
 })
