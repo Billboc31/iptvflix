@@ -735,8 +735,10 @@ describe('GET /series/:id — on-demand hierarchy hydration', () => {
 
   let hydrationApp: ReturnType<typeof Fastify>
   const mockEnrichSeries = vi.fn().mockResolvedValue('enriched')
+  const mockEnrichMovie = vi.fn().mockResolvedValue('enriched')
   const mockEnrichmentService = {
     enrichSeries: mockEnrichSeries,
+    enrichMovie: mockEnrichMovie,
   } as unknown as MetadataEnrichmentService
 
   beforeAll(async () => {
@@ -751,6 +753,7 @@ describe('GET /series/:id — on-demand hierarchy hydration', () => {
 
   afterEach(() => {
     mockEnrichSeries.mockClear()
+    mockEnrichMovie.mockClear()
   })
 
   it('sets X-Hierarchy-Hydrating header and calls enrichSeries when seasons empty and tmdbId set', async () => {
@@ -770,7 +773,7 @@ describe('GET /series/:id — on-demand hierarchy hydration', () => {
     // fire-and-forget: may not be called synchronously, but it is triggered
     // use a small flush to let the microtask queue drain
     await new Promise((r) => setTimeout(r, 0))
-    expect(mockEnrichSeries).toHaveBeenCalledWith(SERIES_WITH_TMDB.id)
+    expect(mockEnrichSeries).toHaveBeenCalledWith(SERIES_WITH_TMDB.id, { force: true })
   })
 
   it('does not set X-Hierarchy-Hydrating when seasons already exist', async () => {
@@ -806,5 +809,37 @@ describe('GET /series/:id — on-demand hierarchy hydration', () => {
     expect(res.statusCode).toBe(200)
     expect(res.headers['x-hierarchy-hydrating']).toBeUndefined()
     expect(mockEnrichSeries).not.toHaveBeenCalled()
+  })
+
+  it('sets X-Metadata-Hydrating and calls enrichMovie when movie is not yet enriched', async () => {
+    mockDb.select
+      .mockReturnValueOnce(selectChain([MOVIE_ROW]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+
+    const res = await hydrationApp.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['x-metadata-hydrating']).toBe('true')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(mockEnrichMovie).toHaveBeenCalledWith(MOVIE_ROW.id, { force: true })
+  })
+
+  it('does not hydrate movie when metadataEnrichedAt is already set', async () => {
+    const enriched = { ...MOVIE_ROW, metadataEnrichedAt: new Date() }
+    mockDb.select
+      .mockReturnValueOnce(selectChain([enriched]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+      .mockReturnValueOnce(selectChain([]))
+
+    const res = await hydrationApp.inject({ method: 'GET', url: `/movies/${MOVIE_ROW.id}` })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['x-metadata-hydrating']).toBeUndefined()
+    expect(mockEnrichMovie).not.toHaveBeenCalled()
   })
 })

@@ -57,11 +57,22 @@ export default function MovieDetailPage() {
 
   useEffect(() => {
     if (!id) return
+    let cancelled = false
     setLoading(true)
     setNotFound(false)
     setError(null)
-    Promise.allSettled([getMovie(id), fetchContinueWatching()])
-      .then(([movieResult, cwResult]) => {
+
+    async function loadMovie() {
+      const m = await getMovie(id!)
+      if (cancelled) return m
+      setMovie(m)
+      setSelectedVariantId(m.selectedVariantId)
+      return m
+    }
+
+    Promise.allSettled([loadMovie(), fetchContinueWatching()])
+      .then(async ([movieResult, cwResult]) => {
+        if (cancelled) return
         if (movieResult.status === 'rejected') {
           const err = movieResult.reason as Error
           if (err instanceof ApiError && err.status === 404) {
@@ -69,17 +80,38 @@ export default function MovieDetailPage() {
           } else {
             setError(err)
           }
+          setLoading(false)
           return
         }
-        const m = movieResult.value
-        setMovie(m)
-        setSelectedVariantId(m.selectedVariantId)
         if (cwResult.status === 'fulfilled') {
           const item = cwResult.value.find((i) => i.mediaType === 'MOVIE' && i.mediaId === id)
           setProgressMs(item ? item.progressSeconds * 1000 : 0)
         }
+        setLoading(false)
+
+        const first = movieResult.value
+        if (!first || first.trailerKey || (first.cast?.length ?? 0) > 0 || !first.tmdbId) return
+        for (let i = 0; i < 12; i++) {
+          await new Promise((r) => setTimeout(r, 2000))
+          if (cancelled) return
+          try {
+            const next = await getMovie(id!)
+            if (cancelled) return
+            setMovie(next)
+            setSelectedVariantId(next.selectedVariantId)
+            if (next.trailerKey || (next.cast?.length ?? 0) > 0) return
+          } catch {
+            return
+          }
+        }
       })
-      .finally(() => setLoading(false))
+      .catch(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [id])
 
   if (loading) return <DetailSkeleton />

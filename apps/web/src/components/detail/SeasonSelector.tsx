@@ -20,16 +20,48 @@ export default function SeasonSelector({ seriesId, seasons, profileId, devices, 
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (episodeCache.has(selectedSeason)) return
+    if (seasons.length === 0) return
+    if (!seasons.some((s) => s.seasonNumber === selectedSeason)) {
+      setSelectedSeason(seasons[0].seasonNumber)
+    }
+  }, [seasons, selectedSeason])
+
+  useEffect(() => {
+    if (seasons.length === 0) return
+    if (episodeCache.has(selectedSeason) && (episodeCache.get(selectedSeason)?.length ?? 0) > 0) return
+    let cancelled = false
     setLoading(true)
-    getSeriesSeasonEpisodes(seriesId, selectedSeason, profileId)
-      .then((eps) => setEpisodeCache((prev) => new Map([...prev, [selectedSeason, eps]])))
-      .catch(() => {/* episode load failure — empty state shown below */})
-      .finally(() => setLoading(false))
+
+    async function loadEpisodes() {
+      for (let i = 0; i < 10; i++) {
+        try {
+          const eps = await getSeriesSeasonEpisodes(seriesId, selectedSeason, profileId)
+          if (cancelled) return
+          if (eps.length > 0) {
+            setEpisodeCache((prev) => new Map([...prev, [selectedSeason, eps]]))
+            setLoading(false)
+            return
+          }
+        } catch {
+          /* retry while TMDB hydration is still running */
+        }
+        await new Promise((r) => setTimeout(r, 2000))
+        if (cancelled) return
+      }
+      if (!cancelled) {
+        setEpisodeCache((prev) => new Map([...prev, [selectedSeason, []]]))
+        setLoading(false)
+      }
+    }
+
+    void loadEpisodes()
+    return () => {
+      cancelled = true
+    }
   }, [seriesId, selectedSeason, profileId, seasons.length])
 
   if (seasons.length === 0) {
-    return <p className="text-gray-400 text-sm">Les saisons ne sont pas encore disponibles.</p>
+    return <p className="text-gray-400 text-sm">Chargement des saisons…</p>
   }
 
   const episodes = episodeCache.get(selectedSeason)

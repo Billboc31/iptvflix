@@ -65,7 +65,7 @@ describe('SeriesDetailPage', () => {
     renderPage()
     await waitFor(() => {
       expect(
-        screen.getByText('Les saisons ne sont pas encore disponibles.'),
+        screen.getByText('Chargement des saisons…'),
       ).toBeInTheDocument()
     })
   })

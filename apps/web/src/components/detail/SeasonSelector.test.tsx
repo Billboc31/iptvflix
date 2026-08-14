@@ -59,7 +59,7 @@ describe('SeasonSelector', () => {
 
   it('shows fallback message when seasons array is empty', () => {
     renderSelector([])
-    expect(screen.getByText('Les saisons ne sont pas encore disponibles.')).toBeInTheDocument()
+    expect(screen.getByText('Chargement des saisons…')).toBeInTheDocument()
   })
 
   it('caches season episodes and does not re-fetch on re-select', async () => {

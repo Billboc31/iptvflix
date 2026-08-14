@@ -74,22 +74,44 @@ export default function SeriesDetailPage() {
 
   useEffect(() => {
     if (!id) return
+    let cancelled = false
     setLoading(true)
     setNotFound(false)
     setError(null)
-    getSeries(id)
-      .then((s) => {
+
+    async function load(initial: boolean) {
+      try {
+        const s = await getSeries(id!)
+        if (cancelled) return
         setSeries(s)
         setSelectedVariantId(s.selectedVariantId)
-      })
-      .catch((err) => {
+        if (initial) setLoading(false)
+        return s
+      } catch (err) {
+        if (cancelled) return
         if (err instanceof ApiError && err.status === 404) {
           setNotFound(true)
         } else {
-          setError(err)
+          setError(err as Error)
         }
-      })
-      .finally(() => setLoading(false))
+        if (initial) setLoading(false)
+        return null
+      }
+    }
+
+    void load(true).then(async (s) => {
+      if (!s || s.seasons.length > 0) return
+      for (let i = 0; i < 15; i++) {
+        await new Promise((r) => setTimeout(r, 2000))
+        if (cancelled) return
+        const next = await load(false)
+        if (next && next.seasons.length > 0) return
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [id])
 
   if (loading) return <DetailSkeleton />

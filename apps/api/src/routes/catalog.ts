@@ -166,6 +166,20 @@ export async function catalogRoutes(app: FastifyInstance, opts: CatalogRoutesOpt
     const trailerKey = videoRows[0]?.youtubeKey ?? null
     const { cast, director } = mapCreditsToCast(creditRows)
 
+    if (
+      movie.tmdbId != null &&
+      movie.metadataEnrichedAt == null &&
+      opts.enrichmentService &&
+      !hydrationInProgress.has(id)
+    ) {
+      console.info(`[catalog] Triggering async metadata hydration for movie ${id}`)
+      hydrationInProgress.add(id)
+      void opts.enrichmentService
+        .enrichMovie(id, { force: true })
+        .finally(() => hydrationInProgress.delete(id))
+      reply.header('X-Metadata-Hydrating', 'true')
+    }
+
     const response: MovieDetailResponse = {
       id: movie.id,
       title: movie.title,
@@ -295,7 +309,9 @@ export async function catalogRoutes(app: FastifyInstance, opts: CatalogRoutesOpt
     if (seasonRows.length === 0 && seriesRow.tmdbId != null && opts.enrichmentService && !hydrationInProgress.has(id)) {
       console.info(`[catalog] Triggering async hierarchy hydration for series ${id}`)
       hydrationInProgress.add(id)
-      void opts.enrichmentService.enrichSeries(id).finally(() => hydrationInProgress.delete(id))
+      void opts.enrichmentService
+        .enrichSeries(id, { force: true })
+        .finally(() => hydrationInProgress.delete(id))
       reply.header('X-Hierarchy-Hydrating', 'true')
     }
 
