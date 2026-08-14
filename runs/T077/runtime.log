@@ -33,3 +33,24 @@
 [2026-08-14T13:31:49Z] push: pushing branch=ticket/T077-fix-xtream-vod-playback-url-resolution-for-movies
 [2026-08-14T13:31:51Z] push: done branch=ticket/T077-fix-xtream-vod-playback-url-resolution-for-movies
 [2026-08-14T13:31:51Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-14T13:33:33Z] auto-run: step=tester done rc=0
+[2026-08-14T13:33:33Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-14T13:33:33Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-14T13:33:33Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T077/runtime.log', 'runs/T077/workflow-status.md']
+[2026-08-14T13:33:33Z] commit-checkpoint: sha=00fd6bd files=3 title='test(T077/workflow): tester — update 3 file(s)'
+[2026-08-14T13:33:33Z] auto-run: auto-push triggered
+[2026-08-14T13:33:33Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T077/runtime.log', 'runs/T077/workflow-status.md']
+[2026-08-14T13:33:33Z] push: pushing branch=ticket/T077-fix-xtream-vod-playback-url-resolution-for-movies
+[2026-08-14T13:33:35Z] push: done branch=ticket/T077-fix-xtream-vod-playback-url-resolution-for-movies
+[2026-08-14T13:33:35Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-14T13:34:42Z] conflict-resolver: rebase clean — no conflicts
+[2026-08-14T13:34:42Z] conflict-resolver: running tests
+[2026-08-14T13:34:42Z] conflict-resolver: test-report written: runs/T077/conflict/test-report.md
+[2026-08-14T13:34:42Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-14T13:34:43Z] conflict-resolver: commit: sha=3b2fc24
+[2026-08-14T13:34:43Z] conflict-resolver: git push --force-with-lease origin ticket/T077-fix-xtream-vod-playback-url-resolution-for-movies
+[2026-08-14T13:34:45Z] conflict-resolver: push succeeded
+[2026-08-14T13:34:45Z] conflict-resolver: state → CONFLICT_RESOLVED_REVIEW_NEEDED
+[2026-08-14T13:34:45Z] auto-finalize-conflict: gate disabled for project='iptvflix'
+[2026-08-14T13:34:45Z] conflict-resolver: transition CONFLICT_RESOLVED_REVIEW_NEEDED → TEST_COMPLETE (auto, PROJECT_SETTING)
+[2026-08-14T13:34:45Z] auto-run: TEST_COMPLETE — running PR lifecycle

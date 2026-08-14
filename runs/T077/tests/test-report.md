@@ -1,30 +1,38 @@
+The test report and workflow status from the previous tester run are already accurate and match my independent verification. Here is the consolidated result:
+
 ---
 
-## Test Report — T077
+## T077 — Test Report
 
 **Verdict: PASS**
 
-All 9 acceptance criteria are satisfied. Here's the summary:
+All 9 acceptance criteria are satisfied. Tests executed: **31/31 pass** (`apps/api/src/services/__tests__/playback-resolver.test.ts`).
 
-### Acceptance Criteria — All Pass
+### Acceptance Criteria
 
 | Criterion | Status | Evidence |
-|-----------|--------|---------|
-| Movie uses Movie-specific Xtream VOD URL (`/{user}/{pass}/{id}.{ext}`) | ✅ PASS | `buildXtreamMovieUrl` tests × 7 |
-| Episode uses Episode-specific URL (`/series/{user}/{pass}/{id}.{ext}`) | ✅ PASS | `buildXtreamEpisodeUrl` tests × 5, service integration test |
-| `container_extension` is read and used | ✅ PASS | mp4/mkv extension tests, explicit availability selection test |
-| No forced `.ts` for every VOD item | ✅ PASS | Extension respected; fallback only when null |
-| Episode uses actual episode stream providerItemId | ✅ PASS | Schema selects from `episodeAvailabilities.providerItemId` |
-| Language/quality variant selection still works | ✅ PASS | `picks highest-quality variant` + explicit selection tests |
+|---|---|---|
+| Movie uses Movie-specific Xtream VOD URL (`/{user}/{pass}/{id}.{ext}`) | ✅ PASS | `buildXtreamMovieUrl` — 7 unit tests |
+| Episode uses Episode-specific URL (`/series/{user}/{pass}/{id}.{ext}`) | ✅ PASS | `buildXtreamEpisodeUrl` — 5 unit tests + service integration test |
+| `container_extension` is read and used | ✅ PASS | mp4/mkv tests, explicit availability selection test |
+| No forced `.ts` for every VOD item | ✅ PASS | Extension respected; fallback only when `null` |
+| Episode uses actual episode stream `providerItemId` | ✅ PASS | Resolver selects from `episodeAvailabilities.providerItemId` |
+| Language/quality variant selection still works | ✅ PASS | Highest-quality variant + explicit selection tests |
 | Invalid/unavailable variants → actionable errors | ✅ PASS | `NotFoundError`, `ValidationError`, `ForbiddenError` all tested |
-| Logs do not expose Xtream credentials | ✅ PASS | Credential redaction tests × 2 |
-| Automated tests for Movies and Episodes | ✅ PASS | **31/31 playback-resolver tests pass** |
+| Logs do not expose Xtream credentials | ✅ PASS | Credential-redaction tests × 2 |
+| Automated tests for Movies and Episodes | ✅ PASS | **31/31 pass** |
 
-### Test Run Summary
+### Test Execution
 
 ```
-Playback-resolver tests:  31/31  PASS
-Total suite:             769/774  pass  (5 failures are pre-existing on main, not regressions)
+Playback-resolver: 31/31 PASS (397ms)
+Full suite:       769/774 pass
+  5 failures are pre-existing on main (vertical-slice.test.ts, title-matching-service.test.ts)
+  — none of those files are in the T077 diff
 ```
 
-The 5 pre-existing failures are in `vertical-slice.test.ts` (MSW network interception issue) and `title-matching-service.test.ts` — confirmed present on `main` before any T077 changes.
+### Validation Limits
+
+- URL construction verified via unit and mocked-DB tests; no live Xtream server used.
+- Episode `provider_item_id` correctness against a real Xtream catalog is not tested (out of ticket scope).
+- Base URL normalization: trailing-slash stripping tested; port/protocol variants not explicitly exercised (simple `replace(/\/$/, '')` is correct for all valid URLs).
