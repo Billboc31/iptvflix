@@ -43,3 +43,7 @@
 [2026-08-14T13:33:33Z] push: pushing branch=ticket/T077-fix-xtream-vod-playback-url-resolution-for-movies
 [2026-08-14T13:33:35Z] push: done branch=ticket/T077-fix-xtream-vod-playback-url-resolution-for-movies
 [2026-08-14T13:33:35Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-14T13:34:42Z] conflict-resolver: rebase clean — no conflicts
+[2026-08-14T13:34:42Z] conflict-resolver: running tests
+[2026-08-14T13:34:42Z] conflict-resolver: test-report written: runs/T077/conflict/test-report.md
+[2026-08-14T13:34:42Z] conflict-resolver: staging and committing resolution artifacts
