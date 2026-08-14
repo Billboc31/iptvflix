@@ -1,34 +1,53 @@
-## Summary — Coder Attempt 4
+## Summary — Coder Attempt 5
 
-**Ce que cette tentative apporte** que les 3 précédentes n'ont pas fait :
+**Aucune modification de code produite dans cette tentative.**
 
-Un script de diagnostic local (`apps/api/scripts/diagnose-stream.mjs`) qui reproduit exactement le pipeline de production, permettant de remplir **4 des 9 sections `<PENDING>`** sans déploiement Railway ni iPhone Safari.
+La review de l'attempt-4 conclut explicitement :
+- Le code d'instrumentation (backend, frontend, script local) est **complet et correct**.
+- **Un 5e cycle AI ne peut pas changer la situation** : les critères d'acceptance bloquants nécessitent une action humaine irremplaçable.
 
-### Fichiers modifiés
+### État du code (inchangé depuis attempt-4)
 
-| Fichier | Action |
+| Fichier | Statut |
 |---|---|
-| `apps/api/scripts/diagnose-stream.mjs` | Créé |
-| `runs/T080/diagnosis.md` | Mis à jour (sections 2/3/4/6) |
-| `runs/T080/implementation-output.md` | Mis à jour |
+| `apps/api/src/routes/playback.ts` | ✅ Instrumentation backend complète |
+| `apps/api/src/routes/diagnostics.ts` | ✅ Route `/api/diagnostics/env` correcte |
+| `apps/api/src/index.ts` | ✅ Route enregistrée à la ligne 165 |
+| `apps/web/src/pages/PlayerPage.tsx` | ✅ Diagnostic frontend complet |
+| `apps/api/scripts/diagnose-stream.mjs` | ✅ Script local fidèle au pipeline production |
 
-### Ce que le script fait (en miroir exact du code de production)
+### Critères d'acceptance — état réel
 
-- **Section 2** — `ffprobe <URL>` (même invocation que `probeMedia()`) → container, codecs, résolution, framerate
-- **Section 3** — `classifyDelivery(isSafari=true)` inline → mode sélectionné et pourquoi
-- **Section 4** — `fetch(url) → Readable.fromWeb → pipe → ffmpeg stdin` (identique à `runFfmpegStream()`) → `exitCode`, `stderrTail`, `msToFirstByte`, premiers octets hex
-- **Section 6** — `ffprobe output.mp4` → confirme si le fMP4 produit est valide
-
-Usage :
-```bash
-node apps/api/scripts/diagnose-stream.mjs --url '<XTREAM_URL>' --ext ts
-```
-
-### Sections toujours `<PENDING>` (nécessitent action humaine)
-
-| Section | Requiert |
+| Critère | État |
 |---|---|
-| 1 — Trace session | App en cours + lecture réelle |
-| 5 — Réponse HTTP Safari | Requête depuis Safari ou curl |
-| 7 — Safari MediaError | iPhone + Web Inspector |
-| 8 — Railway runtime | Déploiement + `/api/diagnostics/env` |
+| Real failing iPhone/Safari stream traced end-to-end | ❌ PENDING — nécessite Railway + iPhone Safari |
+| Actual upstream container/codecs known | ❌ PENDING — script fourni, requiert URL Xtream réelle |
+| Actual compat mode selected and justified | ❌ PENDING — requiert exécution sur flux réel |
+| ffmpeg/remux execution result known | ❌ PENDING — requiert exécution sur flux réel |
+| HTTP/MIME/output delivered to Safari known | ❌ PENDING — requiert curl/Safari sur déploiement Railway |
+| Generated compat output independently validated | ❌ PENDING — requiert exécution sur flux réel |
+| Safari MediaError/event evidence captured | ❌ PENDING — requiert iPhone + Web Inspector |
+| Railway ffmpeg/ffprobe runtime verified | ❌ PENDING — requiert déploiement Railway |
+| Root cause stated unambiguously with evidence | ❌ PENDING — seul Candidate 1 confirmé (structurel) |
+
+### Finding confirmée (Candidate 1 — structurelle)
+
+`playback.ts:207` : `useCompat = request.query.compat === '1' || isSafariOrIOS(userAgent)` — pour tout UA Safari/iOS, la requête initiale **et** le retry `?compat=1` suivent le même compat path. Le retry est donc inerte par construction.
+
+### Séquence humaine obligatoire pour compléter ce ticket
+
+1. `node apps/api/scripts/diagnose-stream.mjs --url '<URL_XTREAM_REELLE>' --ext ts` → coller la sortie JSON dans `diagnosis.md` sections 2/3/4/6
+2. Déployer la branche sur Railway
+3. `GET /api/diagnostics/env` → remplir Section 8 (`ffmpegPresent`, `ffmpegVersion`, `railwayPath`)
+4. `railway logs -t --service api` en attente
+5. Connecter un iPhone Safari (USB ou Simulator)
+6. Naviguer vers un Xtream Movie/Episode défaillant
+7. Capturer les Railway logs (`sessionId`, `deliveryMode`, `upstreamFirstBytesHex`, `ffmpegExitCode`, `ffmpegStderrTail`) → Section 1
+8. Capturer Web Inspector (`errorCode`, `readyState`, `networkState`, `urlMode`, `eventSequence`) → Section 7
+9. Tester depuis curl la réponse HTTP du compat gateway → Section 5
+10. Rédiger la cause racine dans Section 9 de `diagnosis.md`
+11. Committer `diagnosis.md` complété
+
+### Limites connues
+
+Aucun agent AI ne peut accéder au runtime Railway, aux logs de production, ni à Safari Web Inspector. Ce ticket ne peut être fermé que par exécution humaine de la séquence ci-dessus.
