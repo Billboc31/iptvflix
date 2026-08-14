@@ -56,3 +56,4 @@
 [2026-08-14T15:39:31Z] auto-finalize-conflict: gate disabled for project='iptvflix'
 [2026-08-14T15:39:31Z] conflict-resolver: transition CONFLICT_RESOLVED_REVIEW_NEEDED → TEST_COMPLETE (auto, PROJECT_SETTING)
 [2026-08-14T15:39:32Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-14T15:39:44Z] conflict-resolver: done → TEST_COMPLETE (auto-finalize)
