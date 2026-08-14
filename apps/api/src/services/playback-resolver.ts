@@ -8,6 +8,7 @@ import { buildM3UStreamUrl } from '../providers/m3u/playback.js'
 import { resolveVariant } from './availability-resolver.js'
 import { getDefaultProfilePreferences } from './profile-service.js'
 import { ValidationError, ForbiddenError, NotFoundError } from '../errors.js'
+import { createSession } from './playback-session-store.js'
 import type { PlaybackSessionResponse, AvailabilityVariantResponse } from '@iptvflix/api-contracts'
 
 export type PlaybackMediaType = 'movie' | 'episode'
@@ -130,10 +131,10 @@ export async function resolvePlayback(
 
   const startPositionSeconds = await fetchProgress(profileId, mediaType, mediaId)
 
-  let streamUrl: string
+  let providerStreamUrl: string
   if (source.type === 'XTREAM') {
     if (mediaType === 'movie') {
-      streamUrl = buildXtreamMovieUrl(
+      providerStreamUrl = buildXtreamMovieUrl(
         source.baseUrl,
         source.username ?? '',
         source.password ?? '',
@@ -141,7 +142,7 @@ export async function resolvePlayback(
         selected.containerExtension,
       )
     } else {
-      streamUrl = buildXtreamEpisodeUrl(
+      providerStreamUrl = buildXtreamEpisodeUrl(
         source.baseUrl,
         source.username ?? '',
         source.password ?? '',
@@ -150,18 +151,38 @@ export async function resolvePlayback(
       )
     }
   } else if (source.type === 'M3U') {
-    streamUrl = buildM3UStreamUrl(selected.providerItemId)
+    providerStreamUrl = buildM3UStreamUrl(selected.providerItemId)
   } else {
     console.error('playback-resolver: unknown source type', {
       mediaType,
       mediaId,
       availabilityId: selected.id,
-      providerId: selected.providerId,
-      providerItemId: selected.providerItemId,
+      sourceId: selected.providerId,
       containerExtension: selected.containerExtension,
     })
     throw new ValidationError('Variant not available')
   }
+
+  const containerExtension = selected.containerExtension ?? 'ts'
+
+  const sessionId = createSession({
+    profileId,
+    mediaType,
+    mediaId,
+    availabilityId: selectedId,
+    sourceId: selected.providerId,
+    providerStreamUrl,
+    containerExtension,
+  })
+
+  console.info('playback-resolver: session created', {
+    sessionId,
+    mediaType,
+    mediaId,
+    availabilityId: selectedId,
+    sourceId: selected.providerId,
+    containerExtension,
+  })
 
   const alternatives: AvailabilityVariantResponse[] = candidates
     .filter((r) => r.id !== selectedId)
@@ -175,5 +196,5 @@ export async function resolvePlayback(
       rawTitle: r.rawTitle,
     }))
 
-  return { streamUrl, availabilityId: selectedId, startPositionSeconds, alternatives }
+  return { gatewayUrl: `/api/playback/stream/${sessionId}`, containerExtension, availabilityId: selectedId, startPositionSeconds, alternatives }
 }
