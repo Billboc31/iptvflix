@@ -7,6 +7,7 @@ vi.mock('../../config/env.js', () => ({
   CATALOG_BOOTSTRAP_MAX_PAGES_FRENCH: 10,
   CATALOG_BOOTSTRAP_GENRE_IDS_MOVIE: [28, 35, 18, 27, 878, 12, 14, 10749],
   CATALOG_BOOTSTRAP_GENRE_IDS_TV: [18, 35, 10765, 10759, 80, 9648],
+  CATALOG_BOOTSTRAP_HIERARCHY_PRIORITY_COUNT: 200,
 }))
 
 import { CatalogBootstrapService } from '../catalog-bootstrap-service.js'
@@ -19,7 +20,10 @@ const config: BootstrapConfig = {
   maxPagesFrench: 8,
   movieGenreIds: [28, 35],
   tvGenreIds: [18, 10765],
+  hierarchyPriorityCount: 200,
 }
+
+import type { MetadataEnrichmentService } from '../metadata-enrichment-service.js'
 
 describe('CatalogBootstrapService.buildSteps', () => {
   it('includes all movie feed steps in order', () => {
@@ -77,5 +81,37 @@ describe('CatalogBootstrapService.buildSteps', () => {
     const lastGenreIdx = steps.findLastIndex((s) => s.kind === 'genre')
     const firstFrenchIdx = steps.findIndex((s) => s.kind === 'language')
     expect(firstFrenchIdx).toBeGreaterThan(lastGenreIdx)
+  })
+})
+
+describe('CatalogBootstrapService — hierarchyPriorityCount config', () => {
+  it('includes hierarchyPriorityCount in BootstrapConfig', () => {
+    const customConfig: BootstrapConfig = { ...config, hierarchyPriorityCount: 50 }
+    expect(customConfig.hierarchyPriorityCount).toBe(50)
+  })
+})
+
+describe('CatalogBootstrapService — enrichmentService wiring', () => {
+  it('accepts an optional enrichmentService as 4th constructor argument', () => {
+    const mockEnrichmentService = { enrichSeries: vi.fn() } as unknown as MetadataEnrichmentService
+
+    const mockDb = {
+      select: vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
+      insert: vi.fn(),
+      update: vi.fn(),
+    }
+    const mockProvider = {
+      fetchSeriesFeed: vi.fn(),
+      fetchMovieFeed: vi.fn(),
+    }
+
+    expect(() => {
+      new CatalogBootstrapService(
+        mockDb as never,
+        mockProvider as never,
+        { hierarchyPriorityCount: 5 },
+        mockEnrichmentService,
+      )
+    }).not.toThrow()
   })
 })

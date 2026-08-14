@@ -1,10 +1,11 @@
-import { eq, sql } from 'drizzle-orm'
+import { desc, eq, isNotNull, sql } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import type * as schema from '../db/schema/index.js'
 import { movies } from '../db/schema/movies.js'
 import { series } from '../db/schema/series.js'
 import { catalogBootstrapRuns } from '../db/schema/catalog-bootstrap-runs.js'
 import type { MetadataProvider, MetadataCandidate, DiscoveryFeed, DiscoverParams } from '../providers/metadata/types.js'
+import type { MetadataEnrichmentService } from './metadata-enrichment-service.js'
 import {
   CATALOG_BOOTSTRAP_MAX_PAGES_PER_FEED,
   CATALOG_BOOTSTRAP_MAX_PAGES_TOP_RATED,
@@ -12,6 +13,7 @@ import {
   CATALOG_BOOTSTRAP_MAX_PAGES_FRENCH,
   CATALOG_BOOTSTRAP_GENRE_IDS_MOVIE,
   CATALOG_BOOTSTRAP_GENRE_IDS_TV,
+  CATALOG_BOOTSTRAP_HIERARCHY_PRIORITY_COUNT,
 } from '../config/env.js'
 
 type Db = PostgresJsDatabase<typeof schema>
@@ -37,6 +39,7 @@ export interface BootstrapConfig {
   maxPagesFrench: number
   movieGenreIds: number[]
   tvGenreIds: number[]
+  hierarchyPriorityCount: number
 }
 
 type Checkpoint = Record<string, { done: boolean; lastPage: number }>
@@ -66,6 +69,7 @@ export class CatalogBootstrapService {
     private readonly db: Db,
     private readonly provider: MetadataProvider,
     config?: Partial<BootstrapConfig>,
+    private readonly enrichmentService?: MetadataEnrichmentService,
   ) {
     this.config = {
       maxPagesPerFeed: CATALOG_BOOTSTRAP_MAX_PAGES_PER_FEED,
@@ -74,6 +78,7 @@ export class CatalogBootstrapService {
       maxPagesFrench: CATALOG_BOOTSTRAP_MAX_PAGES_FRENCH,
       movieGenreIds: CATALOG_BOOTSTRAP_GENRE_IDS_MOVIE,
       tvGenreIds: CATALOG_BOOTSTRAP_GENRE_IDS_TV,
+      hierarchyPriorityCount: CATALOG_BOOTSTRAP_HIERARCHY_PRIORITY_COUNT,
       ...config,
     }
   }
@@ -185,6 +190,50 @@ export class CatalogBootstrapService {
         }
 
         checkpoint[key] = { done: true, lastPage: step.maxPages }
+        await this.updateRun(runId, { checkpoint })
+      }
+
+      // Priority hierarchy hydration: enrich top-N series by popularity so canonical
+      // season/episode rows exist before any source import. Remaining shows are picked
+      // up by the refresh scheduler on its first cycle (metadataEnrichedAt IS NULL).
+      const hierarchyKey = 'hierarchy:priority'
+      if (!checkpoint[hierarchyKey]?.done && this.enrichmentService) {
+        const priorityCount = this.config.hierarchyPriorityCount
+        console.log(`[bootstrap] Starting priority hierarchy hydration for top ${priorityCount} series`)
+
+        const prioritySeries = await this.db
+          .select({ id: series.id })
+          .from(series)
+          .where(isNotNull(series.tmdbId))
+          .orderBy(desc(series.popularity))
+          .limit(priorityCount)
+
+        let hierarchyEnriched = 0
+        let hierarchyFailed = 0
+
+        const HIERARCHY_BATCH_SIZE = 5
+        const HIERARCHY_BATCH_DELAY_MS = 500
+        for (let i = 0; i < prioritySeries.length; i += HIERARCHY_BATCH_SIZE) {
+          const batch = prioritySeries.slice(i, i + HIERARCHY_BATCH_SIZE)
+          await Promise.all(
+            batch.map(async (s) => {
+              try {
+                await this.enrichmentService!.enrichSeries(s.id)
+                hierarchyEnriched++
+              } catch {
+                hierarchyFailed++
+              }
+            }),
+          )
+          if (i + HIERARCHY_BATCH_SIZE < prioritySeries.length) {
+            await delay(HIERARCHY_BATCH_DELAY_MS)
+          }
+        }
+
+        console.log(
+          `[bootstrap] Priority hierarchy hydration complete: enriched=${hierarchyEnriched}, failed=${hierarchyFailed}`,
+        )
+        checkpoint[hierarchyKey] = { done: true, lastPage: 0 }
         await this.updateRun(runId, { checkpoint })
       }
 

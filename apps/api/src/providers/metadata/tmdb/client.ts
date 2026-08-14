@@ -124,6 +124,8 @@ function mapSeriesDetail(raw: TmdbSeriesDetail): Omit<ExternalSeriesMetadata, 'c
       ? raw.seasons.map((s) => ({
           tmdbId: s.id,
           seasonNumber: s.season_number,
+          name: s.name ?? null,
+          airDate: s.air_date ?? null,
           posterPath: s.poster_path ?? null,
           episodeCount: s.episode_count,
         }))

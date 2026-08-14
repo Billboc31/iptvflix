@@ -80,7 +80,11 @@ await app.register(authRoutes)
 await app.register(moviesRoutes)
 await app.register(seriesRoutes)
 await app.register(genresRoutes)
-await app.register(catalogRoutes)
+await app.register(catalogRoutes, {
+  enrichmentService: TMDB_API_KEY
+    ? new MetadataEnrichmentService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
+    : undefined,
+})
 await app.register(releaseLifecycleRoutes)
 
 const discoveryService = TMDB_API_KEY
@@ -129,7 +133,13 @@ await app.register(async function protectedScope(protectedApp) {
   await protectedApp.register(episodeBackfillRoutes, { backfillService })
 
   if (TMDB_API_KEY) {
-    const bootstrapService = new CatalogBootstrapService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
+    const bootstrapEnrichmentService = new MetadataEnrichmentService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
+    const bootstrapService = new CatalogBootstrapService(
+      db,
+      new TmdbClient({ apiKey: TMDB_API_KEY }),
+      undefined,
+      bootstrapEnrichmentService,
+    )
     await protectedApp.register(catalogBootstrapRoutes, { service: bootstrapService })
 
     const refreshEnrichmentService = new MetadataEnrichmentService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))

@@ -25,6 +25,7 @@ import type {
 import { getDefaultProfilePreferences } from '../services/profile-service.js'
 import { resolveVariant } from '../services/availability-resolver.js'
 import { resolveMediaImageUrl } from '../lib/tmdb-image.js'
+import type { MetadataEnrichmentService } from '../services/metadata-enrichment-service.js'
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w185'
 
@@ -91,7 +92,13 @@ function mapCreditsToCast(
   return { cast, director }
 }
 
-export async function catalogRoutes(app: FastifyInstance): Promise<void> {
+interface CatalogRoutesOptions {
+  enrichmentService?: MetadataEnrichmentService
+}
+
+const hydrationInProgress = new Set<string>()
+
+export async function catalogRoutes(app: FastifyInstance, opts: CatalogRoutesOptions = {}): Promise<void> {
   // ---------------------------------------------------------------------------
   // GET /movies/:id
   // ---------------------------------------------------------------------------
@@ -283,6 +290,14 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         .where(and(eq(mediaCredits.mediaType, 'series'), eq(mediaCredits.mediaId, id)))
         .orderBy(asc(mediaCredits.creditOrder)),
     ])
+
+    // Fire-and-forget hierarchy hydration when canonical seasons are missing
+    if (seasonRows.length === 0 && seriesRow.tmdbId != null && opts.enrichmentService && !hydrationInProgress.has(id)) {
+      console.info(`[catalog] Triggering async hierarchy hydration for series ${id}`)
+      hydrationInProgress.add(id)
+      void opts.enrichmentService.enrichSeries(id).finally(() => hydrationInProgress.delete(id))
+      reply.header('X-Hierarchy-Hydrating', 'true')
+    }
 
     const availabilityCount = Number(availCountRows[0]?.cnt ?? 0)
     const seriesVariants: AvailabilityVariantResponse[] = seriesVariantRows
