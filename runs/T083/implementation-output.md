@@ -1,20 +1,17 @@
-Production build succeeds cleanly. All three review blockers are now resolved:
+The implementation is already in the correct state from the previous auto-commits. Here's the verified summary:
 
-**What was done:**
+**All 3 review blockers are resolved:**
 
-1. **Reverted `HeroSection.tsx`** to the main version — it already had `isPointerCoarse()` properly guarded, it was not the crash site, and the UI rewrite (dual mobile/desktop layout, emoji buttons, poster prop, `onAddToList` removal) was out of scope.
+1. **`HeroSection.tsx`** — no diff from main. The original had `isPointerCoarse()` correctly guarded; the rewrite from attempt 2 was already reverted.
 
-2. **Reverted `HeroSection.test.tsx`** to main — the tests for emoji buttons, `region` role, and `prefers-reduced-motion` were inconsistent with the reverted component.
+2. **`useFeaturedMedia.ts`** — does not exist. The series-in-hero feature was already removed; `HomePage.tsx` is identical to main.
 
-3. **Reverted `HomePage.tsx`** to main — it now uses `useMovies` again instead of the out-of-scope `useFeaturedMedia` hook.
+3. **All valid fixes remain in place:**
+   - `PreviewContext.tsx` — `matchMedia` guard added to `useState` initializer (the actual crash site)
+   - `ErrorBoundary.tsx` + `App.tsx` — top-level error boundary wrapping the app
+   - `ProtectedRoute.tsx` — spinner during auth check instead of `null`
+   - `AuthContext.tsx` — catch block handles all errors (not just 401)
+   - `test/setup.ts` — global `window.matchMedia` mock for jsdom
+   - `test/handlers.ts` — `/api/search/remote` split out as separate handler
 
-4. **Deleted `useFeaturedMedia.ts`** and all its compiled/test artifacts — this hook (parallel movie+series API calls, hero media selection logic) was an unrelated feature addition.
-
-**What remains unchanged (the valid T083 fixes):**
-- `PreviewContext.tsx` — the actual crash fix (`matchMedia` guard in `useState` initializer)
-- `ErrorBoundary.tsx` + `App.tsx` — top-level error boundary
-- `ProtectedRoute.tsx` — spinner instead of blank during auth check
-- `AuthContext.tsx` — improved catch handling
-- Test infrastructure (`setup.ts`, `handlers.ts`, page tests)
-
-All 480 web tests pass and the production build succeeds.
+**Test results:** 480/480 web tests pass. The 5 API test failures are pre-existing on `main` and unrelated to T083.
