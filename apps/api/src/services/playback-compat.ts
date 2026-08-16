@@ -1,61 +1,54 @@
 import type { MediaInfo } from './media-prober.js'
 
-export type DeliveryMode = 'DIRECT' | 'REMUX' | 'TRANSCODE_AUDIO' | 'TRANSCODE_VIDEO' | 'TRANSCODE_FULL'
+export type DeliveryMode = 'DIRECT' | 'HLS_REMUX' | 'HLS_TRANSCODE_AUDIO' | 'HLS_TRANSCODE_FULL'
 
-export function isSafariOrIOS(userAgent: string): boolean {
-  const ua = userAgent.toLowerCase()
-  if (/iphone|ipad|ipod/.test(ua)) return true
-  // Safari on macOS: contains "safari" but not "chrome", "firefox", or "edg"
-  if (ua.includes('safari') && !ua.includes('chrome') && !ua.includes('firefox') && !ua.includes('edg')) return true
-  return false
-}
-
-export function classifyDelivery(mediaInfo: MediaInfo, isSafari: boolean): DeliveryMode {
+export function classifyDelivery(mediaInfo: MediaInfo): DeliveryMode {
   const video = mediaInfo.videoCodec.toLowerCase()
   const audio = mediaInfo.audioCodec.toLowerCase()
   const container = mediaInfo.containerFormat.toLowerCase()
 
-  // HLS streams play natively in Safari
+  // HLS streams can be served directly (native browser support or via HLS.js)
   if (container.includes('hls') || container === 'm3u8' || container === 'm3u') {
     return 'DIRECT'
   }
 
   const isH264 = video === 'h264'
-  const isHEVC = video === 'hevc' || video === 'h265'
   const isAAC = audio === 'aac'
   const isMp4Container = container.includes('mp4') || container.includes('mov') || container.includes('m4v')
 
-  if (isH264) {
-    if (isAAC && isMp4Container) return 'DIRECT'
-    if (isAAC) return 'REMUX'
-    return 'TRANSCODE_AUDIO'
-  }
+  // H.264 + AAC in MP4 container: universally browser-native
+  if (isH264 && isAAC && isMp4Container) return 'DIRECT'
 
-  if (isHEVC) {
-    if (isSafari && isAAC && isMp4Container) return 'DIRECT'
-    if (isSafari && isAAC) return 'REMUX'
-    if (isSafari && !isAAC) return 'TRANSCODE_AUDIO'
-    if (isAAC) return 'TRANSCODE_VIDEO'
-    return 'TRANSCODE_FULL'
-  }
+  // H.264 + AAC in non-MP4 container: remux to HLS without re-encoding
+  if (isH264 && isAAC) return 'HLS_REMUX'
 
-  // Unsupported video codec
-  if (isAAC) return 'TRANSCODE_VIDEO'
-  return 'TRANSCODE_FULL'
+  // H.264 video + non-AAC audio: copy video, transcode audio only
+  if (isH264) return 'HLS_TRANSCODE_AUDIO'
+
+  // Non-H264 video (HEVC, VP9, AV1, etc.): full transcode
+  return 'HLS_TRANSCODE_FULL'
 }
 
-export function buildFfmpegArgs(mode: DeliveryMode): string[] {
-  const OUTPUT_FLAGS = ['-movflags', 'frag_keyframe+empty_moov+default_base_moof', '-f', 'mp4', '-max_interleave_delta', '0']
+export function buildFfmpegArgs(mode: DeliveryMode, tempDir: string): string[] {
+  const segmentPath = `${tempDir}/seg%05d.ts`
+  const playlistPath = `${tempDir}/master.m3u8`
+
+  const HLS_OUTPUT = [
+    '-f', 'hls',
+    '-hls_time', '6',
+    '-hls_list_size', '0',
+    '-hls_flags', 'delete_segments+append_list',
+    '-hls_segment_filename', segmentPath,
+    playlistPath,
+  ]
 
   switch (mode) {
-    case 'REMUX':
-      return ['-c', 'copy', ...OUTPUT_FLAGS]
-    case 'TRANSCODE_AUDIO':
-      return ['-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', ...OUTPUT_FLAGS]
-    case 'TRANSCODE_VIDEO':
-      return ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-c:a', 'copy', ...OUTPUT_FLAGS]
-    case 'TRANSCODE_FULL':
-      return ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '192k', ...OUTPUT_FLAGS]
+    case 'HLS_REMUX':
+      return ['-c', 'copy', ...HLS_OUTPUT]
+    case 'HLS_TRANSCODE_AUDIO':
+      return ['-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', ...HLS_OUTPUT]
+    case 'HLS_TRANSCODE_FULL':
+      return ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '192k', ...HLS_OUTPUT]
     default:
       return []
   }

@@ -9,6 +9,25 @@ vi.mock('../playback-session-store.js', () => ({
   createSession: vi.fn(() => 'test-session-id'),
 }))
 
+// Probe returns h264+aac+mp4 by default → classifyDelivery → DIRECT → no HLS session needed
+vi.mock('../media-prober.js', () => ({
+  probeMedia: vi.fn().mockResolvedValue({
+    videoCodec: 'h264',
+    audioCodec: 'aac',
+    containerFormat: 'mov,mp4,m4a,3gp,3g2,mj2',
+  }),
+}))
+
+vi.mock('../probe-cache.js', () => ({
+  getProbe: vi.fn().mockReturnValue(null),
+  setProbe: vi.fn(),
+}))
+
+// HLS session creation is a no-op in resolver tests (DIRECT mode is returned by default)
+vi.mock('../hls-session-store.js', () => ({
+  createHlsSession: vi.fn().mockResolvedValue(undefined),
+}))
+
 // ---------------------------------------------------------------------------
 // URL builders — pure unit tests (no DB needed)
 // ---------------------------------------------------------------------------

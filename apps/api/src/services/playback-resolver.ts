@@ -9,7 +9,13 @@ import { resolveVariant } from './availability-resolver.js'
 import { getDefaultProfilePreferences } from './profile-service.js'
 import { ValidationError, ForbiddenError, NotFoundError } from '../errors.js'
 import { createSession } from './playback-session-store.js'
+import { probeMedia } from './media-prober.js'
+import { getProbe, setProbe } from './probe-cache.js'
+import { classifyDelivery } from './playback-compat.js'
+import { createHlsSession } from './hls-session-store.js'
 import type { PlaybackSessionResponse, AvailabilityVariantResponse } from '@iptvflix/api-contracts'
+import type { DeliveryMode } from './playback-compat.js'
+import type { MediaInfo } from './media-prober.js'
 
 export type PlaybackMediaType = 'movie' | 'episode'
 
@@ -73,6 +79,16 @@ async function fetchProgress(profileId: string, mediaType: PlaybackMediaType, me
   return row?.progressSeconds ?? 0
 }
 
+// Derive delivery mode from container extension when probing is unavailable.
+// Keeps the path working even when ffprobe cannot reach the upstream URL.
+function extensionFallbackMode(containerExtension: string): DeliveryMode {
+  const ext = containerExtension.toLowerCase()
+  if (ext === 'mp4' || ext === 'm4v') return 'DIRECT'
+  if (ext === 'm3u8' || ext === 'm3u') return 'DIRECT'
+  if (ext === 'ts' || ext === 'mkv' || ext === 'avi' || ext === 'flv' || ext === 'wmv') return 'HLS_REMUX'
+  return 'HLS_TRANSCODE_FULL'
+}
+
 export async function resolvePlayback(
   profileId: string,
   mediaType: PlaybackMediaType,
@@ -118,6 +134,8 @@ export async function resolvePlayback(
       audioLanguage: r.audioLanguage,
       subtitleLanguage: r.subtitleLanguage,
       videoQuality: r.videoQuality,
+      // Use cached codec info for compatibility scoring if available
+      videoCodec: getProbe(r.id)?.videoCodec ?? null,
     }))
     const { selectedVariantId } = resolveVariant(resolvable, prefs)
     if (!selectedVariantId) {
@@ -165,6 +183,34 @@ export async function resolvePlayback(
 
   const containerExtension = selected.containerExtension ?? 'ts'
 
+  // Probe media to determine browser-compatible delivery mode.
+  // On probe failure, use extension-based fallback classification.
+  let probeResult: MediaInfo | null = null
+  let deliveryMode: DeliveryMode
+
+  const cached = getProbe(selectedId)
+  if (cached) {
+    probeResult = cached
+    deliveryMode = classifyDelivery(cached)
+  } else {
+    try {
+      probeResult = await probeMedia(providerStreamUrl)
+      setProbe(selectedId, probeResult)
+      deliveryMode = classifyDelivery(probeResult)
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      console.warn('playback-resolver: probe failed, using extension fallback', {
+        mediaType,
+        mediaId,
+        availabilityId: selectedId,
+        sourceId: selected.providerId,
+        containerExtension,
+        probeError: errMsg,
+      })
+      deliveryMode = extensionFallbackMode(containerExtension)
+    }
+  }
+
   const sessionId = createSession({
     profileId,
     mediaType,
@@ -173,6 +219,7 @@ export async function resolvePlayback(
     sourceId: selected.providerId,
     providerStreamUrl,
     containerExtension,
+    deliveryMode,
   })
 
   console.info('playback-resolver: session created', {
@@ -182,6 +229,10 @@ export async function resolvePlayback(
     availabilityId: selectedId,
     sourceId: selected.providerId,
     containerExtension,
+    deliveryMode,
+    probeVideoCodec: probeResult?.videoCodec ?? null,
+    probeAudioCodec: probeResult?.audioCodec ?? null,
+    probeContainerFormat: probeResult?.containerFormat ?? null,
   })
 
   const alternatives: AvailabilityVariantResponse[] = candidates
@@ -196,6 +247,44 @@ export async function resolvePlayback(
       rawTitle: r.rawTitle,
     }))
 
+  // HLS modes: spawn ffmpeg pipeline and return playlist URL
+  if (deliveryMode !== 'DIRECT') {
+    try {
+      await createHlsSession(sessionId, providerStreamUrl, deliveryMode)
+      console.info('playback-resolver: HLS session created', {
+        sessionId,
+        ffmpegMode: deliveryMode,
+      })
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      console.error('playback-resolver: HLS session creation failed', {
+        sessionId,
+        deliveryMode,
+        error: errMsg,
+      })
+      throw new ValidationError('Variant not available')
+    }
+
+    const gatewayUrl = `/api/playback/session/${sessionId}/master.m3u8`
+    return {
+      gatewayUrl,
+      deliveryMode,
+      probeResult,
+      containerExtension,
+      availabilityId: selectedId,
+      startPositionSeconds,
+      alternatives,
+    }
+  }
+
   const gatewayUrl = `/api/playback/stream/${sessionId}`
-  return { gatewayUrl, compatGatewayUrl: `${gatewayUrl}?compat=1`, containerExtension, availabilityId: selectedId, startPositionSeconds, alternatives }
+  return {
+    gatewayUrl,
+    deliveryMode,
+    probeResult,
+    containerExtension,
+    availabilityId: selectedId,
+    startPositionSeconds,
+    alternatives,
+  }
 }

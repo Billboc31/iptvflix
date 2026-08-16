@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AvailabilityVariantResponse } from '@iptvflix/api-contracts'
+import type { AvailabilityVariantResponse, DeliveryMode } from '@iptvflix/api-contracts'
 import { resolvePlayback, ApiError } from '../lib/api.js'
 
 type Status = 'idle' | 'loading' | 'ready' | 'error'
 
 export type UsePlaybackState = {
   gatewayUrl: string | null
-  compatUrl: string | null
+  deliveryMode: DeliveryMode | null
   containerExtension: string | null
   startPositionSeconds: number
   alternatives: AvailabilityVariantResponse[]
@@ -22,7 +22,7 @@ export function usePlayback(
   initialAvailabilityId?: string,
 ): UsePlaybackState {
   const [gatewayUrl, setGatewayUrl] = useState<string | null>(null)
-  const [compatUrl, setCompatUrl] = useState<string | null>(null)
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode | null>(null)
   const [containerExtension, setContainerExtension] = useState<string | null>(null)
   const [startPositionSeconds, setStartPositionSeconds] = useState(0)
   const [alternatives, setAlternatives] = useState<AvailabilityVariantResponse[]>([])
@@ -41,7 +41,7 @@ export function usePlayback(
           explicitId ? { availabilityId: explicitId } : {},
         )
         setGatewayUrl(session.gatewayUrl)
-        setCompatUrl(session.compatGatewayUrl)
+        setDeliveryMode(session.deliveryMode)
         setContainerExtension(session.containerExtension)
         setStartPositionSeconds(session.startPositionSeconds)
         setAlternatives(session.alternatives)
@@ -67,5 +67,5 @@ export function usePlayback(
     [resolve],
   )
 
-  return { gatewayUrl, compatUrl, containerExtension, startPositionSeconds, alternatives, availabilityId, status, error, switchVariant }
+  return { gatewayUrl, deliveryMode, containerExtension, startPositionSeconds, alternatives, availabilityId, status, error, switchVariant }
 }

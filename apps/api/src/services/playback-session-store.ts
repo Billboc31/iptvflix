@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { DeliveryMode } from './playback-compat.js'
 
 const TTL_MS = 2 * 60 * 60 * 1000 // 2 hours
 
@@ -11,6 +12,7 @@ export type SessionEntry = {
   sourceId: string
   providerStreamUrl: string
   containerExtension: string
+  deliveryMode: DeliveryMode
 }
 
 type StoredEntry = SessionEntry & { expiresAt: number }
