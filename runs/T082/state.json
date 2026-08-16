@@ -1,7 +1,7 @@
 {
   "ticket_id": "T082",
-  "state": "IMPLEMENTATION_REVIEW_NEEDED",
+  "state": "IMPLEMENTATION_FIX_REQUIRED",
   "branch": "ticket/T082-diagnose-and-fix-cross-platform-web-playback-by-st",
   "issue_number": 174,
-  "updated_at": "2026-08-16T09:35:18Z"
+  "updated_at": "2026-08-16T09:40:08Z"
 }
