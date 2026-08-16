@@ -58,7 +58,7 @@ describe('AuthContext', () => {
     vi.mocked(getMe)
       .mockRejectedValueOnce(new Error('401'))
       .mockResolvedValueOnce({ username: 'alice' })
-    vi.mocked(apiLogin).mockResolvedValue({ token: 'tok' })
+    vi.mocked(apiLogin).mockResolvedValue({ ok: true, token: 'tok' })
 
     render(
       <AuthProvider>
