@@ -20,8 +20,15 @@ This guide covers the full Railway + Vercel staging setup from scratch.
 | `PORT` | No | Injected by Railway; the API reads it via `process.env.PORT` |
 | `TMDB_API_KEY` | No | Required only if the TMDB sync feature is active |
 | `TMDB_STALE_DAYS` | No | Overrides the default cache TTL for TMDB data |
+| `NIXPACKS_PKGS` | No | Optional fallback: set to `ffmpeg` if HLS remux binaries are missing at runtime |
 
 Do not commit secret values. Use the Railway dashboard to set `DATABASE_URL` and `TMDB_API_KEY`.
+
+### ffmpeg / ffprobe (API, for HLS playback)
+
+1. Prefer `apps/api/nixpacks.toml` (`nixPkgs = ["...", "ffmpeg"]`) with API **Root Directory** = `apps/api`, then **Redeploy**.
+2. If the API service Root Directory is the **monorepo root** instead, either set Config `nixpacksConfigPath = apps/api/nixpacks.toml` or add service variable `NIXPACKS_PKGS=ffmpeg` and **Redeploy**.
+3. In deploy logs, confirm ffmpeg is installed; at runtime `ffmpeg -version` must succeed (otherwise resolve may pick `HLS_REMUX` and fail with session 410).
 
 ### Railway (Web SPA) or Vercel (Web)
 

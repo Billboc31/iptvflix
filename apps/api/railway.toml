@@ -1,5 +1,8 @@
 [build]
 builder = "NIXPACKS"
+# When the Railway service Root Directory is the monorepo root, point Nixpacks
+# at the API nixpacks.toml so ffmpeg is installed for HLS remux.
+nixpacksConfigPath = "apps/api/nixpacks.toml"
 buildCommand = "pnpm install --frozen-lockfile && pnpm --filter api build"
 
 [deploy]
