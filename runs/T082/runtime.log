@@ -12,3 +12,25 @@
 [2026-08-16T09:08:22Z] snapshot: runtime-prompt=runs/T082/prompts/planner-attempt-1.md
 [2026-08-16T09:13:17Z] compose: preferring on-disk runs/T082/plan.md over chatty stdout (agent Write beat meta-report)
 [2026-08-16T09:13:17Z] auto-run: step=planner done rc=0
+[2026-08-16T09:47:21Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-16T09:47:21Z] auto-run: running step=tester
+[2026-08-16T09:47:22Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-16T09:47:22Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-16T09:47:22Z] prompt: generic fallback — injecting runs/T082/ticket.md
+[2026-08-16T09:47:22Z] compose: global-context=docs/ai/global-context.md
+[2026-08-16T09:47:22Z] compose: role=ai/roles/tester.md
+[2026-08-16T09:47:22Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-16T09:47:22Z] compose: skill=ai/skills/testing.md
+[2026-08-16T09:47:22Z] compose: skill=ai/skills/debugging.md
+[2026-08-16T09:47:22Z] compose: task (canonical prompt)
+[2026-08-16T09:47:22Z] snapshot: runtime-prompt=runs/T082/prompts/tester-attempt-1.md
+[2026-08-16T09:56:02Z] auto-run: step=tester done rc=0
+[2026-08-16T09:56:02Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-16T09:56:02Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-16T09:56:02Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T082/daemon.lock', 'runs/T082/runtime.log', 'runs/T082/workflow-status.md']
+[2026-08-16T09:56:02Z] commit-checkpoint: sha=f560251 files=2 title='test(T082/workflow): tester — update 2 file(s)'
+[2026-08-16T09:56:02Z] auto-run: auto-push triggered
+[2026-08-16T09:56:02Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T082/daemon.lock', 'runs/T082/runtime.log', 'runs/T082/workflow-status.md']
+[2026-08-16T09:56:02Z] push: pushing branch=ticket/T082-diagnose-and-fix-cross-platform-web-playback-by-st
+[2026-08-16T09:56:04Z] push: done branch=ticket/T082-diagnose-and-fix-cross-platform-web-playback-by-st
+[2026-08-16T09:56:05Z] auto-run: TEST_COMPLETE — running PR lifecycle
