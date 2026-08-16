@@ -1,8 +1,4 @@
 import 'dotenv/config'
-import { spawn } from 'node:child_process'
-import { writeFile, unlink } from 'node:fs/promises'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
@@ -207,38 +203,6 @@ try {
 }
 
 scheduler.start()
-
-// Verify ffmpeg and ffprobe are available before accepting traffic.
-// Surfaces Railway build misconfigurations at deploy time, not at first playback request.
-async function checkBinary(binary: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(binary, ['-version'], { stdio: ['ignore', 'ignore', 'ignore'] })
-    proc.on('close', (code) => {
-      if (code === 0) resolve()
-      else reject(new Error(`${binary} exited with code ${code}`))
-    })
-    proc.on('error', (err) => reject(new Error(`${binary} not found: ${err.message}`)))
-  })
-}
-
-try {
-  await Promise.all([checkBinary('ffmpeg'), checkBinary('ffprobe')])
-  app.log.info('startup: ffmpeg and ffprobe available')
-} catch (err) {
-  app.log.fatal({ err }, 'FATAL: ffmpeg/ffprobe not available — cannot serve HLS playback')
-  process.exit(1)
-}
-
-// Verify temp directory is writable (HLS sessions write segments there).
-try {
-  const testPath = join(tmpdir(), `.iptvflix-startup-check-${Date.now()}`)
-  await writeFile(testPath, '')
-  await unlink(testPath)
-  app.log.info({ tmpdir: tmpdir() }, 'startup: temp directory is writable')
-} catch (err) {
-  app.log.fatal({ err }, 'FATAL: temp directory is not writable — cannot write HLS segments')
-  process.exit(1)
-}
 
 try {
   await app.listen({ port: PORT, host: '0.0.0.0' })

@@ -3,19 +3,12 @@ import { db } from '../db/client.js'
 import { movieAvailabilities, episodeAvailabilities } from '../db/schema/availabilities.js'
 import { sources } from '../db/schema/sources.js'
 import { viewingProgress } from '../db/schema/viewing-progress.js'
-import { buildXtreamMovieUrl, buildXtreamEpisodeUrl } from '../providers/xtream/playback.js'
+import { buildXtreamStreamUrl } from '../providers/xtream/playback.js'
 import { buildM3UStreamUrl } from '../providers/m3u/playback.js'
 import { resolveVariant } from './availability-resolver.js'
 import { getDefaultProfilePreferences } from './profile-service.js'
 import { ValidationError, ForbiddenError, NotFoundError } from '../errors.js'
-import { createSession } from './playback-session-store.js'
-import { probeMedia } from './media-prober.js'
-import { getProbe, setProbe } from './probe-cache.js'
-import { classifyDelivery } from './playback-compat.js'
-import { createHlsSession } from './hls-session-store.js'
 import type { PlaybackSessionResponse, AvailabilityVariantResponse } from '@iptvflix/api-contracts'
-import type { DeliveryMode } from './playback-compat.js'
-import type { MediaInfo } from './media-prober.js'
 
 export type PlaybackMediaType = 'movie' | 'episode'
 
@@ -28,7 +21,6 @@ type AvailabilityRow = {
   subtitleLanguage: string | null
   videoQuality: string | null
   rawTitle: string | null
-  containerExtension: string | null
 }
 
 async function fetchAvailabilities(mediaType: PlaybackMediaType, mediaId: string): Promise<AvailabilityRow[]> {
@@ -43,7 +35,6 @@ async function fetchAvailabilities(mediaType: PlaybackMediaType, mediaId: string
         subtitleLanguage: movieAvailabilities.subtitleLanguage,
         videoQuality: movieAvailabilities.videoQuality,
         rawTitle: movieAvailabilities.rawTitle,
-        containerExtension: movieAvailabilities.containerExtension,
       })
       .from(movieAvailabilities)
       .where(eq(movieAvailabilities.movieId, mediaId))
@@ -58,7 +49,6 @@ async function fetchAvailabilities(mediaType: PlaybackMediaType, mediaId: string
       subtitleLanguage: episodeAvailabilities.subtitleLanguage,
       videoQuality: episodeAvailabilities.videoQuality,
       rawTitle: episodeAvailabilities.rawTitle,
-      containerExtension: episodeAvailabilities.containerExtension,
     })
     .from(episodeAvailabilities)
     .where(eq(episodeAvailabilities.episodeId, mediaId))
@@ -77,16 +67,6 @@ async function fetchProgress(profileId: string, mediaType: PlaybackMediaType, me
       ),
     )
   return row?.progressSeconds ?? 0
-}
-
-// Derive delivery mode from container extension when probing is unavailable.
-// Keeps the path working even when ffprobe cannot reach the upstream URL.
-function extensionFallbackMode(containerExtension: string): DeliveryMode {
-  const ext = containerExtension.toLowerCase()
-  if (ext === 'm3u8' || ext === 'm3u') return 'DIRECT'
-  if (ext === 'ts' || ext === 'mkv' || ext === 'avi' || ext === 'flv' || ext === 'wmv') return 'HLS_REMUX'
-  // mp4/m4v without a probe result cannot be trusted as browser-compatible (may be HEVC)
-  return 'HLS_TRANSCODE_FULL'
 }
 
 export async function resolvePlayback(
@@ -134,8 +114,6 @@ export async function resolvePlayback(
       audioLanguage: r.audioLanguage,
       subtitleLanguage: r.subtitleLanguage,
       videoQuality: r.videoQuality,
-      // Use cached codec info for compatibility scoring if available
-      videoCodec: getProbe(r.id)?.videoCodec ?? null,
     }))
     const { selectedVariantId } = resolveVariant(resolvable, prefs)
     if (!selectedVariantId) {
@@ -149,91 +127,19 @@ export async function resolvePlayback(
 
   const startPositionSeconds = await fetchProgress(profileId, mediaType, mediaId)
 
-  let providerStreamUrl: string
+  let streamUrl: string
   if (source.type === 'XTREAM') {
-    if (mediaType === 'movie') {
-      providerStreamUrl = buildXtreamMovieUrl(
-        source.baseUrl,
-        source.username ?? '',
-        source.password ?? '',
-        selected.providerItemId,
-        selected.containerExtension,
-      )
-    } else {
-      providerStreamUrl = buildXtreamEpisodeUrl(
-        source.baseUrl,
-        source.username ?? '',
-        source.password ?? '',
-        selected.providerItemId,
-        selected.containerExtension,
-      )
-    }
+    streamUrl = buildXtreamStreamUrl(
+      source.baseUrl,
+      source.username ?? '',
+      source.password ?? '',
+      selected.providerItemId,
+    )
   } else if (source.type === 'M3U') {
-    providerStreamUrl = buildM3UStreamUrl(selected.providerItemId)
+    streamUrl = buildM3UStreamUrl(selected.providerItemId)
   } else {
-    console.error('playback-resolver: unknown source type', {
-      mediaType,
-      mediaId,
-      availabilityId: selected.id,
-      sourceId: selected.providerId,
-      containerExtension: selected.containerExtension,
-    })
     throw new ValidationError('Variant not available')
   }
-
-  const containerExtension = selected.containerExtension ?? 'ts'
-
-  // Probe media to determine browser-compatible delivery mode.
-  // On probe failure, use extension-based fallback classification.
-  let probeResult: MediaInfo | null = null
-  let deliveryMode: DeliveryMode
-
-  const cached = getProbe(selectedId)
-  if (cached) {
-    probeResult = cached
-    deliveryMode = classifyDelivery(cached)
-  } else {
-    try {
-      probeResult = await probeMedia(providerStreamUrl)
-      setProbe(selectedId, probeResult)
-      deliveryMode = classifyDelivery(probeResult)
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err)
-      console.warn('playback-resolver: probe failed, using extension fallback', {
-        mediaType,
-        mediaId,
-        availabilityId: selectedId,
-        sourceId: selected.providerId,
-        containerExtension,
-        probeError: errMsg,
-      })
-      deliveryMode = extensionFallbackMode(containerExtension)
-    }
-  }
-
-  const sessionId = createSession({
-    profileId,
-    mediaType,
-    mediaId,
-    availabilityId: selectedId,
-    sourceId: selected.providerId,
-    providerStreamUrl,
-    containerExtension,
-    deliveryMode,
-  })
-
-  console.info('playback-resolver: session created', {
-    sessionId,
-    mediaType,
-    mediaId,
-    availabilityId: selectedId,
-    sourceId: selected.providerId,
-    containerExtension,
-    deliveryMode,
-    probeVideoCodec: probeResult?.videoCodec ?? null,
-    probeAudioCodec: probeResult?.audioCodec ?? null,
-    probeContainerFormat: probeResult?.containerFormat ?? null,
-  })
 
   const alternatives: AvailabilityVariantResponse[] = candidates
     .filter((r) => r.id !== selectedId)
@@ -247,44 +153,5 @@ export async function resolvePlayback(
       rawTitle: r.rawTitle,
     }))
 
-  // HLS modes: spawn ffmpeg pipeline and return playlist URL
-  if (deliveryMode !== 'DIRECT') {
-    try {
-      await createHlsSession(sessionId, providerStreamUrl, deliveryMode)
-      console.info('playback-resolver: HLS session created', {
-        sessionId,
-        ffmpegMode: deliveryMode,
-      })
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err)
-      console.error('playback-resolver: HLS session creation failed', {
-        sessionId,
-        deliveryMode,
-        error: errMsg,
-      })
-      throw new ValidationError('Variant not available')
-    }
-
-    const gatewayUrl = `/api/playback/session/${sessionId}/master.m3u8`
-    return {
-      gatewayUrl,
-      deliveryMode,
-      probeResult,
-      containerExtension,
-      availabilityId: selectedId,
-      startPositionSeconds,
-      alternatives,
-    }
-  }
-
-  const gatewayUrl = `/api/playback/stream/${sessionId}`
-  return {
-    gatewayUrl,
-    deliveryMode,
-    probeResult,
-    containerExtension,
-    availabilityId: selectedId,
-    startPositionSeconds,
-    alternatives,
-  }
+  return { streamUrl, availabilityId: selectedId, startPositionSeconds, alternatives }
 }

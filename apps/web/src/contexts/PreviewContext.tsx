@@ -20,12 +20,13 @@ export function PreviewProvider({ children }: { children: React.ReactNode }) {
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [autoplayEnabled, setAutoplayEnabled] = useState(true)
   const [reducedMotion, setReducedMotion] = useState(
-    typeof window !== 'undefined'
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
       ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
       : false,
   )
 
   useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
     const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches)
     mq.addEventListener('change', handler)

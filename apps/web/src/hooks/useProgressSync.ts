@@ -29,15 +29,6 @@ export function useProgressSync(
       }).catch(() => undefined)
     }
 
-    function sendCurrent() {
-      if (!video || video.duration <= 0) return
-      lastSentRef.current = Date.now()
-      upsertProgress(mediaType, mediaId, {
-        progressSeconds: Math.floor(video.currentTime),
-        durationSeconds: Math.floor(video.duration),
-      }).catch(() => undefined)
-    }
-
     function sendFinal() {
       if (!video || video.duration <= 0) return
       lastSentRef.current = Date.now()
@@ -48,15 +39,10 @@ export function useProgressSync(
     }
 
     video.addEventListener('timeupdate', sendProgress)
-    video.addEventListener('pause', sendCurrent)
     video.addEventListener('ended', sendFinal)
-
     return () => {
       video.removeEventListener('timeupdate', sendProgress)
-      video.removeEventListener('pause', sendCurrent)
       video.removeEventListener('ended', sendFinal)
-      // Persist position on unmount
-      sendCurrent()
     }
   }, [videoRef, mediaType, mediaId, enabled])
 }

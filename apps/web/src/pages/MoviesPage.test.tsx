@@ -38,11 +38,10 @@ describe('MoviesPage', () => {
     })
   })
 
-  it('renders Disponibles and Tous les films shelf rows by default', async () => {
+  it('renders default shelf rows (Populaires, etc.) when no filter is selected', async () => {
     renderPage()
     await waitFor(() => {
-      expect(screen.getByText('Disponibles')).toBeInTheDocument()
-      expect(screen.getByText('Tous les films')).toBeInTheDocument()
+      expect(screen.getByText('Populaires')).toBeInTheDocument()
     })
   })
 
@@ -92,7 +91,7 @@ describe('MoviesPage', () => {
     await user.click(screen.getByRole('button', { name: 'Action' }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Action' })).toBeInTheDocument()
-      expect(screen.queryByText('Tous les films')).not.toBeInTheDocument()
+      expect(screen.queryByText('Populaires')).not.toBeInTheDocument()
     })
   })
 

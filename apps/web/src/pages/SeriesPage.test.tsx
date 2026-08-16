@@ -46,11 +46,10 @@ describe('SeriesPage', () => {
     })
   })
 
-  it('renders Disponibles and Toutes les séries shelf rows by default', async () => {
+  it('renders default shelf rows (Populaires, etc.) when no filter is selected', async () => {
     renderPage()
     await waitFor(() => {
-      expect(screen.getByText('Disponibles')).toBeInTheDocument()
-      expect(screen.getByText('Toutes les séries')).toBeInTheDocument()
+      expect(screen.getByText('Populaires')).toBeInTheDocument()
     })
   })
 
@@ -78,7 +77,7 @@ describe('SeriesPage', () => {
     await user.click(screen.getByRole('button', { name: 'Drama' }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Drama' })).toBeInTheDocument()
-      expect(screen.queryByText('Toutes les séries')).not.toBeInTheDocument()
+      expect(screen.queryByText('Populaires')).not.toBeInTheDocument()
     })
   })
 })

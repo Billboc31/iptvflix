@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { MeResponse } from '@iptvflix/api-contracts'
-import { login as apiLogin, logout as apiLogout, getMe, ApiError } from '../lib/api.js'
+import { login as apiLogin, logout as apiLogout, getMe } from '../lib/api.js'
 
 type AuthState = {
   isAuthenticated: boolean
@@ -23,11 +23,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsAuthenticated(true)
         setUsername(me.username)
       })
-      .catch((err: unknown) => {
-        if (err instanceof ApiError && err.status === 401) {
-          setIsAuthenticated(false)
-          setUsername(null)
-        }
+      .catch(() => {
+        setIsAuthenticated(false)
+        setUsername(null)
       })
       .finally(() => setIsLoading(false))
   }, [])
