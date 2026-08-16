@@ -7,29 +7,28 @@ import Fastify from 'fastify'
 // ---------------------------------------------------------------------------
 
 const mockGetSession = vi.hoisted(() => vi.fn())
-const mockProbeMedia = vi.hoisted(() => vi.fn())
-const mockGetProbe = vi.hoisted(() => vi.fn())
-const mockSetProbe = vi.hoisted(() => vi.fn())
+const mockGetPlaylist = vi.hoisted(() => vi.fn())
+const mockGetSegment = vi.hoisted(() => vi.fn())
 
 vi.mock('../../services/playback-session-store.js', () => ({
   getSession: mockGetSession,
   createSession: vi.fn(() => 'mock-session-id'),
 }))
 
-vi.mock('../../services/media-prober.js', () => ({
-  probeMedia: mockProbeMedia,
-}))
-
-vi.mock('../../services/probe-cache.js', () => ({
-  getProbe: mockGetProbe,
-  setProbe: mockSetProbe,
+vi.mock('../../services/hls-session-store.js', () => ({
+  getPlaylist: mockGetPlaylist,
+  getSegment: mockGetSegment,
+  SEGMENT_RE: /^seg\d{5}\.ts$/,
 }))
 
 // Mock the resolver so POST /playback/resolve doesn't hit the DB
 vi.mock('../../services/playback-resolver.js', () => ({
   resolvePlayback: vi.fn().mockResolvedValue({
     gatewayUrl: '/api/playback/stream/mock-session-id',
+    deliveryMode: 'DIRECT',
+    probeResult: { videoCodec: 'h264', audioCodec: 'aac', containerFormat: 'mov,mp4' },
     availabilityId: 'av-1',
+    containerExtension: 'mp4',
     startPositionSeconds: 0,
     alternatives: [],
   }),
@@ -56,6 +55,7 @@ const MOVIE_ID = 'ffffffff-0000-0000-0000-000000000001'
 function makeSession(overrides: Partial<{
   containerExtension: string
   profileId: string
+  deliveryMode: 'DIRECT' | 'HLS_REMUX' | 'HLS_TRANSCODE_AUDIO' | 'HLS_TRANSCODE_FULL'
 }> = {}) {
   return {
     sessionId: SESSION_ID,
@@ -66,6 +66,7 @@ function makeSession(overrides: Partial<{
     sourceId: 'src-1',
     providerStreamUrl: 'http://provider.example.com/user/pass/123.mp4',
     containerExtension: overrides.containerExtension ?? 'mp4',
+    deliveryMode: overrides.deliveryMode ?? 'DIRECT',
   }
 }
 
@@ -106,7 +107,7 @@ beforeEach(() => {
 })
 
 // ---------------------------------------------------------------------------
-// Tests
+// GET /playback/stream/:sessionId — session validation
 // ---------------------------------------------------------------------------
 
 describe('GET /playback/stream/:sessionId — session validation', () => {
@@ -134,9 +135,13 @@ describe('GET /playback/stream/:sessionId — session validation', () => {
   })
 })
 
-describe('GET /playback/stream/:sessionId — mp4 pass-through', () => {
+// ---------------------------------------------------------------------------
+// GET /playback/stream/:sessionId — DIRECT mode pass-through
+// ---------------------------------------------------------------------------
+
+describe('GET /playback/stream/:sessionId — DIRECT mp4 pass-through', () => {
   it('forwards upstream body with 200 and correct Content-Type', async () => {
-    mockGetSession.mockReturnValue(makeSession({ containerExtension: 'mp4' }))
+    mockGetSession.mockReturnValue(makeSession({ containerExtension: 'mp4', deliveryMode: 'DIRECT' }))
     mockFetch.mockResolvedValue(makeFetchOk('fake-mp4-bytes'))
 
     const res = await app.inject({
@@ -149,7 +154,7 @@ describe('GET /playback/stream/:sessionId — mp4 pass-through', () => {
   })
 
   it('forwards Range header to upstream', async () => {
-    mockGetSession.mockReturnValue(makeSession({ containerExtension: 'mp4' }))
+    mockGetSession.mockReturnValue(makeSession({ containerExtension: 'mp4', deliveryMode: 'DIRECT' }))
     mockFetch.mockResolvedValue({
       ...makeFetchOk('bytes'),
       status: 206,
@@ -175,7 +180,7 @@ describe('GET /playback/stream/:sessionId — mp4 pass-through', () => {
   })
 
   it('sets Accept-Ranges: bytes header', async () => {
-    mockGetSession.mockReturnValue(makeSession({ containerExtension: 'mp4' }))
+    mockGetSession.mockReturnValue(makeSession({ containerExtension: 'mp4', deliveryMode: 'DIRECT' }))
     mockFetch.mockResolvedValue(makeFetchOk())
 
     const res = await app.inject({
@@ -186,6 +191,32 @@ describe('GET /playback/stream/:sessionId — mp4 pass-through', () => {
     expect(res.headers['accept-ranges']).toBe('bytes')
   })
 })
+
+// ---------------------------------------------------------------------------
+// GET /playback/stream/:sessionId — HLS sessions return 409
+// ---------------------------------------------------------------------------
+
+describe('GET /playback/stream/:sessionId — HLS mode returns 409', () => {
+  const HLS_MODES = ['HLS_REMUX', 'HLS_TRANSCODE_AUDIO', 'HLS_TRANSCODE_FULL'] as const
+
+  for (const mode of HLS_MODES) {
+    it(`returns 409 for session with deliveryMode ${mode}`, async () => {
+      mockGetSession.mockReturnValue(makeSession({ deliveryMode: mode }))
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/playback/stream/${SESSION_ID}`,
+      })
+
+      expect(res.statusCode).toBe(409)
+      expect(res.json().error).toMatch(/hls/i)
+    })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /playback/stream/:sessionId — upstream error handling
+// ---------------------------------------------------------------------------
 
 describe('GET /playback/stream/:sessionId — upstream error handling', () => {
   it('returns 401 when upstream returns 401', async () => {
@@ -219,7 +250,6 @@ describe('GET /playback/stream/:sessionId — upstream error handling', () => {
     })
 
     expect(res.statusCode).toBe(403)
-    // This is the gateway's own 403 for upstream auth failure
     expect(res.json().error).toMatch(/expirée/i)
   })
 
@@ -256,117 +286,130 @@ describe('GET /playback/stream/:sessionId — upstream error handling', () => {
   })
 })
 
-describe('GET /playback/stream/:sessionId — ts container remux', () => {
-  it('returns 200 with Content-Type video/mp4 for ts extension', async () => {
-    mockGetSession.mockReturnValue(makeSession({ containerExtension: 'ts' }))
-    mockFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: new Headers({ 'Content-Type': 'video/mp2t' }),
-      body: Readable.toWeb(Readable.from([Buffer.from('fake-ts-bytes')])),
+// ---------------------------------------------------------------------------
+// GET /playback/session/:sessionId/master.m3u8
+// ---------------------------------------------------------------------------
+
+describe('GET /playback/session/:sessionId/master.m3u8', () => {
+  const PLAYLIST_URL = `/playback/session/${SESSION_ID}/master.m3u8`
+
+  it('returns 404 for unknown playback session', async () => {
+    mockGetSession.mockReturnValue(null)
+
+    const res = await app.inject({ method: 'GET', url: PLAYLIST_URL })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('returns 404 while playlist not yet written by ffmpeg', async () => {
+    mockGetSession.mockReturnValue(makeSession({ deliveryMode: 'HLS_REMUX' }))
+    mockGetPlaylist.mockResolvedValue({ status: 'not_ready' })
+
+    const res = await app.inject({ method: 'GET', url: PLAYLIST_URL })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('returns 410 when HLS session has expired or failed', async () => {
+    mockGetSession.mockReturnValue(makeSession({ deliveryMode: 'HLS_REMUX' }))
+    mockGetPlaylist.mockResolvedValue({ status: 'gone' })
+
+    const res = await app.inject({ method: 'GET', url: PLAYLIST_URL })
+    expect(res.statusCode).toBe(410)
+  })
+
+  it('returns 200 with correct Content-Type when playlist is ready', async () => {
+    mockGetSession.mockReturnValue(makeSession({ deliveryMode: 'HLS_REMUX' }))
+    mockGetPlaylist.mockResolvedValue({
+      status: 'ok',
+      content: '#EXTM3U\n#EXT-X-VERSION:3\n',
     })
 
-    // ffmpeg spawn: mock child process that immediately writes to stdout and exits
-    const { spawn } = await import('node:child_process')
-    const spawnSpy = vi.spyOn({ spawn }, 'spawn').mockImplementation(() => {
-      // We can't easily test the actual remux here; the spawn mock returns a silent child
-      return spawn as never
-    })
-    void spawnSpy // suppress unused warning
+    const res = await app.inject({ method: 'GET', url: PLAYLIST_URL })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('mpegurl')
+    expect(res.body).toContain('#EXTM3U')
+  })
 
-    const res = await app.inject({
-      method: 'GET',
-      url: `/playback/stream/${SESSION_ID}`,
-    })
+  it('playlist does not contain provider hostname or credentials', async () => {
+    const providerUrl = 'http://provider.example.com/user/pass/123.ts'
+    mockGetSession.mockReturnValue({ ...makeSession({ deliveryMode: 'HLS_REMUX' }), providerStreamUrl: providerUrl })
+    const playlistContent = [
+      '#EXTM3U',
+      '#EXT-X-VERSION:3',
+      `#EXTINF:6.000,`,
+      `/api/playback/session/${SESSION_ID}/segments/seg00001.ts`,
+      '#EXT-X-ENDLIST',
+    ].join('\n')
+    mockGetPlaylist.mockResolvedValue({ status: 'ok', content: playlistContent })
 
-    // Because ffmpeg is not actually available in test env (or returns non-zero),
-    // the gateway should attempt and either stream or return 415
-    expect([200, 415]).toContain(res.statusCode)
-    if (res.statusCode === 200) {
-      expect(res.headers['content-type']).toContain('video/mp4')
-    }
+    const res = await app.inject({ method: 'GET', url: PLAYLIST_URL })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body).not.toContain('provider.example.com')
+    expect(res.body).not.toContain('user')
+    expect(res.body).not.toContain('pass')
+    // Segments must point to the IPTVFlix proxy
+    expect(res.body).toContain(`/api/playback/session/${SESSION_ID}/segments/`)
+  })
+
+  it('segment URLs in playlist resolve to /playback/session/:id/segments/', async () => {
+    mockGetSession.mockReturnValue(makeSession({ deliveryMode: 'HLS_REMUX' }))
+    const playlistContent = [
+      '#EXTM3U',
+      `#EXTINF:6.000,`,
+      `/api/playback/session/${SESSION_ID}/segments/seg00001.ts`,
+    ].join('\n')
+    mockGetPlaylist.mockResolvedValue({ status: 'ok', content: playlistContent })
+
+    const res = await app.inject({ method: 'GET', url: PLAYLIST_URL })
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toContain(`/api/playback/session/${SESSION_ID}/segments/seg00001.ts`)
   })
 })
 
 // ---------------------------------------------------------------------------
-// Regression: compat path selection structural defect (T081)
-// Before fix: Safari UA without ?compat=1 incorrectly triggered the compat path
-// (isSafariOrIOS was OR-ed into useCompat), making the auto-retry a no-op.
-// After fix: only ?compat=1 query param triggers the compat path.
+// GET /playback/session/:sessionId/segments/:filename
 // ---------------------------------------------------------------------------
 
-const SAFARI_IOS_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
-const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+describe('GET /playback/session/:sessionId/segments/:filename', () => {
+  function segmentUrl(filename: string) {
+    return `/playback/session/${SESSION_ID}/segments/${filename}`
+  }
 
-const MP4_PROBE_RESULT = {
-  videoCodec: 'h264',
-  audioCodec: 'aac',
-  containerFormat: 'mov,mp4,m4a,3gp,3g2,mj2',
-}
-
-describe('compat path selection — structural defect regression (T081)', () => {
-  it('Safari UA without ?compat=1 uses extension-based (non-compat) routing', async () => {
-    mockGetSession.mockReturnValue(makeSession({ containerExtension: 'mp4' }))
-    mockFetch.mockResolvedValue(makeFetchOk('fake-mp4-bytes'))
-    mockGetProbe.mockReturnValue(null)
-
-    const res = await app.inject({
-      method: 'GET',
-      url: `/playback/stream/${SESSION_ID}`,
-      headers: { 'user-agent': SAFARI_IOS_UA },
-    })
-
-    expect(res.statusCode).toBe(200)
-    expect(res.headers['content-type']).toContain('video/mp4')
-    expect(res.headers['accept-ranges']).toBe('bytes')
-    expect(mockProbeMedia).not.toHaveBeenCalled()
+  it('returns 400 for invalid segment filename (path traversal attempt, URL-encoded)', async () => {
+    mockGetSession.mockReturnValue(makeSession({ deliveryMode: 'HLS_REMUX' }))
+    // Use URL-encoded slashes so Fastify routing doesn't normalize the path away
+    const res = await app.inject({ method: 'GET', url: segmentUrl('..%2F..%2F..%2Fetc%2Fpasswd') })
+    // The decoded filename fails SEGMENT_RE before reaching the store — returns 400
+    expect(res.statusCode).toBe(400)
   })
 
-  it('Safari UA with ?compat=1 triggers compat path (probeMedia called)', async () => {
-    mockGetSession.mockReturnValue(makeSession({ containerExtension: 'mp4' }))
-    mockFetch.mockResolvedValue(makeFetchOk('fake-mp4-bytes'))
-    mockGetProbe.mockReturnValue(null)
-    mockProbeMedia.mockResolvedValue(MP4_PROBE_RESULT)
+  it('returns 400 for filename without correct pattern', async () => {
+    mockGetSession.mockReturnValue(makeSession({ deliveryMode: 'HLS_REMUX' }))
 
-    const res = await app.inject({
-      method: 'GET',
-      url: `/playback/stream/${SESSION_ID}?compat=1`,
-      headers: { 'user-agent': SAFARI_IOS_UA },
-    })
-
-    expect(mockProbeMedia).toHaveBeenCalledOnce()
-    expect(res.statusCode).toBe(200)
+    const res = await app.inject({ method: 'GET', url: segmentUrl('arbitrary.ts') })
+    expect(res.statusCode).toBe(400)
   })
 
-  it('Non-Safari UA without ?compat=1 uses extension-based routing', async () => {
-    mockGetSession.mockReturnValue(makeSession({ containerExtension: 'mp4' }))
-    mockFetch.mockResolvedValue(makeFetchOk('fake-mp4-bytes'))
-    mockGetProbe.mockReturnValue(null)
+  it('returns 404 for unknown playback session', async () => {
+    mockGetSession.mockReturnValue(null)
 
-    const res = await app.inject({
-      method: 'GET',
-      url: `/playback/stream/${SESSION_ID}`,
-      headers: { 'user-agent': CHROME_UA },
-    })
-
-    expect(res.statusCode).toBe(200)
-    expect(res.headers['content-type']).toContain('video/mp4')
-    expect(mockProbeMedia).not.toHaveBeenCalled()
+    const res = await app.inject({ method: 'GET', url: segmentUrl('seg00001.ts') })
+    expect(res.statusCode).toBe(404)
   })
 
-  it('?compat=1 without Safari UA still triggers compat path', async () => {
-    mockGetSession.mockReturnValue(makeSession({ containerExtension: 'mp4' }))
-    mockFetch.mockResolvedValue(makeFetchOk('fake-mp4-bytes'))
-    mockGetProbe.mockReturnValue(null)
-    mockProbeMedia.mockResolvedValue(MP4_PROBE_RESULT)
+  it('returns 410 when HLS session expired or failed', async () => {
+    mockGetSession.mockReturnValue(makeSession({ deliveryMode: 'HLS_REMUX' }))
+    mockGetSegment.mockResolvedValue({ status: 'gone' })
 
-    const res = await app.inject({
-      method: 'GET',
-      url: `/playback/stream/${SESSION_ID}?compat=1`,
-      headers: { 'user-agent': CHROME_UA },
-    })
+    const res = await app.inject({ method: 'GET', url: segmentUrl('seg00001.ts') })
+    expect(res.statusCode).toBe(410)
+  })
 
-    expect(mockProbeMedia).toHaveBeenCalledOnce()
-    expect(res.statusCode).toBe(200)
+  it('returns 404 when segment not yet written', async () => {
+    mockGetSession.mockReturnValue(makeSession({ deliveryMode: 'HLS_REMUX' }))
+    mockGetSegment.mockResolvedValue({ status: 'not_ready' })
+
+    const res = await app.inject({ method: 'GET', url: segmentUrl('seg00001.ts') })
+    expect(res.statusCode).toBe(404)
   })
 })

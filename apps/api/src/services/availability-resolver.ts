@@ -7,6 +7,7 @@ export type ResolvableVariant = {
   audioLanguage: string | null
   subtitleLanguage: string | null
   videoQuality: string | null
+  videoCodec?: string | null
 }
 
 export type ResolveResult = {
@@ -28,10 +29,18 @@ export function isAboveCap(quality: string | null, maxVideoQuality: string | nul
   return (QUALITY_ORDER[quality] as number) > capRank
 }
 
+// Lower score = more browser-compatible = preferred (tiebreaker only, never overrides language)
+function codecCompatibilityScore(variant: ResolvableVariant): number {
+  const codec = variant.videoCodec?.toLowerCase() ?? ''
+  if (codec === 'h264') return 0
+  if (codec === 'hevc' || codec === 'h265') return 1
+  return 2  // VP9, AV1, unknown
+}
+
 function scoreTuple(
   variant: ResolvableVariant,
   prefs: ProfilePreferences,
-): [number, number, number, number, string] {
+): [number, number, number, number, number, string] {
   const audioIdx = variant.audioLanguage !== null
     ? prefs.preferredAudioLanguages.indexOf(variant.audioLanguage)
     : -1
@@ -47,18 +56,20 @@ function scoreTuple(
 
   const qualityScore = -qualityRank(variant.videoQuality)
 
-  return [audioScore, subtitleScore, sourceScore, qualityScore, variant.id]
+  const codecScore = codecCompatibilityScore(variant)
+
+  return [audioScore, subtitleScore, sourceScore, qualityScore, codecScore, variant.id]
 }
 
 function compareTuples(
-  a: [number, number, number, number, string],
-  b: [number, number, number, number, string],
+  a: [number, number, number, number, number, string],
+  b: [number, number, number, number, number, string],
 ): number {
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     const diff = (a[i] as number) - (b[i] as number)
     if (diff !== 0) return diff
   }
-  return a[4] < b[4] ? -1 : a[4] > b[4] ? 1 : 0
+  return a[5] < b[5] ? -1 : a[5] > b[5] ? 1 : 0
 }
 
 function resolveReason(

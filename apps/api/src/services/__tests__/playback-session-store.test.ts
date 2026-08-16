@@ -9,6 +9,7 @@ const BASE_DATA = {
   sourceId: 'src-1',
   providerStreamUrl: 'http://provider.example.com/user/pass/123.mp4',
   containerExtension: 'mp4',
+  deliveryMode: 'DIRECT' as const,
 }
 
 afterEach(() => {
