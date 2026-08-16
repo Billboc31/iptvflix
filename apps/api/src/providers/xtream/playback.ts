@@ -7,7 +7,8 @@ export function buildXtreamMovieUrl(
 ): string {
   const base = baseUrl.replace(/\/$/, '')
   const ext = containerExtension || 'ts'
-  return `${base}/${username}/${password}/${providerItemId}.${ext}`
+  // Xtream Codes VOD movies use /movie/{user}/{pass}/{streamId}.{ext}
+  return `${base}/movie/${username}/${password}/${providerItemId}.${ext}`
 }
 
 export function buildXtreamEpisodeUrl(

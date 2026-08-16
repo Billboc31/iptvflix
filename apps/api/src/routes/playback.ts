@@ -132,7 +132,8 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
           app.log.warn({ ...logCtx, err: 'upstream timeout or client disconnect' }, 'playback-gateway: upstream aborted')
           return reply.status(504).send({ error: 'Fournisseur ne répond pas' })
         }
-        throw err
+        app.log.error({ ...logCtx, err }, 'playback-gateway: upstream fetch failed')
+        return reply.status(502).send({ error: 'Erreur fournisseur' })
       }
 
       if (upstreamRes.status === 401 || upstreamRes.status === 403) {
@@ -157,7 +158,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         upstreamContentType,
       }, 'playback-gateway: upstream response')
 
-      const ext = containerExtension.toLowerCase()
+      const ext = (containerExtension ?? 'ts').toLowerCase()
       const streamBody = upstreamRes.body
 
       // Provider-native HLS: rewrite segment URIs to keep credentials server-side
@@ -181,7 +182,12 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
       app.log.info({ ...logCtx, responseMode: 'direct-mp4' }, 'playback-gateway: serving DIRECT MP4')
 
       if (!streamBody) return reply.send('')
-      return reply.send(Readable.fromWeb(streamBody as import('stream/web').ReadableStream))
+      try {
+        return reply.send(Readable.fromWeb(streamBody as import('stream/web').ReadableStream))
+      } catch (err) {
+        app.log.error({ ...logCtx, err }, 'playback-gateway: failed to pipe upstream body')
+        return reply.status(502).send({ error: 'Erreur fournisseur' })
+      }
     },
   )
 

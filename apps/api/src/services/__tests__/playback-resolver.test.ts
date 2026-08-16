@@ -39,32 +39,32 @@ vi.mock('../ffmpeg-availability.js', () => ({
 describe('buildXtreamMovieUrl', () => {
   it('produces the expected movie path format', () => {
     const url = buildXtreamMovieUrl('http://srv.example.com', 'user', 'pass', '12345', 'ts')
-    expect(url).toBe('http://srv.example.com/user/pass/12345.ts')
+    expect(url).toBe('http://srv.example.com/movie/user/pass/12345.ts')
   })
 
   it('strips trailing slash from baseUrl', () => {
     const url = buildXtreamMovieUrl('http://srv.example.com/', 'user', 'pass', '42', 'ts')
-    expect(url).toBe('http://srv.example.com/user/pass/42.ts')
+    expect(url).toBe('http://srv.example.com/movie/user/pass/42.ts')
   })
 
   it('respects mp4 extension', () => {
     const url = buildXtreamMovieUrl('http://srv.example.com', 'u', 'p', '99', 'mp4')
-    expect(url).toBe('http://srv.example.com/u/p/99.mp4')
+    expect(url).toBe('http://srv.example.com/movie/u/p/99.mp4')
   })
 
   it('respects mkv extension', () => {
     const url = buildXtreamMovieUrl('http://srv.example.com', 'u', 'p', '99', 'mkv')
-    expect(url).toBe('http://srv.example.com/u/p/99.mkv')
+    expect(url).toBe('http://srv.example.com/movie/u/p/99.mkv')
   })
 
   it('falls back to ts when extension is null', () => {
     const url = buildXtreamMovieUrl('http://srv.example.com', 'u', 'p', '99', null)
-    expect(url).toBe('http://srv.example.com/u/p/99.ts')
+    expect(url).toBe('http://srv.example.com/movie/u/p/99.ts')
   })
 
   it('falls back to ts when extension is omitted', () => {
     const url = buildXtreamMovieUrl('http://srv.example.com', 'u', 'p', '99')
-    expect(url).toBe('http://srv.example.com/u/p/99.ts')
+    expect(url).toBe('http://srv.example.com/movie/u/p/99.ts')
   })
 
   it('does not log credentials', () => {
