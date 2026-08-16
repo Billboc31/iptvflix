@@ -1,7 +1,7 @@
 {
   "ticket_id": "T083",
-  "state": "IMPLEMENTATION_REVIEW_NEEDED",
+  "state": "IMPLEMENTATION_FIX_REQUIRED",
   "branch": "ticket/T083-diagnose-blank-web-ui-after-latest-playback-change",
   "issue_number": 176,
-  "updated_at": "2026-08-16T12:02:17Z"
+  "updated_at": "2026-08-16T12:07:45Z"
 }
