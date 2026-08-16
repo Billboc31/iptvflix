@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { resolvePlayback, ApiError } from '../lib/api.js';
 export function usePlayback(mediaType, mediaId, initialAvailabilityId) {
-    const [streamUrl, setStreamUrl] = useState(null);
+    const [gatewayUrl, setGatewayUrl] = useState(null);
+    const [deliveryMode, setDeliveryMode] = useState(null);
+    const [containerExtension, setContainerExtension] = useState(null);
     const [startPositionSeconds, setStartPositionSeconds] = useState(0);
     const [alternatives, setAlternatives] = useState([]);
     const [availabilityId, setAvailabilityId] = useState(initialAvailabilityId ?? null);
@@ -12,7 +14,9 @@ export function usePlayback(mediaType, mediaId, initialAvailabilityId) {
         setError(null);
         try {
             const session = await resolvePlayback(mediaType, mediaId, explicitId ? { availabilityId: explicitId } : {});
-            setStreamUrl(session.streamUrl);
+            setGatewayUrl(session.gatewayUrl);
+            setDeliveryMode(session.deliveryMode);
+            setContainerExtension(session.containerExtension);
             setStartPositionSeconds(session.startPositionSeconds);
             setAlternatives(session.alternatives);
             setAvailabilityId(session.availabilityId);
@@ -30,6 +34,6 @@ export function usePlayback(mediaType, mediaId, initialAvailabilityId) {
     const switchVariant = useCallback((id) => {
         resolve(id);
     }, [resolve]);
-    return { streamUrl, startPositionSeconds, alternatives, availabilityId, status, error, switchVariant };
+    return { gatewayUrl, deliveryMode, containerExtension, startPositionSeconds, alternatives, availabilityId, status, error, switchVariant };
 }
 //# sourceMappingURL=usePlayback.js.map
