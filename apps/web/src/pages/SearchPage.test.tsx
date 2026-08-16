@@ -87,10 +87,9 @@ describe('SearchPage', () => {
     const { server } = await import('../test/handlers.js')
     const { http, HttpResponse } = await import('msw')
     server.use(
-      http.get('/api/search', () =>
+      http.get('/api/search', () => HttpResponse.json({ movies: [], series: [] })),
+      http.get('/api/search/remote', () =>
         HttpResponse.json({
-          movies: [],
-          series: [],
           externalMovies: [
             {
               tmdbId: '999',
@@ -120,10 +119,9 @@ describe('SearchPage', () => {
     const { server } = await import('../test/handlers.js')
     const { http, HttpResponse } = await import('msw')
     server.use(
-      http.get('/api/search', () =>
+      http.get('/api/search', () => HttpResponse.json({ movies: [], series: [] })),
+      http.get('/api/search/remote', () =>
         HttpResponse.json({
-          movies: [],
-          series: [],
           externalMovies: [
             {
               tmdbId: '888',
@@ -153,10 +151,9 @@ describe('SearchPage', () => {
     const { server } = await import('../test/handlers.js')
     const { http, HttpResponse } = await import('msw')
     server.use(
-      http.get('/api/search', () =>
+      http.get('/api/search', () => HttpResponse.json({ movies: [], series: [] })),
+      http.get('/api/search/remote', () =>
         HttpResponse.json({
-          movies: [],
-          series: [],
           externalMovies: [
             {
               tmdbId: '777',

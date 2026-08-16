@@ -330,7 +330,10 @@ export const handlers = [
     HttpResponse.json(MOCK_EPISODES),
   ),
   http.get('/api/search', () =>
-    HttpResponse.json({ movies: [MOCK_MOVIE], series: [MOCK_SERIES], externalMovies: [], externalSeries: [] }),
+    HttpResponse.json({ movies: [MOCK_MOVIE], series: [MOCK_SERIES] }),
+  ),
+  http.get('/api/search/remote', () =>
+    HttpResponse.json({ externalMovies: [], externalSeries: [] }),
   ),
   http.get('/api/genres', () => HttpResponse.json(MOCK_GENRES)),
   http.get('/api/sources', () => HttpResponse.json([MOCK_SOURCE])),

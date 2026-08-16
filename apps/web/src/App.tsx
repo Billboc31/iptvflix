@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import type { Location } from 'react-router-dom'
 import { ToastProvider } from './components/ui/Toast.js'
 import { PreviewProvider } from './contexts/PreviewContext.js'
+import ErrorBoundary from './components/ui/ErrorBoundary.js'
 import AppShell from './components/layout/AppShell.js'
 import HomePage from './pages/HomePage.js'
 import MoviesPage from './pages/MoviesPage.js'
@@ -71,14 +72,16 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <ToastProvider>
-      <PreviewProvider>
-        <BrowserRouter>
-          <AuthProvider>
-            <AppRoutes />
-          </AuthProvider>
-        </BrowserRouter>
-      </PreviewProvider>
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <PreviewProvider>
+          <BrowserRouter>
+            <AuthProvider>
+              <AppRoutes />
+            </AuthProvider>
+          </BrowserRouter>
+        </PreviewProvider>
+      </ToastProvider>
+    </ErrorBoundary>
   )
 }

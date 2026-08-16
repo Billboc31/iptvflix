@@ -40,7 +40,7 @@ export default function HeroSection({
 
   useEffect(() => {
     if (!mediaId || !trailerKey) return
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
     timerRef.current = setTimeout(() => activate(mediaId, trailerKey), 2000)
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
