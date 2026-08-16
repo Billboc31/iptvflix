@@ -1,7 +1,7 @@
 {
   "ticket_id": "T084",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T084-repair-blank-ui-merge-regression-restore-playback",
   "issue_number": 178,
-  "updated_at": "2026-08-16T18:47:57Z"
+  "updated_at": "2026-08-16T19:01:09Z"
 }
