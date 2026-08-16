@@ -1,7 +1,7 @@
 {
   "ticket_id": "T083",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T083-diagnose-blank-web-ui-after-latest-playback-change",
   "issue_number": 176,
-  "updated_at": "2026-08-16T11:32:50Z"
+  "updated_at": "2026-08-16T11:39:23Z"
 }
