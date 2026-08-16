@@ -28,7 +28,7 @@ function rewriteHlsManifest(manifest: string, sessionId: string, manifestUrl: st
   function proxyUri(uri: string): string {
     const abs = toAbsolute(uri)
     const encoded = Buffer.from(abs).toString('base64url')
-    return `/api/playback/stream/${sessionId}/segment?uri=${encoded}`
+    return `/playback/stream/${sessionId}/segment?uri=${encoded}`
   }
 
   return manifest

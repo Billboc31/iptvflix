@@ -13,6 +13,7 @@ import { probeMedia } from './media-prober.js'
 import { getProbe, setProbe } from './probe-cache.js'
 import { classifyDelivery } from './playback-compat.js'
 import { createHlsSession } from './hls-session-store.js'
+import { isFfmpegAvailable } from './ffmpeg-availability.js'
 import type { PlaybackSessionResponse, AvailabilityVariantResponse } from '@iptvflix/api-contracts'
 import type { DeliveryMode } from './playback-compat.js'
 import type { MediaInfo } from './media-prober.js'
@@ -211,6 +212,17 @@ export async function resolvePlayback(
     }
   }
 
+  // Without ffmpeg, HLS remux/transcode cannot run — fall back to direct proxy.
+  if (deliveryMode !== 'DIRECT' && !(await isFfmpegAvailable())) {
+    console.warn('playback-resolver: ffmpeg unavailable, falling back to DIRECT', {
+      mediaType,
+      mediaId,
+      requestedMode: deliveryMode,
+      containerExtension,
+    })
+    deliveryMode = 'DIRECT'
+  }
+
   const sessionId = createSession({
     profileId,
     mediaType,
@@ -265,7 +277,8 @@ export async function resolvePlayback(
       throw new ValidationError('Variant not available')
     }
 
-    const gatewayUrl = `/api/playback/session/${sessionId}/master.m3u8`
+    // Paths are rooted at the API host (VITE_API_BASE), not behind an /api proxy.
+    const gatewayUrl = `/playback/session/${sessionId}/master.m3u8`
     return {
       gatewayUrl,
       deliveryMode,
@@ -277,7 +290,7 @@ export async function resolvePlayback(
     }
   }
 
-  const gatewayUrl = `/api/playback/stream/${sessionId}`
+  const gatewayUrl = `/playback/stream/${sessionId}`
   return {
     gatewayUrl,
     deliveryMode,

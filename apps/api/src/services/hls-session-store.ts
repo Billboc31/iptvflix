@@ -144,7 +144,7 @@ export async function getPlaylist(sessionId: string): Promise<PlaylistResult> {
       if (!trimmed || trimmed.startsWith('#')) return line
       const filename = trimmed.split('/').pop() ?? trimmed
       if (SEGMENT_RE.test(filename)) {
-        return `/api/playback/session/${sessionId}/segments/${filename}`
+        return `/playback/session/${sessionId}/segments/${filename}`
       }
       return line
     })

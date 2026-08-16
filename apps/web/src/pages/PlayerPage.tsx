@@ -5,6 +5,13 @@ import { usePlayback } from '../hooks/usePlayback.js'
 import { useProgressSync } from '../hooks/useProgressSync.js'
 import PlayerControls from '../components/player/PlayerControls.js'
 import ErrorState from '../components/ui/ErrorState.js'
+import { getStoredAuthToken } from '../lib/api.js'
+import { resolveMediaUrl } from '../lib/media-url.js'
+
+function playbackAuthHeaders(): HeadersInit {
+  const token = getStoredAuthToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
 
 function videoErrorMessage(video: HTMLVideoElement | null, httpStatus?: number): string {
   if (httpStatus === 401 || httpStatus === 403) return 'Source expirée — contactez l\'administrateur'
@@ -84,6 +91,9 @@ export default function PlayerPage() {
     eventLogRef.current = []
     setVideoError(null)
 
+    const mediaUrl = resolveMediaUrl(gatewayUrl)
+    const authToken = getStoredAuthToken()
+
     // HLS delivery (backend-generated pipeline or provider-native HLS with DIRECT+m3u8)
     const isHls = deliveryMode !== 'DIRECT' ||
       containerExtension === 'm3u8' ||
@@ -93,19 +103,24 @@ export default function PlayerPage() {
       import('hls.js').then(({ default: Hls }) => {
         if (cancelled) return
         if (Hls.isSupported()) {
-          hlsInstance = new Hls()
-          hlsInstance.loadSource(gatewayUrl)
+          hlsInstance = new Hls({
+            xhrSetup(xhr) {
+              xhr.withCredentials = true
+              if (authToken) xhr.setRequestHeader('Authorization', `Bearer ${authToken}`)
+            },
+          })
+          hlsInstance.loadSource(mediaUrl)
           hlsInstance.attachMedia(video)
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
           // Safari / iOS native HLS
-          video.src = gatewayUrl
+          video.src = mediaUrl
         }
       }).catch(() => {
-        if (!cancelled && video) video.src = gatewayUrl
+        if (!cancelled && video) video.src = mediaUrl
       })
     } else {
       // DIRECT MP4 — native browser video element
-      video.src = gatewayUrl
+      video.src = mediaUrl
     }
 
     return () => {
@@ -145,7 +160,11 @@ export default function PlayerPage() {
     async function checkGatewayStatus() {
       if (!gatewayUrl) return
       try {
-        const res = await fetch(gatewayUrl, { method: 'HEAD' })
+        const res = await fetch(resolveMediaUrl(gatewayUrl), {
+          method: 'HEAD',
+          credentials: 'include',
+          headers: playbackAuthHeaders(),
+        })
         if (!res.ok) httpStatusRef.current = res.status
       } catch {
         // ignore

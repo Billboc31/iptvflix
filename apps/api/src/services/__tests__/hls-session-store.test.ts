@@ -149,7 +149,7 @@ describe('getPlaylist', () => {
 
     if (result.status !== 'ok') return
     // Segment URL must be rewritten to IPTVFlix proxy path
-    expect(result.content).toContain(`/api/playback/session/${SESSION_ID}/segments/seg00001.ts`)
+    expect(result.content).toContain(`/playback/session/${SESSION_ID}/segments/seg00001.ts`)
     // Original temp path must NOT appear in the rewritten output
     expect(result.content).not.toContain(TEMP_DIR)
   })

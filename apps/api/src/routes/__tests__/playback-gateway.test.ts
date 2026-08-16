@@ -24,7 +24,7 @@ vi.mock('../../services/hls-session-store.js', () => ({
 // Mock the resolver so POST /playback/resolve doesn't hit the DB
 vi.mock('../../services/playback-resolver.js', () => ({
   resolvePlayback: vi.fn().mockResolvedValue({
-    gatewayUrl: '/api/playback/stream/mock-session-id',
+    gatewayUrl: '/playback/stream/mock-session-id',
     deliveryMode: 'DIRECT',
     probeResult: { videoCodec: 'h264', audioCodec: 'aac', containerFormat: 'mov,mp4' },
     availabilityId: 'av-1',
@@ -336,7 +336,7 @@ describe('GET /playback/session/:sessionId/master.m3u8', () => {
       '#EXTM3U',
       '#EXT-X-VERSION:3',
       `#EXTINF:6.000,`,
-      `/api/playback/session/${SESSION_ID}/segments/seg00001.ts`,
+      `/playback/session/${SESSION_ID}/segments/seg00001.ts`,
       '#EXT-X-ENDLIST',
     ].join('\n')
     mockGetPlaylist.mockResolvedValue({ status: 'ok', content: playlistContent })
@@ -348,7 +348,7 @@ describe('GET /playback/session/:sessionId/master.m3u8', () => {
     expect(res.body).not.toContain('user')
     expect(res.body).not.toContain('pass')
     // Segments must point to the IPTVFlix proxy
-    expect(res.body).toContain(`/api/playback/session/${SESSION_ID}/segments/`)
+    expect(res.body).toContain(`/playback/session/${SESSION_ID}/segments/`)
   })
 
   it('segment URLs in playlist resolve to /playback/session/:id/segments/', async () => {
@@ -356,13 +356,13 @@ describe('GET /playback/session/:sessionId/master.m3u8', () => {
     const playlistContent = [
       '#EXTM3U',
       `#EXTINF:6.000,`,
-      `/api/playback/session/${SESSION_ID}/segments/seg00001.ts`,
+      `/playback/session/${SESSION_ID}/segments/seg00001.ts`,
     ].join('\n')
     mockGetPlaylist.mockResolvedValue({ status: 'ok', content: playlistContent })
 
     const res = await app.inject({ method: 'GET', url: PLAYLIST_URL })
     expect(res.statusCode).toBe(200)
-    expect(res.body).toContain(`/api/playback/session/${SESSION_ID}/segments/seg00001.ts`)
+    expect(res.body).toContain(`/playback/session/${SESSION_ID}/segments/seg00001.ts`)
   })
 })
 

@@ -28,6 +28,10 @@ vi.mock('../hls-session-store.js', () => ({
   createHlsSession: vi.fn().mockResolvedValue(undefined),
 }))
 
+vi.mock('../ffmpeg-availability.js', () => ({
+  isFfmpegAvailable: vi.fn().mockResolvedValue(true),
+}))
+
 // ---------------------------------------------------------------------------
 // URL builders — pure unit tests (no DB needed)
 // ---------------------------------------------------------------------------
@@ -215,7 +219,7 @@ describe('preferred-variant selection', () => {
     expect(session.availabilityId).toBe('av-1')
     expect(session.startPositionSeconds).toBe(0)
     expect(session.alternatives).toHaveLength(0)
-    expect(session.gatewayUrl).toBe('/api/playback/stream/test-session-id')
+    expect(session.gatewayUrl).toBe('/playback/stream/test-session-id')
     expect(session.deliveryMode).toBe('DIRECT')
     // Provider URL must NOT appear in the response (credentials stay server-side)
     expect(JSON.stringify(session)).not.toContain('xtream.example.com')
@@ -256,7 +260,7 @@ describe('explicit availabilityId', () => {
     const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1', 'av-2')
 
     expect(session.availabilityId).toBe('av-2')
-    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
+    expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
   })
 
   it('rejects an explicit availabilityId not found in this media', async () => {
@@ -308,7 +312,7 @@ describe('explicit availabilityId', () => {
 
     const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1', 'av-1')
 
-    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
+    expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
       expect.objectContaining({ containerExtension: 'mkv' }),
     )
@@ -330,7 +334,7 @@ describe('Xtream movie URL construction', () => {
 
     const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1')
 
-    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
+    expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
       expect.objectContaining({ containerExtension: 'mp4' }),
     )
@@ -346,7 +350,7 @@ describe('Xtream movie URL construction', () => {
 
     const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1')
 
-    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
+    expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
       expect.objectContaining({ containerExtension: 'mkv' }),
     )
@@ -362,7 +366,7 @@ describe('Xtream movie URL construction', () => {
 
     const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1')
 
-    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
+    expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
       expect.objectContaining({ containerExtension: 'ts' }),
     )
@@ -380,7 +384,7 @@ describe('Xtream episode URL construction', () => {
 
     const session = await resolvePlayback('profile-1', 'episode', 'episode-uuid-1')
 
-    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
+    expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
       expect.objectContaining({ containerExtension: 'mp4', mediaType: 'episode' }),
     )
@@ -396,7 +400,7 @@ describe('Xtream episode URL construction', () => {
 
     const session = await resolvePlayback('profile-1', 'episode', 'episode-uuid-1')
 
-    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
+    expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
       expect.objectContaining({ containerExtension: 'ts', mediaType: 'episode' }),
     )
@@ -451,7 +455,7 @@ describe('M3U provider', () => {
 
     const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1')
 
-    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
+    expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     // The raw M3U URL must not appear in the response
     expect(JSON.stringify(session)).not.toContain(streamUrl)
   })
@@ -497,7 +501,7 @@ describe('secret redaction', () => {
       expect(entry).not.toContain('secret_pass')
     }
     // Confirm the gateway URL is returned (not the raw provider URL)
-    expect(session.gatewayUrl).toMatch(/^\/api\/playback\/stream\//)
+    expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     // Provider credentials must NOT appear in the response
     expect(JSON.stringify(session)).not.toContain('secret_user')
     expect(JSON.stringify(session)).not.toContain('secret_pass')
