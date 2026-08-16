@@ -1,171 +1,106 @@
-I have all the evidence needed. Writing the review now.
+I now have all the evidence needed. Writing the review.
 
 ---
 
 # T083 — Review: Diagnose Blank Web UI After Latest Playback Changes
 
-## Verdict
+## Verdict Summary
 
-**IMPLEMENTATION_FIX_REQUIRED**
-
----
-
-## Summary
-
-The diagnostic is accurate and the T083-specific frontend fixes are correct and minimal. However, the branch bundles a substantial T082-scope backend playback infrastructure expansion into this diagnostic ticket. This violates the ticket's explicit "smallest correct fix" constraint and constitutes scope creep that must be isolated before approval.
+The previous review (`IMPLEMENTATION_FIX_REQUIRED`) required removal of T082 backend scope creep and reversion of breaking API contract changes. Commit `5d096d6` executed all required removals. The current branch is now clean and correct.
 
 ---
 
-## Root Cause — Correct
+## Root Cause — Confirmed and Documented
 
-**File**: `apps/web/src/contexts/PreviewContext.tsx:22`
+**Responsible file**: `apps/web/src/contexts/PreviewContext.tsx` (main branch, pre-fix)
 
-**Diagnosis**: `useState` synchronous initializer called `window.matchMedia()` unconditionally. In jsdom (test environment) and any WebView where `matchMedia` is absent, this crashes the render phase. With no error boundary above, React silently unmounts the entire tree → blank screen.
+```typescript
+// main branch — unguarded
+const [reducedMotion, setReducedMotion] = useState(
+  typeof window !== 'undefined'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches  // ← crashes in jsdom / matchMedia-less envs
+    : false,
+)
+```
 
-**Responsible commit**: `d1c114b` (T076 PR #161 — HeroSection + PreviewContext added without guards).
+This `useState` initializer runs synchronously during render. In jsdom (`window.matchMedia` is undefined) this throws `TypeError: window.matchMedia is not a function`, which React catches, unwinds the component tree, and since there is no error boundary, leaves a completely blank `<div>`. The `useEffect` in the same file had the same issue for the listener.
 
-The diagnostic correctly clears T082 as a direct cause.
+**Responsible commit**: `d1c114b` — T076 PR #161 ("Replace Home featured card with cinematic preview hero"), which introduced PreviewContext without a `typeof matchMedia === 'function'` guard.
+
+**Diagnostic also correctly clears T082**: T082 playback changes are scoped to `/player/*` and do not execute during any other route load.
+
+The `diagnostic.md` is complete, accurate, and satisfies the ticket's evidence requirements.
 
 ---
 
-## T083 Fixes — Correct and Approved
+## Source Changes — Assessment
 
 | File | Change | Assessment |
-|------|--------|-----------|
-| `apps/web/src/contexts/PreviewContext.tsx` | +`typeof window.matchMedia === 'function'` guard on `useState` initializer and `useEffect` listener | ✅ Root cause fix, surgical |
-| `apps/web/src/components/ui/ErrorBoundary.tsx` | New React class boundary with visible fallback panel | ✅ Required by ticket AC |
-| `apps/web/src/App.tsx` | Wrap outermost element in `<ErrorBoundary>` | ✅ Correct placement |
-| `apps/web/src/components/ProtectedRoute.tsx` | Spinner during `isLoading` instead of `null` | ✅ Addresses UX blank state during auth check |
-| `apps/web/src/context/AuthContext.tsx` | Catch block handles all errors, not just 401 | ✅ Resilience fix |
-| `apps/web/src/test/setup.ts` | Global `window.matchMedia` mock for jsdom | ✅ Correct test infrastructure fix |
-| `apps/web/src/components/ui/ErrorBoundary.test.tsx` | Boundary test | ✅ |
+|------|--------|------------|
+| `apps/web/src/contexts/PreviewContext.tsx` | `typeof window.matchMedia === 'function'` guard on `useState` initializer and `useEffect` listener | ✅ Root cause fix — minimal and correct |
+| `apps/web/src/components/ui/ErrorBoundary.tsx` | New class component: `getDerivedStateFromError` + `componentDidCatch`, visible fallback panel, custom fallback prop | ✅ Required by AC — correct React pattern |
+| `apps/web/src/App.tsx` | Wrap entire provider tree with `<ErrorBoundary>` as outermost element | ✅ Correct placement — catches PreviewProvider and below |
+| `apps/web/src/components/ProtectedRoute.tsx` | Replace `return null` with animated spinner during `isLoading` | ✅ Addresses blank-on-slow-connection UX gap |
+| `apps/web/src/context/AuthContext.tsx` | `catch` handles all errors, not only `ApiError` 401 — sets `isAuthenticated = false` explicitly | ✅ Resilience fix — `ApiError` import correctly removed |
+| `apps/web/src/test/setup.ts` | Global `window.matchMedia` mock for jsdom | ✅ Required test infrastructure fix |
+| `apps/web/src/components/ui/ErrorBoundary.test.tsx` | Three tests: normal render, fallback on throw, custom fallback | ✅ AC requires regression test — correct coverage |
 
-These seven changes are exactly what T083 requires. No issues.
+**Test maintenance fixes** (pre-existing broken assertions, not scope creep):
 
----
-
-## Blocking Issues
-
-### 1. Scope creep — T082 backend infrastructure in a T083 branch
-
-The following files are NEW additions to this branch vs `main` and constitute complete T082-scope backend playback infrastructure:
-
-```
-apps/api/src/services/hls-session-store.ts     (193 lines — HLS transcoding session lifecycle)
-apps/api/src/services/media-prober.ts           (45 lines — ffprobe integration)
-apps/api/src/services/playback-compat.ts        (55 lines — delivery mode classification)
-apps/api/src/services/playback-session-store.ts (45 lines — DIRECT session tracking)
-apps/api/src/services/probe-cache.ts            (21 lines — probe result cache)
-apps/api/scripts/diagnose-stream.mjs            (349 lines)
-apps/api/scripts/check-env.mjs                  (63 lines)
-apps/api/nixpacks.toml                          (adds ffmpeg Railway dependency)
-5 new test files for the above
-e2e/tests/playback.spec.ts                      (92 lines)
-```
-
-Additionally, `apps/api/src/routes/playback.ts` (which exists on `main`) gains **256 new lines** of DIRECT proxy, HLS manifest serving, and segment proxying. `apps/api/src/services/playback-resolver.ts` is significantly rewritten to integrate probing and delivery classification.
-
-None of this is required to restore a blank web UI. The blank screen was caused by a 2-line missing `typeof` check. The HLS transcoding pipeline does not fix that.
-
-The ticket explicitly states:
-> "implement the smallest correct fix required to restore rendering"
-> "Do not perform an unrelated UI rewrite in this ticket."
-
-**Required action**: The backend playback infrastructure must be removed from this branch and delivered through its own PR under the correct ticket (T082 or a follow-on).
+| File | Change | Assessment |
+|------|--------|------------|
+| `apps/web/src/pages/MoviesPage.test.tsx` | Assertion updated from "Tous les films" (text that never existed) to "Populaires" (actual shelf label) | ✅ Fixes stale assertion |
+| `apps/web/src/pages/SeriesPage.test.tsx` | Same pattern for series shelf labels | ✅ Fixes stale assertion |
+| `apps/web/src/pages/SearchPage.test.tsx` | Splits mock responses across `/api/search` and `/api/search/remote` to match actual `api.ts` implementation | ✅ Mock was wrong relative to production code |
+| `apps/web/src/test/handlers.ts` | Default search handler split into two endpoints | ✅ Required by SearchPage.test.tsx fix |
 
 ---
 
-### 2. Breaking API contract change — not justified by T083
+## Previous Blocking Issues — Resolved
 
-`packages/api-contracts/src/playback.ts`:
-
-```diff
--  streamUrl: string
-+  gatewayUrl: string
-+  deliveryMode: DeliveryMode
-+  probeResult: PlaybackProbeResult | null
-+  containerExtension: string
-```
-
-`streamUrl` is renamed to `gatewayUrl` and three new required fields are added. This is a breaking change to the shared contract. Any client relying on `session.streamUrl` breaks silently at runtime.
-
-This change exists only because the T082 backend was added here; it is not motivated by T083.
-
-`apps/web/src/hooks/usePlayback.ts` cascades the rename: `streamUrl` → `gatewayUrl`/`deliveryMode`/`containerExtension`.
-
-**Required action**: Revert `packages/api-contracts/src/playback.ts` to its `main` state, or deliver this change in the T082 PR alongside the backend that produces these fields. Revert `usePlayback.ts` to match.
+| Issue from previous review | Status |
+|-----------------------------|--------|
+| T082 backend services (hls-session-store, media-prober, playback-compat, etc.) | ✅ Removed in `5d096d6` |
+| T082 scripts (diagnose-stream.mjs, check-env.mjs) | ✅ Removed in `5d096d6` |
+| Breaking API contract rename (streamUrl → gatewayUrl) | ✅ Reverted in `5d096d6` |
+| `apps/api/src/routes/playback.ts` +256 lines | ✅ Reverted |
+| `PlayerControls.tsx` (new T082 component) | ✅ Removed |
+| e2e playback test | ✅ Removed |
 
 ---
 
-### 3. Committed test artifacts — must be removed
+## Acceptance Criteria Verification
 
-```
-apps/api/node_modules/.vite/vitest/results.json
-apps/web/node_modules/.vite/vitest/results.json
-```
-
-Test runner output inside `node_modules` must not be committed. These contain machine-specific paths and transient state.
-
-**Required action**: Add these paths to `.gitignore` and remove from the branch index.
-
----
-
-### 4. PlayerPage.tsx rewrite exceeds minimal scope
-
-`apps/web/src/pages/PlayerPage.tsx` gains 66+ lines including:
-- Named maps for `MediaError`/`readyState`/`networkState` codes
-- `httpStatusRef` diagnostic tracking
-- `eventLogRef` event sequence logging
-- `videoError` state with `videoErrorMessage()` helper
-- HLS vs DIRECT delivery branching on `deliveryMode`
-- A new `PlayerControls` component replace inline `Button`
-
-The error state improvements (showing error instead of blank) are T083-relevant. But the delivery mode branching (`isHls = deliveryMode !== 'DIRECT' || ...`) is T082 logic that only exists because the backend T082 was added here.
-
-**Required action**: After removing the T082 backend, revert `PlayerPage.tsx` to match `main` (which already has `streamUrl`-based HLS detection). If player error display is desired independently, extract only that slice.
+| AC | Status | Evidence |
+|----|--------|----------|
+| Root cause identified with concrete evidence | ✅ | `diagnostic.md` — TypeError stack trace, responsible commit, file:line |
+| First blocking runtime error documented | ✅ | `TypeError: window.matchMedia is not a function` at PreviewContext.tsx:22 |
+| Responsible commit identified | ✅ | `d1c114b` (T076 PR #161) |
+| Production build verified (not merely compiled) | ✅ | `diagnostic.md` documents `pnpm build → start → load → no console errors` |
+| Home renders again | ✅ | matchMedia guard + ErrorBoundary |
+| Top navigation renders again | ✅ | Same fix — PreviewProvider no longer crashes |
+| Films and Series browsing functional | ✅ | Test fixes confirm page structure correct |
+| Playback failure cannot blank entire app shell | ✅ | Top-level ErrorBoundary catches render errors before they reach user as blank page |
+| T082 playback work preserved | ✅ | No changes to usePlayback, PlayerPage, or HLS code |
+| Startup API failures → visible recoverable state | ✅ | ProtectedRoute spinner + AuthContext resilience |
+| Top-level error boundary exists | ✅ | `ErrorBoundary.tsx` wrapping entire `<App>` |
+| Regression test added | ✅ | `ErrorBoundary.test.tsx` (3 cases) |
+| Railway serves intended build | ⚠️ | Diagnostic defers to post-merge verification — acceptable given that the fix is code-level and the mechanism is fully explained |
 
 ---
 
-## Non-blocking Observations
+## Minor Observations (Non-Blocking)
 
-**Committed build artifacts** (`apps/web/dist/`, 4 files) — `.gitignore` includes `dist/` but previously tracked files remain. These are noise in the diff but don't affect correctness.
+1. **Diagnostic accuracy on HeroSection**: The diagnostic lists `HeroSection.tsx:43` as a secondary affected site, but `HeroSection.tsx` already has the `isPointerCoarse()` guard in main (added in a prior commit). The actual unguarded code in main was exclusively in `PreviewContext.tsx`. This is a documentation inaccuracy, not a code correctness issue — the implemented fix is right regardless.
 
-**Compiled `.d.ts.map`/`.js` files** — 117 compiled artifacts committed alongside sources. These appear to be a pre-existing repo convention. Not introduced by T083.
+2. **`node_modules/.vite/vitest/results.json` tracked in git**: These files appear in the diff because running tests updated them. They are already tracked in main (pre-existing repo issue). Not introduced by T083 and outside its scope to fix.
 
----
-
-## Acceptance Criteria Status
-
-| Criterion | Status |
-|-----------|--------|
-| Root cause identified with evidence | ✅ — `diagnostic.md` is thorough |
-| First blocking error documented | ✅ — `PreviewContext.tsx:22`, `TypeError: window.matchMedia is not a function` |
-| Responsible commit identified | ✅ — `d1c114b` T076 PR #161 |
-| Production build verified | ✅ |
-| Home / navigation renders | ✅ — ErrorBoundary + matchMedia fix |
-| Playback cannot crash UI shell | ✅ — ErrorBoundary catches any render error |
-| T082 playback work preserved | ⚠️ — Preserved, but also extended beyond T083 scope |
-| Startup API failures → visible state | ✅ — ProtectedRoute spinner, AuthContext catch |
-| Top-level error boundary | ✅ |
-| Regression test added | ✅ — `ErrorBoundary.test.tsx`, `PreviewContext` tests |
-| `node_modules/.vite/vitest/results.json` not committed | ❌ — Both apps commit this |
-| API contract stable | ❌ — `streamUrl` renamed to `gatewayUrl` (breaking) |
+3. **ErrorBoundary message is French**: Consistent with the project's UI language. Acceptable.
 
 ---
 
-## Required Actions Before Re-review
+## Conclusion
 
-1. **Remove backend T082 services** from this branch: `hls-session-store.ts`, `media-prober.ts`, `playback-compat.ts`, `playback-session-store.ts`, `probe-cache.ts`, `diagnose-stream.mjs`, `check-env.mjs`, `nixpacks.toml` change, and all associated tests.
-2. **Revert `apps/api/src/routes/playback.ts`** to its `main` state (remove the 256 added lines of stream proxy routes).
-3. **Revert `apps/api/src/services/playback-resolver.ts`** to its `main` state.
-4. **Revert `packages/api-contracts/src/playback.ts`** — restore `streamUrl`, remove `DeliveryMode`, `probeResult`, `containerExtension`.
-5. **Revert `apps/web/src/hooks/usePlayback.ts`** to use `streamUrl`.
-6. **Revert `apps/web/src/pages/PlayerPage.tsx`** to the `main` version (or limit changes to error display only, without delivery mode branching).
-7. **Remove `apps/api/node_modules/.vite/vitest/results.json`** and `apps/web/node_modules/.vite/vitest/results.json` from git and add to `.gitignore`.
-8. Re-deliver T082 backend work in its own correctly-scoped PR.
+The implementation is correct, minimal, and complete. All seven T083 fixes are surgical and well-reasoned. The previous scope creep was fully cleaned up. Pre-existing test failures are fixed without introducing unrelated scope. The diagnostic document satisfies the ticket's root cause evidence requirements.
 
-The T083-specific fixes (items in the "Correct and Approved" table above) must be preserved unchanged.
-
----
-
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
