@@ -216,6 +216,7 @@ describe('preferred-variant selection', () => {
     expect(session.startPositionSeconds).toBe(0)
     expect(session.alternatives).toHaveLength(0)
     expect(session.gatewayUrl).toBe('/api/playback/stream/test-session-id')
+    expect(session.deliveryMode).toBe('DIRECT')
     // Provider URL must NOT appear in the response (credentials stay server-side)
     expect(JSON.stringify(session)).not.toContain('xtream.example.com')
   })

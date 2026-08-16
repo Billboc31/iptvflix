@@ -84,8 +84,15 @@ export async function createHlsSession(
   proc.on('close', (code, signal) => {
     const s = sessions.get(sessionId)
     if (s && !s.failed && code !== 0) {
+      const stderrTail = stderrLines.slice(-5).join(' | ')
       s.failed = true
-      s.failedReason = `ffmpeg exited code=${code} signal=${signal}: ${stderrLines.slice(-5).join(' | ')}`
+      s.failedReason = `ffmpeg exited code=${code} signal=${signal}: ${stderrTail}`
+      console.error('hls-session-store: ffmpeg exited with error', {
+        sessionId,
+        exitCode: code,
+        signal,
+        stderrTail,
+      })
     }
   })
 

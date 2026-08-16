@@ -60,7 +60,7 @@ export default function PlayerPage() {
 
   const [videoError, setVideoError] = useState<string | null>(null)
 
-  const { gatewayUrl, deliveryMode, containerExtension, startPositionSeconds, alternatives, status, error, switchVariant } = usePlayback(
+  const { gatewayUrl, deliveryMode, containerExtension, startPositionSeconds, alternatives, availabilityId, status, error, switchVariant } = usePlayback(
     resolvedMediaType as 'movie' | 'episode',
     mediaId!,
     initialAvailabilityId,
@@ -235,11 +235,8 @@ export default function PlayerPage() {
             onRetry={() => {
               eventLogRef.current = []
               setVideoError(null)
-              const video = videoRef.current
-              if (video && gatewayUrl) {
-                video.src = gatewayUrl
-                video.load()
-                video.play().catch(() => {})
+              if (availabilityId) {
+                switchVariant(availabilityId)
               }
             }}
           />

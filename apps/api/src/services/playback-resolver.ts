@@ -83,9 +83,9 @@ async function fetchProgress(profileId: string, mediaType: PlaybackMediaType, me
 // Keeps the path working even when ffprobe cannot reach the upstream URL.
 function extensionFallbackMode(containerExtension: string): DeliveryMode {
   const ext = containerExtension.toLowerCase()
-  if (ext === 'mp4' || ext === 'm4v') return 'DIRECT'
   if (ext === 'm3u8' || ext === 'm3u') return 'DIRECT'
   if (ext === 'ts' || ext === 'mkv' || ext === 'avi' || ext === 'flv' || ext === 'wmv') return 'HLS_REMUX'
+  // mp4/m4v without a probe result cannot be trusted as browser-compatible (may be HEVC)
   return 'HLS_TRANSCODE_FULL'
 }
 
