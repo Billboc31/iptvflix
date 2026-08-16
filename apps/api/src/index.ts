@@ -208,8 +208,8 @@ try {
 
 scheduler.start()
 
-// Verify ffmpeg and ffprobe are available before accepting traffic.
-// Surfaces Railway build misconfigurations at deploy time, not at first playback request.
+// Best-effort ffmpeg/ffprobe check — never block API boot (auth/catalog must stay up).
+// Missing binaries only degrade HLS playback; DIRECT mode and login still work.
 async function checkBinary(binary: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn(binary, ['-version'], { stdio: ['ignore', 'ignore', 'ignore'] })
@@ -225,19 +225,17 @@ try {
   await Promise.all([checkBinary('ffmpeg'), checkBinary('ffprobe')])
   app.log.info('startup: ffmpeg and ffprobe available')
 } catch (err) {
-  app.log.fatal({ err }, 'FATAL: ffmpeg/ffprobe not available — cannot serve HLS playback')
-  process.exit(1)
+  app.log.warn({ err }, 'startup: ffmpeg/ffprobe unavailable — HLS playback will fail until binaries are provisioned')
 }
 
-// Verify temp directory is writable (HLS sessions write segments there).
+// Best-effort temp-dir check for HLS segment writes.
 try {
   const testPath = join(tmpdir(), `.iptvflix-startup-check-${Date.now()}`)
   await writeFile(testPath, '')
   await unlink(testPath)
   app.log.info({ tmpdir: tmpdir() }, 'startup: temp directory is writable')
 } catch (err) {
-  app.log.fatal({ err }, 'FATAL: temp directory is not writable — cannot write HLS segments')
-  process.exit(1)
+  app.log.warn({ err }, 'startup: temp directory not writable — HLS segment writes may fail')
 }
 
 try {
