@@ -98,29 +98,10 @@ function respond(res: ServerResponse, status: number, body: unknown): void {
   res.end(payload)
 }
 
-// Minimal 8-byte payload — enough for the gateway pass-through to return 200
-const FAKE_MP4_BYTES = Buffer.alloc(8)
-const FAKE_TS_BYTES = Buffer.alloc(8)
-
 function handleRequest(mode: XtreamServerMode, req: IncomingMessage, res: ServerResponse): void {
   const url = new URL(req.url ?? '/', `http://localhost`)
 
   if (!url.pathname.endsWith('/player_api.php')) {
-    // Serve fake VOD stream bytes for paths like /:user/:pass/:id.ext
-    const streamMatch = url.pathname.match(/^\/[^/]+\/[^/]+\/\d+\.(\w+)$/)
-    if (streamMatch) {
-      const ext = streamMatch[1].toLowerCase()
-      const isTs = ext === 'ts'
-      const contentType = isTs ? 'video/MP2T' : 'video/mp4'
-      const body = isTs ? FAKE_TS_BYTES : FAKE_MP4_BYTES
-      res.writeHead(200, {
-        'Content-Type': contentType,
-        'Content-Length': String(body.length),
-        'Accept-Ranges': 'bytes',
-      })
-      res.end(body)
-      return
-    }
     respond(res, 404, { error: 'Not found' })
     return
   }
