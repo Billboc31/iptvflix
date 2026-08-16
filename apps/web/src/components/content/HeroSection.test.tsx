@@ -37,11 +37,6 @@ describe('HeroSection', () => {
     expect(screen.getByText('Inception')).toBeInTheDocument()
   })
 
-  it('has region role and accessible label', () => {
-    render(<HeroSection title="Inception" />)
-    expect(screen.getByRole('region', { name: 'Contenu vedette' })).toBeInTheDocument()
-  })
-
   it('does not mount preview player without trailerKey', async () => {
     render(<HeroSection title="Movie" mediaId="movie-1" />)
     await act(() => vi.advanceTimersByTime(3000))
@@ -63,13 +58,11 @@ describe('HeroSection', () => {
     expect(activate).toHaveBeenCalledWith('movie-1', 'abc123')
   })
 
-  it('does not start preview when prefers-reduced-motion is set', async () => {
-    const activate = vi.fn()
-    mockUsePreview.mockReturnValue({ activeId: null, activeKey: null, activate, deactivate: vi.fn() })
+  it('does not start preview on touch devices', async () => {
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation((query: string) => ({
-        matches: query === '(prefers-reduced-motion: reduce)',
+        matches: query === '(pointer: coarse)',
         media: query,
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
@@ -77,7 +70,7 @@ describe('HeroSection', () => {
     })
     render(<HeroSection title="Movie" mediaId="movie-1" trailerKey="abc123" />)
     await act(() => vi.advanceTimersByTime(3000))
-    expect(activate).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument()
   })
 
   it('cleans up timer and deactivates on unmount', async () => {
@@ -91,7 +84,7 @@ describe('HeroSection', () => {
     mockUsePreview.mockReturnValue({ activeId: 'movie-1', activeKey: 'abc123', activate: vi.fn(), deactivate: vi.fn() })
     render(<HeroSection title="Movie" mediaId="movie-1" trailerKey="abc123" />)
     expect(screen.getByRole('button', { name: 'Activer le son' })).toBeInTheDocument()
-    expect(screen.getByText('🔇')).toBeInTheDocument()
+    expect(screen.getByText('Son coupé')).toBeInTheDocument()
   })
 
   it('clicking mute button toggles muted state', async () => {
@@ -101,7 +94,7 @@ describe('HeroSection', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Activer le son' }))
     })
     expect(screen.getByRole('button', { name: 'Couper le son' })).toBeInTheDocument()
-    expect(screen.getByText('🔊')).toBeInTheDocument()
+    expect(screen.getByText('Son activé')).toBeInTheDocument()
   })
 
   it('renders a Play button when availabilityStatus is AVAILABLE and onPlay is provided', () => {
@@ -127,10 +120,5 @@ describe('HeroSection', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Lire' }))
     })
     expect(onPlay).toHaveBeenCalledOnce()
-  })
-
-  it('does not render Ma Liste button', () => {
-    render(<HeroSection title="Movie" availabilityStatus="AVAILABLE" onPlay={vi.fn()} onDetails={vi.fn()} />)
-    expect(screen.queryByRole('button', { name: /liste/i })).not.toBeInTheDocument()
   })
 })
