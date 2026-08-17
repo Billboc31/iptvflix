@@ -1,0 +1,36 @@
+[2026-08-17T15:23:55Z] auto-run start: state=INIT
+[2026-08-17T15:23:55Z] auto-run: running step=planner
+[2026-08-17T15:23:56Z] auto-run: pre-planner rebase onto integration ok
+[2026-08-17T15:23:56Z] prompt: resolved=prompts/generic/planner.md source=generic
+[2026-08-17T15:23:56Z] prompt: generic fallback — injecting runs/T087/ticket.md
+[2026-08-17T15:23:56Z] compose: global-context=docs/ai/global-context.md
+[2026-08-17T15:23:56Z] compose: role=ai/roles/planner.md
+[2026-08-17T15:23:56Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-17T15:23:56Z] compose: skill=ai/skills/architecture-discipline.md
+[2026-08-17T15:23:56Z] compose: skill=ai/skills/documentation.md
+[2026-08-17T15:23:56Z] compose: task (canonical prompt)
+[2026-08-17T15:23:56Z] snapshot: runtime-prompt=runs/T087/prompts/planner-attempt-1.md
+[2026-08-17T15:28:12Z] compose: preferring on-disk runs/T087/plan.md over chatty stdout (agent Write beat meta-report)
+[2026-08-17T15:28:12Z] auto-run: step=planner done rc=0
+[2026-08-17T15:53:15Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-17T15:53:15Z] auto-run: running step=tester
+[2026-08-17T15:53:16Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-17T15:53:16Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-17T15:53:16Z] prompt: generic fallback — injecting runs/T087/ticket.md
+[2026-08-17T15:53:16Z] compose: global-context=docs/ai/global-context.md
+[2026-08-17T15:53:16Z] compose: role=ai/roles/tester.md
+[2026-08-17T15:53:16Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-17T15:53:16Z] compose: skill=ai/skills/testing.md
+[2026-08-17T15:53:16Z] compose: skill=ai/skills/debugging.md
+[2026-08-17T15:53:16Z] compose: task (canonical prompt)
+[2026-08-17T15:53:16Z] snapshot: runtime-prompt=runs/T087/prompts/tester-attempt-2.md
+[2026-08-17T15:54:38Z] auto-run: step=tester done rc=0
+[2026-08-17T15:54:38Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-17T15:54:38Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-17T15:54:39Z] commit-checkpoint: unstaged runtime garbage: ['runs/T087/daemon.lock', 'runs/T087/runtime.log', 'runs/T087/workflow-status.md']
+[2026-08-17T15:54:39Z] commit-checkpoint: sha=982c676 files=3 title='test(T087/workflow): tester — update 3 file(s)'
+[2026-08-17T15:54:39Z] auto-run: auto-push triggered
+[2026-08-17T15:54:39Z] push: tolerating runtime dirty files (not blocking): ['runs/T087/daemon.lock', 'runs/T087/runtime.log', 'runs/T087/workflow-status.md']
+[2026-08-17T15:54:39Z] push: pushing branch=ticket/T087-validate-a-real-xtream-vod-stream-and-choose-the-v
+[2026-08-17T15:54:41Z] push: done branch=ticket/T087-validate-a-real-xtream-vod-stream-and-choose-the-v
+[2026-08-17T15:54:41Z] auto-run: TEST_COMPLETE — running PR lifecycle

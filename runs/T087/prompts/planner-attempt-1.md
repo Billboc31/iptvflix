@@ -1,0 +1,488 @@
+# GLOBAL CONTEXT
+
+# Global Context — Iptvflix
+
+## Project
+
+- project_id: iptvflix
+- repo: git@github.com:Billboc31/iptvflix.git
+
+## AI Dev Factory
+
+This project uses AI Dev Factory for AI-assisted development.
+
+Agent context folders:
+- `ai/` — roles and skills
+- `docs/` — project documentation
+- `prompts/` — ticket-specific and generic prompts
+- `runs/` — per-ticket runtime artifacts
+- `tickets/` — ticket definitions
+
+---
+
+# ROLE
+
+# Role — Planner
+
+## Mission
+
+Lire un ticket et produire un plan d’implémentation court, concret, borné et actionnable.
+
+## Tu dois
+
+- comprendre le ticket
+- proposer les étapes minimales
+- lister les fichiers à créer ou modifier
+- identifier les risques
+- expliciter le hors scope
+- produire un plan Markdown versionnable
+- signaler les hypothèses nécessaires
+
+## Tu ne dois pas
+
+- coder
+- réécrire le ticket
+- anticiper les tickets suivants
+- élargir le scope
+- masquer les incertitudes
+
+## Sortie attendue
+
+Un fichier de plan conforme à `ai/templates/plan-template.md`.
+
+## Règles
+
+- le plan doit rester court
+- le plan doit être exécutable par un Coder sans ambiguïté
+- toute hypothèse doit être explicite
+- toute dérive de scope doit être refusée
+
+## Structure obligatoire
+
+Tout plan doit contenir au minimum **les sections suivantes** (titres
+Markdown niveau 2 — `##`). Les variantes anglaises sont acceptées à l'identique :
+
+| Français (recommandé)         | English equivalent       |
+|-------------------------------|--------------------------|
+| `## Contexte`                 | `## Context`             |
+| `## Objectif`                 | `## Objective`           |
+| `## Inclus`                   | `## Included`            |
+| `## Hors scope`               | `## Excluded`            |
+| `## Critères d'acceptation`   | `## Acceptance criteria` |
+
+Choisis une langue par plan, ne mélange pas FR et EN dans un même plan.
+
+Ces titres sont obligatoires même si une section est courte : un ticket
+trivial peut produire un plan court, mais la structure doit rester stable.
+
+Ne jamais produire uniquement un résumé.
+Ne jamais produire un compte rendu d’implémentation.
+
+## Interdictions absolues
+
+Tu ne dois jamais écrire :
+- "implémentation terminée"
+- "syntaxe valide"
+- "changements appliqués"
+- "voici ce qui a été fait"
+
+Tu dois produire uniquement un plan futur, pas un compte rendu passé.
+
+---
+
+# SKILL: workflow-discipline
+
+# Skill — Workflow Discipline
+
+## Objectif
+
+Faire respecter le lifecycle officiel des tickets et PR IA.
+
+## Règles
+
+- respecter l’ordre des étapes du workflow
+- ne pas bypass les reviews obligatoires
+- maintenir les statuts cohérents
+- conserver les artefacts versionnés
+- séparer plan, implémentation et mémoire
+
+## Refuser si
+
+- une review obligatoire est sautée
+- la mémoire est mise à jour avant validation implémentation
+- le workflow officiel est contourné
+
+---
+
+# SKILL: architecture-discipline
+
+# Skill — Architecture Discipline
+
+## Objectif
+
+Préserver la cohérence architecture du projet dans le temps.
+
+## Règles
+
+- respecter les invariants documentés
+- éviter les couplages implicites
+- éviter les dépendances inutiles
+- éviter les refactors transversaux non demandés
+- documenter toute nouvelle règle structurante
+- privilégier les changements locaux et bornés
+
+## Refuser si
+
+- le scope dérive
+- plusieurs couches sont modifiées sans justification
+- des conventions existantes sont cassées
+- la mémoire projet devient incohérente
+
+---
+
+# SKILL: documentation
+
+# Skill — Documentation
+
+## Objectif
+
+Maintenir une documentation utile, concise et alignée avec le code réel.
+
+## Règles
+
+- documenter les décisions importantes
+- éviter les documentations vagues
+- garder la mémoire projet cohérente
+- expliciter les invariants architecture
+- préférer Markdown simple et versionnable
+
+## Refuser si
+
+- la documentation diverge du comportement réel
+- la mémoire contient des suppositions non validées
+- des décisions importantes ne sont pas tracées
+
+---
+
+# TASK
+
+The ticket follows.
+# Generic Planner Task Read the ticket below and produce a detailed implementation plan.
+
+## Artifact-only output (strict)
+
+Your response will be written verbatim to `runs/<ticket>/plan.md`.
+Rewrite the artifact itself. Do not describe the modifications.
+Do not explain what changed. Do not produce a status report.
+
+This rule applies to both initial plans and rewrites after a review.
+Examples of forbidden openings: "The plan has been rewritten…",
+"This plan now covers…", "Plan rewritten as a real implementation
+document…", "Key points covered…", "The document now contains…",
+"Plan written to `runs/…/plan.md`…", "`runs/…/plan.md` is written…".
+
+Do not use the Write tool on `plan.md` and then print a status summary —
+your stdout IS the artifact. If you do write the file, stdout must still
+be the full plan (same four headings), not a report about it.
+
+## Required output structure (strict) Your reply **MUST** be a Markdown document containing **exactly** these four level-2 headings, in this order, spelled exactly as shown:
+## Objective
+## Included
+## Excluded
+## Acceptance criteria
+These headings are mandatory even for trivial tickets. A short plan is acceptable — an unstructured plan is not. - ## Objective — one or two sentences describing what the change achieves. - ## Included — concrete changes (files, functions, logic, tests). - ## Excluded — what is explicitly out of scope for this ticket. - ## Acceptance criteria — verifiable conditions a reviewer can check. ## Invalid output Your reply is **invalid** if any of the four headings above is missing, renamed, mistyped, or replaced by a synonym (e.g. ## Goal, ## Scope, ## In scope, ## Out of scope, ## Plan, ## Tasks are **not** accepted). An invalid reply will be rejected by the automated validator and the ticket will be retried. You **MUST NOT** write: - "implementation done" - "changes applied" - "here is what was done" - any past-tense report of work already performed You produce a *future* plan, not a status report. ## Minimal valid example (for a trivial ticket)
+markdown
+## Objective
+Rename the helper `foo()` to `bar()` in `utils.py` to align with the new
+naming convention. Behaviour is preserved.
+
+## Included
+- `utils.py`: rename `foo` → `bar`, update the docstring.
+- `tests/test_utils.py`: update the single import and assertion.
+
+## Excluded
+- Renaming callers in other modules (tracked in a follow-up ticket).
+- Any logic change inside `foo` / `bar`.
+
+## Acceptance criteria
+- `utils.py` no longer defines `foo`.
+- `pytest tests/test_utils.py` passes.
+- No other file references the old name.
+
+The ticket follows.
+
+
+
+# T087 — Validate a real Xtream VOD stream and choose the viable playback delivery architecture
+
+**Source**: GitHub Issue #184
+
+## Description
+
+## Context
+Playback is still not working after several implementation attempts.
+
+T085/#180 finally improved observability and correctly ended as `BLOCKED / AWAITING REAL PLAYBACK VALIDATION` instead of claiming success. Its evidence also surfaced a potentially critical infrastructure constraint: the Xtream provider may reject requests originating from Railway/datacenter IPs (observed/expected HTTP 403 through Cloudflare), while IPTVFlix currently falls back to redirecting the browser directly to the credential-bearing Xtream URL.
+
+At the same time, real playback is still failing on both iPhone/Safari and Android/Chrome.
+
+We must now stop changing codecs/player logic speculatively. Before writing another playback architecture, prove exactly what a REAL provider stream does from each network/client path and choose the architecture from evidence.
+
+## Primary goal
+Using ONE real movie availability already stored in IPTVFlix production/prod-like data:
+
+1. prove the original Xtream VOD URL is correct;
+2. prove whether the media itself is valid/playable;
+3. test the stream independently of IPTVFlix;
+4. determine exactly which network paths can reach it;
+5. determine whether browsers can consume it directly;
+6. determine whether Railway can consume/proxy/transcode it;
+7. based on those facts, explicitly choose and document the viable production architecture:
+   - direct client playback,
+   - IPTVFlix/Railway relay,
+   - dedicated media relay outside Railway,
+   - or a hybrid strategy.
+
+This is an architecture decision + proof ticket. Do NOT implement another large speculative playback rewrite before the evidence exists.
+
+## Phase 1 — Select one real golden stream
+Pick a real movie with a real Xtream availability from the configured database.
+
+Record SANITIZED identifiers:
+- movie ID/title;
+- availability ID;
+- source ID;
+- Xtream stream ID;
+- `container_extension`;
+- stored quality/language metadata;
+- generated URL shape with username/password redacted.
+
+Confirm URL construction against the actual provider API response, not assumptions.
+
+For VOD, explicitly verify whether the provider expects:
+
+`{base}/movie/{username}/{password}/{streamId}.{extension}`
+
+or another form.
+
+## Phase 2 — Prove the stream outside IPTVFlix
+From a normal residential/client network, test the exact real upstream stream independently of IPTVFlix.
+
+At minimum use appropriate tools such as:
+- `curl`;
+- `ffprobe`;
+- `ffmpeg`;
+- VLC or another known-good media player.
+
+Capture sanitized evidence for:
+- HTTP status;
+- redirect chain;
+- response Content-Type;
+- whether bytes arrive;
+- container;
+- video codec/profile/resolution;
+- audio codec;
+- duration;
+- whether ffmpeg can decode/read at least 30 seconds;
+- whether VLC can visibly play video + audio.
+
+### Decision gate A
+If VLC/ffmpeg cannot play the original upstream URL, STOP browser debugging. The problem is provider URL/auth/source resolution and must be fixed there first.
+
+## Phase 3 — Test the SAME URL from Railway
+From the deployed Railway API runtime, test the exact same sanitized golden stream with `curl`, `ffprobe`, and where possible a short ffmpeg read.
+
+Capture:
+- HTTP status;
+- Cloudflare/server response headers;
+- redirect behavior;
+- whether the body is media or an HTML/JSON denial page;
+- whether `ffprobe` succeeds;
+- whether ffmpeg can read 30 seconds;
+- Railway egress IP/network characteristics if observable without exposing sensitive infrastructure data.
+
+### Explicitly prove or disprove the current hypothesis
+**Does the provider reject Railway/datacenter-origin requests while allowing residential/client-origin requests?**
+
+Do not write `expected 403` as evidence. Produce the actual result from the deployed environment.
+
+### Decision gate B
+If Railway receives 403 while residential/client access receives valid media, mark `RAILWAY_PROVIDER_BLOCK_CONFIRMED` and do not design a Railway-based proxy/transcoder as the only production path.
+
+## Phase 4 — Direct browser test without IPTVFlix playback abstractions
+Test the original provider stream as directly as technically possible from:
+- desktop Chrome/Chromium;
+- Android Chrome;
+- iPhone Safari.
+
+Capture the actual browser/network/media errors.
+
+Determine separately whether failure is caused by:
+- CORS;
+- HTTP/HTTPS mixed content;
+- unsupported container;
+- unsupported video codec;
+- unsupported audio codec;
+- redirects;
+- provider anti-hotlink/user-agent restrictions;
+- Range handling;
+- cookies/headers required by provider;
+- malformed media;
+- browser inability to play the provider format.
+
+Do not collapse all of these into `browser unsupported`.
+
+## Phase 5 — Test provider HLS capabilities
+Investigate the actual Xtream provider capabilities for this stream/source.
+
+Determine whether the provider can natively return:
+- `.m3u8` HLS for VOD;
+- MPEG-TS;
+- MP4;
+- MKV;
+- another container.
+
+Do NOT simply replace the DB extension with `.m3u8` and assume it is supported. Test the provider response.
+
+If provider-native HLS exists, validate its manifest and at least several segments from the client network and Railway separately.
+
+## Phase 6 — Evaluate the four architecture candidates
+Based strictly on measured results, produce an ADR/evidence document comparing:
+
+### A — Direct client → Xtream
+```text
+Browser / app
+      ↓
+Xtream provider
+```
+Evaluate:
+- reachability;
+- browser codec/container support;
+- CORS;
+- mixed content;
+- credential exposure;
+- seek/range;
+- iPhone/Android compatibility;
+- feasibility for native Android TV later.
+
+### B — Client → Railway IPTVFlix API → Xtream
+```text
+Browser
+   ↓
+Railway API
+   ↓
+Xtream
+```
+Evaluate:
+- provider datacenter blocking;
+- bandwidth cost;
+- ffmpeg CPU/memory;
+- HLS sessions;
+- Railway filesystem/session behavior;
+- scalability.
+
+If provider blocks Railway, explicitly mark this architecture non-viable for that source unless the block can legitimately be resolved.
+
+### C — Client → dedicated media relay → Xtream
+```text
+Browser
+   ↓
+Media Relay
+   ↓
+Xtream
+```
+Evaluate whether a separately deployed relay with appropriate network characteristics could:
+- access provider;
+- hide credentials;
+- proxy Range requests;
+- remux/transcode to browser-safe HLS;
+- provide stable URLs;
+- support multiple users later.
+
+Do NOT deploy new infrastructure in this ticket unless a tiny disposable proof is necessary and explicitly documented.
+
+### D — Hybrid
+For example:
+- direct provider-native HLS when browser compatible;
+- direct/native playback on Android TV;
+- media relay only when remux/transcode is required.
+
+Evaluate complexity versus reliability.
+
+## Phase 7 — Credential/security analysis
+T085 documented that the current 302 fallback can expose:
+
+`/movie/{username}/{password}/{streamId}...`
+
+in browser-visible `Location`/network/history.
+
+Treat this as a real architecture constraint.
+
+Document whether the chosen strategy can avoid exposing provider credentials. Investigate provider-supported token/session mechanisms if actually available, but do not invent them.
+
+Never commit or log real credentials in evidence files.
+
+## Phase 8 — Produce a concrete architecture decision
+Create an ADR or equivalent evidence artifact containing:
+- facts observed;
+- residential upstream result;
+- Railway upstream result;
+- VLC result;
+- ffprobe/ffmpeg result;
+- desktop browser result;
+- Android result;
+- iPhone result;
+- provider-native HLS result;
+- Railway blocking confirmed yes/no;
+- codec/container compatibility;
+- credential implications;
+- selected architecture;
+- rejected alternatives and why;
+- exact next implementation ticket(s) required.
+
+The decision must be specific enough that the next coder does not need to guess whether to implement direct playback, proxying, HLS transcoding, or a relay.
+
+## Optional diagnostic helper
+Reuse the existing playback diagnostic endpoint/correlation IDs from T085 where useful. Extend diagnostic tooling only if needed to expose sanitized evidence.
+
+Do not build another large player subsystem in this ticket.
+
+## Acceptance criteria
+- [ ] One REAL Xtream movie availability is selected and traced.
+- [ ] Its provider URL semantics are proven against the actual source/provider response.
+- [ ] Original stream is tested from a normal client/residential network.
+- [ ] Original stream is tested with ffprobe/ffmpeg where available.
+- [ ] Original stream is visibly tested in VLC or equivalent known-good player.
+- [ ] The SAME stream is tested from the deployed Railway runtime.
+- [ ] Railway provider blocking is conclusively confirmed or disproven with actual HTTP evidence.
+- [ ] Desktop browser direct-stream behavior is captured.
+- [ ] Android Chrome direct-stream behavior is captured.
+- [ ] iPhone Safari direct-stream behavior is captured.
+- [ ] Provider-native HLS capability is tested rather than assumed.
+- [ ] Actual container/video/audio codecs are documented.
+- [ ] CORS/mixed-content/codec/provider restrictions are distinguished.
+- [ ] Current credential exposure through redirect is assessed.
+- [ ] Direct-client, Railway relay, dedicated relay, and hybrid architectures are compared.
+- [ ] Exactly one recommended production direction is selected, with evidence.
+- [ ] Follow-up implementation scope is explicitly described.
+- [ ] No real Xtream credential is committed or printed in persistent logs/artifacts.
+
+## STRICT completion rule
+This ticket MUST NOT conclude with another speculative `probably Cloudflare`, `probably codec`, or `probably Safari` diagnosis.
+
+It is complete only when we have measured evidence showing:
+
+```text
+REAL XTREAM STREAM
+       ↓
+Residential/client:  PASS or exact failure
+Railway:             PASS or exact failure
+VLC/ffmpeg:          PASS or exact failure
+Desktop browser:     PASS or exact failure
+Android browser:     PASS or exact failure
+iPhone Safari:       PASS or exact failure
+       ↓
+ONE ARCHITECTURE DECISION
+```
+
+If the worker cannot access the real source or required environment, mark the ticket `BLOCKED` and state exactly what manual command/test the owner must perform. Do not mark it fixed.
