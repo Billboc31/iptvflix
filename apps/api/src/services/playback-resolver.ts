@@ -14,6 +14,8 @@ import { getProbe, setProbe } from './probe-cache.js'
 import { classifyDelivery } from './playback-compat.js'
 import { createHlsSession, waitForPlaylist } from './hls-session-store.js'
 import { isFfmpegAvailable } from './ffmpeg-availability.js'
+import { MEDIA_RELAY_ENABLED, MEDIA_RELAY_SECRET, MEDIA_RELAY_URL } from '../config/env.js'
+import { buildMediaRelayPlayUrl } from './media-relay-ticket.js'
 import type { PlaybackSessionResponse, AvailabilityVariantResponse } from '@iptvflix/api-contracts'
 import type { DeliveryMode } from './playback-compat.js'
 import type { MediaInfo } from './media-prober.js'
@@ -280,6 +282,20 @@ export async function resolvePlayback(
     deliveryMode = 'DIRECT'
   }
 
+  // External media relay (Fly/VPS) pulls Xtream from a non-Railway IP and serves HTTPS.
+  // Remux/transcode happens on the relay — skip Railway-side HLS pipelines.
+  if (MEDIA_RELAY_ENABLED && deliveryMode !== 'DIRECT') {
+    console.info({
+      correlationId,
+      step: 'delivery_mode_selected',
+      requestedMode: deliveryMode,
+      finalMode: 'DIRECT',
+      reason: 'media_relay_enabled',
+      durationMs: Date.now() - t0,
+    }, 'playback-resolver: media relay enabled, forcing DIRECT (remux on relay)')
+    deliveryMode = 'DIRECT'
+  }
+
   console.info({
     correlationId,
     step: 'delivery_mode_selected',
@@ -381,18 +397,33 @@ export async function resolvePlayback(
     }
   }
 
-  const gatewayUrl = `/playback/stream/${sessionId}`
+  const gatewayUrl =
+    MEDIA_RELAY_ENABLED && MEDIA_RELAY_URL && MEDIA_RELAY_SECRET
+      ? buildMediaRelayPlayUrl({
+          relayBaseUrl: MEDIA_RELAY_URL,
+          secret: MEDIA_RELAY_SECRET,
+          providerStreamUrl,
+          containerExtension,
+        })
+      : `/playback/stream/${sessionId}`
+
+  // Relay remuxes mkv/ts → HLS; tell the web player to use hls.js even though
+  // the Railway session stays DIRECT (no ffmpeg on Railway).
+  const clientDeliveryMode: DeliveryMode =
+    MEDIA_RELAY_ENABLED && needsRelayRemux(containerExtension) ? 'HLS_REMUX' : deliveryMode
+
   console.info({
     correlationId,
     step: 'gateway_url_issued',
     sessionId,
-    gatewayUrl,
-    deliveryMode,
+    gatewayUrl: MEDIA_RELAY_ENABLED ? '[media-relay]' : gatewayUrl,
+    deliveryMode: clientDeliveryMode,
+    mediaRelay: MEDIA_RELAY_ENABLED,
     durationMs: Date.now() - t0,
   }, 'playback-resolver: gateway_url_issued')
   return {
     gatewayUrl,
-    deliveryMode,
+    deliveryMode: clientDeliveryMode,
     probeResult,
     containerExtension,
     availabilityId: selectedId,
@@ -400,4 +431,9 @@ export async function resolvePlayback(
     alternatives,
     correlationId,
   }
+}
+
+function needsRelayRemux(ext: string | null | undefined): boolean {
+  const e = (ext || '').toLowerCase().replace(/^\./, '')
+  return e === 'mkv' || e === 'ts' || e === 'm2ts' || e === 'avi' || e === ''
 }

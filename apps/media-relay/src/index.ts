@@ -1,0 +1,225 @@
+import { spawn, type ChildProcess } from 'node:child_process'
+import { createReadStream, existsSync, mkdirSync, rmSync, statSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { Readable } from 'node:stream'
+import Fastify from 'fastify'
+import { verifyRelayTicket } from './ticket.js'
+
+const PORT = Number(process.env.PORT ?? 8080)
+const SECRET = process.env.MEDIA_RELAY_SECRET
+if (!SECRET) {
+  console.error('MEDIA_RELAY_SECRET is required')
+  process.exit(1)
+}
+
+const UA =
+  process.env.MEDIA_RELAY_UA ??
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+
+const SESSION_TTL_MS = 45 * 60 * 1000
+const ROOT = join(tmpdir(), 'iptvflix-media-relay')
+mkdirSync(ROOT, { recursive: true })
+
+type RemuxSession = {
+  id: string
+  dir: string
+  child: ChildProcess
+  createdAt: number
+}
+
+const remuxSessions = new Map<string, RemuxSession>()
+
+function cleanupSessions() {
+  const now = Date.now()
+  for (const [id, s] of remuxSessions) {
+    if (now - s.createdAt > SESSION_TTL_MS) {
+      try {
+        s.child.kill('SIGKILL')
+      } catch {
+        /* ignore */
+      }
+      try {
+        rmSync(s.dir, { recursive: true, force: true })
+      } catch {
+        /* ignore */
+      }
+      remuxSessions.delete(id)
+    }
+  }
+}
+setInterval(cleanupSessions, 60_000).unref()
+
+function isBrowserNativeMp4(ext: string): boolean {
+  const e = ext.toLowerCase().replace(/^\./, '')
+  return e === 'mp4' || e === 'm4v' || e === 'mov'
+}
+
+function needsRemux(ext: string): boolean {
+  const e = ext.toLowerCase().replace(/^\./, '')
+  return e === 'mkv' || e === 'ts' || e === 'm2ts' || e === 'avi' || e === 'hevc' || e === ''
+}
+
+async function fetchUpstream(url: string, range?: string): Promise<Response> {
+  const headers: Record<string, string> = {
+    'User-Agent': UA,
+    Accept: '*/*',
+  }
+  if (range) headers.Range = range
+  return fetch(url, { headers, redirect: 'follow' })
+}
+
+function startRemux(sessionId: string, upstreamUrl: string): RemuxSession {
+  const dir = join(ROOT, sessionId)
+  mkdirSync(dir, { recursive: true })
+  const playlist = join(dir, 'index.m3u8')
+  const segmentPattern = join(dir, 'seg_%03d.ts')
+
+  const child = spawn(
+    'ffmpeg',
+    [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-user_agent',
+      UA,
+      '-i',
+      upstreamUrl,
+      '-c',
+      'copy',
+      '-f',
+      'hls',
+      '-hls_time',
+      '4',
+      '-hls_list_size',
+      '0',
+      '-hls_segment_filename',
+      segmentPattern,
+      playlist,
+    ],
+    { stdio: ['ignore', 'ignore', 'pipe'] },
+  )
+
+  child.stderr.on('data', (chunk: Buffer) => {
+    const line = chunk.toString('utf8').trim()
+    if (line) console.warn({ sessionId, ffmpeg: line.slice(0, 300) })
+  })
+
+  const session: RemuxSession = { id: sessionId, dir, child, createdAt: Date.now() }
+  remuxSessions.set(sessionId, session)
+  return session
+}
+
+async function waitForFile(path: string, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (existsSync(path) && statSync(path).size > 0) return true
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  return false
+}
+
+function createId(): string {
+  return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
+}
+
+const app = Fastify({ logger: true })
+
+app.get('/health', async () => ({ ok: true, service: 'media-relay' }))
+
+app.get<{ Querystring: { ticket?: string } }>('/v1/play', async (request, reply) => {
+  const ticket = request.query.ticket
+  if (!ticket) return reply.status(400).send({ error: 'missing_ticket' })
+
+  let payload
+  try {
+    payload = verifyRelayTicket(ticket, SECRET)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'invalid_ticket'
+    return reply.status(401).send({ error: msg })
+  }
+
+  const ext = (payload.e || 'mp4').toLowerCase().replace(/^\./, '')
+
+  // Native MP4: proxy bytes (Range) over HTTPS — no credentials in browser.
+  if (isBrowserNativeMp4(ext) || !needsRemux(ext)) {
+    const range = typeof request.headers.range === 'string' ? request.headers.range : undefined
+    let upstream: Response
+    try {
+      upstream = await fetchUpstream(payload.u, range)
+    } catch (err) {
+      request.log.error({ err }, 'upstream fetch failed')
+      return reply.status(502).send({ error: 'upstream_unreachable' })
+    }
+
+    if (upstream.status === 401 || upstream.status === 403) {
+      return reply.status(502).send({ error: 'upstream_forbidden', status: upstream.status })
+    }
+    if (!upstream.ok && upstream.status !== 206) {
+      return reply.status(502).send({ error: 'upstream_error', status: upstream.status })
+    }
+
+    const ct = upstream.headers.get('content-type') ?? 'video/mp4'
+    reply.header('Content-Type', ct)
+    const cl = upstream.headers.get('content-length')
+    const cr = upstream.headers.get('content-range')
+    if (cl) reply.header('Content-Length', cl)
+    if (cr) reply.header('Content-Range', cr)
+    reply.header('Accept-Ranges', 'bytes')
+    reply.header('Access-Control-Allow-Origin', '*')
+    reply.header('Cache-Control', 'no-store')
+    reply.status(upstream.status)
+
+    if (!upstream.body) return reply.send('')
+    return reply.send(Readable.fromWeb(upstream.body as import('stream/web').ReadableStream))
+  }
+
+  // MKV / TS / etc.: remux to HLS on this host (IP not blocked by Cloudflare).
+  const sessionId = `r_${createId()}`
+  const session = startRemux(sessionId, payload.u)
+  const playlistPath = join(session.dir, 'index.m3u8')
+  const ready = await waitForFile(playlistPath, 20_000)
+  if (!ready) {
+    try {
+      session.child.kill('SIGKILL')
+    } catch {
+      /* ignore */
+    }
+    remuxSessions.delete(sessionId)
+    return reply.status(504).send({ error: 'remux_timeout' })
+  }
+
+  reply.header('Access-Control-Allow-Origin', '*')
+  reply.header('Cache-Control', 'no-store')
+  return reply.redirect(`/v1/hls/${sessionId}/index.m3u8`)
+})
+
+app.get<{ Params: { sessionId: string; file: string } }>(
+  '/v1/hls/:sessionId/:file',
+  async (request, reply) => {
+    const { sessionId, file } = request.params
+    if (!/^[a-zA-Z0-9._-]+$/.test(file) || file.includes('..')) {
+      return reply.status(400).send({ error: 'bad_file' })
+    }
+    const session = remuxSessions.get(sessionId)
+    if (!session) return reply.status(404).send({ error: 'session_gone' })
+
+    const path = join(session.dir, file)
+    if (!existsSync(path)) {
+      const ok = await waitForFile(path, 8_000)
+      if (!ok) return reply.status(404).send({ error: 'segment_missing' })
+    }
+
+    reply.header('Access-Control-Allow-Origin', '*')
+    reply.header('Cache-Control', 'no-store')
+    if (file.endsWith('.m3u8')) {
+      reply.header('Content-Type', 'application/vnd.apple.mpegurl')
+    } else {
+      reply.header('Content-Type', 'video/mp2t')
+    }
+    return reply.send(createReadStream(path))
+  },
+)
+
+await app.listen({ port: PORT, host: '0.0.0.0' })
+console.info({ port: PORT }, 'media-relay listening')

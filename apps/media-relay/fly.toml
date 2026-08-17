@@ -1,0 +1,24 @@
+# Media relay — deploy OUTSIDE Railway (Cloudflare blocks Railway IPs for this Xtream panel).
+# Recommended: Fly.io in a region with residential-friendly egress (e.g. cdg / ams).
+
+app = "iptvflix-media-relay"
+primary_region = "cdg"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1
