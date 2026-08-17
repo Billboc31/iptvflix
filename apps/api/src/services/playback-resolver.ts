@@ -95,7 +95,11 @@ export async function resolvePlayback(
   mediaType: PlaybackMediaType,
   mediaId: string,
   explicitAvailabilityId?: string,
+  correlationId = 'unknown',
 ): Promise<PlaybackSessionResponse> {
+  const t0 = Date.now()
+  console.info({ correlationId, step: 'resolve_start', mediaType, mediaId }, 'playback-resolver: resolve_start')
+
   const [allRows, prefs] = await Promise.all([
     fetchAvailabilities(mediaType, mediaId),
     getDefaultProfilePreferences(),
@@ -148,6 +152,16 @@ export async function resolvePlayback(
   const selected = candidates.find((r) => r.id === selectedId)!
   const source = sourceMap.get(selected.providerId)!
 
+  console.info({
+    correlationId,
+    step: 'availability_fetched',
+    availabilityId: selectedId,
+    sourceId: selected.providerId,
+    sourceType: source.type,
+    containerExtension: selected.containerExtension,
+    durationMs: Date.now() - t0,
+  }, 'playback-resolver: availability_fetched')
+
   const startPositionSeconds = await fetchProgress(profileId, mediaType, mediaId)
 
   let providerStreamUrl: string
@@ -180,6 +194,7 @@ export async function resolvePlayback(
     providerStreamUrl = buildM3UStreamUrl(selected.providerItemId)
   } else {
     console.error('playback-resolver: unknown source type', {
+      correlationId,
       mediaType,
       mediaId,
       availabilityId: selected.id,
@@ -188,6 +203,13 @@ export async function resolvePlayback(
     })
     throw new ValidationError('Variant not available')
   }
+
+  console.info({
+    correlationId,
+    step: 'upstream_url_built',
+    containerExtension,
+    durationMs: Date.now() - t0,
+  }, 'playback-resolver: upstream_url_built')
 
   // Probe media to determine browser-compatible delivery mode.
   // On probe failure, use extension-based fallback classification.
@@ -198,38 +220,73 @@ export async function resolvePlayback(
   if (source.type === 'XTREAM') {
     probeResult = null
     deliveryMode = 'DIRECT'
+    console.info({
+      correlationId,
+      step: 'probe_result',
+      skipped: true,
+      reason: 'xtream_always_direct',
+      durationMs: Date.now() - t0,
+    }, 'playback-resolver: probe_result')
   } else if (cached) {
     probeResult = cached
     deliveryMode = classifyDelivery(cached)
+    console.info({
+      correlationId,
+      step: 'probe_result',
+      source: 'cache',
+      videoCodec: cached.videoCodec,
+      audioCodec: cached.audioCodec,
+      containerFormat: cached.containerFormat,
+      durationMs: Date.now() - t0,
+    }, 'playback-resolver: probe_result')
   } else {
     try {
       probeResult = await probeMedia(providerStreamUrl)
       setProbe(selectedId, probeResult)
       deliveryMode = classifyDelivery(probeResult)
+      console.info({
+        correlationId,
+        step: 'probe_result',
+        source: 'fresh',
+        videoCodec: probeResult.videoCodec,
+        audioCodec: probeResult.audioCodec,
+        containerFormat: probeResult.containerFormat,
+        durationMs: Date.now() - t0,
+      }, 'playback-resolver: probe_result')
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
-      console.warn('playback-resolver: probe failed, using extension fallback', {
-        mediaType,
-        mediaId,
-        availabilityId: selectedId,
-        sourceId: selected.providerId,
-        containerExtension,
+      console.warn({
+        correlationId,
+        step: 'probe_result',
+        source: 'failed',
         probeError: errMsg,
-      })
+        fallbackMode: extensionFallbackMode(containerExtension),
+        durationMs: Date.now() - t0,
+      }, 'playback-resolver: probe failed, using extension fallback')
       deliveryMode = extensionFallbackMode(containerExtension)
     }
   }
 
   // Without ffmpeg, HLS remux/transcode cannot run — fall back to direct proxy.
   if (deliveryMode !== 'DIRECT' && !(await isFfmpegAvailable())) {
-    console.warn('playback-resolver: ffmpeg unavailable, falling back to DIRECT', {
-      mediaType,
-      mediaId,
+    console.warn({
+      correlationId,
+      step: 'delivery_mode_selected',
       requestedMode: deliveryMode,
-      containerExtension,
-    })
+      finalMode: 'DIRECT',
+      reason: 'ffmpeg_unavailable',
+      durationMs: Date.now() - t0,
+    }, 'playback-resolver: ffmpeg unavailable, falling back to DIRECT')
     deliveryMode = 'DIRECT'
   }
+
+  console.info({
+    correlationId,
+    step: 'delivery_mode_selected',
+    deliveryMode,
+    containerExtension,
+    durationMs: Date.now() - t0,
+  }, 'playback-resolver: delivery_mode_selected')
 
   const sessionId = createSession({
     profileId,
@@ -240,9 +297,12 @@ export async function resolvePlayback(
     providerStreamUrl,
     containerExtension,
     deliveryMode,
+    correlationId,
   })
 
-  console.info('playback-resolver: session created', {
+  console.info({
+    correlationId,
+    step: 'session_created',
     sessionId,
     mediaType,
     mediaId,
@@ -253,7 +313,8 @@ export async function resolvePlayback(
     probeVideoCodec: probeResult?.videoCodec ?? null,
     probeAudioCodec: probeResult?.audioCodec ?? null,
     probeContainerFormat: probeResult?.containerFormat ?? null,
-  })
+    durationMs: Date.now() - t0,
+  }, 'playback-resolver: session_created')
 
   const alternatives: AvailabilityVariantResponse[] = candidates
     .filter((r) => r.id !== selectedId)
@@ -275,11 +336,15 @@ export async function resolvePlayback(
       await createHlsSession(sessionId, providerStreamUrl, deliveryMode)
       const playlistReady = await waitForPlaylist(sessionId, 15_000)
       if (playlistReady) {
-        console.info('playback-resolver: HLS session created', {
-          sessionId,
-          ffmpegMode: deliveryMode,
-        })
         const gatewayUrl = `/playback/session/${sessionId}/master.m3u8`
+        console.info({
+          correlationId,
+          step: 'gateway_url_issued',
+          sessionId,
+          gatewayUrl,
+          deliveryMode,
+          durationMs: Date.now() - t0,
+        }, 'playback-resolver: gateway_url_issued')
         return {
           gatewayUrl,
           deliveryMode,
@@ -288,28 +353,43 @@ export async function resolvePlayback(
           availabilityId: selectedId,
           startPositionSeconds,
           alternatives,
+          correlationId,
         }
       }
-      console.warn('playback-resolver: HLS playlist never became ready, falling back to DIRECT', {
+      console.warn({
+        correlationId,
+        step: 'hls_not_ready',
         sessionId,
         requestedMode: deliveryMode,
         containerExtension,
-      })
+        durationMs: Date.now() - t0,
+      }, 'playback-resolver: HLS playlist never became ready, falling back to DIRECT')
       patchSession(sessionId, { deliveryMode: 'DIRECT' })
       deliveryMode = 'DIRECT'
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
-      console.error('playback-resolver: HLS session creation failed', {
+      console.error({
+        correlationId,
+        step: 'hls_creation_failed',
         sessionId,
         deliveryMode,
         error: errMsg,
-      })
+        durationMs: Date.now() - t0,
+      }, 'playback-resolver: HLS session creation failed')
       patchSession(sessionId, { deliveryMode: 'DIRECT' })
       deliveryMode = 'DIRECT'
     }
   }
 
   const gatewayUrl = `/playback/stream/${sessionId}`
+  console.info({
+    correlationId,
+    step: 'gateway_url_issued',
+    sessionId,
+    gatewayUrl,
+    deliveryMode,
+    durationMs: Date.now() - t0,
+  }, 'playback-resolver: gateway_url_issued')
   return {
     gatewayUrl,
     deliveryMode,
@@ -318,5 +398,6 @@ export async function resolvePlayback(
     availabilityId: selectedId,
     startPositionSeconds,
     alternatives,
+    correlationId,
   }
 }

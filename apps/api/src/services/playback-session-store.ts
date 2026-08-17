@@ -13,6 +13,7 @@ export type SessionEntry = {
   providerStreamUrl: string
   containerExtension: string
   deliveryMode: DeliveryMode
+  correlationId: string
 }
 
 type StoredEntry = SessionEntry & { expiresAt: number }
@@ -52,4 +53,16 @@ export function patchSession(
   if (!entry) return
   if (patch.deliveryMode) entry.deliveryMode = patch.deliveryMode
   if (patch.providerStreamUrl) entry.providerStreamUrl = patch.providerStreamUrl
+}
+
+export function findSessionByAvailabilityId(availabilityId: string): SessionEntry | null {
+  pruneExpired()
+  const now = Date.now()
+  for (const [, entry] of sessions) {
+    if (entry.availabilityId === availabilityId && entry.expiresAt > now) {
+      const { expiresAt, ...rest } = entry
+      return rest
+    }
+  }
+  return null
 }

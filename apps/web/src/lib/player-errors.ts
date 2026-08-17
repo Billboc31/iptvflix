@@ -1,4 +1,24 @@
-export function videoErrorMessage(video: HTMLVideoElement | null, httpStatus?: number): string {
+import type { PlaybackErrorCategory } from '@iptvflix/api-contracts'
+
+const CATEGORY_MESSAGES: Record<PlaybackErrorCategory, string> = {
+  SOURCE_UNREACHABLE: 'Le fournisseur est inaccessible — réessayez plus tard',
+  SOURCE_AUTH_REJECTED: 'Source expirée — contactez l\'administrateur',
+  STREAM_URL_INVALID: 'Flux introuvable chez le fournisseur',
+  PROBE_FAILED: 'Impossible d\'analyser le flux — réessayez',
+  TRANSCODER_UNAVAILABLE: 'Transcodeur indisponible — réessayez plus tard',
+  TRANSCODING_FAILED: 'La conversion vidéo a échoué — réessayez',
+  MANIFEST_GENERATION_FAILED: 'Impossible de préparer le flux HLS — réessayez',
+  SEGMENT_UNAVAILABLE: 'Un segment vidéo est manquant — réessayez',
+  CODEC_REJECTED_BY_BROWSER: 'Ce format n\'est pas lisible sur cet appareil — essayez une autre version',
+  SESSION_EXPIRED: 'Session expirée — relancez la lecture',
+}
+
+export function errorCategoryMessage(category: PlaybackErrorCategory): string {
+  return CATEGORY_MESSAGES[category] ?? 'Erreur de lecture'
+}
+
+export function videoErrorMessage(video: HTMLVideoElement | null, httpStatus?: number, errorCategory?: PlaybackErrorCategory): string {
+  if (errorCategory) return errorCategoryMessage(errorCategory)
   if (httpStatus === 401 || httpStatus === 403) return 'Source expirée — contactez l\'administrateur'
   if (httpStatus === 404) return 'Média introuvable chez le fournisseur'
   if (httpStatus === 502) return 'Le fournisseur a refusé le flux'

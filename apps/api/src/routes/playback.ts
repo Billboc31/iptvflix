@@ -1,13 +1,15 @@
 import { createReadStream } from 'node:fs'
 import { Readable } from 'node:stream'
+import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
-import type { PlaybackResolveRequest } from '@iptvflix/api-contracts'
+import type { PlaybackResolveRequest, PlaybackErrorCategory } from '@iptvflix/api-contracts'
 import { resolvePlayback } from '../services/playback-resolver.js'
 import { getSession } from '../services/playback-session-store.js'
 import { DEFAULT_PROFILE_ID } from '../services/profile-service.js'
 import { ValidationError, ForbiddenError, NotFoundError } from '../errors.js'
 import { getPlaylist, getSegment, SEGMENT_RE } from '../services/hls-session-store.js'
 import { XTREAM_STREAM_HEADERS, fetchXtreamStream } from '../providers/xtream/playback.js'
+import { getPlaybackDiag } from '../services/playback-diag.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -53,12 +55,14 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
     '/playback/resolve/:mediaType/:mediaId',
     async (request, reply) => {
       const { mediaType, mediaId } = request.params
+      const correlationId = randomUUID()
+      reply.header('X-Correlation-ID', correlationId)
 
       if (mediaType !== 'movie' && mediaType !== 'episode') {
-        return reply.status(400).send({ error: 'mediaType must be movie or episode' })
+        return reply.status(400).send({ error: 'mediaType must be movie or episode', errorCategory: 'STREAM_URL_INVALID' as PlaybackErrorCategory, correlationId })
       }
       if (!UUID_RE.test(mediaId)) {
-        return reply.status(400).send({ error: 'Invalid mediaId' })
+        return reply.status(400).send({ error: 'Invalid mediaId', errorCategory: 'STREAM_URL_INVALID' as PlaybackErrorCategory, correlationId })
       }
 
       const { availabilityId } = request.body ?? {}
@@ -69,17 +73,18 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
           mediaType,
           mediaId,
           availabilityId,
+          correlationId,
         )
         return reply.status(200).send(session)
       } catch (err) {
         if (err instanceof NotFoundError) {
-          return reply.status(404).send({ error: 'Variant not available' })
+          return reply.status(404).send({ error: 'Variant not available', errorCategory: 'STREAM_URL_INVALID' as PlaybackErrorCategory, correlationId })
         }
         if (err instanceof ValidationError) {
-          return reply.status(400).send({ error: 'Variant not available' })
+          return reply.status(400).send({ error: 'Variant not available', errorCategory: 'STREAM_URL_INVALID' as PlaybackErrorCategory, correlationId })
         }
         if (err instanceof ForbiddenError) {
-          return reply.status(403).send({ error: 'Variant not available' })
+          return reply.status(403).send({ error: 'Variant not available', errorCategory: 'SOURCE_AUTH_REJECTED' as PlaybackErrorCategory, correlationId })
         }
         throw err
       }
@@ -98,7 +103,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
 
       const session = getSession(sessionId)
       if (!session) {
-        return reply.status(404).send({ error: 'Playback session not found or expired' })
+        return reply.status(404).send({ error: 'Playback session not found or expired', errorCategory: 'SESSION_EXPIRED' as PlaybackErrorCategory })
       }
 
       if (session.profileId !== DEFAULT_PROFILE_ID) {
@@ -106,11 +111,12 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
       }
 
       if (session.deliveryMode !== 'DIRECT') {
-        return reply.status(409).send({ error: 'Stream is served via HLS — use the playlist URL' })
+        return reply.status(409).send({ error: 'Stream is served via HLS — use the playlist URL', errorCategory: 'MANIFEST_GENERATION_FAILED' as PlaybackErrorCategory, correlationId: session.correlationId })
       }
 
       const { providerStreamUrl, containerExtension, mediaId, availabilityId, sourceId } = session
-      const logCtx = { sessionId, mediaId, availabilityId, sourceId, containerExtension, deliveryMode: 'DIRECT' }
+      const { correlationId } = session
+      const logCtx = { correlationId, sessionId, mediaId, availabilityId, sourceId, containerExtension, deliveryMode: 'DIRECT' }
 
       // Cloudflare blocks Railway datacenter IPs (HTTP 403). Redirect so the
       // viewer's browser fetches Xtream from a residential/office IP instead.
@@ -140,32 +146,34 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         const isAbort = err instanceof Error && err.name === 'AbortError'
         if (isAbort) {
           app.log.warn({ ...logCtx, err: 'upstream timeout or client disconnect' }, 'playback-gateway: upstream aborted')
-          return reply.status(504).send({ error: 'Fournisseur ne répond pas' })
+          return reply.status(504).send({ error: 'Fournisseur ne répond pas', errorCategory: 'SOURCE_UNREACHABLE' as PlaybackErrorCategory, correlationId })
         }
         app.log.error({ ...logCtx, err }, 'playback-gateway: upstream fetch failed')
-        return reply.status(502).send({ error: 'Erreur fournisseur' })
+        return reply.status(502).send({ error: 'Erreur fournisseur', errorCategory: 'SOURCE_UNREACHABLE' as PlaybackErrorCategory, correlationId })
       }
 
       if (upstreamRes.status === 401) {
         app.log.warn({ ...logCtx, upstreamStatus: upstreamRes.status }, 'playback-gateway: upstream auth error')
-        return reply.status(401).send({ error: 'Source expirée — contactez l\'administrateur' })
+        return reply.status(401).send({ error: 'Source expirée — contactez l\'administrateur', errorCategory: 'SOURCE_AUTH_REJECTED' as PlaybackErrorCategory, correlationId })
       }
 
       if (upstreamRes.status === 403) {
         app.log.warn({ ...logCtx, upstreamStatus: 403 }, 'playback-gateway: upstream forbidden (not treating as expired)')
-        return reply.status(502).send({ error: 'Erreur fournisseur', upstreamStatus: 403 })
+        return reply.status(502).send({ error: 'Erreur fournisseur', errorCategory: 'SOURCE_AUTH_REJECTED' as PlaybackErrorCategory, upstreamStatus: 403, correlationId })
       }
 
       if (upstreamRes.status === 404) {
         app.log.warn({ ...logCtx }, 'playback-gateway: upstream 404')
-        return reply.status(404).send({ error: 'Média introuvable chez le fournisseur' })
+        return reply.status(404).send({ error: 'Média introuvable chez le fournisseur', errorCategory: 'STREAM_URL_INVALID' as PlaybackErrorCategory, correlationId })
       }
 
       if (!upstreamRes.ok) {
         app.log.warn({ ...logCtx, upstreamStatus: upstreamRes.status }, 'playback-gateway: upstream error')
         return reply.status(502).send({
           error: 'Erreur fournisseur',
+          errorCategory: 'SOURCE_UNREACHABLE' as PlaybackErrorCategory,
           upstreamStatus: upstreamRes.status,
+          correlationId,
         })
       }
 
@@ -289,18 +297,19 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
-      const logCtx = { sessionId, mediaId: session.mediaId, deliveryMode: session.deliveryMode }
+      const { correlationId: sessionCorrelationId } = session
+      const logCtx = { correlationId: sessionCorrelationId, sessionId, mediaId: session.mediaId, deliveryMode: session.deliveryMode }
 
       const result = await getPlaylist(sessionId)
 
       if (result.status === 'gone') {
         app.log.warn({ ...logCtx }, 'playback-gateway: HLS session gone or failed')
-        return reply.status(410).send({ error: 'Playback session expired or failed' })
+        return reply.status(410).send({ error: 'Playback session expired or failed', errorCategory: 'TRANSCODING_FAILED' as PlaybackErrorCategory, correlationId: sessionCorrelationId })
       }
 
       if (result.status === 'not_ready') {
         app.log.info({ ...logCtx }, 'playback-gateway: HLS playlist not yet ready')
-        return reply.status(404).send({ error: 'Playlist not yet available' })
+        return reply.status(404).send({ error: 'Playlist not yet available', errorCategory: 'MANIFEST_GENERATION_FAILED' as PlaybackErrorCategory, correlationId: sessionCorrelationId })
       }
 
       const playlistBytes = Buffer.byteLength(result.content, 'utf8')
@@ -334,19 +343,20 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
 
       const logCtx = { sessionId, mediaId: session.mediaId, filename }
 
+      const { correlationId: segCorrelationId } = session
       const result = await getSegment(sessionId, filename)
 
       if (result.status === 'invalid') {
-        return reply.status(400).send({ error: 'Invalid segment filename' })
+        return reply.status(400).send({ error: 'Invalid segment filename', errorCategory: 'SEGMENT_UNAVAILABLE' as PlaybackErrorCategory, correlationId: segCorrelationId })
       }
 
       if (result.status === 'gone') {
         app.log.warn({ ...logCtx }, 'playback-gateway: HLS segment session gone or failed')
-        return reply.status(410).send({ error: 'Playback session expired or failed' })
+        return reply.status(410).send({ error: 'Playback session expired or failed', errorCategory: 'SESSION_EXPIRED' as PlaybackErrorCategory, correlationId: segCorrelationId })
       }
 
       if (result.status === 'not_ready') {
-        return reply.status(404).send({ error: 'Segment not yet available' })
+        return reply.status(404).send({ error: 'Segment not yet available', errorCategory: 'SEGMENT_UNAVAILABLE' as PlaybackErrorCategory, correlationId: segCorrelationId })
       }
 
       const filePath = result.filePath
@@ -364,6 +374,30 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
       reply.header('Content-Type', 'video/MP2T')
       reply.header('Content-Length', String(fileSize))
       return reply.send(createReadStream(filePath))
+    },
+  )
+
+  // Admin-only diagnostic endpoint — never exposes Xtream credentials or raw upstream URLs.
+  // Returns sanitized runtime state for the given availability.
+  app.get<{ Params: { availabilityId: string } }>(
+    '/playback/diag/:availabilityId',
+    async (request, reply) => {
+      const { availabilityId } = request.params
+
+      if (!UUID_RE.test(availabilityId)) {
+        return reply.status(400).send({ error: 'Invalid availabilityId' })
+      }
+
+      try {
+        const diag = await getPlaybackDiag(availabilityId)
+        if (!diag) {
+          return reply.status(404).send({ error: 'Availability not found' })
+        }
+        return reply.status(200).send(diag)
+      } catch (err) {
+        app.log.error({ availabilityId, err }, 'playback-diag: unexpected error')
+        return reply.status(500).send({ error: 'Diagnostic unavailable' })
+      }
     },
   )
 }
