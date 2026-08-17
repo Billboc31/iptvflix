@@ -51,3 +51,33 @@ MEDIA_RELAY_URL=http://localhost:8080 MEDIA_RELAY_SECRET=dev-secret …
 
 Un VPS (Hetzner, OVH, etc.) avec Docker + le même `Dockerfile` convient aussi ;
 l’essentiel est une **IP hors datacenter Railway** et un certificat HTTPS.
+
+---
+
+## Chez soi (Mac toujours allumé)
+
+Le Mac tire Xtream en IP résidentielle. Un tunnel SSH **localhost.run** expose le relais en HTTPS (gratuit).
+
+```bash
+# secret (une fois)
+mkdir -p ~/.iptvflix
+echo "MEDIA_RELAY_SECRET=$(openssl rand -hex 32)" > ~/.iptvflix/media-relay.env
+echo "PORT=18080" >> ~/.iptvflix/media-relay.env
+chmod 600 ~/.iptvflix/media-relay.env
+
+cd apps/media-relay
+pnpm build
+./scripts/start-home.sh   # relay + https://….lhr.life
+# ./scripts/stop-home.sh
+```
+
+Sur Railway (API) :
+
+```text
+MEDIA_RELAY_URL=<URL affichée / ~/.iptvflix/media-relay.public-url>
+MEDIA_RELAY_SECRET=<valeur dans ~/.iptvflix/media-relay.env>
+```
+
+Les valeurs à coller sont aussi dans `~/.iptvflix/railway-env.txt` après un start.
+
+**Note :** l’URL `*.lhr.life` change si tu relances le tunnel. Pour une URL fixe : compte [localhost.run](https://localhost.run/docs/forever-free/) ou tunnel Cloudflare nommé + domaine.
