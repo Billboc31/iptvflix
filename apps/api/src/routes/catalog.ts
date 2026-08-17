@@ -478,6 +478,7 @@ export async function catalogRoutes(app: FastifyInstance, opts: CatalogRoutesOpt
           synopsis: e.synopsis,
           durationMinutes: e.durationMinutes,
           airDate: e.airDate,
+          posterUrl: resolveMediaImageUrl(e.posterPath),
           availabilityCount,
           availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
           selectedVariantId,

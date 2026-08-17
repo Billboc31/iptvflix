@@ -12,7 +12,6 @@ import CastRow from '../components/detail/CastRow.js'
 import MediaHero from '../components/detail/MediaHero.js'
 import MediaMetadata from '../components/detail/MediaMetadata.js'
 import MediaActions from '../components/detail/MediaActions.js'
-import AvailabilityPanel from '../components/detail/AvailabilityPanel.js'
 import SeasonSelector from '../components/detail/SeasonSelector.js'
 import SimilarTitlesShelf from '../components/detail/SimilarTitlesShelf.js'
 import MediaDetailShell from '../components/detail/MediaDetailShell.js'
@@ -68,7 +67,6 @@ export default function SeriesDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [notFound, setNotFound] = useState(false)
-  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
   const [profileId, setProfileId] = useState<string | undefined>(undefined)
   const [progressByEpisodeId, setProgressByEpisodeId] = useState<Record<string, number>>({})
 
@@ -104,7 +102,6 @@ export default function SeriesDetailPage() {
         const s = await getSeries(id!)
         if (cancelled) return
         setSeries(s)
-        setSelectedVariantId(s.selectedVariantId)
         if (initial) setLoading(false)
         return s
       } catch (err) {
@@ -196,12 +193,6 @@ export default function SeriesDetailPage() {
               mediaId={series.id}
               availabilityStatus={series.availabilityStatus}
               /* No playRoute for series — episode playback is handled in SeasonSelector */
-            />
-
-            <AvailabilityPanel
-              variants={series.variants}
-              selectedVariantId={selectedVariantId}
-              onSelectVariant={setSelectedVariantId}
             />
 
             <CastRow cast={series.cast} director={series.director} />

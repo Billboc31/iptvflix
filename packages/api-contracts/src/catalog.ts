@@ -95,6 +95,7 @@ export type EpisodeResponse = {
   synopsis: string | null
   durationMinutes: number | null
   airDate: string | null
+  posterUrl: string | null
   availabilityCount: number
   availabilityStatus: AvailabilityStatus
   selectedVariantId: string | null
