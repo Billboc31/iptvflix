@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useRef } from 'react'
 import PlayerControls from './PlayerControls.js'
 import type { AudioTrack, SubtitleTrack, Marker } from './PlayerControls.js'
-import type { AvailabilityVariantResponse } from '@iptvflix/api-contracts'
+import type { AvailabilityVariantResponse, EpisodeResponse } from '@iptvflix/api-contracts'
 
 function createMockVideo({
   currentTime = 0,
@@ -79,7 +79,7 @@ type WrapperProps = {
   currentSubtitleTrack?: number | null
   markers?: Marker[]
   episodeLabel?: string | null
-  nextEpisode?: { id: string; title: string | null; episodeNumber: number } | null
+  nextEpisode?: EpisodeResponse | null
   onNextEpisode?: () => void
   onClose?: () => void
   onVariantSwitch?: (id: string) => void
@@ -290,14 +290,14 @@ describe('PlayerControls', () => {
   })
 
   it('shows next episode button when nextEpisode provided', () => {
-    const ep = { id: 'ep-2', title: 'Ep 2', episodeNumber: 2 }
+    const ep: EpisodeResponse = { id: 'ep-2', title: 'Ep 2', episodeNumber: 2, synopsis: null, durationMinutes: null, airDate: null, availabilityCount: 1, availabilityStatus: 'AVAILABLE', selectedVariantId: null, variants: [], watchState: null }
     render(<Wrapper video={video} nextEpisode={ep} />)
     expect(screen.getAllByText(/Épisode suivant/)[0]).toBeInTheDocument()
   })
 
   it('calls onNextEpisode when next episode button clicked', () => {
     const onNextEpisode = vi.fn()
-    const ep = { id: 'ep-2', title: 'Ep 2', episodeNumber: 2 }
+    const ep: EpisodeResponse = { id: 'ep-2', title: 'Ep 2', episodeNumber: 2, synopsis: null, durationMinutes: null, airDate: null, availabilityCount: 1, availabilityStatus: 'AVAILABLE', selectedVariantId: null, variants: [], watchState: null }
     render(<Wrapper video={video} nextEpisode={ep} onNextEpisode={onNextEpisode} />)
     fireEvent.click(screen.getAllByText(/Épisode suivant/)[0])
     expect(onNextEpisode).toHaveBeenCalled()
