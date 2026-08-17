@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { EpisodeResponse, DeviceResponse } from '@iptvflix/api-contracts'
 import { useToast } from '../ui/Toast.js'
 import DevicePickerModal from '../devices/DevicePickerModal.js'
+import { formatVariantLabel } from '../../lib/variant-label.js'
 
 type Props = {
   episode: EpisodeResponse
@@ -16,6 +17,7 @@ export default function EpisodeCard({ episode, devices = [], progressMs = 0, ser
   const navigate = useNavigate()
   const toast = useToast()
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickedVariantId, setPickedVariantId] = useState<string | null>(episode.selectedVariantId)
 
   const durationLabel = episode.durationMinutes ? `${episode.durationMinutes} min` : null
   const airLabel = episode.airDate
@@ -23,6 +25,8 @@ export default function EpisodeCard({ episode, devices = [], progressMs = 0, ser
     : null
 
   const isUnavailable = episode.availabilityStatus === 'UNAVAILABLE'
+  const availableVariants = episode.variants.filter((v) => v.status === 'AVAILABLE')
+  const activeVariantId = pickedVariantId ?? episode.selectedVariantId
 
   return (
     <div className={`flex gap-3 md:gap-4 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors ${isUnavailable ? 'opacity-60' : ''}`}>
@@ -31,9 +35,13 @@ export default function EpisodeCard({ episode, devices = [], progressMs = 0, ser
         {episode.episodeNumber}
       </span>
 
-      {/* Still image placeholder */}
+      {/* Still image */}
       <div className="flex-shrink-0 w-24 md:w-36 aspect-video bg-[#1a1a24] rounded overflow-hidden flex items-center justify-center">
-        <span className="text-gray-600 text-2xl" aria-hidden="true">🎬</span>
+        {episode.posterUrl ? (
+          <img src={episode.posterUrl} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <span className="text-gray-600 text-2xl" aria-hidden="true">🎬</span>
+        )}
       </div>
 
       {/* Episode info */}
@@ -63,11 +71,25 @@ export default function EpisodeCard({ episode, devices = [], progressMs = 0, ser
             <span className="text-gray-600">Indisponible</span>
           ) : (
             <>
+              {availableVariants.length > 1 && (
+                <select
+                  value={activeVariantId ?? ''}
+                  onChange={(e) => setPickedVariantId(e.target.value || null)}
+                  className="bg-[#1a1a24] border border-white/20 rounded px-1 py-0.5 text-gray-300 text-xs cursor-pointer"
+                  aria-label="Sélectionner la source"
+                >
+                  {availableVariants.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {formatVariantLabel(v, availableVariants)}
+                    </option>
+                  ))}
+                </select>
+              )}
               <button
                 type="button"
                 onClick={() => {
                   const params = new URLSearchParams()
-                  if (episode.selectedVariantId) params.set('availabilityId', episode.selectedVariantId)
+                  if (activeVariantId) params.set('availabilityId', activeVariantId)
                   if (seriesId) params.set('seriesId', seriesId)
                   if (seasonNumber != null) params.set('seasonNumber', String(seasonNumber))
                   const qs = params.toString()
@@ -100,7 +122,7 @@ export default function EpisodeCard({ episode, devices = [], progressMs = 0, ser
           devices={devices}
           mediaType="episode"
           mediaId={episode.id}
-          availabilityId={episode.selectedVariantId}
+          availabilityId={activeVariantId}
           progressMs={progressMs}
           onFastPath={(name, state) => {
             if (state === 'delivered') {
