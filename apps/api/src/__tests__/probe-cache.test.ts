@@ -4,7 +4,7 @@ import type { MediaInfo } from '../services/media-prober.js'
 
 const TTL_MS = 24 * 60 * 60 * 1000
 
-const sampleInfo: MediaInfo = { videoCodec: 'h264', audioCodec: 'aac', containerFormat: 'mp4' }
+const sampleInfo: MediaInfo = { videoCodec: 'h264', audioCodec: 'aac', containerFormat: 'mp4', durationSeconds: null }
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -47,7 +47,7 @@ describe('probe-cache', () => {
 
   it('overwrites a stale entry with setProbe', () => {
     const id = 'cache-overwrite'
-    const firstInfo: MediaInfo = { videoCodec: 'hevc', audioCodec: 'ac3', containerFormat: 'mpegts' }
+    const firstInfo: MediaInfo = { videoCodec: 'hevc', audioCodec: 'ac3', containerFormat: 'mpegts', durationSeconds: null }
     setProbe(id, firstInfo)
     vi.advanceTimersByTime(TTL_MS + 1)
 
@@ -58,8 +58,8 @@ describe('probe-cache', () => {
   it('independent entries do not interfere with each other', () => {
     const idA = 'cache-independent-a'
     const idB = 'cache-independent-b'
-    const infoA: MediaInfo = { videoCodec: 'h264', audioCodec: 'aac', containerFormat: 'mp4' }
-    const infoB: MediaInfo = { videoCodec: 'vp9', audioCodec: 'opus', containerFormat: 'webm' }
+    const infoA: MediaInfo = { videoCodec: 'h264', audioCodec: 'aac', containerFormat: 'mp4', durationSeconds: null }
+    const infoB: MediaInfo = { videoCodec: 'vp9', audioCodec: 'opus', containerFormat: 'webm', durationSeconds: null }
     setProbe(idA, infoA)
     setProbe(idB, infoB)
     expect(getProbe(idA)).toEqual(infoA)

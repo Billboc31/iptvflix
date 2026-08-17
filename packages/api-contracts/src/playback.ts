@@ -18,6 +18,7 @@ export type PlaybackProbeResult = {
   videoCodec: string
   audioCodec: string
   containerFormat: string
+  durationSeconds: number | null
 }
 
 export type PlaybackResolveRequest = {

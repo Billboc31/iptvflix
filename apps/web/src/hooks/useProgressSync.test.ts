@@ -35,7 +35,7 @@ describe('useProgressSync', () => {
     const video = makeVideo(100, 3600)
     const videoRef = { current: video }
 
-    renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true))
+    renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true, null))
 
     act(() => {
       video.dispatchEvent(new Event('pause'))
@@ -52,7 +52,7 @@ describe('useProgressSync', () => {
     const video = makeVideo(50, 3600)
     const videoRef = { current: video }
 
-    renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true))
+    renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true, null))
 
     act(() => {
       video.dispatchEvent(new Event('timeupdate'))
@@ -68,7 +68,7 @@ describe('useProgressSync', () => {
     const video = makeVideo(100, 3600)
     const videoRef = { current: video }
 
-    renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true))
+    renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true, null))
 
     act(() => {
       video.dispatchEvent(new Event('ended'))
@@ -84,7 +84,7 @@ describe('useProgressSync', () => {
     const video = makeVideo(200, 3600)
     const videoRef = { current: video }
 
-    const { result } = renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true))
+    const { result } = renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true, null))
 
     act(() => {
       result.current.flushProgress()
@@ -100,7 +100,7 @@ describe('useProgressSync', () => {
     const video = makeVideo(100, 3600)
     const videoRef = { current: video }
 
-    renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', false))
+    renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', false, null))
 
     act(() => {
       video.dispatchEvent(new Event('pause'))
@@ -114,7 +114,7 @@ describe('useProgressSync', () => {
     const video = makeVideo(0, 0)
     const videoRef = { current: video }
 
-    renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true))
+    renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true, null))
 
     act(() => {
       video.dispatchEvent(new Event('pause'))

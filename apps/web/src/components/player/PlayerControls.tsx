@@ -45,6 +45,9 @@ type Props = {
   // Delivery mode (for embedded subtitle detection)
   deliveryMode?: string | null
   containerExtension?: string | null
+  // Probe-based duration hint; freeze stable duration on first valid value
+  hintDurationSeconds?: number | null
+  onStableDuration?: (seconds: number) => void
 }
 
 export default function PlayerControls({
@@ -65,10 +68,12 @@ export default function PlayerControls({
   markers = [],
   deliveryMode,
   containerExtension,
+  hintDurationSeconds = null,
+  onStableDuration,
 }: Props) {
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(0)
+  const [stableDuration, setStableDuration] = useState<number | null>(null)
   const [volume, setVolume] = useState(1)
   const [muted, setMuted] = useState(false)
   const [buffering, setBuffering] = useState(false)
@@ -84,6 +89,11 @@ export default function PlayerControls({
   const playingRef = useRef(false)
   const scrubbingRef = useRef(false)
   const popoverOpenRef = useRef(false)
+  // Tracks whether the stable duration has been locked (hint or first valid durationchange)
+  const stableDurationSetRef = useRef(false)
+  // Always-current ref for use inside event handler closures
+  const stableDurationRef = useRef<number | null>(null)
+  stableDurationRef.current = stableDuration
 
   // Sync refs with state for use in callbacks without closure staleness
   playingRef.current = playing
@@ -113,6 +123,15 @@ export default function PlayerControls({
 
   const showControlsRef = useRef(showControls)
   showControlsRef.current = showControls
+
+  // Apply probe-based hint: lock stable duration before first durationchange fires
+  useEffect(() => {
+    if (hintDurationSeconds != null && hintDurationSeconds > 0 && !stableDurationSetRef.current) {
+      stableDurationSetRef.current = true
+      setStableDuration(hintDurationSeconds)
+      onStableDuration?.(hintDurationSeconds)
+    }
+  }, [hintDurationSeconds, onStableDuration])
 
   // Cancel hide timer when popover opens; restart when it closes
   useEffect(() => {
@@ -147,7 +166,15 @@ export default function PlayerControls({
       setVisible(true)
     }
     function onTimeUpdate() { setCurrentTime(video!.currentTime) }
-    function onDurationChange() { setDuration(video!.duration) }
+    function onDurationChange() {
+      if (stableDurationSetRef.current) return
+      const d = video!.duration
+      if (isFinite(d) && d > 0) {
+        stableDurationSetRef.current = true
+        setStableDuration(d)
+        onStableDuration?.(d)
+      }
+    }
     function onVolumeChange() {
       setVolume(video!.volume)
       setMuted(video!.muted)
@@ -162,8 +189,9 @@ export default function PlayerControls({
     function onRateChange() { setPlaybackRate(video!.playbackRate) }
     function onProgress() {
       const buf = video!.buffered
-      if (buf.length > 0 && isFinite(video!.duration) && video!.duration > 0) {
-        setBufferedFraction(buf.end(buf.length - 1) / video!.duration)
+      const dur = stableDurationRef.current
+      if (buf.length > 0 && dur !== null && dur > 0) {
+        setBufferedFraction(buf.end(buf.length - 1) / dur)
       }
     }
 
@@ -183,7 +211,6 @@ export default function PlayerControls({
     setPlaying(!video.paused)
     playingRef.current = !video.paused
     setCurrentTime(video.currentTime)
-    setDuration(video.duration)
     setVolume(video.volume)
     setMuted(video.muted)
     setPlaybackRate(video.playbackRate)
@@ -260,7 +287,7 @@ export default function PlayerControls({
   function skip(delta: number) {
     const video = videoRef.current
     if (!video) return
-    const dur = isFinite(video.duration) ? video.duration : 0
+    const dur = stableDurationRef.current ?? (isFinite(video.duration) ? video.duration : 0)
     video.currentTime = Math.max(0, Math.min(dur, video.currentTime + delta))
   }
 
@@ -322,7 +349,7 @@ export default function PlayerControls({
 
   usePlayerKeyboard(videoRef, { togglePlay, seek, toggleMute, toggleFullscreen })
 
-  const seekable = isFinite(duration) && duration > 0
+  const seekable = stableDuration !== null && stableDuration > 0
 
   // Active marker at current time
   const activeMarker = markers.find(
@@ -332,8 +359,9 @@ export default function PlayerControls({
   // Near-end overlay for next episode
   const showNextEpisodeCard =
     nextEpisode != null &&
-    seekable &&
-    currentTime >= duration - NEAR_END_THRESHOLD_S
+    stableDuration !== null &&
+    stableDuration > 0 &&
+    currentTime >= stableDuration - NEAR_END_THRESHOLD_S
 
   // PiP support detection
   const pipSupported =
@@ -503,7 +531,7 @@ export default function PlayerControls({
           <div className={`mb-2 relative h-5 flex items-center${seekable ? '' : ' opacity-50'}`}>
             {/* Track + buffer + progress visual */}
             <div className="absolute inset-x-0 h-1 bg-white/20 rounded pointer-events-none" aria-hidden="true">
-              {seekable && (
+              {seekable && stableDuration !== null && (
                 <>
                   <div
                     className="absolute inset-y-0 left-0 bg-white/40 rounded"
@@ -511,16 +539,16 @@ export default function PlayerControls({
                   />
                   <div
                     className="absolute inset-y-0 left-0 bg-white rounded"
-                    style={{ width: `${((currentTime / duration) * 100).toFixed(1)}%` }}
+                    style={{ width: `${((currentTime / stableDuration) * 100).toFixed(1)}%` }}
                   />
                 </>
               )}
             </div>
             {/* Custom thumb */}
-            {seekable && (
+            {seekable && stableDuration !== null && (
               <div
                 className="absolute top-1/2 w-3 h-3 bg-white rounded-full -translate-y-1/2 pointer-events-none"
-                style={{ left: `calc(${((currentTime / duration) * 100).toFixed(1)}% - 6px)` }}
+                style={{ left: `calc(${((currentTime / stableDuration) * 100).toFixed(1)}% - 6px)` }}
                 aria-hidden="true"
               />
             )}
@@ -529,9 +557,9 @@ export default function PlayerControls({
               type="range"
               aria-label="Position de lecture"
               min={0}
-              max={seekable ? duration : 0}
+              max={seekable && stableDuration !== null ? stableDuration : 0}
               step={1}
-              value={seekable ? currentTime : 0}
+              value={seekable && stableDuration !== null ? currentTime : 0}
               disabled={!seekable}
               onPointerDown={handleSeekPointerDown}
               onPointerUp={handleSeekPointerUp}
@@ -543,8 +571,9 @@ export default function PlayerControls({
 
           {/* Time display */}
           <div className="text-white text-xs font-mono mb-3">
-            {formatTime(currentTime)}
-            {seekable ? ` / ${formatTime(duration)}` : ''}
+            {stableDuration !== null
+              ? `${formatTime(currentTime)} / ${formatTime(stableDuration)}`
+              : '--:-- / --:--'}
           </div>
 
           {/* Bottom controls row */}

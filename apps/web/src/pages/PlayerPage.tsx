@@ -68,14 +68,30 @@ export default function PlayerPage() {
   const [subtitleTracks, setSubtitleTracks] = useState<SubtitleTrack[]>([])
   const [currentSubtitleTrack, setCurrentSubtitleTrack] = useState<number | null>(null)
 
-  const { gatewayUrl, deliveryMode, containerExtension, startPositionSeconds, alternatives, availabilityId, status, error, switchVariant } = usePlayback(
+  const { gatewayUrl, deliveryMode, containerExtension, startPositionSeconds, alternatives, availabilityId, probeDurationSeconds, status, error, switchVariant } = usePlayback(
     resolvedMediaType as 'movie' | 'episode',
     mediaId!,
     initialAvailabilityId,
   )
 
+  // stableDurationSeconds: set from probe on session resolve, then updated via onStableDuration
+  // callback when PlayerControls discovers the duration from the video element.
+  const [stableDurationSeconds, setStableDurationSeconds] = useState<number | null>(null)
+  const stableDurationRef = useRef<number | null>(null)
+  stableDurationRef.current = stableDurationSeconds
+
+  useEffect(() => {
+    if (status === 'ready') {
+      setStableDurationSeconds(probeDurationSeconds)
+    }
+  }, [status, probeDurationSeconds])
+
+  const handleStableDuration = useCallback((seconds: number) => {
+    setStableDurationSeconds(seconds)
+  }, [])
+
   const progressMediaType: ProgressMediaType = mediaType === 'movie' ? 'MOVIE' : 'EPISODE'
-  const { flushProgress } = useProgressSync(videoRef, progressMediaType, mediaId!, status === 'ready')
+  const { flushProgress } = useProgressSync(videoRef, progressMediaType, mediaId!, status === 'ready', stableDurationSeconds)
 
   // Episode navigation
   const { episodeLabel, nextEpisode } = useEpisodeNavigation(
@@ -348,10 +364,11 @@ export default function PlayerPage() {
     if (!video) return
     function onMetadata() {
       if (!video) return
-      const dur = video.duration
+      // Prefer probe-based stable duration; fall back to what the video element reports
+      const dur = stableDurationRef.current ?? (isFinite(video.duration) ? video.duration : 0)
       if (
         startPositionSeconds > RESUME_THRESHOLD_START_S &&
-        isFinite(dur) &&
+        isFinite(dur) && dur > 0 &&
         startPositionSeconds < dur - RESUME_THRESHOLD_END_S
       ) {
         video.pause()
@@ -478,6 +495,8 @@ export default function PlayerPage() {
           markers={[]}
           deliveryMode={deliveryMode}
           containerExtension={containerExtension}
+          hintDurationSeconds={stableDurationSeconds}
+          onStableDuration={handleStableDuration}
         />
       )}
     </div>

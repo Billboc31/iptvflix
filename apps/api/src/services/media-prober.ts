@@ -4,6 +4,7 @@ export type MediaInfo = {
   videoCodec: string
   audioCodec: string
   containerFormat: string
+  durationSeconds: number | null
 }
 
 export async function probeMedia(url: string): Promise<MediaInfo> {
@@ -27,14 +28,20 @@ export async function probeMedia(url: string): Promise<MediaInfo> {
         return
       }
       try {
-        const data: { streams?: Array<{ codec_type: string; codec_name: string }>; format?: { format_name: string } } = JSON.parse(stdout)
+        const data: { streams?: Array<{ codec_type: string; codec_name: string }>; format?: { format_name: string; duration?: string } } = JSON.parse(stdout)
         const streams = data.streams ?? []
         const video = streams.find((s) => s.codec_type === 'video')
         const audio = streams.find((s) => s.codec_type === 'audio')
+        const durationRaw = data.format?.duration
+        const durationSeconds =
+          durationRaw != null && Number(durationRaw) > 0 && isFinite(Number(durationRaw))
+            ? Number(durationRaw)
+            : null
         resolve({
           videoCodec: video?.codec_name ?? '',
           audioCodec: audio?.codec_name ?? '',
           containerFormat: data.format?.format_name ?? '',
+          durationSeconds,
         })
       } catch {
         reject(new Error('ffprobe output parse failed'))

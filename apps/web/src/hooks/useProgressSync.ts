@@ -11,6 +11,7 @@ export function useProgressSync(
   mediaType: ProgressMediaType,
   mediaId: string,
   enabled: boolean,
+  stableDurationSeconds: number | null,
 ): { flushProgress: () => void } {
   const lastSentRef = useRef<number>(0)
   const mediaTypeRef = useRef(mediaType)
@@ -18,13 +19,18 @@ export function useProgressSync(
   mediaTypeRef.current = mediaType
   mediaIdRef.current = mediaId
 
+  const stableDurationRef = useRef<number | null>(stableDurationSeconds)
+  stableDurationRef.current = stableDurationSeconds
+
   const flushProgress = useCallback(() => {
     const video = videoRef.current
-    if (!video || video.duration <= 0) return
+    if (!video) return
+    const effectiveDuration = stableDurationRef.current ?? Math.floor(video.duration)
+    if (!effectiveDuration || !isFinite(effectiveDuration)) return
     lastSentRef.current = Date.now()
     upsertProgress(mediaTypeRef.current, mediaIdRef.current, {
       progressSeconds: Math.floor(video.currentTime),
-      durationSeconds: Math.floor(video.duration),
+      durationSeconds: effectiveDuration,
     }).catch(() => undefined)
   }, [videoRef])
 
@@ -34,37 +40,45 @@ export function useProgressSync(
     if (!video) return
 
     function sendProgress() {
-      if (!video || video.duration <= 0) return
+      if (!video) return
+      const effectiveDuration = stableDurationRef.current ?? Math.floor(video.duration)
+      if (!effectiveDuration || !isFinite(effectiveDuration)) return
       const now = Date.now()
       if (now - lastSentRef.current < DEBOUNCE_MS) return
       lastSentRef.current = now
       upsertProgress(mediaTypeRef.current, mediaIdRef.current, {
         progressSeconds: Math.floor(video.currentTime),
-        durationSeconds: Math.floor(video.duration),
+        durationSeconds: effectiveDuration,
       }).catch(() => undefined)
     }
 
     function sendFinal() {
-      if (!video || video.duration <= 0) return
+      if (!video) return
+      const effectiveDuration = stableDurationRef.current ?? Math.floor(video.duration)
+      if (!effectiveDuration || !isFinite(effectiveDuration)) return
       lastSentRef.current = Date.now()
       upsertProgress(mediaTypeRef.current, mediaIdRef.current, {
-        progressSeconds: Math.floor(video.duration),
-        durationSeconds: Math.floor(video.duration),
+        progressSeconds: effectiveDuration,
+        durationSeconds: effectiveDuration,
       }).catch(() => undefined)
     }
 
     function onPause() {
-      if (!video || video.duration <= 0) return
+      if (!video) return
+      const effectiveDuration = stableDurationRef.current ?? Math.floor(video.duration)
+      if (!effectiveDuration || !isFinite(effectiveDuration)) return
       lastSentRef.current = Date.now()
       upsertProgress(mediaTypeRef.current, mediaIdRef.current, {
         progressSeconds: Math.floor(video.currentTime),
-        durationSeconds: Math.floor(video.duration),
+        durationSeconds: effectiveDuration,
       }).catch(() => undefined)
     }
 
     function onBeforeUnload() {
       const v = videoRef.current
-      if (!v || v.duration <= 0) return
+      if (!v) return
+      const effectiveDuration = stableDurationRef.current ?? Math.floor(v.duration)
+      if (!effectiveDuration || !isFinite(effectiveDuration)) return
       const token = getStoredAuthToken()
       // fetch with keepalive survives page close and supports auth headers
       fetch(`${API_BASE}/progress/${mediaTypeRef.current}/${mediaIdRef.current}`, {
@@ -75,7 +89,7 @@ export function useProgressSync(
         },
         body: JSON.stringify({
           progressSeconds: Math.floor(v.currentTime),
-          durationSeconds: Math.floor(v.duration),
+          durationSeconds: effectiveDuration,
         }),
         keepalive: true,
       }).catch(() => undefined)

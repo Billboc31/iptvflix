@@ -4,7 +4,7 @@ import type { DeliveryMode } from '../services/playback-compat.js'
 
 describe('classifyDelivery', () => {
   function info(videoCodec: string, audioCodec: string, containerFormat: string) {
-    return { videoCodec, audioCodec, containerFormat }
+    return { videoCodec, audioCodec, containerFormat, durationSeconds: null }
   }
 
   it('H.264 + AAC + MP4 → DIRECT', () => {
