@@ -7,8 +7,8 @@ import { buildFfmpegArgs } from './playback-compat.js'
 import type { DeliveryMode } from './playback-compat.js'
 import { ffmpegInputArgs } from '../providers/xtream/playback.js'
 
-const TTL_MS = 2 * 60 * 60 * 1000
-const MAX_SEGMENTS = 500
+const TTL_MS = 3 * 60 * 60 * 1000
+const MAX_SEGMENTS = 1500
 
 // Only seg00001.ts style filenames are valid — prevents path traversal
 export const SEGMENT_RE = /^seg\d{5}\.ts$/

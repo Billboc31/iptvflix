@@ -236,8 +236,8 @@ export async function ffmpegInputArgs(providerUrl: string): Promise<string[]> {
     '-headers', `${headerLines.join('\r\n')}\r\n`,
     '-reconnect', '1',
     '-reconnect_streamed', '1',
-    '-analyzeduration', '5000000',
-    '-probesize', '5000000',
+    '-analyzeduration', '500000',
+    '-probesize', '500000',
     '-fflags', '+genpts+discardcorrupt',
     '-i', target.href,
   ]
