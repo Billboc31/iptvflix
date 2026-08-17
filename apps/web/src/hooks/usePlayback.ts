@@ -11,6 +11,7 @@ export type UsePlaybackState = {
   startPositionSeconds: number
   alternatives: AvailabilityVariantResponse[]
   availabilityId: string | null
+  probeDurationSeconds: number | null
   status: Status
   error: string | null
   switchVariant: (id: string) => void
@@ -27,6 +28,7 @@ export function usePlayback(
   const [startPositionSeconds, setStartPositionSeconds] = useState(0)
   const [alternatives, setAlternatives] = useState<AvailabilityVariantResponse[]>([])
   const [availabilityId, setAvailabilityId] = useState<string | null>(initialAvailabilityId ?? null)
+  const [probeDurationSeconds, setProbeDurationSeconds] = useState<number | null>(null)
   const [status, setStatus] = useState<Status>('idle')
   const [error, setError] = useState<string | null>(null)
 
@@ -46,6 +48,7 @@ export function usePlayback(
         setStartPositionSeconds(session.startPositionSeconds)
         setAlternatives(session.alternatives)
         setAvailabilityId(session.availabilityId)
+        setProbeDurationSeconds(session.probeResult?.durationSeconds ?? null)
         setStatus('ready')
       } catch (err) {
         const message = err instanceof ApiError ? err.message : 'Impossible de démarrer la lecture.'
@@ -67,5 +70,5 @@ export function usePlayback(
     [resolve],
   )
 
-  return { gatewayUrl, deliveryMode, containerExtension, startPositionSeconds, alternatives, availabilityId, status, error, switchVariant }
+  return { gatewayUrl, deliveryMode, containerExtension, startPositionSeconds, alternatives, availabilityId, probeDurationSeconds, status, error, switchVariant }
 }
