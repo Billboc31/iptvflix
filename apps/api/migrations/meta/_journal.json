@@ -239,6 +239,13 @@
       "when": 1786398950976,
       "tag": "0033_t070_discovery_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1786399000000,
+      "tag": "0034_t093_variant_metadata",
+      "breakpoints": true
     }
   ]
 }

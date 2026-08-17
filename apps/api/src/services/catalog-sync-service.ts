@@ -59,6 +59,10 @@ interface NormalizedMovieItem {
   audioLanguage?: string | null
   subtitleLanguage?: string | null
   videoQuality?: string | null
+  codecName?: string | null
+  hdrFormat?: string | null
+  releaseHint?: string | null
+  audioFormat?: string | null
 }
 
 interface NormalizedSeriesItem {
@@ -72,6 +76,10 @@ interface NormalizedSeriesItem {
   audioLanguage?: string | null
   subtitleLanguage?: string | null
   videoQuality?: string | null
+  codecName?: string | null
+  hdrFormat?: string | null
+  releaseHint?: string | null
+  audioFormat?: string | null
 }
 
 interface NormalizedEpisodeItem {
@@ -88,6 +96,10 @@ interface NormalizedEpisodeItem {
   subtitleLanguage?: string | null
   videoQuality?: string | null
   containerExtension?: string | null
+  codecName?: string | null
+  hdrFormat?: string | null
+  releaseHint?: string | null
+  audioFormat?: string | null
 }
 
 interface NormalizedSnapshot {
@@ -740,6 +752,10 @@ async function syncNormalized(
               audioLanguage: sanitizeText(movie.audioLanguage),
               subtitleLanguage: sanitizeText(movie.subtitleLanguage),
               videoQuality: sanitizeText(movie.videoQuality),
+              codecName: sanitizeText(movie.codecName),
+              hdrFormat: sanitizeText(movie.hdrFormat),
+              releaseHint: sanitizeText(movie.releaseHint),
+              audioFormat: sanitizeText(movie.audioFormat),
             })
             appearEvents.push({
               mediaType: 'MOVIE',
@@ -766,6 +782,10 @@ async function syncNormalized(
                 audioLanguage: movie.audioLanguage ?? null,
                 subtitleLanguage: movie.subtitleLanguage ?? null,
                 videoQuality: movie.videoQuality ?? null,
+                codecName: movie.codecName ?? null,
+                hdrFormat: movie.hdrFormat ?? null,
+                releaseHint: movie.releaseHint ?? null,
+                audioFormat: movie.audioFormat ?? null,
               })
               .where(eq(movieAvailabilities.id, existing.id))
             if (wasUnavailable) {
@@ -879,6 +899,10 @@ async function syncNormalized(
               audioLanguage: sanitizeText(s.audioLanguage),
               subtitleLanguage: sanitizeText(s.subtitleLanguage),
               videoQuality: sanitizeText(s.videoQuality),
+              codecName: sanitizeText(s.codecName),
+              hdrFormat: sanitizeText(s.hdrFormat),
+              releaseHint: sanitizeText(s.releaseHint),
+              audioFormat: sanitizeText(s.audioFormat),
             })
             appearEvents.push({
               mediaType: 'SERIES',
@@ -905,6 +929,10 @@ async function syncNormalized(
                 audioLanguage: s.audioLanguage ?? null,
                 subtitleLanguage: s.subtitleLanguage ?? null,
                 videoQuality: s.videoQuality ?? null,
+                codecName: s.codecName ?? null,
+                hdrFormat: s.hdrFormat ?? null,
+                releaseHint: s.releaseHint ?? null,
+                audioFormat: s.audioFormat ?? null,
               })
               .where(eq(seriesAvailabilities.id, existing.id))
             if (wasUnavailable) {
@@ -1088,6 +1116,10 @@ async function syncNormalized(
               subtitleLanguage: ep.subtitleLanguage ?? null,
               videoQuality: ep.videoQuality ?? null,
               containerExtension: ep.containerExtension ?? null,
+              codecName: ep.codecName ?? null,
+              hdrFormat: ep.hdrFormat ?? null,
+              releaseHint: ep.releaseHint ?? null,
+              audioFormat: ep.audioFormat ?? null,
             })
             await tx
               .insert(releaseEvents)
@@ -1118,6 +1150,10 @@ async function syncNormalized(
                 subtitleLanguage: ep.subtitleLanguage ?? null,
                 videoQuality: ep.videoQuality ?? null,
                 containerExtension: ep.containerExtension ?? null,
+                codecName: ep.codecName ?? null,
+                hdrFormat: ep.hdrFormat ?? null,
+                releaseHint: ep.releaseHint ?? null,
+                audioFormat: ep.audioFormat ?? null,
               })
               .where(eq(episodeAvailabilities.id, existing.id))
             if (wasUnavailable) {
@@ -1260,6 +1296,10 @@ export const CatalogSyncService = {
                 audioLanguage: variantAttributes.audioLanguage,
                 subtitleLanguage: variantAttributes.subtitleLanguage,
                 videoQuality: variantAttributes.videoQuality,
+                codecName: variantAttributes.codecName,
+                hdrFormat: variantAttributes.hdrFormat,
+                releaseHint: variantAttributes.releaseHint,
+                audioFormat: variantAttributes.audioFormat,
               }
             })
           }),
@@ -1284,6 +1324,10 @@ export const CatalogSyncService = {
             audioLanguage: variantAttributes.audioLanguage,
             subtitleLanguage: variantAttributes.subtitleLanguage,
             videoQuality: variantAttributes.videoQuality,
+            codecName: variantAttributes.codecName,
+            hdrFormat: variantAttributes.hdrFormat,
+            releaseHint: variantAttributes.releaseHint,
+            audioFormat: variantAttributes.audioFormat,
           }
         }),
         series: snapshot.series.map((s) => {
@@ -1300,6 +1344,10 @@ export const CatalogSyncService = {
             audioLanguage: variantAttributes.audioLanguage,
             subtitleLanguage: variantAttributes.subtitleLanguage,
             videoQuality: variantAttributes.videoQuality,
+            codecName: variantAttributes.codecName,
+            hdrFormat: variantAttributes.hdrFormat,
+            releaseHint: variantAttributes.releaseHint,
+            audioFormat: variantAttributes.audioFormat,
           }
         }),
         episodes: normalizedEpisodes,

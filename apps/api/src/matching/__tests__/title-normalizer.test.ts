@@ -7,7 +7,15 @@ describe('normalizeTitle', () => {
     expect(result.normalizedTitle).toBe('dune')
     expect(result.extractedYear).toBeNull()
     expect(result.variantAttributes).toBeDefined()
-    expect(result.variantAttributes).toEqual({ audioLanguage: null, subtitleLanguage: null, videoQuality: null })
+    expect(result.variantAttributes).toEqual({
+      audioLanguage: null,
+      subtitleLanguage: null,
+      videoQuality: null,
+      codecName: null,
+      hdrFormat: null,
+      releaseHint: null,
+      audioFormat: null,
+    })
   })
 
   it('dot-separated release filename strips noise and extracts year', () => {
@@ -52,7 +60,15 @@ describe('normalizeTitle', () => {
     const result = normalizeTitle('2001 A Space Odyssey')
     expect(result.normalizedTitle).toBe('2001 a space odyssey')
     expect(result.extractedYear).toBeNull()
-    expect(result.variantAttributes).toEqual({ audioLanguage: null, subtitleLanguage: null, videoQuality: null })
+    expect(result.variantAttributes).toEqual({
+      audioLanguage: null,
+      subtitleLanguage: null,
+      videoQuality: null,
+      codecName: null,
+      hdrFormat: null,
+      releaseHint: null,
+      audioFormat: null,
+    })
   })
 
   it('produces no leading or trailing brackets or hyphens', () => {

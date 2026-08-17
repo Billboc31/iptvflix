@@ -3,6 +3,7 @@ import type { RefObject } from 'react'
 import type { AvailabilityVariantResponse, EpisodeResponse } from '@iptvflix/api-contracts'
 import { formatTime } from '../../lib/format-time.js'
 import { getLanguageName } from '../../lib/language-names.js'
+import { formatVariantLabel } from '../../lib/variant-label.js'
 import { usePlayerKeyboard } from '../../hooks/usePlayerKeyboard.js'
 
 export type AudioTrack = { id: number; label: string; lang: string }
@@ -351,13 +352,6 @@ export default function PlayerControls({
     if (type === 'intro') return 'Passer l\'intro'
     if (type === 'recap') return 'Passer le récap'
     return 'Épisode suivant'
-  }
-
-  function variantLabel(v: AvailabilityVariantResponse) {
-    const parts: string[] = []
-    if (v.videoQuality) parts.push(v.videoQuality)
-    if (v.audioLanguage) parts.push(getLanguageName(v.audioLanguage))
-    return parts.length > 0 ? parts.join(' · ') : 'Version alternative'
   }
 
   function togglePopover(name: Popover) {
@@ -739,7 +733,7 @@ export default function PlayerControls({
                         className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 transition-colors flex items-center gap-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
                       >
                         <span className="w-4 text-center">{currentVariantId === v.id ? '✓' : ''}</span>
-                        {variantLabel(v)}
+                        {formatVariantLabel(v, alternatives)}
                       </button>
                     ))}
                   </div>

@@ -1,7 +1,7 @@
 {
   "ticket_id": "T093",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T093-preserve-and-display-useful-provider-variant-label",
   "issue_number": 193,
-  "updated_at": "2026-08-17T20:10:45Z"
+  "updated_at": "2026-08-17T20:31:57Z"
 }
