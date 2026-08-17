@@ -3,5 +3,9 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T085-playback-still-broken-prove-one-real-xtream-movie",
   "issue_number": 180,
-  "updated_at": "2026-08-17T14:31:52Z"
+  "updated_at": "2026-08-17T14:32:11Z",
+  "pr_number": 182,
+  "pr_synced": true,
+  "pr_merged": true,
+  "daemon_archived": true
 }
