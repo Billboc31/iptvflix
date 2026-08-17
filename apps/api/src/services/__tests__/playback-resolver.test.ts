@@ -96,9 +96,10 @@ describe('xtreamUrlFallbacks', () => {
     const original = 'http://srv.example.com/movie/user/pass/123.ts'
     const urls = xtreamUrlFallbacks(original)
     expect(urls[0]).toBe(original)
-    expect(urls).toContain('http://srv.example.com/movie/user/pass/123')
+    expect(urls).toContain('http://srv.example.com/movie/user/pass/123.mkv')
     expect(urls).toContain('http://srv.example.com/user/pass/123.ts')
     expect(urls).toContain('http://srv.example.com/live/user/pass/123.ts')
+    expect(urls).toContain('https://srv.example.com/movie/user/pass/123.ts')
     expect(new Set(urls).size).toBe(urls.length)
   })
 })

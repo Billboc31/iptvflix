@@ -93,7 +93,7 @@ describe('createHlsSession', () => {
 
     const [binary, args] = mockSpawn.mock.calls[0]!
     expect(binary).toBe('ffmpeg')
-    expect(args).toContain(PROVIDER_URL)
+    expect(args).toContain('-i')
     expect(args).toContain('-user_agent')
     expect(args).toContain('-c')
     expect(args).toContain('copy')

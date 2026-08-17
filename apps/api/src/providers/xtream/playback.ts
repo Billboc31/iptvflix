@@ -1,3 +1,6 @@
+import { lookup } from 'node:dns/promises'
+import { isIP } from 'node:net'
+
 export function buildXtreamMovieUrl(
   baseUrl: string,
   username: string,
@@ -23,11 +26,17 @@ export function buildXtreamEpisodeUrl(
   return `${base}/series/${username}/${password}/${providerItemId}.${ext}`
 }
 
-/** Headers Xtream panels typically expect (Node's default fetch UA is often blocked). */
+/** Browser-like UA: some Cloudflare IPTV panels block VLC/Node from datacenter IPs. */
 export const XTREAM_STREAM_HEADERS: Record<string, string> = {
-  'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   Accept: '*/*',
 }
+
+const XTREAM_USER_AGENTS = [
+  XTREAM_STREAM_HEADERS['User-Agent'],
+  'VLC/3.0.20 LibVLC/3.0.20',
+  'Lavf/60.16.100',
+]
 
 /**
  * Alternate Xtream VOD/live URL shapes for the same credentials.
@@ -77,17 +86,27 @@ export function xtreamUrlFallbacks(url: string): string[] {
 
     const id = file.includes('.') ? file.slice(0, file.lastIndexOf('.')) : file
     const ext = file.includes('.') ? file.slice(file.lastIndexOf('.') + 1) : 'ts'
-    const withExt = `${id}.${ext}`
+    const alts = [ext, 'mkv', 'mp4', 'ts'].filter((e, i, arr) => arr.indexOf(e) === i)
 
+    const origins = [origin]
+    if (parsed.protocol === 'http:') origins.push(`https://${parsed.host}`)
+    if (parsed.protocol === 'https:') origins.push(`http://${parsed.host}`)
+
+    const pathVariants: string[] = []
     if (seriesIdx >= 0) {
-      push(`${origin}/series/${user}/${pass}/${withExt}`)
-      push(`${origin}/series/${user}/${pass}/${id}`)
+      for (const e of alts.slice(0, 3)) pathVariants.push(`/series/${user}/${pass}/${id}.${e}`)
     } else {
-      push(`${origin}/movie/${user}/${pass}/${withExt}`)
-      push(`${origin}/movie/${user}/${pass}/${id}`)
-      push(`${origin}/${user}/${pass}/${withExt}`)
-      push(`${origin}/${user}/${pass}/${id}`)
-      push(`${origin}/live/${user}/${pass}/${withExt}`)
+      for (const e of alts.slice(0, 3)) pathVariants.push(`/movie/${user}/${pass}/${id}.${e}`)
+      pathVariants.push(`/${user}/${pass}/${id}.${ext}`)
+      pathVariants.push(`/live/${user}/${pass}/${id}.${ext}`)
+    }
+
+    for (const o of origins) {
+      for (const path of pathVariants) push(`${o}${path}`)
+    }
+    if (!parsed.port) {
+      push(`${parsed.protocol}//${parsed.hostname}:8080${pathVariants[0]}`)
+      push(`${parsed.protocol}//${parsed.hostname}:25461${pathVariants[0]}`)
     }
   } catch {
     return out
@@ -96,23 +115,65 @@ export function xtreamUrlFallbacks(url: string): string[] {
   return out
 }
 
+/** Fetch via IPv4 + Host header so Cloudflare/Railway IPv6 egress does not block streams. */
+export async function resolveXtreamFetchTarget(
+  url: string,
+): Promise<{ href: string; extraHeaders: Record<string, string> }> {
+  try {
+    const parsed = new URL(url)
+    if (isIP(parsed.hostname)) return { href: url, extraHeaders: {} }
+    const { address } = await lookup(parsed.hostname, { family: 4 })
+    const rewritten = new URL(url)
+    rewritten.hostname = address
+    return { href: rewritten.toString(), extraHeaders: { Host: parsed.hostname } }
+  } catch {
+    return { href: url, extraHeaders: {} }
+  }
+}
+
+async function fetchCandidate(
+  url: string,
+  headers: Record<string, string>,
+  signal: AbortSignal,
+): Promise<Response> {
+  const target = await resolveXtreamFetchTarget(url)
+  const merged = { ...XTREAM_STREAM_HEADERS, ...target.extraHeaders, ...headers }
+  const res = await fetch(target.href, {
+    signal,
+    headers: merged,
+    redirect: 'follow',
+  })
+  if (res.ok || res.status === 206) return res
+  if (headers.Range && (res.status === 416 || res.status === 513 || res.status === 400)) {
+    const { Range: _range, ...withoutRange } = headers
+    return fetchCandidate(url, withoutRange, signal)
+  }
+  return res
+}
+
 export async function fetchXtreamStream(
   url: string,
   headers: Record<string, string>,
   signal: AbortSignal,
 ): Promise<Response> {
   const candidates = xtreamUrlFallbacks(url)
-  const merged = { ...XTREAM_STREAM_HEADERS, ...headers }
   let lastResponse: Response | undefined
   let lastError: unknown
 
-  for (const candidate of candidates) {
+  const attempts: Array<{ candidate: string; ua: string }> = [
+    ...candidates.map((candidate) => ({ candidate, ua: XTREAM_USER_AGENTS[0]! })),
+    ...candidates.slice(0, 3).flatMap((candidate) =>
+      XTREAM_USER_AGENTS.slice(1).map((ua) => ({ candidate, ua })),
+    ),
+  ]
+
+  for (const { candidate, ua } of attempts) {
     try {
-      const res = await fetch(candidate, {
+      const res = await fetchCandidate(
+        candidate,
+        { ...headers, 'User-Agent': ua },
         signal,
-        headers: merged,
-        redirect: 'follow',
-      })
+      )
       if (res.ok || res.status === 206) return res
       if (res.status === 401 || res.status === 403) return res
       lastResponse = res
@@ -134,9 +195,10 @@ export async function pickWorkingXtreamUrl(url: string, signal?: AbortSignal): P
     const onAbort = () => controller.abort()
     signal?.addEventListener('abort', onAbort, { once: true })
     try {
-      const res = await fetch(candidate, {
+      const target = await resolveXtreamFetchTarget(candidate)
+      const res = await fetch(target.href, {
         method: 'GET',
-        headers: { ...XTREAM_STREAM_HEADERS, Range: 'bytes=0-0' },
+        headers: { ...XTREAM_STREAM_HEADERS, ...target.extraHeaders, Range: 'bytes=0-0' },
         signal: controller.signal,
         redirect: 'follow',
       })
@@ -150,4 +212,23 @@ export async function pickWorkingXtreamUrl(url: string, signal?: AbortSignal): P
     }
   }
   return url
+}
+
+export async function ffmpegInputArgs(providerUrl: string): Promise<string[]> {
+  const target = await resolveXtreamFetchTarget(providerUrl)
+  const headerLines = [
+    `User-Agent: ${XTREAM_STREAM_HEADERS['User-Agent']}`,
+    ...Object.entries(target.extraHeaders).map(([key, value]) => `${key}: ${value}`),
+  ]
+  return [
+    '-hide_banner',
+    '-user_agent', XTREAM_STREAM_HEADERS['User-Agent'],
+    '-headers', `${headerLines.join('\r\n')}\r\n`,
+    '-reconnect', '1',
+    '-reconnect_streamed', '1',
+    '-analyzeduration', '5000000',
+    '-probesize', '5000000',
+    '-fflags', '+genpts+discardcorrupt',
+    '-i', target.href,
+  ]
 }

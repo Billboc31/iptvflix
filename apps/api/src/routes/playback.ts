@@ -150,7 +150,10 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
 
       if (!upstreamRes.ok) {
         app.log.warn({ ...logCtx, upstreamStatus: upstreamRes.status }, 'playback-gateway: upstream error')
-        return reply.status(502).send({ error: 'Erreur fournisseur' })
+        return reply.status(502).send({
+          error: 'Erreur fournisseur',
+          upstreamStatus: upstreamRes.status,
+        })
       }
 
       const upstreamContentType = upstreamRes.headers.get('Content-Type') ?? 'unknown'

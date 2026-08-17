@@ -9,11 +9,6 @@ import { getStoredAuthToken } from '../lib/api.js'
 import { resolveMediaUrl } from '../lib/media-url.js'
 import { isHlsContainer, isMpegTsContainer, videoErrorMessage } from '../lib/player-errors.js'
 
-function playbackAuthHeaders(): HeadersInit {
-  const token = getStoredAuthToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
-
 // Named map for MediaError codes (Safari Web Inspector visibility)
 const MEDIA_ERROR_NAMES: Record<number, string> = {
   1: 'MEDIA_ERR_ABORTED',
@@ -86,36 +81,6 @@ export default function PlayerPage() {
     const authToken = getStoredAuthToken()
     const isHls = deliveryMode !== 'DIRECT' || isHlsContainer(containerExtension)
 
-    async function probeGateway(): Promise<boolean> {
-      const controller = new AbortController()
-      try {
-        const res = await fetch(mediaUrl, {
-          method: 'GET',
-          credentials: 'include',
-          headers: {
-            ...playbackAuthHeaders(),
-            Range: 'bytes=0-0',
-          },
-          signal: controller.signal,
-        })
-        httpStatusRef.current = res.status
-        const contentType = res.headers.get('content-type') ?? ''
-        controller.abort()
-        if (!res.ok && res.status !== 206) {
-          setVideoError(videoErrorMessage(null, res.status))
-          return false
-        }
-        if (contentType.includes('json') || contentType.includes('text/html')) {
-          setVideoError('Le fournisseur a refusé le flux')
-          return false
-        }
-        return true
-      } catch {
-        if (!cancelled) setVideoError('Erreur de lecture')
-        return false
-      }
-    }
-
     async function attach() {
       if (isHls) {
         try {
@@ -146,9 +111,6 @@ export default function PlayerPage() {
         }
         return
       }
-
-      const ok = await probeGateway()
-      if (cancelled || !ok || !video) return
 
       if (isMpegTsContainer(containerExtension)) {
         try {

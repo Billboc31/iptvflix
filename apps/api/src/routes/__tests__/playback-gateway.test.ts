@@ -176,7 +176,7 @@ describe('GET /playback/stream/:sessionId — DIRECT mp4 pass-through', () => {
       expect.objectContaining({
         headers: expect.objectContaining({
           Range: 'bytes=0-1023',
-          'User-Agent': expect.stringContaining('VLC'),
+          'User-Agent': expect.stringMatching(/Mozilla|VLC|Lavf/),
         }),
       }),
     )
