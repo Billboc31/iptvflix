@@ -1,7 +1,7 @@
 {
   "ticket_id": "T090",
-  "state": "IMPLEMENTATION_FIX_REQUIRED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T090-fix-vod-duration-seek-semantics-and-make-resume-us",
   "issue_number": 190,
-  "updated_at": "2026-08-17T21:56:39Z"
+  "updated_at": "2026-08-17T21:58:01Z"
 }
