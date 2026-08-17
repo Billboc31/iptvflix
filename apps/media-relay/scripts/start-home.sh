@@ -5,12 +5,12 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="${MEDIA_RELAY_ENV:-$HOME/.iptvflix/media-relay.env}"
-PORT="${PORT:-18080}"
 PID_DIR="$HOME/.iptvflix"
 RELAY_PID="$PID_DIR/media-relay.pid"
 TUNNEL_PID="$PID_DIR/tunnel.pid"
 TUNNEL_LOG="$PID_DIR/ssh-tunnel.log"
 URL_FILE="$PID_DIR/media-relay.public-url"
+RAILWAY_ENV="$PID_DIR/railway-env.txt"
 
 mkdir -p "$PID_DIR"
 
@@ -36,9 +36,10 @@ stop_pid() {
     local pid
     pid="$(cat "$file" 2>/dev/null || true)"
     if [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null; then
-      kill "$pid" 2>/dev/null || true
+      # kill process group if launched via script(1)
+      kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
       sleep 0.5
-      kill -9 "$pid" 2>/dev/null || true
+      kill -9 -- "-$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
     fi
     rm -f "$file"
   fi
@@ -46,12 +47,14 @@ stop_pid() {
 
 stop_pid "$RELAY_PID"
 stop_pid "$TUNNEL_PID"
-# also kill orphaned ssh tunnels to localhost.run
 pkill -f 'ssh .*localhost.run' 2>/dev/null || true
 
 cd "$ROOT"
 if [[ ! -f dist/index.js ]]; then
-  (cd "$(dirname "$ROOT")/.." && pnpm --filter @iptvflix/media-relay build) || pnpm exec tsc -p tsconfig.json
+  if command -v pnpm >/dev/null; then
+    (cd "$ROOT/../.." && pnpm --filter @iptvflix/media-relay build) || true
+  fi
+  [[ -f dist/index.js ]] || npx tsc -p tsconfig.json
 fi
 
 export MEDIA_RELAY_SECRET PORT
@@ -71,7 +74,8 @@ if ! curl -sf "http://127.0.0.1:${PORT}/health" >/dev/null; then
 fi
 
 rm -f "$TUNNEL_LOG" "$URL_FILE"
-nohup ssh -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes \
+# script(1) allocates a PTY so localhost.run keeps the session alive under nohup
+nohup script -q /dev/null ssh -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15 \
   -R "80:127.0.0.1:${PORT}" nokey@localhost.run >"$TUNNEL_LOG" 2>&1 &
 echo $! >"$TUNNEL_PID"
 
@@ -90,13 +94,19 @@ if [[ -z "$PUBLIC_URL" ]]; then
 fi
 
 echo "$PUBLIC_URL" >"$URL_FILE"
+cat >"$RAILWAY_ENV" <<EOF
+# Coller dans Railway → API → Variables, puis redeploy.
+
+MEDIA_RELAY_URL=$PUBLIC_URL
+MEDIA_RELAY_SECRET=$MEDIA_RELAY_SECRET
+
+# Relancer plus tard: $ROOT/scripts/start-home.sh
+EOF
+chmod 600 "$RAILWAY_ENV"
 
 echo "media-relay OK  http://127.0.0.1:${PORT}"
 echo "public HTTPS   $PUBLIC_URL"
 echo ""
-echo "Set on Railway API:"
-echo "  MEDIA_RELAY_URL=$PUBLIC_URL"
-echo "  MEDIA_RELAY_SECRET=<from $ENV_FILE>"
-echo ""
+echo "Railway vars written to $RAILWAY_ENV"
 echo "PIDs: relay=$(cat "$RELAY_PID") tunnel=$(cat "$TUNNEL_PID")"
-echo "Note: lhr.life URL changes if you restart the tunnel (unless you use a localhost.run account)."
+echo "Note: lhr.life URL changes on tunnel restart."
