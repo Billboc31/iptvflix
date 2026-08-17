@@ -1,7 +1,7 @@
 {
   "ticket_id": "T087",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T087-validate-a-real-xtream-vod-stream-and-choose-the-v",
   "issue_number": 184,
-  "updated_at": "2026-08-17T15:28:14Z"
+  "updated_at": "2026-08-17T15:42:20Z"
 }

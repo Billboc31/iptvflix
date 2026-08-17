@@ -18,6 +18,9 @@ export type PlaybackDiagResult = {
   availabilityId: string
   upstreamReachable: boolean | null
   upstreamHttpStatus: number | null
+  upstreamContentType: string | null
+  upstreamIsMediaBody: boolean | null
+  upstreamRedirectFinalUrl: string | null
   detectedContainer: string | null
   detectedVideoCodec: string | null
   detectedAudioCodec: string | null
@@ -109,6 +112,9 @@ export async function getPlaybackDiag(availabilityId: string): Promise<PlaybackD
   // Check upstream reachability (3-second timeout HEAD-with-Range request)
   let upstreamReachable: boolean | null = null
   let upstreamHttpStatus: number | null = null
+  let upstreamContentType: string | null = null
+  let upstreamIsMediaBody: boolean | null = null
+  let upstreamRedirectFinalUrl: string | null = null
   if (upstreamUrl) {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 3_000)
@@ -123,6 +129,18 @@ export async function getPlaybackDiag(availabilityId: string): Promise<PlaybackD
       clearTimeout(timer)
       upstreamHttpStatus = res.status
       upstreamReachable = res.ok || res.status === 206
+      upstreamContentType = res.headers.get('content-type')
+      upstreamIsMediaBody =
+        upstreamContentType !== null &&
+        (upstreamContentType.startsWith('video/') ||
+          upstreamContentType.startsWith('application/octet-stream') ||
+          upstreamContentType.startsWith('application/vnd.apple.mpegurl') ||
+          upstreamContentType.startsWith('application/x-mpegurl'))
+      // Mask provider credentials from the final URL (after redirects)
+      let finalUrl = res.url
+      if (source.username && source.username.length > 0) finalUrl = finalUrl.replaceAll(source.username, '[REDACTED]')
+      if (source.password && source.password.length > 0) finalUrl = finalUrl.replaceAll(source.password, '[REDACTED]')
+      upstreamRedirectFinalUrl = finalUrl
       // Consume body to free resources
       if (res.body) {
         try { await res.body.cancel() } catch { /* ignore */ }
@@ -166,6 +184,9 @@ export async function getPlaybackDiag(availabilityId: string): Promise<PlaybackD
     availabilityId,
     upstreamReachable,
     upstreamHttpStatus,
+    upstreamContentType,
+    upstreamIsMediaBody,
+    upstreamRedirectFinalUrl,
     detectedContainer: cached?.containerFormat ?? null,
     detectedVideoCodec: cached?.videoCodec ?? null,
     detectedAudioCodec: cached?.audioCodec ?? null,
