@@ -3,5 +3,14 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T087-validate-a-real-xtream-vod-stream-and-choose-the-v",
   "issue_number": 184,
-  "updated_at": "2026-08-17T15:54:38Z"
+  "updated_at": "2026-08-17T15:58:07Z",
+  "pr_number": 186,
+  "pr_synced": true,
+  "pre_conflict_state": "TEST_COMPLETE",
+  "conflict_detected_at": "2026-08-17T15:57:33Z",
+  "conflict_pr_number": 186,
+  "conflicted_files": [
+    "apps/api/scripts/find-golden-stream.ts",
+    "apps/api/src/services/playback-diag.ts"
+  ]
 }

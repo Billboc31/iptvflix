@@ -34,3 +34,24 @@
 [2026-08-17T15:54:39Z] push: pushing branch=ticket/T087-validate-a-real-xtream-vod-stream-and-choose-the-v
 [2026-08-17T15:54:41Z] push: done branch=ticket/T087-validate-a-real-xtream-vod-stream-and-choose-the-v
 [2026-08-17T15:54:41Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-17T15:57:18Z] auto-run: step=tester done rc=0
+[2026-08-17T15:57:18Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-17T15:57:18Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-17T15:57:18Z] commit-checkpoint: unstaged runtime garbage: ['runs/T087/daemon.lock', 'runs/T087/runtime.log', 'runs/T087/workflow-status.md']
+[2026-08-17T15:57:18Z] commit-checkpoint: sha=ea46101 files=2 title='test(T087/workflow): tester — update 2 file(s)'
+[2026-08-17T15:57:18Z] auto-run: auto-push triggered
+[2026-08-17T15:57:18Z] push: tolerating runtime dirty files (not blocking): ['runs/T087/daemon.lock', 'runs/T087/runtime.log', 'runs/T087/workflow-status.md']
+[2026-08-17T15:57:18Z] push: pushing branch=ticket/T087-validate-a-real-xtream-vod-stream-and-choose-the-v
+[2026-08-17T15:57:20Z] push: done branch=ticket/T087-validate-a-real-xtream-vod-stream-and-choose-the-v
+[2026-08-17T15:57:21Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-17T15:58:05Z] conflict-resolver: rebase clean — no conflicts
+[2026-08-17T15:58:05Z] conflict-resolver: running tests
+[2026-08-17T15:58:05Z] conflict-resolver: test-report written: runs/T087/conflict/test-report.md
+[2026-08-17T15:58:05Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-17T15:58:05Z] conflict-resolver: commit: sha=af4589c
+[2026-08-17T15:58:05Z] conflict-resolver: git push --force-with-lease origin ticket/T087-validate-a-real-xtream-vod-stream-and-choose-the-v
+[2026-08-17T15:58:07Z] conflict-resolver: push succeeded
+[2026-08-17T15:58:07Z] conflict-resolver: state → CONFLICT_RESOLVED_REVIEW_NEEDED
+[2026-08-17T15:58:07Z] auto-finalize-conflict: gate disabled for project='iptvflix'
+[2026-08-17T15:58:07Z] conflict-resolver: transition CONFLICT_RESOLVED_REVIEW_NEEDED → TEST_COMPLETE (auto, PROJECT_SETTING)
+[2026-08-17T15:58:07Z] auto-run: TEST_COMPLETE — running PR lifecycle
