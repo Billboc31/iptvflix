@@ -114,8 +114,10 @@ function startRemux(sessionId: string, upstreamUrl: string): RemuxSession {
   const dir = join(ROOT, sessionId)
   mkdirSync(dir, { recursive: true })
   const playlist = join(dir, 'index.m3u8')
-  const segmentPattern = join(dir, 'seg_%03d.ts')
+  const segmentPattern = join(dir, 'seg_%03d.m4s')
 
+  // Phone browsers (Chrome Android, Safari) cannot play HEVC-in-MPEG-TS.
+  // Transcode to H.264 + AAC fMP4 HLS so iOS/Android can play natively / via hls.js.
   const child = spawn(
     'ffmpeg',
     [
@@ -124,23 +126,46 @@ function startRemux(sessionId: string, upstreamUrl: string): RemuxSession {
       'error',
       '-user_agent',
       UA,
+      '-hwaccel',
+      'videotoolbox',
       '-i',
       upstreamUrl,
-      // Drop subtitle/data streams — HLS remux chokes on some VTT/PGS tracks.
       '-map',
       '0:v:0',
       '-map',
       '0:a:0?',
       '-sn',
       '-dn',
-      '-c',
-      'copy',
+      '-vf',
+      'scale=-2:1080',
+      '-c:v',
+      'h264_videotoolbox',
+      '-b:v',
+      '5M',
+      '-maxrate',
+      '6M',
+      '-bufsize',
+      '10M',
+      '-profile:v',
+      'main',
+      '-pix_fmt',
+      'yuv420p',
+      '-c:a',
+      'aac',
+      '-ac',
+      '2',
+      '-b:a',
+      '128k',
       '-f',
       'hls',
       '-hls_time',
       '4',
       '-hls_list_size',
       '0',
+      '-hls_segment_type',
+      'fmp4',
+      '-hls_fmp4_init_filename',
+      'init.mp4',
       '-hls_flags',
       'independent_segments',
       '-hls_segment_filename',
@@ -174,6 +199,16 @@ function createId(): string {
 }
 
 const app = Fastify({ logger: true })
+
+app.addHook('onRequest', async (request, reply) => {
+  reply.header('Access-Control-Allow-Origin', '*')
+  reply.header('Access-Control-Allow-Headers', 'Range, Content-Type')
+  reply.header('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
+  reply.header('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges')
+  if (request.method === 'OPTIONS') {
+    return reply.status(204).send()
+  }
+})
 
 app.get('/health', async () => ({ ok: true, service: 'media-relay' }))
 
@@ -232,7 +267,7 @@ app.get<{ Querystring: { ticket?: string } }>('/v1/play', async (request, reply)
   const sessionId = `r_${createId()}`
   const session = startRemux(sessionId, upstreamUrl)
   const playlistPath = join(session.dir, 'index.m3u8')
-  const ready = await waitForFile(playlistPath, 45_000)
+  const ready = await waitForFile(playlistPath, 90_000)
   if (!ready) {
     try {
       session.child.kill('SIGKILL')
@@ -243,9 +278,13 @@ app.get<{ Querystring: { ticket?: string } }>('/v1/play', async (request, reply)
     return reply.status(504).send({ error: 'remux_timeout' })
   }
 
-  reply.header('Access-Control-Allow-Origin', '*')
   reply.header('Cache-Control', 'no-store')
-  return reply.redirect(`/v1/hls/${sessionId}/index.m3u8`)
+  const forwardedHost = request.headers['x-forwarded-host']
+  const host = String(forwardedHost ?? request.headers.host ?? '').split(',')[0]!.trim()
+  const isLocal = !host || host.startsWith('127.') || host.startsWith('localhost') || host.startsWith('[::1]')
+  const proto = isLocal ? 'http' : 'https'
+  const location = host ? `${proto}://${host}/v1/hls/${sessionId}/index.m3u8` : `/v1/hls/${sessionId}/index.m3u8`
+  return reply.redirect(location)
 })
 
 app.get<{ Params: { sessionId: string; file: string } }>(
@@ -264,10 +303,11 @@ app.get<{ Params: { sessionId: string; file: string } }>(
       if (!ok) return reply.status(404).send({ error: 'segment_missing' })
     }
 
-    reply.header('Access-Control-Allow-Origin', '*')
     reply.header('Cache-Control', 'no-store')
     if (file.endsWith('.m3u8')) {
       reply.header('Content-Type', 'application/vnd.apple.mpegurl')
+    } else if (file.endsWith('.m4s') || file.endsWith('.mp4')) {
+      reply.header('Content-Type', 'video/mp4')
     } else {
       reply.header('Content-Type', 'video/mp2t')
     }

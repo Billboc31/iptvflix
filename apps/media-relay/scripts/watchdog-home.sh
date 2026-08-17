@@ -19,6 +19,20 @@ set -a
 source "$ENV_FILE"
 set +a
 PORT="${PORT:-18080}"
+API_HEARTBEAT_URL="${API_HEARTBEAT_URL:-https://iptvflixapi-production.up.railway.app/internal/media-relay/heartbeat}"
+
+publish_heartbeat() {
+  local public="$1"
+  if [[ -z "${MEDIA_RELAY_SECRET:-}" ]]; then
+    return 0
+  fi
+  curl -sf --max-time 15 -X POST "$API_HEARTBEAT_URL" \
+    -H "Content-Type: application/json" \
+    -H "x-media-relay-secret: ${MEDIA_RELAY_SECRET}" \
+    -d "{\"url\":\"${public}\"}" >/dev/null && \
+    echo "$(date -Iseconds) heartbeat ok $public" || \
+    echo "$(date -Iseconds) heartbeat failed $public"
+}
 
 ensure_relay() {
   if curl -sf "http://127.0.0.1:${PORT}/health" >/dev/null; then
@@ -60,7 +74,8 @@ MEDIA_RELAY_URL=$public
 MEDIA_RELAY_SECRET=$MEDIA_RELAY_SECRET
 EOF
       chmod 600 "$PID_DIR/railway-env.txt"
-      echo "$(date -Iseconds) public URL $public"
+  echo "$(date -Iseconds) public URL $public"
+      publish_heartbeat "$public"
       return 0
     fi
     sleep 0.5
@@ -69,8 +84,15 @@ EOF
 }
 
 echo "$(date -Iseconds) watchdog start"
+LAST_BEAT=0
 while true; do
   ensure_relay
   ensure_tunnel
+  now=$(date +%s)
+  public="$(cat "$PID_DIR/media-relay.public-url" 2>/dev/null || true)"
+  if [[ -n "$public" ]] && (( now - LAST_BEAT >= 60 )); then
+    publish_heartbeat "$public"
+    LAST_BEAT=$now
+  fi
   sleep 20
 done

@@ -88,6 +88,8 @@ export default function PlayerPage() {
           if (cancelled) return
           if (Hls.isSupported()) {
             hlsInstance = new Hls({
+              enableWorker: true,
+              maxBufferLength: 30,
               xhrSetup(xhr, requestUrl) {
                 const apiBase = import.meta.env.VITE_API_BASE ?? ''
                 let sameOrigin = !apiBase
@@ -112,6 +114,12 @@ export default function PlayerPage() {
             })
             hlsInstance.loadSource(mediaUrl)
             hlsInstance.attachMedia(video)
+            hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+              void video.play().catch(() => {
+                video.muted = true
+                void video.play()
+              })
+            })
             return
           }
         } catch {
@@ -119,6 +127,10 @@ export default function PlayerPage() {
         }
         if (!cancelled && video.canPlayType('application/vnd.apple.mpegurl')) {
           video.src = mediaUrl
+          void video.play().catch(() => {
+            video.muted = true
+            void video.play()
+          })
         }
         return
       }
@@ -154,6 +166,10 @@ export default function PlayerPage() {
       }
 
       video.src = mediaUrl
+      void video.play().catch(() => {
+        video.muted = true
+        void video.play()
+      })
     }
 
     void attach()
@@ -259,6 +275,7 @@ export default function PlayerPage() {
         className="w-full h-full object-contain"
         autoPlay
         playsInline
+        muted
       />
 
       {/* Stream-level error overlay — gateway/decode failures after resolve */}

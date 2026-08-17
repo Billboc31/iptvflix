@@ -31,6 +31,7 @@ import { pairingRoutes } from './routes/pairing.js'
 import { devicesRoutes } from './routes/devices.js'
 import { commandsRoutes } from './routes/commands.js'
 import { playbackRoutes } from './routes/playback.js'
+import { mediaRelayHeartbeatRoutes } from './routes/media-relay-heartbeat.js'
 import { testHelpersRoutes } from './routes/test-helpers.js'
 import { authRoutes } from './routes/auth.js'
 import { schedulerRoutes } from './routes/scheduler.js'
@@ -87,6 +88,7 @@ const similarTitlesService = TMDB_API_KEY
 
 // Public routes
 await app.register(healthRoutes)
+await app.register(mediaRelayHeartbeatRoutes)
 await app.register(authRoutes)
 await app.register(moviesRoutes, { similarTitlesService })
 await app.register(seriesRoutes, { similarTitlesService })

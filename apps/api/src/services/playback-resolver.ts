@@ -14,8 +14,9 @@ import { getProbe, setProbe } from './probe-cache.js'
 import { classifyDelivery } from './playback-compat.js'
 import { createHlsSession, waitForPlaylist } from './hls-session-store.js'
 import { isFfmpegAvailable } from './ffmpeg-availability.js'
-import { MEDIA_RELAY_ENABLED, MEDIA_RELAY_SECRET, MEDIA_RELAY_URL } from '../config/env.js'
+import { MEDIA_RELAY_SECRET } from '../config/env.js'
 import { buildMediaRelayPlayUrl } from './media-relay-ticket.js'
+import { getMediaRelayBaseUrl, isMediaRelayEnabled } from './media-relay-runtime.js'
 import type { PlaybackSessionResponse, AvailabilityVariantResponse } from '@iptvflix/api-contracts'
 import type { DeliveryMode } from './playback-compat.js'
 import type { MediaInfo } from './media-prober.js'
@@ -290,9 +291,10 @@ export async function resolvePlayback(
     deliveryMode = 'DIRECT'
   }
 
-  // External media relay (Fly/VPS) pulls Xtream from a non-Railway IP and serves HTTPS.
+  // External media relay (home/VPS) pulls Xtream from a non-Railway IP and serves HTTPS.
   // Remux/transcode happens on the relay — skip Railway-side HLS pipelines.
-  if (MEDIA_RELAY_ENABLED && deliveryMode !== 'DIRECT') {
+  const mediaRelayEnabled = isMediaRelayEnabled()
+  if (mediaRelayEnabled && deliveryMode !== 'DIRECT') {
     console.info({
       correlationId,
       step: 'delivery_mode_selected',
@@ -405,10 +407,11 @@ export async function resolvePlayback(
     }
   }
 
+  const relayBase = getMediaRelayBaseUrl()
   const gatewayUrl =
-    MEDIA_RELAY_ENABLED && MEDIA_RELAY_URL && MEDIA_RELAY_SECRET
+    mediaRelayEnabled && relayBase && MEDIA_RELAY_SECRET
       ? buildMediaRelayPlayUrl({
-          relayBaseUrl: MEDIA_RELAY_URL,
+          relayBaseUrl: relayBase,
           secret: MEDIA_RELAY_SECRET,
           providerStreamUrl,
           containerExtension,
@@ -418,15 +421,15 @@ export async function resolvePlayback(
   // Relay remuxes mkv/ts → HLS; tell the web player to use hls.js even though
   // the Railway session stays DIRECT (no ffmpeg on Railway).
   const clientDeliveryMode: DeliveryMode =
-    MEDIA_RELAY_ENABLED && needsRelayRemux(containerExtension) ? 'HLS_REMUX' : deliveryMode
+    mediaRelayEnabled && needsRelayRemux(containerExtension) ? 'HLS_REMUX' : deliveryMode
 
   console.info({
     correlationId,
     step: 'gateway_url_issued',
     sessionId,
-    gatewayUrl: MEDIA_RELAY_ENABLED ? '[media-relay]' : gatewayUrl,
+    gatewayUrl: mediaRelayEnabled ? '[media-relay]' : gatewayUrl,
     deliveryMode: clientDeliveryMode,
-    mediaRelay: MEDIA_RELAY_ENABLED,
+    mediaRelay: mediaRelayEnabled,
     durationMs: Date.now() - t0,
   }, 'playback-resolver: gateway_url_issued')
   return {
