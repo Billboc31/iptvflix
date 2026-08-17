@@ -26,6 +26,17 @@ export function buildXtreamEpisodeUrl(
   return `${base}/series/${username}/${password}/${providerItemId}.${ext}`
 }
 
+/** HTTPS so a HTTPS web app can play without mixed-content blocking. */
+export function browserSafeXtreamUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    parsed.protocol = 'https:'
+    return parsed.toString()
+  } catch {
+    return url
+  }
+}
+
 /** Browser-like UA: some Cloudflare IPTV panels block VLC/Node from datacenter IPs. */
 export const XTREAM_STREAM_HEADERS: Record<string, string> = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -174,9 +185,8 @@ export async function fetchXtreamStream(
         { ...headers, 'User-Agent': ua },
         signal,
       )
-      if (res.ok || res.status === 206) return res
-      if (res.status === 401 || res.status === 403) return res
-      lastResponse = res
+        if (res.ok || res.status === 206) return res
+        lastResponse = res
     } catch (err) {
       lastError = err
       if (signal.aborted) throw err

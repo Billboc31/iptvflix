@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { buildXtreamMovieUrl, buildXtreamEpisodeUrl, xtreamUrlFallbacks } from '../../providers/xtream/playback.js'
+import { buildXtreamMovieUrl, buildXtreamEpisodeUrl, xtreamUrlFallbacks, browserSafeXtreamUrl } from '../../providers/xtream/playback.js'
 import { buildM3UStreamUrl } from '../../providers/m3u/playback.js'
 import { ValidationError, ForbiddenError, NotFoundError } from '../../errors.js'
 import type { ProfilePreferences } from '@iptvflix/api-contracts'
@@ -88,6 +88,13 @@ describe('buildXtreamMovieUrl', () => {
       expect(entry).not.toContain('secret_user')
       expect(entry).not.toContain('secret_pass')
     }
+  })
+})
+
+describe('browserSafeXtreamUrl', () => {
+  it('upgrades http to https without logging credentials', () => {
+    const url = browserSafeXtreamUrl('http://srv.example.com/movie/user/pass/1.ts')
+    expect(url).toBe('https://srv.example.com/movie/user/pass/1.ts')
   })
 })
 
@@ -337,7 +344,7 @@ describe('explicit availabilityId', () => {
 
     expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
-      expect.objectContaining({ containerExtension: 'mkv' }),
+      expect.objectContaining({ containerExtension: 'm3u8' }),
     )
   })
 })
@@ -359,7 +366,7 @@ describe('Xtream movie URL construction', () => {
 
     expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
-      expect.objectContaining({ containerExtension: 'mp4' }),
+      expect.objectContaining({ containerExtension: 'm3u8' }),
     )
   })
 
@@ -375,7 +382,7 @@ describe('Xtream movie URL construction', () => {
 
     expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
-      expect.objectContaining({ containerExtension: 'mkv' }),
+      expect.objectContaining({ containerExtension: 'm3u8' }),
     )
   })
 
@@ -391,7 +398,7 @@ describe('Xtream movie URL construction', () => {
 
     expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
-      expect.objectContaining({ containerExtension: 'ts' }),
+      expect.objectContaining({ containerExtension: 'm3u8' }),
     )
   })
 })
@@ -409,7 +416,7 @@ describe('Xtream episode URL construction', () => {
 
     expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
-      expect.objectContaining({ containerExtension: 'mp4', mediaType: 'episode' }),
+      expect.objectContaining({ containerExtension: 'm3u8', mediaType: 'episode' }),
     )
   })
 
@@ -425,7 +432,7 @@ describe('Xtream episode URL construction', () => {
 
     expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
-      expect.objectContaining({ containerExtension: 'ts', mediaType: 'episode' }),
+      expect.objectContaining({ containerExtension: 'm3u8', mediaType: 'episode' }),
     )
   })
 })

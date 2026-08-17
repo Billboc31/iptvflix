@@ -3,7 +3,7 @@ import { db } from '../db/client.js'
 import { movieAvailabilities, episodeAvailabilities } from '../db/schema/availabilities.js'
 import { sources } from '../db/schema/sources.js'
 import { viewingProgress } from '../db/schema/viewing-progress.js'
-import { buildXtreamMovieUrl, buildXtreamEpisodeUrl, pickWorkingXtreamUrl } from '../providers/xtream/playback.js'
+import { buildXtreamMovieUrl, buildXtreamEpisodeUrl, browserSafeXtreamUrl } from '../providers/xtream/playback.js'
 import { buildM3UStreamUrl } from '../providers/m3u/playback.js'
 import { resolveVariant } from './availability-resolver.js'
 import { getDefaultProfilePreferences } from './profile-service.js'
@@ -151,14 +151,19 @@ export async function resolvePlayback(
   const startPositionSeconds = await fetchProgress(profileId, mediaType, mediaId)
 
   let providerStreamUrl: string
+  let containerExtension = selected.containerExtension ?? 'ts'
   if (source.type === 'XTREAM') {
+    // Serve Xtream as provider-native HLS and redirect the browser to the
+    // panel. Proxying from Railway is blocked by Cloudflare (403), which was
+    // incorrectly shown as "source expirée".
+    const playbackExt = 'm3u8'
     if (mediaType === 'movie') {
       providerStreamUrl = buildXtreamMovieUrl(
         source.baseUrl,
         source.username ?? '',
         source.password ?? '',
         selected.providerItemId,
-        selected.containerExtension,
+        playbackExt,
       )
     } else {
       providerStreamUrl = buildXtreamEpisodeUrl(
@@ -166,9 +171,11 @@ export async function resolvePlayback(
         source.username ?? '',
         source.password ?? '',
         selected.providerItemId,
-        selected.containerExtension,
+        playbackExt,
       )
     }
+    providerStreamUrl = browserSafeXtreamUrl(providerStreamUrl)
+    containerExtension = playbackExt
   } else if (source.type === 'M3U') {
     providerStreamUrl = buildM3UStreamUrl(selected.providerItemId)
   } else {
@@ -182,19 +189,16 @@ export async function resolvePlayback(
     throw new ValidationError('Variant not available')
   }
 
-  if (source.type === 'XTREAM') {
-    providerStreamUrl = await pickWorkingXtreamUrl(providerStreamUrl)
-  }
-
-  const containerExtension = selected.containerExtension ?? 'ts'
-
   // Probe media to determine browser-compatible delivery mode.
   // On probe failure, use extension-based fallback classification.
   let probeResult: MediaInfo | null = null
   let deliveryMode: DeliveryMode
 
   const cached = getProbe(selectedId)
-  if (cached) {
+  if (source.type === 'XTREAM') {
+    probeResult = null
+    deliveryMode = 'DIRECT'
+  } else if (cached) {
     probeResult = cached
     deliveryMode = classifyDelivery(cached)
   } else {

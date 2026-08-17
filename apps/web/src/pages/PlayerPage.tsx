@@ -88,7 +88,18 @@ export default function PlayerPage() {
           if (cancelled) return
           if (Hls.isSupported()) {
             hlsInstance = new Hls({
-              xhrSetup(xhr) {
+              xhrSetup(xhr, requestUrl) {
+                const apiBase = import.meta.env.VITE_API_BASE ?? ''
+                let sameOrigin = !apiBase
+                try {
+                  sameOrigin = new URL(requestUrl, apiBase || window.location.origin).origin === new URL(apiBase || window.location.origin).origin
+                } catch {
+                  sameOrigin = requestUrl.includes('/playback/')
+                }
+                if (!sameOrigin) {
+                  xhr.withCredentials = false
+                  return
+                }
                 xhr.withCredentials = true
                 if (authToken) xhr.setRequestHeader('Authorization', `Bearer ${authToken}`)
               },

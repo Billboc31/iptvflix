@@ -90,6 +90,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
   // HLS_* sessions are served at /playback/session/:id/master.m3u8 — return 409 here.
   app.get<{
     Params: { sessionId: string }
+    Querystring: { proxy?: string }
   }>(
     '/playback/stream/:sessionId',
     async (request, reply) => {
@@ -110,6 +111,13 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
 
       const { providerStreamUrl, containerExtension, mediaId, availabilityId, sourceId } = session
       const logCtx = { sessionId, mediaId, availabilityId, sourceId, containerExtension, deliveryMode: 'DIRECT' }
+
+      // Cloudflare blocks Railway datacenter IPs (HTTP 403). Redirect so the
+      // viewer's browser fetches Xtream from a residential/office IP instead.
+      if (request.query.proxy !== '1') {
+        app.log.info({ ...logCtx, responseMode: 'redirect' }, 'playback-gateway: redirecting to provider')
+        return reply.redirect(providerStreamUrl)
+      }
 
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS)
@@ -138,9 +146,14 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(502).send({ error: 'Erreur fournisseur' })
       }
 
-      if (upstreamRes.status === 401 || upstreamRes.status === 403) {
+      if (upstreamRes.status === 401) {
         app.log.warn({ ...logCtx, upstreamStatus: upstreamRes.status }, 'playback-gateway: upstream auth error')
-        return reply.status(upstreamRes.status).send({ error: 'Source expirée — contactez l\'administrateur' })
+        return reply.status(401).send({ error: 'Source expirée — contactez l\'administrateur' })
+      }
+
+      if (upstreamRes.status === 403) {
+        app.log.warn({ ...logCtx, upstreamStatus: 403 }, 'playback-gateway: upstream forbidden (not treating as expired)')
+        return reply.status(502).send({ error: 'Erreur fournisseur', upstreamStatus: 403 })
       }
 
       if (upstreamRes.status === 404) {

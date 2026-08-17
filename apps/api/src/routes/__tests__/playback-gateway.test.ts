@@ -116,7 +116,7 @@ describe('GET /playback/stream/:sessionId — session validation', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: `/playback/stream/${SESSION_ID}`,
+      url: `/playback/stream/${SESSION_ID}?proxy=1`,
     })
 
     expect(res.statusCode).toBe(404)
@@ -128,7 +128,7 @@ describe('GET /playback/stream/:sessionId — session validation', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: `/playback/stream/${SESSION_ID}`,
+      url: `/playback/stream/${SESSION_ID}?proxy=1`,
     })
 
     expect(res.statusCode).toBe(403)
@@ -140,13 +140,26 @@ describe('GET /playback/stream/:sessionId — session validation', () => {
 // ---------------------------------------------------------------------------
 
 describe('GET /playback/stream/:sessionId — DIRECT mp4 pass-through', () => {
+  it('redirects the browser to the provider URL by default', async () => {
+    mockGetSession.mockReturnValue(makeSession({ containerExtension: 'mp4', deliveryMode: 'DIRECT' }))
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/playback/stream/${SESSION_ID}`,
+    })
+
+    expect(res.statusCode).toBe(302)
+    expect(res.headers.location).toBe('http://provider.example.com/user/pass/123.mp4')
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
   it('forwards upstream body with 200 and correct Content-Type', async () => {
     mockGetSession.mockReturnValue(makeSession({ containerExtension: 'mp4', deliveryMode: 'DIRECT' }))
     mockFetch.mockResolvedValue(makeFetchOk('fake-mp4-bytes'))
 
     const res = await app.inject({
       method: 'GET',
-      url: `/playback/stream/${SESSION_ID}`,
+      url: `/playback/stream/${SESSION_ID}?proxy=1`,
     })
 
     expect(res.statusCode).toBe(200)
@@ -167,7 +180,7 @@ describe('GET /playback/stream/:sessionId — DIRECT mp4 pass-through', () => {
 
     await app.inject({
       method: 'GET',
-      url: `/playback/stream/${SESSION_ID}`,
+      url: `/playback/stream/${SESSION_ID}?proxy=1`,
       headers: { range: 'bytes=0-1023' },
     })
 
@@ -188,7 +201,7 @@ describe('GET /playback/stream/:sessionId — DIRECT mp4 pass-through', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: `/playback/stream/${SESSION_ID}`,
+      url: `/playback/stream/${SESSION_ID}?proxy=1`,
     })
 
     expect(res.headers['accept-ranges']).toBe('bytes')
@@ -208,7 +221,7 @@ describe('GET /playback/stream/:sessionId — HLS mode returns 409', () => {
 
       const res = await app.inject({
         method: 'GET',
-        url: `/playback/stream/${SESSION_ID}`,
+        url: `/playback/stream/${SESSION_ID}?proxy=1`,
       })
 
       expect(res.statusCode).toBe(409)
@@ -232,28 +245,28 @@ describe('GET /playback/stream/:sessionId — upstream error handling', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: `/playback/stream/${SESSION_ID}`,
+      url: `/playback/stream/${SESSION_ID}?proxy=1`,
     })
 
     expect(res.statusCode).toBe(401)
     expect(res.json().error).toMatch(/expirée/i)
   })
 
-  it('returns 403 when upstream returns 403', async () => {
+  it('returns 502 when upstream returns 403 (Cloudflare, not expired source)', async () => {
     mockGetSession.mockReturnValue(makeSession())
     mockFetch.mockResolvedValue({
       ok: false,
       status: 403,
-      headers: new Headers(),
+      headers: new Headers({ server: 'cloudflare' }),
     })
 
     const res = await app.inject({
       method: 'GET',
-      url: `/playback/stream/${SESSION_ID}`,
+      url: `/playback/stream/${SESSION_ID}?proxy=1`,
     })
 
-    expect(res.statusCode).toBe(403)
-    expect(res.json().error).toMatch(/expirée/i)
+    expect(res.statusCode).toBe(502)
+    expect(res.json().error).toMatch(/fournisseur/i)
   })
 
   it('returns 404 when upstream returns 404', async () => {
@@ -266,7 +279,7 @@ describe('GET /playback/stream/:sessionId — upstream error handling', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: `/playback/stream/${SESSION_ID}`,
+      url: `/playback/stream/${SESSION_ID}?proxy=1`,
     })
 
     expect(res.statusCode).toBe(404)
@@ -285,7 +298,7 @@ describe('GET /playback/stream/:sessionId — upstream error handling', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: `/playback/stream/${SESSION_ID}`,
+      url: `/playback/stream/${SESSION_ID}?proxy=1`,
     })
 
     expect(res.statusCode).toBe(200)
@@ -300,7 +313,7 @@ describe('GET /playback/stream/:sessionId — upstream error handling', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: `/playback/stream/${SESSION_ID}`,
+      url: `/playback/stream/${SESSION_ID}?proxy=1`,
     })
 
     expect(res.statusCode).toBe(504)
