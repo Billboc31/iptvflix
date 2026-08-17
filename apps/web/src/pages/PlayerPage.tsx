@@ -477,6 +477,7 @@ export default function PlayerPage() {
           onNextEpisode={handleNextEpisode}
           markers={[]}
           deliveryMode={deliveryMode}
+          containerExtension={containerExtension}
         />
       )}
     </div>

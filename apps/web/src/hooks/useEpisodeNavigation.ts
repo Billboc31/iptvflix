@@ -38,7 +38,9 @@ export function useEpisodeNavigation(
   }
 
   const current = episodes[idx]
-  const episodeLabel = `E${current.episodeNumber}${current.title ? ` · ${current.title}` : ''}`
+  const sLabel = seasonNumber != null ? `S${String(seasonNumber).padStart(2, '0')}` : ''
+  const eLabel = `E${String(current.episodeNumber).padStart(2, '0')}`
+  const episodeLabel = `${sLabel}${eLabel}${current.title ? ` · ${current.title}` : ''}`
   const nextEpisode = idx < episodes.length - 1 ? (episodes[idx + 1] ?? null) : null
   const previousEpisode = idx > 0 ? (episodes[idx - 1] ?? null) : null
 

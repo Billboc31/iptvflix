@@ -85,6 +85,8 @@ type WrapperProps = {
   onVariantSwitch?: (id: string) => void
   onAudioTrack?: (id: number) => void
   onSubtitleTrack?: (id: number | null) => void
+  deliveryMode?: string | null
+  containerExtension?: string | null
 }
 
 function Wrapper({
@@ -101,6 +103,8 @@ function Wrapper({
   onVariantSwitch = vi.fn(),
   onAudioTrack = vi.fn(),
   onSubtitleTrack = vi.fn(),
+  deliveryMode = null,
+  containerExtension = null,
 }: WrapperProps) {
   const videoRef = useRef(video)
   return (
@@ -118,6 +122,8 @@ function Wrapper({
       episodeLabel={episodeLabel}
       nextEpisode={nextEpisode}
       onNextEpisode={onNextEpisode}
+      deliveryMode={deliveryMode}
+      containerExtension={containerExtension}
     />
   )
 }
@@ -227,6 +233,22 @@ describe('PlayerControls', () => {
     fireEvent.click(screen.getByLabelText('Sous-titres'))
     fireEvent.click(screen.getByText('Désactivés'))
     expect(onSubtitleTrack).toHaveBeenCalledWith(null)
+  })
+
+  it('CC button hidden for DIRECT MP4 with no subtitle tracks', () => {
+    render(<Wrapper video={video} deliveryMode="DIRECT" containerExtension="mp4" subtitleTracks={[]} />)
+    expect(screen.queryByLabelText('Sous-titres')).not.toBeInTheDocument()
+  })
+
+  it('CC button shown for DIRECT MKV with no subtitle tracks', () => {
+    render(<Wrapper video={video} deliveryMode="DIRECT" containerExtension="mkv" subtitleTracks={[]} />)
+    expect(screen.getByLabelText('Sous-titres')).toBeInTheDocument()
+  })
+
+  it('CC button shown when subtitle tracks exist regardless of container', () => {
+    const tracks: SubtitleTrack[] = [{ id: 0, label: 'Français', lang: 'fr' }]
+    render(<Wrapper video={video} deliveryMode="DIRECT" containerExtension="mp4" subtitleTracks={tracks} />)
+    expect(screen.getByLabelText('Sous-titres')).toBeInTheDocument()
   })
 
   it('speed selector updates playbackRate on selection', () => {

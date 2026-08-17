@@ -43,6 +43,7 @@ type Props = {
   markers?: Marker[]
   // Delivery mode (for embedded subtitle detection)
   deliveryMode?: string | null
+  containerExtension?: string | null
 }
 
 export default function PlayerControls({
@@ -62,6 +63,7 @@ export default function PlayerControls({
   onNextEpisode,
   markers = [],
   deliveryMode,
+  containerExtension,
 }: Props) {
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -75,6 +77,7 @@ export default function PlayerControls({
   const [visible, setVisible] = useState(true)
   const [openPopover, setOpenPopover] = useState<Popover>(null)
   const [playbackRate, setPlaybackRate] = useState(1)
+  const [bufferedFraction, setBufferedFraction] = useState(0)
 
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const playingRef = useRef(false)
@@ -149,6 +152,12 @@ export default function PlayerControls({
     function onSeeking() { setSeeking(true) }
     function onSeeked() { setSeeking(false) }
     function onRateChange() { setPlaybackRate(video!.playbackRate) }
+    function onProgress() {
+      const buf = video!.buffered
+      if (buf.length > 0 && isFinite(video!.duration) && video!.duration > 0) {
+        setBufferedFraction(buf.end(buf.length - 1) / video!.duration)
+      }
+    }
 
     video.addEventListener('play', onPlay)
     video.addEventListener('pause', onPause)
@@ -160,6 +169,7 @@ export default function PlayerControls({
     video.addEventListener('seeking', onSeeking)
     video.addEventListener('seeked', onSeeked)
     video.addEventListener('ratechange', onRateChange)
+    video.addEventListener('progress', onProgress)
 
     // Sync initial state
     setPlaying(!video.paused)
@@ -181,6 +191,7 @@ export default function PlayerControls({
       video.removeEventListener('seeking', onSeeking)
       video.removeEventListener('seeked', onSeeked)
       video.removeEventListener('ratechange', onRateChange)
+      video.removeEventListener('progress', onProgress)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoRef])
@@ -482,7 +493,31 @@ export default function PlayerControls({
           </div>
 
           {/* Seek bar */}
-          <div className="mb-2">
+          <div className={`mb-2 relative h-5 flex items-center${seekable ? '' : ' opacity-50'}`}>
+            {/* Track + buffer + progress visual */}
+            <div className="absolute inset-x-0 h-1 bg-white/20 rounded pointer-events-none" aria-hidden="true">
+              {seekable && (
+                <>
+                  <div
+                    className="absolute inset-y-0 left-0 bg-white/40 rounded"
+                    style={{ width: `${(bufferedFraction * 100).toFixed(1)}%` }}
+                  />
+                  <div
+                    className="absolute inset-y-0 left-0 bg-white rounded"
+                    style={{ width: `${((currentTime / duration) * 100).toFixed(1)}%` }}
+                  />
+                </>
+              )}
+            </div>
+            {/* Custom thumb */}
+            {seekable && (
+              <div
+                className="absolute top-1/2 w-3 h-3 bg-white rounded-full -translate-y-1/2 pointer-events-none"
+                style={{ left: `calc(${((currentTime / duration) * 100).toFixed(1)}% - 6px)` }}
+                aria-hidden="true"
+              />
+            )}
+            {/* Range input — transparent track, provides accessibility + interaction */}
             <input
               type="range"
               aria-label="Position de lecture"
@@ -495,7 +530,7 @@ export default function PlayerControls({
               onPointerUp={handleSeekPointerUp}
               onChange={(e) => seek(Number(e.target.value))}
               style={{ touchAction: 'none' }}
-              className="w-full h-1 accent-white cursor-pointer disabled:cursor-default disabled:opacity-50"
+              className="absolute inset-0 w-full opacity-0 cursor-pointer disabled:cursor-default"
             />
           </div>
 
@@ -582,7 +617,7 @@ export default function PlayerControls({
             )}
 
             {/* Subtitle track popover */}
-            {(subtitleTracks.length > 0 || deliveryMode === 'DIRECT') && (
+            {(subtitleTracks.length > 0 || (deliveryMode === 'DIRECT' && /mkv|avi|ts/i.test(containerExtension ?? ''))) && (
               <div className="relative">
                 <button
                   type="button"
