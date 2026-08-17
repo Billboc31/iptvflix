@@ -98,13 +98,20 @@ export default function PlayerControls({
   function startHideTimer() {
     clearHideTimer()
     if (!playingRef.current || scrubbingRef.current || popoverOpenRef.current) return
-    hideTimerRef.current = setTimeout(() => setVisible(false), 3000)
+    hideTimerRef.current = setTimeout(() => {
+      if (playingRef.current && !scrubbingRef.current && !popoverOpenRef.current) {
+        setVisible(false)
+      }
+    }, 3000)
   }
 
   function showControls() {
     setVisible(true)
     startHideTimer()
   }
+
+  const showControlsRef = useRef(showControls)
+  showControlsRef.current = showControls
 
   // Cancel hide timer when popover opens; restart when it closes
   useEffect(() => {
@@ -192,6 +199,8 @@ export default function PlayerControls({
       video.removeEventListener('seeked', onSeeked)
       video.removeEventListener('ratechange', onRateChange)
       video.removeEventListener('progress', onProgress)
+      clearHideTimer()
+      scrubbingRef.current = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoRef])
@@ -200,9 +209,10 @@ export default function PlayerControls({
   useEffect(() => {
     function onFsChange() {
       setIsFullscreen(!!document.fullscreenElement)
+      showControlsRef.current()
     }
-    function onWebkitFsBegin() { setIsFullscreen(true) }
-    function onWebkitFsEnd() { setIsFullscreen(false) }
+    function onWebkitFsBegin() { setIsFullscreen(true); showControlsRef.current() }
+    function onWebkitFsEnd() { setIsFullscreen(false); showControlsRef.current() }
 
     document.addEventListener('fullscreenchange', onFsChange)
     const video = videoRef.current as WebkitHTMLVideoElement | null
@@ -355,7 +365,14 @@ export default function PlayerControls({
   }
 
   return (
-    <>
+    <div
+      className="absolute inset-0"
+      onPointerMove={showControls}
+      onClick={() => {
+        if (openPopover !== null) { setOpenPopover(null); return }
+        showControls()
+      }}
+    >
       {/* Buffering / seeking spinner */}
       {(buffering || seeking) && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -391,12 +408,8 @@ export default function PlayerControls({
 
       {/* Controls overlay */}
       <div
+        data-testid="controls-overlay"
         className={`absolute inset-0 flex flex-col justify-between transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-        onPointerMove={showControls}
-        onClick={() => {
-          if (openPopover !== null) { setOpenPopover(null); return }
-          showControls()
-        }}
       >
         {/* Top bar */}
         <div className="flex items-center justify-between px-4 pt-4 pb-8 bg-gradient-to-b from-black/70 to-transparent">
@@ -782,6 +795,6 @@ export default function PlayerControls({
           border-radius: 2px;
         }
       `}</style>
-    </>
+    </div>
   )
 }
