@@ -22,3 +22,76 @@ export function buildXtreamEpisodeUrl(
   const ext = containerExtension || 'ts'
   return `${base}/series/${username}/${password}/${providerItemId}.${ext}`
 }
+
+/** Headers Xtream panels typically expect (Node's default fetch UA is often blocked). */
+export const XTREAM_STREAM_HEADERS: Record<string, string> = {
+  'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20',
+  Accept: '*/*',
+}
+
+/**
+ * Alternate Xtream VOD/live URL shapes for the same credentials.
+ * Do not log the returned URLs — they embed username/password.
+ */
+export function xtreamUrlFallbacks(url: string): string[] {
+  const seen = new Set<string>([url])
+  const out = [url]
+  const push = (candidate: string) => {
+    if (!seen.has(candidate)) {
+      seen.add(candidate)
+      out.push(candidate)
+    }
+  }
+
+  try {
+    const parsed = new URL(url)
+    const parts = parsed.pathname.split('/').filter(Boolean)
+    const origin = parsed.origin
+
+    const movieIdx = parts.indexOf('movie')
+    const seriesIdx = parts.indexOf('series')
+    const liveIdx = parts.indexOf('live')
+
+    let user: string | undefined
+    let pass: string | undefined
+    let file: string | undefined
+    if (movieIdx >= 0 && parts.length >= movieIdx + 4) {
+      user = parts[movieIdx + 1]
+      pass = parts[movieIdx + 2]
+      file = parts[movieIdx + 3]
+    } else if (seriesIdx >= 0 && parts.length >= seriesIdx + 4) {
+      user = parts[seriesIdx + 1]
+      pass = parts[seriesIdx + 2]
+      file = parts[seriesIdx + 3]
+    } else if (liveIdx >= 0 && parts.length >= liveIdx + 4) {
+      user = parts[liveIdx + 1]
+      pass = parts[liveIdx + 2]
+      file = parts[liveIdx + 3]
+    } else if (parts.length >= 3) {
+      user = parts[parts.length - 3]
+      pass = parts[parts.length - 2]
+      file = parts[parts.length - 1]
+    }
+
+    if (!user || !pass || !file) return out
+
+    const id = file.includes('.') ? file.slice(0, file.lastIndexOf('.')) : file
+    const ext = file.includes('.') ? file.slice(file.lastIndexOf('.') + 1) : 'ts'
+    const withExt = `${id}.${ext}`
+
+    if (seriesIdx >= 0) {
+      push(`${origin}/series/${user}/${pass}/${withExt}`)
+      push(`${origin}/series/${user}/${pass}/${id}`)
+    } else {
+      push(`${origin}/movie/${user}/${pass}/${withExt}`)
+      push(`${origin}/movie/${user}/${pass}/${id}`)
+      push(`${origin}/${user}/${pass}/${withExt}`)
+      push(`${origin}/${user}/${pass}/${id}`)
+      push(`${origin}/live/${user}/${pass}/${withExt}`)
+    }
+  } catch {
+    return out
+  }
+
+  return out
+}

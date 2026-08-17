@@ -7,6 +7,37 @@ import { getSession } from '../services/playback-session-store.js'
 import { DEFAULT_PROFILE_ID } from '../services/profile-service.js'
 import { ValidationError, ForbiddenError, NotFoundError } from '../errors.js'
 import { getPlaylist, getSegment, SEGMENT_RE } from '../services/hls-session-store.js'
+import { XTREAM_STREAM_HEADERS, xtreamUrlFallbacks } from '../providers/xtream/playback.js'
+
+async function fetchProviderStream(
+  url: string,
+  headers: Record<string, string>,
+  signal: AbortSignal,
+): Promise<Response> {
+  const candidates = xtreamUrlFallbacks(url)
+  const merged = { ...XTREAM_STREAM_HEADERS, ...headers }
+  let lastResponse: Response | undefined
+  let lastError: unknown
+
+  for (const candidate of candidates) {
+    try {
+      const res = await fetch(candidate, {
+        signal,
+        headers: merged,
+        redirect: 'follow',
+      })
+      if (res.ok || res.status === 206) return res
+      if (res.status === 401 || res.status === 403) return res
+      lastResponse = res
+    } catch (err) {
+      lastError = err
+      if (signal.aborted) throw err
+    }
+  }
+
+  if (lastResponse) return lastResponse
+  throw lastError instanceof Error ? lastError : new Error('upstream fetch failed')
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -120,10 +151,11 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         const rangeHeader = request.headers['range']
         if (rangeHeader) upstreamHeaders['Range'] = rangeHeader
 
-        upstreamRes = await fetch(providerStreamUrl, {
-          signal: controller.signal,
-          headers: upstreamHeaders,
-        })
+        upstreamRes = await fetchProviderStream(
+          providerStreamUrl,
+          upstreamHeaders,
+          controller.signal,
+        )
         clearTimeout(timeoutId)
       } catch (err) {
         clearTimeout(timeoutId)
@@ -170,8 +202,11 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(upstreamRes.status).send(rewritten)
       }
 
-      // MP4/direct pass-through with Range header support
-      const respContentType = upstreamRes.headers.get('Content-Type') ?? 'video/mp4'
+      // Direct pass-through with Range header support (mp4, mpeg-ts, …)
+      const fallbackType = ext === 'ts' || ext === 'm2ts' || ext === 'mts'
+        ? 'video/mp2t'
+        : 'video/mp4'
+      const respContentType = upstreamRes.headers.get('Content-Type') ?? fallbackType
       const respContentLength = upstreamRes.headers.get('Content-Length')
       const respContentRange = upstreamRes.headers.get('Content-Range')
       reply.header('Content-Type', respContentType)
@@ -179,7 +214,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
       if (respContentRange) reply.header('Content-Range', respContentRange)
       reply.header('Accept-Ranges', 'bytes')
       reply.status(upstreamRes.status)
-      app.log.info({ ...logCtx, responseMode: 'direct-mp4' }, 'playback-gateway: serving DIRECT MP4')
+      app.log.info({ ...logCtx, responseMode: 'direct-stream' }, 'playback-gateway: serving DIRECT stream')
 
       if (!streamBody) return reply.send('')
       try {
@@ -227,7 +262,10 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
 
       let upstreamRes: Response
       try {
-        upstreamRes = await fetch(segmentUrl, { signal: controller.signal })
+        upstreamRes = await fetch(segmentUrl, {
+          signal: controller.signal,
+          headers: XTREAM_STREAM_HEADERS,
+        })
         clearTimeout(timeoutId)
       } catch (err) {
         clearTimeout(timeoutId)

@@ -1,0 +1,6 @@
+# Used when a Railway service Root Directory is the monorepo root and the
+# builder is Nixpacks (without nixpacksConfigPath). Adds ffmpeg for API HLS remux.
+# Harmless on the web service if it shares this file.
+[phases.setup]
+nixPkgs = ["...", "ffmpeg"]
+aptPkgs = ["...", "ffmpeg"]

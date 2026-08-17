@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { buildXtreamMovieUrl, buildXtreamEpisodeUrl } from '../../providers/xtream/playback.js'
+import { buildXtreamMovieUrl, buildXtreamEpisodeUrl, xtreamUrlFallbacks } from '../../providers/xtream/playback.js'
 import { buildM3UStreamUrl } from '../../providers/m3u/playback.js'
 import { ValidationError, ForbiddenError, NotFoundError } from '../../errors.js'
 import type { ProfilePreferences } from '@iptvflix/api-contracts'
@@ -78,6 +78,18 @@ describe('buildXtreamMovieUrl', () => {
       expect(entry).not.toContain('secret_user')
       expect(entry).not.toContain('secret_pass')
     }
+  })
+})
+
+describe('xtreamUrlFallbacks', () => {
+  it('adds movie and live-style alternates without duplicating the original', () => {
+    const original = 'http://srv.example.com/movie/user/pass/123.ts'
+    const urls = xtreamUrlFallbacks(original)
+    expect(urls[0]).toBe(original)
+    expect(urls).toContain('http://srv.example.com/movie/user/pass/123')
+    expect(urls).toContain('http://srv.example.com/user/pass/123.ts')
+    expect(urls).toContain('http://srv.example.com/live/user/pass/123.ts')
+    expect(new Set(urls).size).toBe(urls.length)
   })
 })
 

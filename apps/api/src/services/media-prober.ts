@@ -10,6 +10,7 @@ export async function probeMedia(url: string): Promise<MediaInfo> {
   return new Promise((resolve, reject) => {
     const proc = spawn('ffprobe', [
       '-v', 'quiet',
+      '-user_agent', 'VLC/3.0.20 LibVLC/3.0.20',
       '-print_format', 'json',
       '-show_streams',
       '-show_format',

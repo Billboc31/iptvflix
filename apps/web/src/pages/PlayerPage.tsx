@@ -7,24 +7,11 @@ import PlayerControls from '../components/player/PlayerControls.js'
 import ErrorState from '../components/ui/ErrorState.js'
 import { getStoredAuthToken } from '../lib/api.js'
 import { resolveMediaUrl } from '../lib/media-url.js'
+import { isHlsContainer, isMpegTsContainer, videoErrorMessage } from '../lib/player-errors.js'
 
 function playbackAuthHeaders(): HeadersInit {
   const token = getStoredAuthToken()
   return token ? { Authorization: `Bearer ${token}` } : {}
-}
-
-function videoErrorMessage(video: HTMLVideoElement | null, httpStatus?: number): string {
-  if (httpStatus === 401 || httpStatus === 403) return 'Source expirée — contactez l\'administrateur'
-  if (httpStatus === 404) return 'Média introuvable chez le fournisseur'
-  if (httpStatus === 504) return 'Fournisseur ne répond pas'
-  if (httpStatus === 410) return 'Session de lecture expirée'
-  if (video?.error) {
-    const code = video.error.code
-    if (code === MediaError.MEDIA_ERR_DECODE || code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
-      return 'Impossible de lire ce contenu sur ce navigateur'
-    }
-  }
-  return 'Erreur de lecture'
 }
 
 // Named map for MediaError codes (Safari Web Inspector visibility)
@@ -78,13 +65,17 @@ export default function PlayerPage() {
   useProgressSync(videoRef, progressMediaType, mediaId!, status === 'ready')
 
   // Load stream into video element when gateway URL is ready.
-  // Backend guarantees the URL is browser-compatible based on probe result;
-  // no client-side compat fallback is needed.
   useEffect(() => {
     const video = videoRef.current
     if (!video || !gatewayUrl || !deliveryMode) return
 
     let hlsInstance: import('hls.js').default | null = null
+    let mpegtsPlayer: {
+      destroy: () => void
+      attachMediaElement: (el: HTMLMediaElement) => void
+      load: () => void
+      play: () => Promise<void> | void
+    } | null = null
     let cancelled = false
 
     httpStatusRef.current = undefined
@@ -93,39 +84,105 @@ export default function PlayerPage() {
 
     const mediaUrl = resolveMediaUrl(gatewayUrl)
     const authToken = getStoredAuthToken()
+    const isHls = deliveryMode !== 'DIRECT' || isHlsContainer(containerExtension)
 
-    // HLS delivery (backend-generated pipeline or provider-native HLS with DIRECT+m3u8)
-    const isHls = deliveryMode !== 'DIRECT' ||
-      containerExtension === 'm3u8' ||
-      containerExtension === 'm3u'
+    async function probeGateway(): Promise<boolean> {
+      const controller = new AbortController()
+      try {
+        const res = await fetch(mediaUrl, {
+          method: 'GET',
+          credentials: 'include',
+          headers: {
+            ...playbackAuthHeaders(),
+            Range: 'bytes=0-0',
+          },
+          signal: controller.signal,
+        })
+        httpStatusRef.current = res.status
+        const contentType = res.headers.get('content-type') ?? ''
+        controller.abort()
+        if (!res.ok && res.status !== 206) {
+          setVideoError(videoErrorMessage(null, res.status))
+          return false
+        }
+        if (contentType.includes('json') || contentType.includes('text/html')) {
+          setVideoError('Le fournisseur a refusé le flux')
+          return false
+        }
+        return true
+      } catch {
+        if (!cancelled) setVideoError('Erreur de lecture')
+        return false
+      }
+    }
 
-    if (isHls) {
-      import('hls.js').then(({ default: Hls }) => {
-        if (cancelled) return
-        if (Hls.isSupported()) {
-          hlsInstance = new Hls({
-            xhrSetup(xhr) {
-              xhr.withCredentials = true
-              if (authToken) xhr.setRequestHeader('Authorization', `Bearer ${authToken}`)
-            },
-          })
-          hlsInstance.loadSource(mediaUrl)
-          hlsInstance.attachMedia(video)
-        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-          // Safari / iOS native HLS
+    async function attach() {
+      const ok = await probeGateway()
+      if (cancelled || !ok || !video) return
+
+      if (isHls) {
+        try {
+          const { default: Hls } = await import('hls.js')
+          if (cancelled) return
+          if (Hls.isSupported()) {
+            hlsInstance = new Hls({
+              xhrSetup(xhr) {
+                xhr.withCredentials = true
+                if (authToken) xhr.setRequestHeader('Authorization', `Bearer ${authToken}`)
+              },
+            })
+            hlsInstance.loadSource(mediaUrl)
+            hlsInstance.attachMedia(video)
+            return
+          }
+        } catch {
+          // fall through to native HLS (Safari)
+        }
+        if (!cancelled && video.canPlayType('application/vnd.apple.mpegurl')) {
           video.src = mediaUrl
         }
-      }).catch(() => {
-        if (!cancelled && video) video.src = mediaUrl
-      })
-    } else {
-      // DIRECT MP4 — native browser video element
+        return
+      }
+
+      if (isMpegTsContainer(containerExtension)) {
+        try {
+          const mpegts = (await import('mpegts.js')).default
+          if (cancelled) return
+          if (mpegts.isSupported()) {
+            mpegtsPlayer = mpegts.createPlayer(
+              {
+                type: 'mpegts',
+                isLive: false,
+                url: mediaUrl,
+                withCredentials: true,
+              },
+              {
+                headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+              },
+            )
+            mpegtsPlayer.attachMediaElement(video)
+            mpegtsPlayer.load()
+            void mpegtsPlayer.play()
+            return
+          }
+        } catch {
+          // mpegts.js missing or MSE unsupported (typical on iOS)
+        }
+        if (!cancelled) {
+          setVideoError('Ce format n\'est pas lisible sur cet appareil — essayez une autre version')
+        }
+        return
+      }
+
       video.src = mediaUrl
     }
+
+    void attach()
 
     return () => {
       cancelled = true
       hlsInstance?.destroy()
+      mpegtsPlayer?.destroy()
       video.src = ''
     }
   }, [gatewayUrl, deliveryMode, containerExtension])
@@ -152,24 +209,9 @@ export default function PlayerPage() {
     }
   }, [gatewayUrl])
 
-  // Detect gateway HTTP error codes via HEAD probe on video error
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
-
-    async function checkGatewayStatus() {
-      if (!gatewayUrl) return
-      try {
-        const res = await fetch(resolveMediaUrl(gatewayUrl), {
-          method: 'HEAD',
-          credentials: 'include',
-          headers: playbackAuthHeaders(),
-        })
-        if (!res.ok) httpStatusRef.current = res.status
-      } catch {
-        // ignore
-      }
-    }
 
     function onError() {
       const errorCode = videoRef.current?.error?.code
@@ -186,13 +228,7 @@ export default function PlayerPage() {
         eventSequence: eventLogRef.current.map((e) => `${e.event}+${e.t - (eventLogRef.current[0]?.t ?? e.t)}ms`),
       })
 
-      if (!httpStatusRef.current) {
-        checkGatewayStatus()
-          .then(() => setVideoError(videoErrorMessage(videoRef.current, httpStatusRef.current)))
-          .catch(() => setVideoError(videoErrorMessage(videoRef.current, undefined)))
-      } else {
-        setVideoError(videoErrorMessage(videoRef.current, httpStatusRef.current))
-      }
+      setVideoError(videoErrorMessage(videoRef.current, httpStatusRef.current))
     }
 
     video.addEventListener('error', onError)

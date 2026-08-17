@@ -174,7 +174,10 @@ describe('GET /playback/stream/:sessionId — DIRECT mp4 pass-through', () => {
     expect(mockFetch).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        headers: expect.objectContaining({ Range: 'bytes=0-1023' }),
+        headers: expect.objectContaining({
+          Range: 'bytes=0-1023',
+          'User-Agent': expect.stringContaining('VLC'),
+        }),
       }),
     )
   })
@@ -268,6 +271,25 @@ describe('GET /playback/stream/:sessionId — upstream error handling', () => {
 
     expect(res.statusCode).toBe(404)
     expect(res.json().error).toMatch(/introuvable/i)
+  })
+
+  it('retries an alternate Xtream path after upstream 404', async () => {
+    mockGetSession.mockReturnValue(makeSession())
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        headers: new Headers(),
+      })
+      .mockResolvedValueOnce(makeFetchOk('fake-mp4-bytes'))
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/playback/stream/${SESSION_ID}`,
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(mockFetch.mock.calls.length).toBeGreaterThan(1)
   })
 
   it('returns 504 when upstream fetch times out (AbortError)', async () => {

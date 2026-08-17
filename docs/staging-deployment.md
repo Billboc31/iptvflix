@@ -20,15 +20,16 @@ This guide covers the full Railway + Vercel staging setup from scratch.
 | `PORT` | No | Injected by Railway; the API reads it via `process.env.PORT` |
 | `TMDB_API_KEY` | No | Required only if the TMDB sync feature is active |
 | `TMDB_STALE_DAYS` | No | Overrides the default cache TTL for TMDB data |
-| `NIXPACKS_PKGS` | No | Optional fallback: set to `ffmpeg` if HLS remux binaries are missing at runtime |
+| `NIXPACKS_PKGS` | No | Optional Nixpacks fallback: set to `ffmpeg` if HLS remux binaries are missing at runtime |
+| `RAILPACK_DEPLOY_APT_PACKAGES` | No | If the API builder is **Railpack** (Railway default): set to `ffmpeg` then Redeploy |
 
 Do not commit secret values. Use the Railway dashboard to set `DATABASE_URL` and `TMDB_API_KEY`.
 
 ### ffmpeg / ffprobe (API, for HLS playback)
 
-1. Prefer `apps/api/nixpacks.toml` (`nixPkgs = ["...", "ffmpeg"]`) with API **Root Directory** = `apps/api`, then **Redeploy**.
-2. If the API service Root Directory is the **monorepo root** instead, either set Config `nixpacksConfigPath = apps/api/nixpacks.toml` or add service variable `NIXPACKS_PKGS=ffmpeg` and **Redeploy**.
-3. In deploy logs, confirm ffmpeg is installed; at runtime `ffmpeg -version` must succeed (otherwise resolve may pick `HLS_REMUX` and fail with session 410).
+1. Prefer `apps/api/nixpacks.toml` / `apps/api/railpack.json` so ffmpeg is in the API image, then **Redeploy**.
+2. If the API service Root Directory is the **monorepo root** instead, either set Config `nixpacksConfigPath = apps/api/nixpacks.toml` or add service variable `NIXPACKS_PKGS=ffmpeg` (Nixpacks) / `RAILPACK_DEPLOY_APT_PACKAGES=ffmpeg` (Railpack) and **Redeploy**.
+3. In deploy logs, confirm ffmpeg is installed; at runtime `ffmpeg -version` must succeed. Without ffmpeg, MPEG-TS (`.ts`) cannot be remuxed to HLS and phones/Safari will fail to play.
 
 ### Railway (Web SPA) or Vercel (Web)
 
