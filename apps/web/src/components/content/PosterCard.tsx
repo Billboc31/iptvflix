@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Badge from '../ui/Badge.js'
-import PreviewPlayer from './PreviewPlayer.js'
+import FocusedCardPortal from './FocusedCardPortal.js'
 import { usePreview } from '../../contexts/PreviewContext.js'
 
 const isTouch = () => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
@@ -26,36 +26,73 @@ export default function PosterCard({
   trailerKey,
   onClick,
 }: PosterCardProps) {
-  const { activeId, activate, deactivate } = usePreview()
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const isActive = !!mediaId && activeId === mediaId
+  const { activate, deactivate } = usePreview()
+  const cardRef = useRef<HTMLDivElement>(null)
+  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hoverEpoch = useRef<number>(0)
+  const cardRectRef = useRef<DOMRect | null>(null)
+  const [isFocused, setIsFocused] = useState(false)
 
-  function startPreview() {
-    if (!mediaId || !trailerKey || isTouch()) return
-    timerRef.current = setTimeout(() => activate(mediaId, trailerKey), 1500)
+  function handleEnter() {
+    if (isTouch()) return
+    const rect = cardRef.current?.getBoundingClientRect()
+    if (rect) cardRectRef.current = rect
+
+    const epoch = ++hoverEpoch.current
+
+    if (focusTimerRef.current) clearTimeout(focusTimerRef.current)
+    focusTimerRef.current = setTimeout(() => {
+      if (hoverEpoch.current !== epoch) return
+      setIsFocused(true)
+    }, 400)
   }
 
-  function cancelPreview() {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current)
-      timerRef.current = null
+  function handleLeave() {
+    if (focusTimerRef.current) {
+      clearTimeout(focusTimerRef.current)
+      focusTimerRef.current = null
     }
-    if (isActive) deactivate()
+    if (previewTimerRef.current) {
+      clearTimeout(previewTimerRef.current)
+      previewTimerRef.current = null
+    }
+    hoverEpoch.current++
+    setIsFocused(false)
+    deactivate()
   }
+
+  // Start preview timer only after card is focused
+  useEffect(() => {
+    if (!isFocused || !mediaId || !trailerKey) return
+    const epoch = hoverEpoch.current
+    previewTimerRef.current = setTimeout(() => {
+      if (hoverEpoch.current !== epoch) return
+      activate(mediaId, trailerKey)
+    }, 1500)
+    return () => {
+      if (previewTimerRef.current) {
+        clearTimeout(previewTimerRef.current)
+        previewTimerRef.current = null
+      }
+    }
+  }, [isFocused, mediaId, trailerKey, activate])
 
   useEffect(() => {
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
+      if (focusTimerRef.current) clearTimeout(focusTimerRef.current)
+      if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
     }
   }, [])
 
   return (
     <div
+      ref={cardRef}
       onClick={onClick}
-      onMouseEnter={startPreview}
-      onMouseLeave={cancelPreview}
-      onFocus={startPreview}
-      onBlur={cancelPreview}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+      onFocus={handleEnter}
+      onBlur={handleLeave}
       className="relative w-full cursor-pointer group"
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
@@ -72,9 +109,6 @@ export default function PosterCard({
           </div>
         )}
 
-        {/* Preview player — lazy-mounted only for the active card */}
-        {trailerKey && <PreviewPlayer trailerKey={trailerKey} active={isActive} />}
-
         {/* Quality badge */}
         {quality && (
           <div className="absolute top-1.5 right-1.5">
@@ -89,7 +123,7 @@ export default function PosterCard({
           </div>
         )}
 
-        {/* Hover overlay */}
+        {/* Hover overlay — scoped to this card's own group */}
         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
           <span className="px-3 py-1 bg-white text-black text-xs font-semibold rounded-full">
             Détails
@@ -102,6 +136,18 @@ export default function PosterCard({
         <p className="text-white text-xs font-medium leading-tight line-clamp-1">{title}</p>
         {year && <p className="text-gray-500 text-xs mt-0.5">{year}</p>}
       </div>
+
+      {/* Focused card portal — enlarged card rendered above the shelf */}
+      {isFocused && (
+        <FocusedCardPortal
+          cardRect={cardRectRef.current}
+          title={title}
+          posterUrl={posterUrl}
+          trailerKey={trailerKey}
+          mediaId={mediaId}
+          onDetailsClick={onClick ?? (() => {})}
+        />
+      )}
     </div>
   )
 }
