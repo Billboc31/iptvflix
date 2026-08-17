@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, act } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useRef } from 'react'
 import PlayerControls from './PlayerControls.js'
 import type { AudioTrack, SubtitleTrack, Marker } from './PlayerControls.js'
@@ -301,6 +301,67 @@ describe('PlayerControls', () => {
     render(<Wrapper video={video} nextEpisode={ep} onNextEpisode={onNextEpisode} />)
     fireEvent.click(screen.getAllByText(/Épisode suivant/)[0])
     expect(onNextEpisode).toHaveBeenCalled()
+  })
+})
+
+// Controls visibility — interaction and race-condition fixes
+describe('PlayerControls controls visibility', () => {
+  let video: HTMLVideoElement
+
+  beforeEach(() => {
+    video = createMockVideo({ paused: false })
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('pointer move on wrapper restores controls after auto-hide', () => {
+    const { container } = render(<Wrapper video={video} />)
+    act(() => { video.dispatchEvent(new Event('play')) })
+    // Advance past hide timer — controls should auto-hide
+    act(() => { vi.advanceTimersByTime(3001) })
+    const overlay = screen.getByTestId('controls-overlay')
+    expect(overlay.className).toContain('opacity-0')
+    // Pointer move on the outer wrapper div
+    act(() => { fireEvent.pointerMove(container.firstChild as Element) })
+    expect(overlay.className).toContain('opacity-100')
+  })
+
+  it('pause keeps controls visible after hide timer would have fired', () => {
+    render(<Wrapper video={video} />)
+    act(() => { video.dispatchEvent(new Event('play')) })
+    // Pause before timer fires
+    act(() => { video.dispatchEvent(new Event('pause')) })
+    act(() => { vi.advanceTimersByTime(3001) })
+    expect(screen.getByTestId('controls-overlay').className).toContain('opacity-100')
+  })
+
+  it('fullscreen transition shows controls even when previously hidden', () => {
+    render(<Wrapper video={video} />)
+    act(() => { video.dispatchEvent(new Event('play')) })
+    act(() => { vi.advanceTimersByTime(3001) })
+    expect(screen.getByTestId('controls-overlay').className).toContain('opacity-0')
+    // Fullscreen change event
+    act(() => { document.dispatchEvent(new Event('fullscreenchange')) })
+    expect(screen.getByTestId('controls-overlay').className).toContain('opacity-100')
+  })
+
+  it('source change resets scrubbing state so hide timer works on restart', () => {
+    const { unmount } = render(<Wrapper video={video} />)
+    act(() => { video.dispatchEvent(new Event('play')) })
+    // Begin scrubbing on seek bar
+    fireEvent.pointerDown(screen.getByLabelText('Position de lecture'))
+    // Quality switch: unmount triggers cleanup which resets scrubbingRef and clears timer
+    act(() => { unmount() })
+    // Remount simulating new source
+    render(<Wrapper video={video} />)
+    act(() => { video.dispatchEvent(new Event('play')) })
+    // Auto-hide should work normally (scrubbingRef is false)
+    act(() => { vi.advanceTimersByTime(3001) })
+    expect(screen.getByTestId('controls-overlay').className).toContain('opacity-0')
   })
 })
 

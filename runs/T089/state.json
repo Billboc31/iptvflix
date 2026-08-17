@@ -1,7 +1,7 @@
 {
   "ticket_id": "T089",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T089-stabilize-vod-controls-overlay-so-seek-pause-ui-ne",
   "issue_number": 189,
-  "updated_at": "2026-08-17T20:09:40Z"
+  "updated_at": "2026-08-17T20:15:46Z"
 }
