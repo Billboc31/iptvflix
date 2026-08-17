@@ -248,6 +248,7 @@ export async function resolvePlayback(
       videoCodec: cached.videoCodec,
       audioCodec: cached.audioCodec,
       containerFormat: cached.containerFormat,
+      durationSeconds: cached.durationSeconds,
       durationMs: Date.now() - t0,
     }, 'playback-resolver: probe_result')
   } else {
@@ -262,6 +263,7 @@ export async function resolvePlayback(
         videoCodec: probeResult.videoCodec,
         audioCodec: probeResult.audioCodec,
         containerFormat: probeResult.containerFormat,
+        durationSeconds: probeResult.durationSeconds,
         durationMs: Date.now() - t0,
       }, 'playback-resolver: probe_result')
     } catch (err) {
