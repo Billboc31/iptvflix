@@ -12,3 +12,16 @@
 [2026-08-17T13:48:12Z] snapshot: runtime-prompt=runs/T086/prompts/planner-attempt-1.md
 [2026-08-17T13:52:36Z] compose: preferring on-disk runs/T086/plan.md over chatty stdout (agent Write beat meta-report)
 [2026-08-17T13:52:36Z] auto-run: step=planner done rc=0
+[2026-08-17T14:34:32Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-17T14:34:32Z] auto-run: running step=tester
+[2026-08-17T14:34:33Z] auto-run: pre-tester rebase failed
+[2026-08-17T14:37:05Z] auto-run: step=tester done rc=0
+[2026-08-17T14:37:05Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-17T14:37:05Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-17T14:37:05Z] commit-checkpoint: unstaged runtime garbage: ['runs/T086/daemon.lock', 'runs/T086/runtime.log', 'runs/T086/workflow-status.md']
+[2026-08-17T14:37:05Z] commit-checkpoint: sha=ca9af76 files=3 title='test(T086/workflow): tester — update 3 file(s)'
+[2026-08-17T14:37:05Z] auto-run: auto-push triggered
+[2026-08-17T14:37:05Z] push: tolerating runtime dirty files (not blocking): ['runs/T086/daemon.lock', 'runs/T086/runtime.log', 'runs/T086/workflow-status.md']
+[2026-08-17T14:37:05Z] push: pushing branch=ticket/T086-fix-shelf-card-hover-state-and-add-focused-netflix
+[2026-08-17T14:37:07Z] push: done branch=ticket/T086-fix-shelf-card-hover-state-and-add-focused-netflix
+[2026-08-17T14:37:08Z] auto-run: TEST_COMPLETE — running PR lifecycle
