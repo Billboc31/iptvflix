@@ -122,4 +122,20 @@ describe('useProgressSync', () => {
 
     expect(upsertProgress).not.toHaveBeenCalled()
   })
+
+  it('uses stableDurationSeconds over video.duration when non-null', () => {
+    const video = makeVideo(1800, 3600)
+    const videoRef = { current: video }
+
+    renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true, 7200))
+
+    act(() => {
+      video.dispatchEvent(new Event('pause'))
+    })
+
+    expect(upsertProgress).toHaveBeenCalledWith('MOVIE', 'movie-1', {
+      progressSeconds: 1800,
+      durationSeconds: 7200,
+    })
+  })
 })

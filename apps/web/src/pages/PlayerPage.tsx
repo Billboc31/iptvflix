@@ -81,7 +81,9 @@ export default function PlayerPage() {
   stableDurationRef.current = stableDurationSeconds
 
   useEffect(() => {
-    if (status === 'ready') {
+    if (status === 'loading') {
+      setStableDurationSeconds(null)
+    } else if (status === 'ready') {
       setStableDurationSeconds(probeDurationSeconds)
     }
   }, [status, probeDurationSeconds])
