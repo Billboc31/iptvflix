@@ -139,6 +139,7 @@ export async function resolvePlayback(
       audioLanguage: r.audioLanguage,
       subtitleLanguage: r.subtitleLanguage,
       videoQuality: r.videoQuality,
+      containerExtension: r.containerExtension,
       // Use cached codec info for compatibility scoring if available
       videoCodec: getProbe(r.id)?.videoCodec ?? null,
     }))
@@ -165,19 +166,19 @@ export async function resolvePlayback(
   const startPositionSeconds = await fetchProgress(profileId, mediaType, mediaId)
 
   let providerStreamUrl: string
+  // Use the catalog extension. Forcing .m3u8 broke this panel (HTTP 551);
+  // residential probes showed .mkv/.mp4 as the working shapes.
   let containerExtension = selected.containerExtension ?? 'ts'
   if (source.type === 'XTREAM') {
-    // Serve Xtream as provider-native HLS and redirect the browser to the
-    // panel. Proxying from Railway is blocked by Cloudflare (403), which was
-    // incorrectly shown as "source expirée".
-    const playbackExt = 'm3u8'
+    // Proxying from Railway is blocked by Cloudflare (403). Redirect the
+    // browser to the provider URL so the request uses the viewer network.
     if (mediaType === 'movie') {
       providerStreamUrl = buildXtreamMovieUrl(
         source.baseUrl,
         source.username ?? '',
         source.password ?? '',
         selected.providerItemId,
-        playbackExt,
+        containerExtension,
       )
     } else {
       providerStreamUrl = buildXtreamEpisodeUrl(
@@ -185,11 +186,10 @@ export async function resolvePlayback(
         source.username ?? '',
         source.password ?? '',
         selected.providerItemId,
-        playbackExt,
+        containerExtension,
       )
     }
     providerStreamUrl = browserSafeXtreamUrl(providerStreamUrl)
-    containerExtension = playbackExt
   } else if (source.type === 'M3U') {
     providerStreamUrl = buildM3UStreamUrl(selected.providerItemId)
   } else {

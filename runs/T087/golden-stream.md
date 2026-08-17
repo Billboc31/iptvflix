@@ -1,59 +1,44 @@
 # T087 — Golden Stream Selection
 
-**Status: BLOCKED — requires running find-golden-stream.ts against the production DATABASE_URL**
+**Status: FILLED — residential + Railway probes completed 2026-08-17**
 
-## How to run
-
-From the `apps/api/` directory, with the Railway production DATABASE_URL:
-
-```bash
-DATABASE_URL="<railway-postgres-url>" npx tsx scripts/find-golden-stream.ts
-```
-
-The script outputs sanitized metadata (no credentials) for the 5 most-recently-seen AVAILABLE Xtream movie availabilities with a non-null `container_extension`.
-
-## Selected golden stream
-
-> Fill in after running the script. Never write real credentials here.
+## Selected golden stream (primary)
 
 | Field | Value |
 |-------|-------|
-| Movie title | `[FILL IN]` |
-| Movie ID | `[FILL IN]` |
-| Availability ID | `[FILL IN]` |
-| Source ID | `[FILL IN]` |
-| Source name | `[FILL IN]` |
-| Xtream stream ID | `[FILL IN]` |
-| Container extension | `[FILL IN]` |
-| Video quality | `[FILL IN]` |
-| Audio language | `[FILL IN]` |
+| Movie title | Spider-Man: No Way Home |
+| Movie ID | `6a0c1ad8-69e8-4675-85d0-12a3c2fdff38` |
+| Availability ID | `0dd848ec-310a-45d4-b29c-07105de5c9f2` |
+| Source ID | `bfd910e1-7a35-4e2b-96b8-0f3366576f56` |
+| Source name | strong8k |
+| Xtream stream ID | `344921` |
+| Catalog container_extension | often `ts` (catalog) |
+| **Working extension (residential)** | **`mkv`** |
+| Video quality | 4K (3840×1608) |
+| Audio language | (default selection) |
+
+## Browser-friendly alternate (same movie)
+
+| Field | Value |
+|-------|-------|
+| Raw title | EN - Spider-Man: No Way Home (2021) |
+| Availability ID | `2cc6942d-e6d4-48e1-9071-ccc65e88efed` |
+| Xtream stream ID | `336591` |
+| Working extension | **`mp4`** |
+| Codecs | **h264** 1920×800 + **aac** 6ch |
+| Duration | ~8889 s |
 
 ## URL shape (credentials redacted)
 
 ```
-[FILL IN e.g. http://provider.example:8080/movie/[REDACTED]/[REDACTED]/12345.mkv]
+https://cf.tviso.tech/movie/[REDACTED]/[REDACTED]/{streamId}.{ext}
 ```
+
+Verified against live panel:
+- Pattern `/movie/{user}/{pass}/{id}.{ext}` is correct.
+- `.m3u8` and `.ts` → **HTTP 551** from residential.
+- `.mkv` / `.mp4` → **HTTP 206** with real media (after 302 to origin CDN).
 
 ## URL construction verification
 
-`buildXtreamMovieUrl()` in `apps/api/src/providers/xtream/playback.ts:4` generates:
-
-```
-{base_url}/movie/{username}/{password}/{xtream_stream_id}.{container_extension}
-```
-
-The script verifies the output matches the pattern `/movie/[REDACTED]/[REDACTED]/{id}.{ext}`.
-
-Expected result from script: `URL shape valid: YES (/movie/{user}/{pass}/{id}.{ext})`
-
-## Provider API confirmation
-
-Confirm the URL shape against the provider API by running from a residential network:
-
-```bash
-# Replace <real-url> with the actual URL (never commit it)
-curl -v -L --max-time 10 "<real-url>" -o /dev/null 2>&1 | grep -E "^[<>*]"
-```
-
-Expected: HTTP 200 or 206, `Content-Type: video/*` or `application/octet-stream`.
-If 403 from residential: provider auth/URL is broken — stop and fix before continuing.
+`buildXtreamMovieUrl()` matches the live panel. Forcing `.m3u8` in resolve (previous hotfix) was **wrong for this provider**.

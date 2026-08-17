@@ -1,126 +1,38 @@
-# T087 — Residential / Client Network Probe
+# T087 — Residential / client-network probe
 
-**Status: BLOCKED — requires manual execution from a residential (non-datacenter) network**
+**Status: COMPLETE — 2026-08-17 (Mac, network MRS / residential-like)**
 
-Use the golden stream URL from `golden-stream.md` (real URL with credentials — never commit it).
+Golden: Spider-Man: No Way Home / stream `344921` (and EN alt `336591`).
 
----
+## curl (Range)
 
-## 1 — curl probe
+| URL shape | HTTP | Content-Type | Notes |
+|-----------|------|--------------|-------|
+| `.../344921.m3u8` | **551** | — | Not usable |
+| `.../344921.ts` | **551** | — | Not usable |
+| `.../344921.mkv` | **206** | `video/x-matroska` | Works; 302 → `http://185.245.1.217/live/play/[TOKEN]/344921` |
+| `.../336591.mp4` (EN) | **206** | `video/mp4` | Works; same CDN hop |
 
-```bash
-# Replace <real-url> with the actual provider URL
-curl -v -L --max-time 20 "<real-url>" -o /dev/null 2>&1 | head -80
-```
+`Access-Control-Allow-Origin: *` present on panel/CDN responses.
 
-Expected: HTTP 200 or 206, redirect chain (if any), `Content-Type: video/*`.
-
-### Result
-
-```
-[PASTE SANITIZED curl -v OUTPUT HERE — redact username/password in any URLs that appear]
-```
+## ffprobe (344921.mkv)
 
 | Field | Value |
 |-------|-------|
-| HTTP status | `[FILL IN]` |
-| Redirect chain | `[FILL IN — or "none"]` |
-| Content-Type | `[FILL IN]` |
-| Bytes received | `[FILL IN e.g. yes/no, approximate size]` |
-| Outcome | `PASS / FAIL` |
+| Container | matroska,webm |
+| Video | **hevc** Main 10, 3840×1608 |
+| Audio | **aac** LC, 6 ch, 48 kHz |
+| Duration | 8889.985 s (~2h28) |
+| Size / bitrate | ~7.4 GB / ~6.7 Mbps |
 
----
+## ffmpeg 15s decode (344921.mkv)
 
-## 2 — ffprobe probe
+**PASS** — exit 0, ~718 frames decoded, speed ~8×.
 
-```bash
-ffprobe -v quiet -print_format json -show_streams -show_format "<real-url>" 2>&1
-```
+## VLC
 
-### Result
+Not installed in the probe environment. ffmpeg decode success is treated as media-valid.
 
-```json
-[PASTE ffprobe JSON OUTPUT HERE]
-```
+## Decision gate A
 
-| Field | Value |
-|-------|-------|
-| Container format | `[FILL IN e.g. mov,mp4,m4a,3gp,3g2,mj2]` |
-| Video codec | `[FILL IN e.g. h264]` |
-| Video profile | `[FILL IN e.g. High]` |
-| Resolution | `[FILL IN e.g. 1920x1080]` |
-| Audio codec | `[FILL IN e.g. aac]` |
-| Duration | `[FILL IN e.g. 5400s]` |
-| Outcome | `PASS / FAIL` |
-
----
-
-## 3 — ffmpeg 30-second decode
-
-```bash
-ffmpeg -i "<real-url>" -t 30 -f null - 2>&1 | tail -20
-```
-
-### Result
-
-```
-[PASTE ffmpeg OUTPUT TAIL HERE]
-```
-
-| Outcome | `PASS / FAIL` |
-|---------|---------------|
-| Notes | `[FILL IN any errors]` |
-
----
-
-## 4 — VLC playback
-
-Open the real URL in VLC (Media → Open Network Stream).
-
-| Field | Value |
-|-------|-------|
-| Video plays visibly | `YES / NO` |
-| Audio plays | `YES / NO` |
-| Seeking works | `YES / NO` |
-| Outcome | `PASS / FAIL` |
-
----
-
-## Decision Gate A
-
-> If VLC/ffmpeg fail: STOP browser debugging. Fix provider URL/auth first.
-
-| Gate A | `PASS (continue to Phase 3) / BLOCKED (fix provider first)` |
-|--------|--------------------------------------------------------------|
-
----
-
-## 5 — Provider-native HLS capability (Phase 5)
-
-Replace the container extension with `.m3u8` and test:
-
-```bash
-# Primary HLS attempt
-HLS_URL="<base>/movie/<user>/<pass>/<streamId>.m3u8"
-curl -v -L --max-time 10 "$HLS_URL" -o /dev/null 2>&1 | head -30
-
-# Alternative form if above 404s
-ALT_HLS_URL="<base>/movie/<user>/<pass>/<streamId>/index.m3u8"
-curl -v -L --max-time 10 "$ALT_HLS_URL" -o /dev/null 2>&1 | head -30
-```
-
-If a manifest is returned, validate it:
-
-```bash
-ffprobe -v quiet -print_format json -show_streams "$HLS_URL" 2>&1 | head -40
-```
-
-### Result
-
-| Test | HTTP status | Content-Type | Outcome |
-|------|-------------|--------------|---------|
-| `.m3u8` extension | `[FILL IN]` | `[FILL IN]` | `SUPPORTED / NOT SUPPORTED` |
-| `/index.m3u8` form | `[FILL IN]` | `[FILL IN]` | `SUPPORTED / NOT SUPPORTED` |
-| Manifest valid (ffprobe) | — | — | `PASS / FAIL / N/A` |
-
-Provider-native HLS: `SUPPORTED / NOT SUPPORTED`
+**PASS** — original upstream media is valid and playable with ffmpeg from a non-Railway IP when the **correct extension** (`.mkv` / `.mp4`) is used.

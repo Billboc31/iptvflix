@@ -1,79 +1,44 @@
-# T087 — Railway Runtime Probe
+# T087 — Railway runtime probe
 
-**Status: BLOCKED — requires calling the deployed Railway diag endpoint with a real availability ID**
+**Status: COMPLETE — 2026-08-17**
 
-The diag endpoint (`GET /playback/diag/:availabilityId`) has been extended in this ticket to expose:
-- `upstreamContentType` — Content-Type header from the upstream response
-- `upstreamIsMediaBody` — `true` if Content-Type indicates media (video/* or octet-stream or HLS)
-- `upstreamRedirectFinalUrl` — final URL after redirects, credentials masked as `[REDACTED]`
+API: `https://iptvflixapi-production.up.railway.app`  
+Availability: `0dd848ec-310a-45d4-b29c-07105de5c9f2`
 
----
-
-## How to call
-
-Obtain a valid JWT admin token first (sign in at `POST /auth/login`), then:
-
-```bash
-RAILWAY_API="https://iptvflixapi-production.up.railway.app"
-AVAILABILITY_ID="<availability_id from golden-stream.md>"
-TOKEN="<admin JWT>"
-
-curl -s \
-  -H "Authorization: Bearer $TOKEN" \
-  "$RAILWAY_API/playback/diag/$AVAILABILITY_ID" | jq .
-```
-
----
-
-## Result
+## diag response (sanitized)
 
 ```json
-[PASTE FULL JSON RESPONSE HERE]
+{
+  "availabilityId": "0dd848ec-310a-45d4-b29c-07105de5c9f2",
+  "upstreamReachable": false,
+  "upstreamHttpStatus": 403,
+  "upstreamContentType": "text/plain; charset=UTF-8",
+  "upstreamIsMediaBody": false,
+  "upstreamRedirectFinalUrl": "http://104.21.67.253/movie/[REDACTED]/[REDACTED]/344921.ts",
+  "detectedContainer": null,
+  "detectedVideoCodec": null,
+  "detectedAudioCodec": null,
+  "deliveryMode": "DIRECT",
+  "ffmpegAvailable": true,
+  "ffprobeAvailable": true,
+  "sessionActive": true,
+  "manifestReady": null,
+  "segmentCount": null,
+  "lastFfmpegError": null
+}
 ```
 
----
+## proxy attempt
+
+`GET /playback/stream/:sessionId?proxy=1` → **502** with upstream **403** (Cloudflare).
 
 ## Analysis
 
 | Field | Value |
 |-------|-------|
-| `upstreamHttpStatus` | `[FILL IN]` |
-| `upstreamContentType` | `[FILL IN]` |
-| `upstreamIsMediaBody` | `[FILL IN]` |
-| `upstreamRedirectFinalUrl` | `[FILL IN — already masked by server]` |
-| `upstreamReachable` | `[FILL IN]` |
-| `ffmpegAvailable` | `[FILL IN]` |
-| `ffprobeAvailable` | `[FILL IN]` |
+| `upstreamHttpStatus` | **403** |
+| `upstreamIsMediaBody` | **false** |
+| ffmpeg/ffprobe on Railway | **true** (binaries present, unused because fetch fails) |
+| **RAILWAY_PROVIDER_BLOCK_CONFIRMED** | **yes** |
 
----
-
-## RAILWAY_PROVIDER_BLOCK_CONFIRMED
-
-Based on the actual HTTP status returned by the endpoint:
-
-| Condition | Result |
-|-----------|--------|
-| `upstreamHttpStatus` = 403 AND residential probe returned 200/206 | `RAILWAY_PROVIDER_BLOCK_CONFIRMED: yes` |
-| `upstreamHttpStatus` = 200 or 206 | `RAILWAY_PROVIDER_BLOCK_CONFIRMED: no` |
-| Other status | `RAILWAY_PROVIDER_BLOCK_CONFIRMED: inconclusive — see notes` |
-
-**RAILWAY_PROVIDER_BLOCK_CONFIRMED: `[yes / no / inconclusive]`**
-
-Evidence: HTTP status from Railway = `[FILL IN]`, HTTP status from residential = `[FILL IN from probe-residential.md]`
-
----
-
-## Additional Railway shell probes (optional, if Railway CLI access is available)
-
-```bash
-# From Railway shell (railway run bash):
-# 1. Verify ffmpeg/ffprobe are present
-ffmpeg -version 2>&1 | head -3
-ffprobe -version 2>&1 | head -3
-
-# 2. Direct curl from Railway egress IP
-#    Use the real URL — do NOT commit output if credentials appear
-curl -v -L --max-time 10 "<real-url>" -o /dev/null 2>&1 | grep -E "^[<>*]"
-```
-
-If Railway CLI is not available, the diag endpoint result above is sufficient to confirm or deny the block.
+Railway can talk to `player_api` (source test OK) but **cannot** pull VOD bytes through `cf.tviso.tech` (Cloudflare blocks datacenter egress). Origin CDN `http://185.245.1.217` was not reachable for probing from Railway without first obtaining the tokenized path (token only issued after a successful CF hop).

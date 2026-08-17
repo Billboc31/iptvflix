@@ -257,6 +257,17 @@ describe('unknown metadata is not silently dropped', () => {
   })
 })
 
+describe('container extension preference', () => {
+  it('prefers mp4 over mkv when other scores are equal', () => {
+    const variants = [
+      makeVariant({ id: 'v-mkv', containerExtension: 'mkv', videoQuality: '1080p' }),
+      makeVariant({ id: 'v-mp4', containerExtension: 'mp4', videoQuality: '1080p' }),
+    ]
+    const result = resolveVariant(variants, EMPTY_PREFS)
+    expect(result.selectedVariantId).toBe('v-mp4')
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Tie-break determinism
 // ---------------------------------------------------------------------------

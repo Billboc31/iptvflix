@@ -7,6 +7,8 @@ export type ResolvableVariant = {
   audioLanguage: string | null
   subtitleLanguage: string | null
   videoQuality: string | null
+  /** Used to prefer browser-native containers (mp4) over mkv/ts when selecting. */
+  containerExtension?: string | null
 }
 
 export type ResolveResult = {
@@ -28,10 +30,19 @@ export function isAboveCap(quality: string | null, maxVideoQuality: string | nul
   return (QUALITY_ORDER[quality] as number) > capRank
 }
 
+function containerRank(ext: string | null | undefined): number {
+  const e = (ext ?? '').toLowerCase()
+  if (e === 'mp4' || e === 'm4v') return 0
+  if (e === 'm3u8' || e === 'm3u') return 1
+  if (e === 'mkv') return 2
+  if (e === 'ts' || e === 'm2ts') return 3
+  return 4
+}
+
 function scoreTuple(
   variant: ResolvableVariant,
   prefs: ProfilePreferences,
-): [number, number, number, number, string] {
+): [number, number, number, number, number, string] {
   const audioIdx = variant.audioLanguage !== null
     ? prefs.preferredAudioLanguages.indexOf(variant.audioLanguage)
     : -1
@@ -45,20 +56,24 @@ function scoreTuple(
   const srcIdx = prefs.preferredSourceIds.indexOf(variant.providerId)
   const sourceScore = srcIdx >= 0 ? srcIdx : prefs.preferredSourceIds.length
 
+  // Prefer progressive mp4 over mkv/ts so HTTPS web players have a chance
+  // (mkv/hevc need remux; provider-native m3u8 is often unsupported on this panel).
+  const containerScore = containerRank(variant.containerExtension)
+
   const qualityScore = -qualityRank(variant.videoQuality)
 
-  return [audioScore, subtitleScore, sourceScore, qualityScore, variant.id]
+  return [audioScore, subtitleScore, sourceScore, containerScore, qualityScore, variant.id]
 }
 
 function compareTuples(
-  a: [number, number, number, number, string],
-  b: [number, number, number, number, string],
+  a: [number, number, number, number, number, string],
+  b: [number, number, number, number, number, string],
 ): number {
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     const diff = (a[i] as number) - (b[i] as number)
     if (diff !== 0) return diff
   }
-  return a[4] < b[4] ? -1 : a[4] > b[4] ? 1 : 0
+  return a[5] < b[5] ? -1 : a[5] > b[5] ? 1 : 0
 }
 
 function resolveReason(

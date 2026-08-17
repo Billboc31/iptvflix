@@ -344,7 +344,7 @@ describe('explicit availabilityId', () => {
 
     expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
-      expect.objectContaining({ containerExtension: 'm3u8' }),
+      expect.objectContaining({ containerExtension: 'mkv' }),
     )
   })
 })
@@ -366,7 +366,7 @@ describe('Xtream movie URL construction', () => {
 
     expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
-      expect.objectContaining({ containerExtension: 'm3u8' }),
+      expect.objectContaining({ containerExtension: 'mp4' }),
     )
   })
 
@@ -382,7 +382,7 @@ describe('Xtream movie URL construction', () => {
 
     expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
-      expect.objectContaining({ containerExtension: 'm3u8' }),
+      expect.objectContaining({ containerExtension: 'mkv' }),
     )
   })
 
@@ -398,7 +398,7 @@ describe('Xtream movie URL construction', () => {
 
     expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
-      expect.objectContaining({ containerExtension: 'm3u8' }),
+      expect.objectContaining({ containerExtension: 'ts' }),
     )
   })
 })
@@ -416,7 +416,7 @@ describe('Xtream episode URL construction', () => {
 
     expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
-      expect.objectContaining({ containerExtension: 'm3u8', mediaType: 'episode' }),
+      expect.objectContaining({ containerExtension: 'mp4', mediaType: 'episode' }),
     )
   })
 
@@ -432,7 +432,7 @@ describe('Xtream episode URL construction', () => {
 
     expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
-      expect.objectContaining({ containerExtension: 'm3u8', mediaType: 'episode' }),
+      expect.objectContaining({ containerExtension: 'ts', mediaType: 'episode' }),
     )
   })
 })
