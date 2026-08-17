@@ -97,6 +97,8 @@ export default function SeasonSelector({ seriesId, seasons, profileId, devices, 
               episode={ep}
               devices={devices}
               progressMs={progressByEpisodeId?.[ep.id] ?? 0}
+              seriesId={seriesId}
+              seasonNumber={selectedSeason}
             />
           ))}
         </div>

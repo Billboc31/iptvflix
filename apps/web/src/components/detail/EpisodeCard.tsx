@@ -8,9 +8,11 @@ type Props = {
   episode: EpisodeResponse
   devices?: DeviceResponse[]
   progressMs?: number
+  seriesId?: string
+  seasonNumber?: number
 }
 
-export default function EpisodeCard({ episode, devices = [], progressMs = 0 }: Props) {
+export default function EpisodeCard({ episode, devices = [], progressMs = 0, seriesId, seasonNumber }: Props) {
   const navigate = useNavigate()
   const toast = useToast()
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -63,13 +65,14 @@ export default function EpisodeCard({ episode, devices = [], progressMs = 0 }: P
             <>
               <button
                 type="button"
-                onClick={() =>
-                  navigate(
-                    `/player/episode/${episode.id}${
-                      episode.selectedVariantId ? `?availabilityId=${episode.selectedVariantId}` : ''
-                    }`,
-                  )
-                }
+                onClick={() => {
+                  const params = new URLSearchParams()
+                  if (episode.selectedVariantId) params.set('availabilityId', episode.selectedVariantId)
+                  if (seriesId) params.set('seriesId', seriesId)
+                  if (seasonNumber != null) params.set('seasonNumber', String(seasonNumber))
+                  const qs = params.toString()
+                  navigate(`/player/episode/${episode.id}${qs ? `?${qs}` : ''}`)
+                }}
                 className="inline-flex items-center min-h-[44px] text-[#e50914] hover:text-[#e50914]/80 font-medium transition-colors"
                 aria-label={`Lire l'épisode ${episode.episodeNumber}`}
               >

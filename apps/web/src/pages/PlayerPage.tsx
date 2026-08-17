@@ -1,13 +1,22 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import type { ProgressMediaType } from '@iptvflix/api-contracts'
 import { usePlayback } from '../hooks/usePlayback.js'
 import { useProgressSync } from '../hooks/useProgressSync.js'
+import { useEpisodeNavigation } from '../hooks/useEpisodeNavigation.js'
 import PlayerControls from '../components/player/PlayerControls.js'
+import type { AudioTrack, SubtitleTrack } from '../components/player/PlayerControls.js'
 import ErrorState from '../components/ui/ErrorState.js'
 import { getStoredAuthToken } from '../lib/api.js'
+import { updateProfilePreferences } from '../lib/api.js'
 import { resolveMediaUrl } from '../lib/media-url.js'
 import { isHlsContainer, isMpegTsContainer, videoErrorMessage } from '../lib/player-errors.js'
+import { formatTime } from '../lib/format-time.js'
+import { getLanguageName } from '../lib/language-names.js'
+
+// Resume dialog thresholds
+const RESUME_THRESHOLD_START_S = 30
+const RESUME_THRESHOLD_END_S = 60
 
 // Named map for MediaError codes (Safari Web Inspector visibility)
 const MEDIA_ERROR_NAMES: Record<number, string> = {
@@ -40,14 +49,24 @@ export default function PlayerPage() {
   const navigate = useNavigate()
   const videoRef = useRef<HTMLVideoElement>(null)
   const httpStatusRef = useRef<number | undefined>(undefined)
+  const hlsRef = useRef<import('hls.js').default | null>(null)
 
   // Diagnostic: event sequence log reset on each load()
   const eventLogRef = useRef<Array<{ event: string; t: number }>>([])
 
   const initialAvailabilityId = searchParams.get('availabilityId') ?? undefined
+  const seriesId = searchParams.get('seriesId') ?? null
+  const seasonNumber = searchParams.get('seasonNumber') ? Number(searchParams.get('seasonNumber')) : null
   const resolvedMediaType = mediaType === 'movie' ? 'movie' : 'episode'
 
   const [videoError, setVideoError] = useState<string | null>(null)
+  const [showResumeDialog, setShowResumeDialog] = useState(false)
+
+  // HLS.js audio/subtitle state
+  const [audioTracks, setAudioTracks] = useState<AudioTrack[]>([])
+  const [currentAudioTrack, setCurrentAudioTrack] = useState(0)
+  const [subtitleTracks, setSubtitleTracks] = useState<SubtitleTrack[]>([])
+  const [currentSubtitleTrack, setCurrentSubtitleTrack] = useState<number | null>(null)
 
   const { gatewayUrl, deliveryMode, containerExtension, startPositionSeconds, alternatives, availabilityId, status, error, switchVariant } = usePlayback(
     resolvedMediaType as 'movie' | 'episode',
@@ -56,8 +75,59 @@ export default function PlayerPage() {
   )
 
   const progressMediaType: ProgressMediaType = mediaType === 'movie' ? 'MOVIE' : 'EPISODE'
+  const { flushProgress } = useProgressSync(videoRef, progressMediaType, mediaId!, status === 'ready')
 
-  useProgressSync(videoRef, progressMediaType, mediaId!, status === 'ready')
+  // Episode navigation
+  const { episodeLabel, nextEpisode } = useEpisodeNavigation(
+    resolvedMediaType === 'episode' ? (mediaId ?? null) : null,
+    seriesId,
+    seasonNumber,
+  )
+
+  function handleNextEpisode() {
+    if (!nextEpisode) return
+    flushProgress()
+    const params = new URLSearchParams()
+    if (nextEpisode.selectedVariantId) params.set('availabilityId', nextEpisode.selectedVariantId)
+    if (seriesId) params.set('seriesId', seriesId)
+    if (seasonNumber != null) params.set('seasonNumber', String(seasonNumber))
+    const qs = params.toString()
+    navigate(`/player/episode/${nextEpisode.id}${qs ? `?${qs}` : ''}`)
+  }
+
+  const handleVariantSwitch = useCallback((id: string) => {
+    flushProgress()
+    switchVariant(id)
+  }, [flushProgress, switchVariant])
+
+  // Audio track change handler
+  function handleAudioTrack(id: number) {
+    const hls = hlsRef.current
+    if (hls) hls.audioTrack = id
+    setCurrentAudioTrack(id)
+    // Persist language preference
+    const track = audioTracks.find((t) => t.id === id)
+    if (track?.lang) {
+      updateProfilePreferences({ preferredAudioLanguages: [track.lang] }).catch(() => undefined)
+    }
+  }
+
+  // Subtitle track change handler
+  function handleSubtitleTrack(id: number | null) {
+    const hls = hlsRef.current
+    if (hls) {
+      hls.subtitleTrack = id ?? -1
+      hls.subtitleDisplay = id !== null
+    }
+    setCurrentSubtitleTrack(id)
+    // Persist language preference
+    if (id !== null) {
+      const track = subtitleTracks.find((t) => t.id === id)
+      if (track?.lang) {
+        updateProfilePreferences({ preferredSubtitleLanguages: [track.lang] }).catch(() => undefined)
+      }
+    }
+  }
 
   // Load stream into video element when gateway URL is ready.
   useEffect(() => {
@@ -76,6 +146,12 @@ export default function PlayerPage() {
     httpStatusRef.current = undefined
     eventLogRef.current = []
     setVideoError(null)
+    setShowResumeDialog(false)
+    setAudioTracks([])
+    setCurrentAudioTrack(0)
+    setSubtitleTracks([])
+    setCurrentSubtitleTrack(null)
+    hlsRef.current = null
 
     const mediaUrl = resolveMediaUrl(gatewayUrl)
     const authToken = getStoredAuthToken()
@@ -106,12 +182,47 @@ export default function PlayerPage() {
                 if (authToken) xhr.setRequestHeader('Authorization', `Bearer ${authToken}`)
               },
             })
+
+            hlsRef.current = hlsInstance
+
             hlsInstance.on(Hls.Events.ERROR, (_event, data) => {
               if (!data.fatal || cancelled) return
               const status = typeof data.response?.code === 'number' ? data.response.code : undefined
               if (status) httpStatusRef.current = status
               setVideoError(videoErrorMessage(video, status))
             })
+
+            // Audio track management
+            hlsInstance.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
+              if (cancelled || !hlsInstance) return
+              setAudioTracks(
+                hlsInstance.audioTracks.map((t) => ({
+                  id: t.id,
+                  label: getLanguageName(t.lang || t.name),
+                  lang: t.lang ?? '',
+                })),
+              )
+              setCurrentAudioTrack(hlsInstance.audioTrack)
+            })
+            hlsInstance.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_e, data) => {
+              if (!cancelled) setCurrentAudioTrack(data.id)
+            })
+
+            // Subtitle track management
+            hlsInstance.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
+              if (cancelled || !hlsInstance) return
+              setSubtitleTracks(
+                hlsInstance.subtitleTracks.map((t) => ({
+                  id: t.id,
+                  label: t.name ?? getLanguageName(t.lang),
+                  lang: t.lang ?? '',
+                })),
+              )
+            })
+            hlsInstance.on(Hls.Events.SUBTITLE_TRACK_SWITCH, (_e, data) => {
+              if (!cancelled) setCurrentSubtitleTrack(data.id < 0 ? null : data.id)
+            })
+
             hlsInstance.loadSource(mediaUrl)
             hlsInstance.attachMedia(video)
             hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -176,6 +287,7 @@ export default function PlayerPage() {
 
     return () => {
       cancelled = true
+      hlsRef.current = null
       hlsInstance?.destroy()
       mpegtsPlayer?.destroy()
       video.src = ''
@@ -230,18 +342,43 @@ export default function PlayerPage() {
     return () => video.removeEventListener('error', onError)
   }, [gatewayUrl, deliveryMode])
 
-  // Set resume position on metadata ready
+  // Resume dialog and seek-to-saved-position on metadata ready
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
     function onMetadata() {
-      if (video && startPositionSeconds > 0) {
+      if (!video) return
+      const dur = video.duration
+      if (
+        startPositionSeconds > RESUME_THRESHOLD_START_S &&
+        isFinite(dur) &&
+        startPositionSeconds < dur - RESUME_THRESHOLD_END_S
+      ) {
+        video.pause()
+        setShowResumeDialog(true)
+      } else if (startPositionSeconds > 0) {
         video.currentTime = startPositionSeconds
       }
     }
     video.addEventListener('loadedmetadata', onMetadata)
     return () => video.removeEventListener('loadedmetadata', onMetadata)
   }, [startPositionSeconds])
+
+  function handleResumeConfirm() {
+    const video = videoRef.current
+    if (!video) return
+    video.currentTime = startPositionSeconds
+    void video.play()?.catch(() => undefined)
+    setShowResumeDialog(false)
+  }
+
+  function handleRestart() {
+    const video = videoRef.current
+    if (!video) return
+    video.currentTime = 0
+    void video.play()?.catch(() => undefined)
+    setShowResumeDialog(false)
+  }
 
   function handleBack() {
     videoRef.current?.pause()
@@ -294,13 +431,52 @@ export default function PlayerPage() {
         </div>
       )}
 
+      {/* Resume dialog */}
+      {showResumeDialog && !videoError && (
+        <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/60">
+          <div className="bg-[#1a1a24] border border-white/10 rounded-lg p-6 max-w-sm w-full mx-4 text-center">
+            <p className="text-white text-base font-medium mb-5">
+              Reprendre à {formatTime(startPositionSeconds)} ?
+            </p>
+            <div className="flex gap-3 justify-center">
+              <button
+                type="button"
+                onClick={handleResumeConfirm}
+                className="px-5 py-2 bg-white text-black text-sm font-semibold rounded hover:bg-white/90 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+              >
+                Reprendre à {formatTime(startPositionSeconds)}
+              </button>
+              <button
+                type="button"
+                onClick={handleRestart}
+                className="px-5 py-2 bg-white/10 text-white text-sm font-medium rounded hover:bg-white/20 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+              >
+                Recommencer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Custom controls overlay — only when URL is loaded */}
       {!videoError && (status === 'ready' || status === 'idle') && (
         <PlayerControls
           videoRef={videoRef}
           alternatives={alternatives}
-          onVariantSwitch={switchVariant}
+          onVariantSwitch={handleVariantSwitch}
           onClose={handleBack}
+          currentVariantId={availabilityId}
+          audioTracks={audioTracks}
+          currentAudioTrack={currentAudioTrack}
+          onAudioTrack={handleAudioTrack}
+          subtitleTracks={subtitleTracks}
+          currentSubtitleTrack={currentSubtitleTrack}
+          onSubtitleTrack={handleSubtitleTrack}
+          episodeLabel={episodeLabel}
+          nextEpisode={nextEpisode}
+          onNextEpisode={handleNextEpisode}
+          markers={[]}
+          deliveryMode={deliveryMode}
         />
       )}
     </div>
