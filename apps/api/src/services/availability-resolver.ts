@@ -33,10 +33,11 @@ export function isAboveCap(quality: string | null, maxVideoQuality: string | nul
 function containerRank(ext: string | null | undefined): number {
   const e = (ext ?? '').toLowerCase()
   if (e === 'mp4' || e === 'm4v') return 0
-  if (e === 'm3u8' || e === 'm3u') return 1
-  if (e === 'mkv') return 2
-  if (e === 'ts' || e === 'm2ts') return 3
-  return 4
+  if (e === 'mkv') return 1
+  // Provider-native HLS/.ts are often blocked (HTTP 551) on this panel — prefer last.
+  if (e === 'm3u8' || e === 'm3u') return 3
+  if (e === 'ts' || e === 'm2ts') return 4
+  return 2
 }
 
 function scoreTuple(

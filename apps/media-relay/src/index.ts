@@ -69,6 +69,47 @@ async function fetchUpstream(url: string, range?: string): Promise<Response> {
   return fetch(url, { headers, redirect: 'follow' })
 }
 
+/** Swap movie/series file extension: …/123.ts → …/123.mkv */
+function withExtension(url: string, ext: string): string {
+  try {
+    const u = new URL(url)
+    u.pathname = u.pathname.replace(/\.[a-z0-9]+$/i, `.${ext}`)
+    return u.toString()
+  } catch {
+    return url.replace(/\.[a-z0-9]+$/i, `.${ext}`)
+  }
+}
+
+async function resolveWorkingUpstream(url: string, hintedExt: string): Promise<{ url: string; ext: string }> {
+  const preferred = ['mkv', 'mp4', 'm4v', hintedExt, 'ts'].filter(Boolean)
+  const seen = new Set<string>()
+  const candidates: Array<{ url: string; ext: string }> = []
+  for (const ext of preferred) {
+    const e = ext.toLowerCase().replace(/^\./, '')
+    const candidate = withExtension(url, e)
+    if (seen.has(candidate)) continue
+    seen.add(candidate)
+    candidates.push({ url: candidate, ext: e })
+  }
+  // Always try original URL last if not already listed
+  if (!seen.has(url)) candidates.push({ url, ext: hintedExt })
+
+  for (const c of candidates) {
+    try {
+      const res = await fetchUpstream(c.url, 'bytes=0-1')
+      if (res.status === 200 || res.status === 206) {
+        // Drain tiny body so the socket can close cleanly
+        await res.arrayBuffer().catch(() => undefined)
+        return c
+      }
+      await res.arrayBuffer().catch(() => undefined)
+    } catch {
+      /* try next */
+    }
+  }
+  return { url, ext: hintedExt }
+}
+
 function startRemux(sessionId: string, upstreamUrl: string): RemuxSession {
   const dir = join(ROOT, sessionId)
   mkdirSync(dir, { recursive: true })
@@ -85,6 +126,13 @@ function startRemux(sessionId: string, upstreamUrl: string): RemuxSession {
       UA,
       '-i',
       upstreamUrl,
+      // Drop subtitle/data streams — HLS remux chokes on some VTT/PGS tracks.
+      '-map',
+      '0:v:0',
+      '-map',
+      '0:a:0?',
+      '-sn',
+      '-dn',
       '-c',
       'copy',
       '-f',
@@ -93,6 +141,8 @@ function startRemux(sessionId: string, upstreamUrl: string): RemuxSession {
       '4',
       '-hls_list_size',
       '0',
+      '-hls_flags',
+      'independent_segments',
       '-hls_segment_filename',
       segmentPattern,
       playlist,
@@ -139,14 +189,18 @@ app.get<{ Querystring: { ticket?: string } }>('/v1/play', async (request, reply)
     return reply.status(401).send({ error: msg })
   }
 
-  const ext = (payload.e || 'mp4').toLowerCase().replace(/^\./, '')
+  const hintedExt = (payload.e || 'mp4').toLowerCase().replace(/^\./, '')
+  const resolved = await resolveWorkingUpstream(payload.u, hintedExt)
+  const ext = resolved.ext
+  const upstreamUrl = resolved.url
+  request.log.info({ hintedExt, resolvedExt: ext }, 'upstream extension resolved')
 
   // Native MP4: proxy bytes (Range) over HTTPS — no credentials in browser.
   if (isBrowserNativeMp4(ext) || !needsRemux(ext)) {
     const range = typeof request.headers.range === 'string' ? request.headers.range : undefined
     let upstream: Response
     try {
-      upstream = await fetchUpstream(payload.u, range)
+      upstream = await fetchUpstream(upstreamUrl, range)
     } catch (err) {
       request.log.error({ err }, 'upstream fetch failed')
       return reply.status(502).send({ error: 'upstream_unreachable' })
@@ -176,9 +230,9 @@ app.get<{ Querystring: { ticket?: string } }>('/v1/play', async (request, reply)
 
   // MKV / TS / etc.: remux to HLS on this host (IP not blocked by Cloudflare).
   const sessionId = `r_${createId()}`
-  const session = startRemux(sessionId, payload.u)
+  const session = startRemux(sessionId, upstreamUrl)
   const playlistPath = join(session.dir, 'index.m3u8')
-  const ready = await waitForFile(playlistPath, 20_000)
+  const ready = await waitForFile(playlistPath, 45_000)
   if (!ready) {
     try {
       session.child.kill('SIGKILL')

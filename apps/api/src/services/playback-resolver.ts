@@ -171,6 +171,14 @@ export async function resolvePlayback(
   // Use the catalog extension. Forcing .m3u8 broke this panel (HTTP 551);
   // residential probes showed .mkv/.mp4 as the working shapes.
   let containerExtension = selected.containerExtension ?? 'ts'
+  // Catalog often stores "ts" even when only .mkv/.mp4 bytes work (T087).
+  // Prefer mkv so the media relay can remux instead of hanging on 551 .ts.
+  if (source.type === 'XTREAM') {
+    const rawExt = containerExtension.toLowerCase().replace(/^\./, '')
+    if (!rawExt || rawExt === 'ts' || rawExt === 'm2ts' || rawExt === 'm3u8' || rawExt === 'm3u') {
+      containerExtension = 'mkv'
+    }
+  }
   if (source.type === 'XTREAM') {
     // Proxying from Railway is blocked by Cloudflare (403). Redirect the
     // browser to the provider URL so the request uses the viewer network.
