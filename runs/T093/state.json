@@ -1,0 +1,10 @@
+{
+  "ticket_id": "T093",
+  "state": "TEST_COMPLETE",
+  "branch": "ticket/T093-preserve-and-display-useful-provider-variant-label",
+  "issue_number": 193,
+  "updated_at": "2026-08-17T20:45:19Z",
+  "pre_conflict_state": "IMPLEMENTATION_APPROVED",
+  "conflict_detected_at": "2026-08-17T20:36:58Z",
+  "conflicted_files": []
+}

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { AvailabilityVariantResponse } from '@iptvflix/api-contracts'
 import Badge from '../ui/Badge.js'
+import { formatVariantLabel } from '../../lib/variant-label.js'
 
 type Props = {
   variants: AvailabilityVariantResponse[]
@@ -9,15 +10,6 @@ type Props = {
 }
 
 const COLLAPSED_COUNT = 3
-
-function variantLabel(v: AvailabilityVariantResponse): string {
-  const parts: string[] = []
-  if (v.providerId) parts.push(v.providerId)
-  if (v.audioLanguage) parts.push(v.audioLanguage.toUpperCase())
-  if (v.subtitleLanguage) parts.push(`sub:${v.subtitleLanguage}`)
-  if (v.videoQuality) parts.push(v.videoQuality)
-  return parts.length > 0 ? parts.join(' · ') : (v.rawTitle ?? 'Inconnu')
-}
 
 export default function AvailabilityPanel({ variants, selectedVariantId, onSelectVariant }: Props) {
   const [expanded, setExpanded] = useState(false)
@@ -46,7 +38,7 @@ export default function AvailabilityPanel({ variants, selectedVariantId, onSelec
             }`}
             aria-pressed={selectedVariantId === v.id}
           >
-            <span className="flex-1">{variantLabel(v)}</span>
+            <span className="flex-1">{formatVariantLabel(v, available)}</span>
             <Badge variant="available">Disponible</Badge>
           </button>
         ))}

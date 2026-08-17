@@ -10,6 +10,11 @@ export type AvailabilityVariantResponse = {
   subtitleLanguage: string | null
   videoQuality: string | null
   rawTitle: string | null
+  sourceDisplayName: string | null
+  codecName: string | null
+  hdrFormat: string | null
+  releaseHint: string | null
+  audioFormat: string | null
 }
 
 export type CastMemberResponse = {

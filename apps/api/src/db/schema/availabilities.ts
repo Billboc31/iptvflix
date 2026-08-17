@@ -24,6 +24,10 @@ export const movieAvailabilities = pgTable(
     videoQuality: text('video_quality'),
     rawTitle: text('raw_title'),
     containerExtension: text('container_extension'),
+    codecName: text('codec_name'),
+    hdrFormat: text('hdr_format'),
+    releaseHint: text('release_hint'),
+    audioFormat: text('audio_format'),
   },
   (t) => [
     unique().on(t.movieId, t.providerId, t.providerItemId),
@@ -50,6 +54,10 @@ export const seriesAvailabilities = pgTable(
     videoQuality: text('video_quality'),
     rawTitle: text('raw_title'),
     containerExtension: text('container_extension'),
+    codecName: text('codec_name'),
+    hdrFormat: text('hdr_format'),
+    releaseHint: text('release_hint'),
+    audioFormat: text('audio_format'),
   },
   (t) => [
     unique().on(t.seriesId, t.providerId, t.providerItemId),
@@ -76,6 +84,10 @@ export const episodeAvailabilities = pgTable(
     videoQuality: text('video_quality'),
     rawTitle: text('raw_title'),
     containerExtension: text('container_extension'),
+    codecName: text('codec_name'),
+    hdrFormat: text('hdr_format'),
+    releaseHint: text('release_hint'),
+    audioFormat: text('audio_format'),
   },
   (t) => [
     unique().on(t.episodeId, t.providerId, t.providerItemId),

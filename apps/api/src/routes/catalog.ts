@@ -11,6 +11,7 @@ import {
   seriesAvailabilities,
   episodeAvailabilities,
 } from '../db/schema/availabilities.js'
+import { sources } from '../db/schema/sources.js'
 import { mediaVideos } from '../db/schema/media-videos.js'
 import { mediaCredits } from '../db/schema/media-credits.js'
 import { viewingProgress } from '../db/schema/viewing-progress.js'
@@ -133,8 +134,14 @@ export async function catalogRoutes(app: FastifyInstance, opts: CatalogRoutesOpt
           subtitleLanguage: movieAvailabilities.subtitleLanguage,
           videoQuality: movieAvailabilities.videoQuality,
           rawTitle: movieAvailabilities.rawTitle,
+          sourceDisplayName: sources.name,
+          codecName: movieAvailabilities.codecName,
+          hdrFormat: movieAvailabilities.hdrFormat,
+          releaseHint: movieAvailabilities.releaseHint,
+          audioFormat: movieAvailabilities.audioFormat,
         })
         .from(movieAvailabilities)
+        .leftJoin(sources, eq(sql`${sources.id}::text`, movieAvailabilities.providerId))
         .where(eq(movieAvailabilities.movieId, id)),
       getDefaultProfilePreferences(),
       db
@@ -263,8 +270,14 @@ export async function catalogRoutes(app: FastifyInstance, opts: CatalogRoutesOpt
           subtitleLanguage: seriesAvailabilities.subtitleLanguage,
           videoQuality: seriesAvailabilities.videoQuality,
           rawTitle: seriesAvailabilities.rawTitle,
+          sourceDisplayName: sources.name,
+          codecName: seriesAvailabilities.codecName,
+          hdrFormat: seriesAvailabilities.hdrFormat,
+          releaseHint: seriesAvailabilities.releaseHint,
+          audioFormat: seriesAvailabilities.audioFormat,
         })
         .from(seriesAvailabilities)
+        .leftJoin(sources, eq(sql`${sources.id}::text`, seriesAvailabilities.providerId))
         .where(eq(seriesAvailabilities.seriesId, id)),
       getDefaultProfilePreferences(),
       db
@@ -417,8 +430,14 @@ export async function catalogRoutes(app: FastifyInstance, opts: CatalogRoutesOpt
             subtitleLanguage: episodeAvailabilities.subtitleLanguage,
             videoQuality: episodeAvailabilities.videoQuality,
             rawTitle: episodeAvailabilities.rawTitle,
+            sourceDisplayName: sources.name,
+            codecName: episodeAvailabilities.codecName,
+            hdrFormat: episodeAvailabilities.hdrFormat,
+            releaseHint: episodeAvailabilities.releaseHint,
+            audioFormat: episodeAvailabilities.audioFormat,
           })
           .from(episodeAvailabilities)
+          .leftJoin(sources, eq(sql`${sources.id}::text`, episodeAvailabilities.providerId))
           .where(inArray(episodeAvailabilities.episodeId, episodeIds)),
         profileId
           ? db
