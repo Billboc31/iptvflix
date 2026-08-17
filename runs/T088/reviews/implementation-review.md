@@ -1,0 +1,164 @@
+---
+
+# PR Review — T088: VOD Player Controls
+
+## Résumé
+
+L'implémentation couvre de façon exhaustive les 20+ exigences du ticket T088 : overlay de contrôles, play/pause, seek, skip ±10s, volume/mute, fullscreen (+ fallback iOS Safari), sélection audio/sous-titres via HLS.js, persistance des préférences, résumé de progression et dialogue de reprise, navigation entre épisodes, markers d'intro/recap, vitesse de lecture, PiP, qualité/source, raccourcis clavier, UX mobile, et accessibilité. La préservation du chemin de lecture existant est validée par un smoke test. 314 tests unitaires passent.
+
+Trois dérives par rapport au plan et aux critères d'acceptance formels sont détectées. Elles sont toutes de faible amplitude mais l'une est un critère d'acceptance explicite.
+
+---
+
+## Vérifications effectuées
+
+- Lecture de `PlayerControls.tsx` (753 lignes), `PlayerPage.tsx` (484 lignes), `useProgressSync.ts`, `usePlayerKeyboard.ts`, `useEpisodeNavigation.ts`, `format-time.ts`, `language-names.ts`
+- Lecture de tous les fichiers de test associés
+- Comparaison systématique avec `runs/T088/plan.md` et les acceptance criteria du ticket
+- Vérification des invariants d'état (sync depuis l'élément vidéo, pas depuis un boolean React)
+- Vérification de la gestion du cycle de vie des effects (cleanup, cancelled flag)
+
+---
+
+## Points validés
+
+**Correctness fonctionnelle :**
+- État play/pause piloté par les événements `play`/`pause` du `HTMLMediaElement` — pas un toggle React seul ✅
+- Clamping ±10s aux bornes `[0, duration]` ✅
+- Seek désactivé (`disabled`) quand `duration` non finie ✅
+- Fullscreen : API standard + fallback `webkitEnterFullscreen` iOS Safari avec sync sur `webkitbeginfullscreen`/`webkitendfullscreen` ✅
+- Dialogue reprise conditionnel correctement seuillé (`> 30s` et `< duration - 60s`) avec constantes nommées ✅
+- Triple persistance de progression : debounce 10s, flush immédiat sur `pause`, `fetch + keepalive` sur `beforeunload` (avec justification de ne pas utiliser `sendBeacon` qui ne supporte pas les headers auth) ✅
+- `flushProgress()` appelé avant chaque switch de variant et navigation d'épisode ✅
+- Popover audio affiché uniquement si `audioTracks.length > 1` ✅
+- Sous-titres "Désactivés" toujours présent ✅
+- Détection de l'impossibilité de rendu des sous-titres MKV embedded et message explicite ✅
+- PiP bouton conditionnel sur `document.pictureInPictureEnabled` ✅
+- Raccourcis clavier avec détection focus sur `INPUT`/`TEXTAREA`/`contenteditable` ✅
+- `touchAction: none` sur le seek bar, safe-area padding, cibles 44px minimum ✅
+- `aria-pressed`, `role="menu"`, `role="menuitem"`, `:focus-visible` ✅
+- Cleanup correct dans tous les `useEffect` (removeEventListener, cancelled flag) ✅
+- Aucune modification du chemin de transport Xtream/HLS.js ✅
+
+**Architecture :**
+- Séparation claire hooks / composants / utilitaires
+- Pattern ref pour éviter la stale closure dans les handlers d'événements
+- `useEpisodeNavigation` ne fetch que si `seriesId` et `seasonNumber` sont fournis
+
+**Tests :**
+- Smoke test de régression : `loadSource` appelé avec la bonne URL
+- Tests play/pause event-driven, ±10s clamp, popover audio/subtitle, markers contextuels, vitesse, PiP detection, keyboard shortcuts
+- Cas limites `formatTime` (0, >1h, Infinity, NaN), codes langue ISO 639-1/2
+
+---
+
+## Problèmes détectés
+
+### 🔴 P1 — Episode label manque le numéro de saison (violation AC formelle)
+
+**Fichier** : `apps/web/src/hooks/useEpisodeNavigation.ts:41`
+
+Le plan et l'AC indiquent explicitement le format `SxxExx · Titre` :
+> "Episode label (SxxExx · title) shows in top bar for episode playback."
+
+L'implémentation produit `E3 · The End` au lieu de `S01E03 · The End`.
+
+`seasonNumber` est déjà disponible en paramètre du hook mais n'est pas utilisé dans la construction du label.
+
+**Correction** :
+```typescript
+// useEpisodeNavigation.ts ligne 41
+const sLabel = seasonNumber != null ? `S${String(seasonNumber).padStart(2, '0')}` : ''
+const eLabel = `E${String(current.episodeNumber).padStart(2, '0')}`
+const episodeLabel = `${sLabel}${eLabel}${current.title ? ` · ${current.title}` : ''}`
+```
+
+---
+
+### 🟡 P2 — Bouton CC affiché pour tous les streams DIRECT, pas seulement DIRECT+MKV
+
+**Fichier** : `apps/web/src/components/player/PlayerControls.tsx:585`
+
+Condition actuelle :
+```typescript
+{(subtitleTracks.length > 0 || deliveryMode === 'DIRECT') && (
+```
+
+Le plan spécifie : `deliveryMode === 'DIRECT' + container mkv + no WebVTT tracks`. Pour un stream DIRECT MP4, le bouton CC apparaît avec uniquement "Désactivés" et "Sous-titres non disponibles" — ce qui est trompeur.
+
+**Correction** : passer `containerExtension` en prop et restreindre la condition :
+```typescript
+// Afficher CC uniquement si des pistes existent, ou si DIRECT+MKV (pour signaler l'incompatibilité)
+const showCCButton = subtitleTracks.length > 0 || 
+  (deliveryMode === 'DIRECT' && /mkv|avi|ts/i.test(containerExtension ?? ''))
+```
+
+---
+
+### 🟡 P3 — Barre de buffer non affichée dans la timeline
+
+**Fichier** : `apps/web/src/components/player/PlayerControls.tsx:486-499`
+
+La section 3 du ticket exige : *"show buffered progress where available"*. La seek bar actuelle est un simple `<input type="range">` ; les plages `video.buffered` ne sont pas représentées.
+
+Ce n'est pas dans la checklist formelle des AC, mais c'est une exigence explicite de la section fonctionnelle.
+
+**Correction possible** : superposer un `<div>` background calculé depuis `video.buffered.end(video.buffered.length - 1) / duration` mis à jour sur `progress` event, ou via un pseudo-élément CSS.
+
+---
+
+### ⚪ P4 — `nextEpisode.selectedVariantId` : champ potentiellement absent de `EpisodeResponse`
+
+**Fichier** : `apps/web/src/pages/PlayerPage.tsx:91`
+
+```typescript
+if (nextEpisode.selectedVariantId) params.set('availabilityId', nextEpisode.selectedVariantId)
+```
+
+Si `EpisodeResponse` du contrat API ne contient pas `selectedVariantId`, TypeScript accepte silencieusement via l'opérateur conditionnel mais l'intention est incertaine. À vérifier contre le type réel dans `@iptvflix/api-contracts`.
+
+---
+
+### ⚪ P5 — Double flush possible sur `ended` + `pause` consécutifs
+
+**Fichier** : `apps/web/src/hooks/useProgressSync.ts:46-63`
+
+L'event `ended` déclenche `sendFinal` sans check du debounce, et le navigateur peut émettre `pause` puis `ended` en séquence rapprochée. Résultat : deux appels API consécutifs en fin de contenu. Mineur et sans effet fonctionnel négatif.
+
+---
+
+### ⚪ P6 — `previousEpisode` retourné par le hook mais non câblé à l'UI
+
+`useEpisodeNavigation` retourne `previousEpisode` qui n'est pas passé à `PlayerControls` ni utilisé. Le plan mentionne "optional previous episode action". Acceptable comme déféré, mais à documenter explicitement.
+
+---
+
+## Risques éventuels
+
+- **Régression iOS fullscreen** : le fallback `webkitEnterFullscreen` est branché mais non testable en jsdom. Un test manuel sur iPhone est requis avant merge.
+- **`flushProgress` stale** : si `PlayerPage` est démonté avant que le `fetch keepalive` aboutisse, le résultat est silencieusement ignoré (`.catch(() => undefined)`). Comportement acceptable pour une page close.
+- **UA string detection pour le volume slider** : `/android|iphone|ipad|ipod/i.test(navigator.userAgent)` est fragile pour les futurs appareils. Acceptable à court terme, à remplacer par media query pointer:coarse si nécessaire.
+- **Validation manuelle non documentée** : le ticket exige une validation sur vrai navigateur (desktop + mobile). Le fichier `implementation-output.md` ne mentionne pas de résultat de validation manuelle. Ce point doit être documenté dans le run artifact.
+
+---
+
+## Décision
+
+L'implémentation est fonctionnellement solide sur tous les axes critiques (lecture préservée, contrôles event-driven, persistance, mobile, accessibilité). Les corrections demandées sont toutes localisées et sans impact architectural.
+
+Trois corrections requises avant approval :
+1. **P1 — Format `SxxExx`** dans `useEpisodeNavigation.ts` (critère d'acceptance explicite, 2 lignes)
+2. **P2 — Condition CC** restreinte à DIRECT+MKV (3 lignes, `containerExtension` déjà disponible dans PlayerPage)
+3. **Documenter la validation manuelle** dans `runs/T088/implementation-output.md` ou un fichier dédié
+
+P3 (buffer range) est recommandé mais non bloquant. P4-P6 sont des observations mineures.
+
+## Actions demandées
+
+1. **`useEpisodeNavigation.ts:41`** — corriger le format `SxxExx` en utilisant `seasonNumber` déjà disponible
+2. **`PlayerControls.tsx:585`** — restreindre la condition d'affichage du CC à `deliveryMode === 'DIRECT'` + container MKV/container vidéo sans WebVTT natif (passer `containerExtension` depuis PlayerPage)
+3. **`runs/T088/`** — ajouter un document de validation manuelle confirmant les points bloquants du ticket (start, pause, seek, fullscreen, close/reopen au timestamp sauvegardé)
+4. (Recommandé) **`PlayerControls.tsx:486`** — ajouter la barre de buffer via `video.buffered`
+5. (À vérifier) **`PlayerPage.tsx:91`** — confirmer que `EpisodeResponse` expose bien `selectedVariantId`
+
+IMPLEMENTATION_FIX_REQUIRED
