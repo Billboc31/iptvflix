@@ -7,6 +7,7 @@ import type { ProfilePreferences } from '@iptvflix/api-contracts'
 // Mock session store so resolver tests don't depend on it
 vi.mock('../playback-session-store.js', () => ({
   createSession: vi.fn(() => 'test-session-id'),
+  patchSession: vi.fn(),
 }))
 
 // Probe returns h264+aac+mp4 by default → classifyDelivery → DIRECT → no HLS session needed
@@ -26,11 +27,20 @@ vi.mock('../probe-cache.js', () => ({
 // HLS session creation is a no-op in resolver tests (DIRECT mode is returned by default)
 vi.mock('../hls-session-store.js', () => ({
   createHlsSession: vi.fn().mockResolvedValue(undefined),
+  waitForPlaylist: vi.fn().mockResolvedValue(true),
 }))
 
 vi.mock('../ffmpeg-availability.js', () => ({
   isFfmpegAvailable: vi.fn().mockResolvedValue(true),
 }))
+
+vi.mock('../../providers/xtream/playback.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../providers/xtream/playback.js')>()
+  return {
+    ...actual,
+    pickWorkingXtreamUrl: vi.fn(async (url: string) => url),
+  }
+})
 
 // ---------------------------------------------------------------------------
 // URL builders — pure unit tests (no DB needed)

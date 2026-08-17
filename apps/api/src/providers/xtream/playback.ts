@@ -95,3 +95,59 @@ export function xtreamUrlFallbacks(url: string): string[] {
 
   return out
 }
+
+export async function fetchXtreamStream(
+  url: string,
+  headers: Record<string, string>,
+  signal: AbortSignal,
+): Promise<Response> {
+  const candidates = xtreamUrlFallbacks(url)
+  const merged = { ...XTREAM_STREAM_HEADERS, ...headers }
+  let lastResponse: Response | undefined
+  let lastError: unknown
+
+  for (const candidate of candidates) {
+    try {
+      const res = await fetch(candidate, {
+        signal,
+        headers: merged,
+        redirect: 'follow',
+      })
+      if (res.ok || res.status === 206) return res
+      if (res.status === 401 || res.status === 403) return res
+      lastResponse = res
+    } catch (err) {
+      lastError = err
+      if (signal.aborted) throw err
+    }
+  }
+
+  if (lastResponse) return lastResponse
+  throw lastError instanceof Error ? lastError : new Error('upstream fetch failed')
+}
+
+/** Probe candidate URLs with a tiny Range request. Never log the URL (credentials). */
+export async function pickWorkingXtreamUrl(url: string, signal?: AbortSignal): Promise<string> {
+  const candidates = xtreamUrlFallbacks(url)
+  for (const candidate of candidates) {
+    const controller = new AbortController()
+    const onAbort = () => controller.abort()
+    signal?.addEventListener('abort', onAbort, { once: true })
+    try {
+      const res = await fetch(candidate, {
+        method: 'GET',
+        headers: { ...XTREAM_STREAM_HEADERS, Range: 'bytes=0-0' },
+        signal: controller.signal,
+        redirect: 'follow',
+      })
+      controller.abort()
+      if (res.ok || res.status === 206) return candidate
+      if (res.status === 401 || res.status === 403) return url
+    } catch {
+      if (signal?.aborted) return url
+    } finally {
+      signal?.removeEventListener('abort', onAbort)
+    }
+  }
+  return url
+}

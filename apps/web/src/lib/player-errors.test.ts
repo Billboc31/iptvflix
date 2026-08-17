@@ -6,6 +6,7 @@ describe('videoErrorMessage', () => {
     expect(videoErrorMessage(null, 502)).toBe('Le fournisseur a refusé le flux')
     expect(videoErrorMessage(null, 404)).toMatch(/introuvable/i)
     expect(videoErrorMessage(null, 504)).toMatch(/répond pas/i)
+    expect(videoErrorMessage(null, 410)).toMatch(/conversion vidéo/i)
   })
 })
 

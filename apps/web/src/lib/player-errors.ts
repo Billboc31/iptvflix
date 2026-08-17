@@ -3,7 +3,7 @@ export function videoErrorMessage(video: HTMLVideoElement | null, httpStatus?: n
   if (httpStatus === 404) return 'Média introuvable chez le fournisseur'
   if (httpStatus === 502) return 'Le fournisseur a refusé le flux'
   if (httpStatus === 504) return 'Fournisseur ne répond pas'
-  if (httpStatus === 410) return 'Session de lecture expirée'
+  if (httpStatus === 410) return 'La conversion vidéo a échoué — réessayez'
   if (httpStatus != null && httpStatus >= 400) return 'Erreur de lecture'
   if (video?.error) {
     const code = video.error.code

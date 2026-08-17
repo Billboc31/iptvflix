@@ -3,16 +3,16 @@ import { db } from '../db/client.js'
 import { movieAvailabilities, episodeAvailabilities } from '../db/schema/availabilities.js'
 import { sources } from '../db/schema/sources.js'
 import { viewingProgress } from '../db/schema/viewing-progress.js'
-import { buildXtreamMovieUrl, buildXtreamEpisodeUrl } from '../providers/xtream/playback.js'
+import { buildXtreamMovieUrl, buildXtreamEpisodeUrl, pickWorkingXtreamUrl } from '../providers/xtream/playback.js'
 import { buildM3UStreamUrl } from '../providers/m3u/playback.js'
 import { resolveVariant } from './availability-resolver.js'
 import { getDefaultProfilePreferences } from './profile-service.js'
 import { ValidationError, ForbiddenError, NotFoundError } from '../errors.js'
-import { createSession } from './playback-session-store.js'
+import { createSession, patchSession } from './playback-session-store.js'
 import { probeMedia } from './media-prober.js'
 import { getProbe, setProbe } from './probe-cache.js'
 import { classifyDelivery } from './playback-compat.js'
-import { createHlsSession } from './hls-session-store.js'
+import { createHlsSession, waitForPlaylist } from './hls-session-store.js'
 import { isFfmpegAvailable } from './ffmpeg-availability.js'
 import type { PlaybackSessionResponse, AvailabilityVariantResponse } from '@iptvflix/api-contracts'
 import type { DeliveryMode } from './playback-compat.js'
@@ -182,6 +182,10 @@ export async function resolvePlayback(
     throw new ValidationError('Variant not available')
   }
 
+  if (source.type === 'XTREAM') {
+    providerStreamUrl = await pickWorkingXtreamUrl(providerStreamUrl)
+  }
+
   const containerExtension = selected.containerExtension ?? 'ts'
 
   // Probe media to determine browser-compatible delivery mode.
@@ -259,14 +263,36 @@ export async function resolvePlayback(
       rawTitle: r.rawTitle,
     }))
 
-  // HLS modes: spawn ffmpeg pipeline and return playlist URL
+  // HLS modes: spawn ffmpeg pipeline and return playlist URL.
+  // If ffmpeg cannot produce a playlist, fall back to DIRECT so the player
+  // still gets a usable gateway instead of a 410 "session expired".
   if (deliveryMode !== 'DIRECT') {
     try {
       await createHlsSession(sessionId, providerStreamUrl, deliveryMode)
-      console.info('playback-resolver: HLS session created', {
+      const playlistReady = await waitForPlaylist(sessionId, 15_000)
+      if (playlistReady) {
+        console.info('playback-resolver: HLS session created', {
+          sessionId,
+          ffmpegMode: deliveryMode,
+        })
+        const gatewayUrl = `/playback/session/${sessionId}/master.m3u8`
+        return {
+          gatewayUrl,
+          deliveryMode,
+          probeResult,
+          containerExtension,
+          availabilityId: selectedId,
+          startPositionSeconds,
+          alternatives,
+        }
+      }
+      console.warn('playback-resolver: HLS playlist never became ready, falling back to DIRECT', {
         sessionId,
-        ffmpegMode: deliveryMode,
+        requestedMode: deliveryMode,
+        containerExtension,
       })
+      patchSession(sessionId, { deliveryMode: 'DIRECT' })
+      deliveryMode = 'DIRECT'
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
       console.error('playback-resolver: HLS session creation failed', {
@@ -274,19 +300,8 @@ export async function resolvePlayback(
         deliveryMode,
         error: errMsg,
       })
-      throw new ValidationError('Variant not available')
-    }
-
-    // Paths are rooted at the API host (VITE_API_BASE), not behind an /api proxy.
-    const gatewayUrl = `/playback/session/${sessionId}/master.m3u8`
-    return {
-      gatewayUrl,
-      deliveryMode,
-      probeResult,
-      containerExtension,
-      availabilityId: selectedId,
-      startPositionSeconds,
-      alternatives,
+      patchSession(sessionId, { deliveryMode: 'DIRECT' })
+      deliveryMode = 'DIRECT'
     }
   }
 

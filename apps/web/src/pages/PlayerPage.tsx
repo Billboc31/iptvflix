@@ -66,8 +66,8 @@ export default function PlayerPage() {
 
   // Load stream into video element when gateway URL is ready.
   useEffect(() => {
+    if (!videoRef.current || !gatewayUrl || !deliveryMode) return
     const video = videoRef.current
-    if (!video || !gatewayUrl || !deliveryMode) return
 
     let hlsInstance: import('hls.js').default | null = null
     let mpegtsPlayer: {
@@ -117,9 +117,6 @@ export default function PlayerPage() {
     }
 
     async function attach() {
-      const ok = await probeGateway()
-      if (cancelled || !ok || !video) return
-
       if (isHls) {
         try {
           const { default: Hls } = await import('hls.js')
@@ -130,6 +127,12 @@ export default function PlayerPage() {
                 xhr.withCredentials = true
                 if (authToken) xhr.setRequestHeader('Authorization', `Bearer ${authToken}`)
               },
+            })
+            hlsInstance.on(Hls.Events.ERROR, (_event, data) => {
+              if (!data.fatal || cancelled) return
+              const status = typeof data.response?.code === 'number' ? data.response.code : undefined
+              if (status) httpStatusRef.current = status
+              setVideoError(videoErrorMessage(video, status))
             })
             hlsInstance.loadSource(mediaUrl)
             hlsInstance.attachMedia(video)
@@ -143,6 +146,9 @@ export default function PlayerPage() {
         }
         return
       }
+
+      const ok = await probeGateway()
+      if (cancelled || !ok || !video) return
 
       if (isMpegTsContainer(containerExtension)) {
         try {

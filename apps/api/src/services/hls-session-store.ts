@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { buildFfmpegArgs } from './playback-compat.js'
 import type { DeliveryMode } from './playback-compat.js'
+import { XTREAM_STREAM_HEADERS } from '../providers/xtream/playback.js'
 
 const TTL_MS = 2 * 60 * 60 * 1000
 const MAX_SEGMENTS = 500
@@ -57,8 +58,14 @@ export async function createHlsSession(
 
   const codecArgs = buildFfmpegArgs(mode, tempDir)
   const fullArgs = [
+    '-hide_banner',
+    '-user_agent', XTREAM_STREAM_HEADERS['User-Agent'],
+    '-reconnect', '1',
+    '-reconnect_streamed', '1',
+    '-reconnect_on_network_error', '1',
     '-analyzeduration', '5000000',
     '-probesize', '5000000',
+    '-fflags', '+genpts+discardcorrupt',
     '-i', providerUrl,
     ...codecArgs,
   ]
@@ -151,6 +158,17 @@ export async function getPlaylist(sessionId: string): Promise<PlaylistResult> {
     .join('\n')
 
   return { status: 'ok', content }
+}
+
+export async function waitForPlaylist(sessionId: string, timeoutMs = 15_000): Promise<boolean> {
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    const result = await getPlaylist(sessionId)
+    if (result.status === 'ok') return true
+    if (result.status === 'gone') return false
+    await new Promise((resolve) => setTimeout(resolve, 400))
+  }
+  return false
 }
 
 export type SegmentResult =

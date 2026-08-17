@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { createSession, getSession } from '../playback-session-store.js'
+import { createSession, getSession, patchSession } from '../playback-session-store.js'
 
 const BASE_DATA = {
   profileId: 'profile-1',
@@ -48,6 +48,14 @@ describe('createSession / getSession round-trip', () => {
     expect(id1).not.toBe(id2)
     expect(getSession(id1)!.mediaId).toBe('movie-1')
     expect(getSession(id2)!.mediaId).toBe('movie-2')
+  })
+})
+
+describe('patchSession', () => {
+  it('updates deliveryMode on an existing session', () => {
+    const id = createSession(BASE_DATA)
+    patchSession(id, { deliveryMode: 'HLS_REMUX' })
+    expect(getSession(id)!.deliveryMode).toBe('HLS_REMUX')
   })
 })
 

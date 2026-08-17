@@ -43,3 +43,13 @@ export function getSession(sessionId: string): SessionEntry | null {
   const { expiresAt, ...rest } = entry
   return rest
 }
+
+export function patchSession(
+  sessionId: string,
+  patch: Partial<Pick<SessionEntry, 'deliveryMode' | 'providerStreamUrl'>>,
+): void {
+  const entry = sessions.get(sessionId)
+  if (!entry) return
+  if (patch.deliveryMode) entry.deliveryMode = patch.deliveryMode
+  if (patch.providerStreamUrl) entry.providerStreamUrl = patch.providerStreamUrl
+}

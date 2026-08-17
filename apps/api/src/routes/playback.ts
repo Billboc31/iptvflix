@@ -7,37 +7,7 @@ import { getSession } from '../services/playback-session-store.js'
 import { DEFAULT_PROFILE_ID } from '../services/profile-service.js'
 import { ValidationError, ForbiddenError, NotFoundError } from '../errors.js'
 import { getPlaylist, getSegment, SEGMENT_RE } from '../services/hls-session-store.js'
-import { XTREAM_STREAM_HEADERS, xtreamUrlFallbacks } from '../providers/xtream/playback.js'
-
-async function fetchProviderStream(
-  url: string,
-  headers: Record<string, string>,
-  signal: AbortSignal,
-): Promise<Response> {
-  const candidates = xtreamUrlFallbacks(url)
-  const merged = { ...XTREAM_STREAM_HEADERS, ...headers }
-  let lastResponse: Response | undefined
-  let lastError: unknown
-
-  for (const candidate of candidates) {
-    try {
-      const res = await fetch(candidate, {
-        signal,
-        headers: merged,
-        redirect: 'follow',
-      })
-      if (res.ok || res.status === 206) return res
-      if (res.status === 401 || res.status === 403) return res
-      lastResponse = res
-    } catch (err) {
-      lastError = err
-      if (signal.aborted) throw err
-    }
-  }
-
-  if (lastResponse) return lastResponse
-  throw lastError instanceof Error ? lastError : new Error('upstream fetch failed')
-}
+import { XTREAM_STREAM_HEADERS, fetchXtreamStream } from '../providers/xtream/playback.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -151,7 +121,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         const rangeHeader = request.headers['range']
         if (rangeHeader) upstreamHeaders['Range'] = rangeHeader
 
-        upstreamRes = await fetchProviderStream(
+        upstreamRes = await fetchXtreamStream(
           providerStreamUrl,
           upstreamHeaders,
           controller.signal,
