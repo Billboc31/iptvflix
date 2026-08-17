@@ -1,3 +1,11 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T090/reviews/implementation-review.md
+- generated at: 2026-08-17T22:02:36Z
+
+---
+
 ---
 
 # PR Review — T090 : Fix VOD Duration/Seek Semantics (Tentative 4)
