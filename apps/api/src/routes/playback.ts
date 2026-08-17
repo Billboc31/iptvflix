@@ -274,7 +274,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
       }
 
       let outcome = await fetchSegment()
-      if (!outcome.ok && outcome.retriable) {
+      if (!outcome.ok && outcome.retriable && !request.raw.socket?.destroyed) {
         app.log.warn({ ...logCtx, upstreamStatus: outcome.upstreamStatus }, 'playback-gateway: segment attempt failed, retrying')
         await new Promise<void>((resolve) => setTimeout(resolve, 1000))
         outcome = await fetchSegment()
