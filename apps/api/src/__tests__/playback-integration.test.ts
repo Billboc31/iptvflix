@@ -293,7 +293,7 @@ describe('GET /playback/stream/:sessionId — gateway proxy with typed errors', 
     return match![1] as string
   }
 
-  it('redirects to provider when proxy mode is off (default)', async () => {
+  it('redirects to provider when proxy mode is off (default) — KNOWN LIMITATION: credentials visible in Location', async () => {
     const sessionId = await resolveAndGetSessionId()
 
     const res = await app.inject({
@@ -305,6 +305,14 @@ describe('GET /playback/stream/:sessionId — gateway proxy with typed errors', 
     // Redirect location contains provider URL (with Xtream m3u8 path)
     expect(res.headers.location).toContain('/movie/')
     expect(res.headers.location).toContain('.m3u8')
+    // KNOWN LIMITATION: Xtream credentials appear in the browser-visible Location header.
+    // The redirect is intentional: Railway datacenter IPs are blocked by Cloudflare (HTTP 403),
+    // so the browser must fetch the Xtream stream directly from its own residential/office IP.
+    // Proxying server-side (proxy=1) avoids credential exposure but reintroduces the Cloudflare block.
+    // This architecture decision is documented in runs/T085/evidence/summary.md.
+    // A credential-safe redirect requires provider-side short-lived token support (out of scope here).
+    expect(res.headers.location).toContain(XTREAM_USER) // documents actual behavior
+    expect(res.headers.location).toContain(XTREAM_PASS) // documents actual behavior
   })
 
   it('proxies HLS manifest with correct Content-Type in proxy mode', async () => {

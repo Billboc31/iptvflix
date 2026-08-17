@@ -75,6 +75,33 @@ No Xtream credentials or raw upstream URLs are included.
 
 ---
 
+## Known limitation — credentials in redirect Location header
+
+Criterion 10 is **not satisfied** for the redirect (default) delivery path.
+
+When the resolver issues `GET /playback/stream/{sessionId}` without `?proxy=1`, the server
+responds with `302 Location: https://{provider}/movie/{user}/{pass}/{streamId}.m3u8`. The
+Xtream username and password are visible in the browser's DevTools Network panel and browser
+history.
+
+**Why the redirect exists**: Railway datacenter IPs are blocked by the Xtream provider's
+Cloudflare layer (HTTP 403). The redirect forces the viewer's browser to fetch the stream
+directly from a residential/office IP, bypassing the Cloudflare block.
+
+**Why proxy mode doesn't solve it**: With `?proxy=1`, the server fetches the stream itself
+(Railway IP → Cloudflare 403). Hiding credentials requires provider-side support for
+short-lived tokens or signed URLs, which is out of scope for this ticket.
+
+The integration test `redirects to provider when proxy mode is off (default)` now explicitly
+asserts that credentials ARE present in the `Location` header, documenting this behaviour
+rather than misrepresenting it as fixed.
+
+A future ticket should either negotiate short-lived Xtream tokens with the provider or
+implement an HTTPS signed-redirect layer in the IPTVFlix API that does not touch Railway's
+Cloudflare-blocked IP.
+
+---
+
 ## What is blocked / requires manual action
 
 ### Phase 1 — Upstream stream validation
@@ -111,7 +138,7 @@ No Xtream credentials or raw upstream URLs are included.
 | 7 | Golden-path movie plays in real browser | BLOCKED |
 | 8 | Desktop Chrome validated | BLOCKED |
 | 9 | Android/iPhone validated or blocker documented | BLOCKED |
-| 10 | No credentials in browser-visible URLs/logs | ✅ DONE (verified in integration tests) |
+| 10 | No credentials in browser-visible URLs/logs | ⚠️ KNOWN LIMITATION — see below |
 | 11 | Typed error category + correlationId in error responses | ✅ DONE |
 | 12 | `xtream-vod-url.test.ts` + `playback-integration.test.ts` pass | ✅ DONE |
 | 13 | `GET /playback/diag/:availabilityId` works | ✅ DONE |

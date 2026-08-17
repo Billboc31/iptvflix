@@ -1,7 +1,7 @@
 {
   "ticket_id": "T085",
-  "state": "IMPLEMENTATION_FIX_REQUIRED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T085-playback-still-broken-prove-one-real-xtream-movie",
   "issue_number": 180,
-  "updated_at": "2026-08-17T14:13:39Z"
+  "updated_at": "2026-08-17T14:17:16Z"
 }

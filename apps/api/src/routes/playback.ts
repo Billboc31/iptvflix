@@ -78,13 +78,13 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(200).send(session)
       } catch (err) {
         if (err instanceof NotFoundError) {
-          return reply.status(404).send({ error: 'Variant not available', correlationId })
+          return reply.status(404).send({ error: 'Variant not available', errorCategory: 'STREAM_URL_INVALID' as PlaybackErrorCategory, correlationId })
         }
         if (err instanceof ValidationError) {
-          return reply.status(400).send({ error: 'Variant not available', correlationId })
+          return reply.status(400).send({ error: 'Variant not available', errorCategory: 'STREAM_URL_INVALID' as PlaybackErrorCategory, correlationId })
         }
         if (err instanceof ForbiddenError) {
-          return reply.status(403).send({ error: 'Variant not available', correlationId })
+          return reply.status(403).send({ error: 'Variant not available', errorCategory: 'SOURCE_AUTH_REJECTED' as PlaybackErrorCategory, correlationId })
         }
         throw err
       }
