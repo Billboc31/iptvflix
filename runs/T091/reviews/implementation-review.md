@@ -1,0 +1,86 @@
+I have enough information to write the review.
+
+---
+
+# T091 — Implementation Review
+
+## Review scope
+
+This review covers only the T091 coder commit (`731e90d`). The branch carries earlier work (T088–T093); none of that is in scope here.
+
+---
+
+## Correctness against ticket / plan
+
+### Phase 1 — HLS.js buffer tuning ✅
+`PlayerPage.tsx`: `maxBufferLength` 30→60, `maxMaxBufferLength: 180`, `lowLatencyMode: false`, `progressive: true`. Exactly as planned. Only 4 lines changed; no scope creep.
+
+### Phase 2 — ffmpeg startup latency ✅
+`playback.ts` (xtream): `-analyzeduration` and `-probesize` 5 000 000→500 000. Correct.
+
+### Phase 3 — Segment proxy: backpressure + retry ✅
+- `highWaterMark: 256 * 1024` correctly applied to `Readable.fromWeb()` in the direct-stream path.
+- New `SEGMENT_TIMEOUT_MS = 15_000` constant used inside `fetchSegment()`; `UPSTREAM_TIMEOUT_MS = 30_000` is still live at line 130 for the DIRECT gateway path — no dead code.
+- `fetchSegment()` wraps one retry on timeout or 5xx, 1 s delay — matches the plan.
+
+### Phase 4 — Session TTL ✅
+playback-session-store: 2 h → 4 h. hls-session-store: 2 h → 3 h, MAX_SEGMENTS 500 → 1 500. Tests updated to match (1501 segments, 4 h timer). Correct.
+
+### Phase 5 — Playlist Cache-Control ✅
+`no-cache` → `max-age=4, public` on the HLS playlist route. Correct for VOD (static manifest). Not applied to segment responses.
+
+### Phase 6 — Duplicate source reload audit ✅
+No code change; the audit confirmed `useEffect` deps are stable and `useProgressSync` doesn't mutate them. Implementation output is honest about this.
+
+---
+
+## Issues
+
+### BLOCKING — Measurements file is empty (ticket AC #1, #9, completion rule)
+
+`runs/T091/measurements.md` contains only an empty template. Every row is blank.
+
+The ticket is explicit and hard on this:
+
+- **"Required measurement first"** — "Use the SAME real movie/source in IPTVFlix and in a known-good IPTV client where possible. Gather comparable evidence."
+- AC #1: "Root cause(s) of excess buffering identified with measurements."
+- AC #9: "Performance findings documented using a real Xtream stream."
+- Completion rule: **"Do not close based on synthetic unit tests. Run a real long movie for enough time to observe buffering and compare before/after under the same connection/device conditions."**
+
+The plan (Phase 0) also requires before-values to be documented before the first code change. Without them, there is no baseline, no identified root cause, no confirmed improvement, and the completion rule is violated. Code changes alone are insufficient to satisfy this ticket.
+
+**Required action**: Fill `measurements.md` with actual before/after data from a real Xtream VOD. If a comparison with a native client isn't feasible, document at minimum: IPTVFlix TTFB, rebuffer count over 10 min, HLS.js buffer level at steady state, and delivery mode — both before and after the T091 branch.
+
+---
+
+### Minor — Retry fires on client disconnect
+
+In `fetchSegment()` (playback.ts), when the client's 'close' event fires, `ctrl.abort()` throws an AbortError, which is caught and returns `{ ok: false, retriable: true, netErr: true }`. This triggers a 1-second wait + second fetch to the provider, even though there is no client to serve. The second fetch would succeed but the reply goes nowhere.
+
+Not a correctness or security issue — Fastify handles closed replies silently — but it's wasted provider load. Fix: check `request.socket.destroyed` before the retry branch.
+
+```ts
+if (!outcome.ok && outcome.retriable && !request.socket.destroyed) {
+  // retry
+}
+```
+
+---
+
+### Observation — `progressive: true` in HLS.js
+
+`progressive: true` (renamed `progressive` in recent HLS.js versions; previously `startPosition` was unrelated) controls progressive download pre-fetching. Confirm the HLS.js version in use actually accepts this key without warnings — some older versions ignore it silently. Not blocking, just worth verifying in the browser console.
+
+---
+
+## Scope compliance
+
+The T091 commit is tightly scoped: 7 files changed, all exactly as planned. No features were added beyond the plan's 6 phases. The exclusion list (ABR, media-relay, CDN, `useProgressSync` refactor, probe cache TTL) is respected.
+
+---
+
+## Summary
+
+Code changes are correct, well-bounded, and match the plan. The retry-on-disconnect edge case is minor. The blocker is structural: the ticket's first requirement ("Required measurement first") and its completion rule forbid closing without real measurement data. The measurements file must be filled with actual before/after numbers from a real stream before this ticket can be approved.
+
+IMPLEMENTATION_FIX_REQUIRED

@@ -1,7 +1,7 @@
 {
   "ticket_id": "T091",
-  "state": "IMPLEMENTATION_REVIEW_NEEDED",
+  "state": "IMPLEMENTATION_FIX_REQUIRED",
   "branch": "ticket/T091-optimize-vod-streaming-to-reduce-buffering-and-mat",
   "issue_number": 191,
-  "updated_at": "2026-08-17T22:26:29Z"
+  "updated_at": "2026-08-17T22:30:56Z"
 }
