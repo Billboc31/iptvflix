@@ -1,7 +1,7 @@
 {
   "ticket_id": "T092",
-  "state": "IMPLEMENTATION_APPROVED",
+  "state": "TEST_COMPLETE",
   "branch": "ticket/T092-make-series-episodes-directly-playable-with-per-ep",
   "issue_number": 192,
-  "updated_at": "2026-08-17T21:01:55Z"
+  "updated_at": "2026-08-17T21:07:27Z"
 }
