@@ -60,17 +60,22 @@ describe('PosterCard', () => {
   it('does not mount preview when trailerKey is null', async () => {
     render(<PosterCard title="NoTrailer" mediaId="movie-1" trailerKey={null} onClick={() => {}} />)
     fireEvent.mouseEnter(screen.getByRole('button'))
-    await act(() => vi.advanceTimersByTime(2000))
+    await act(() => vi.advanceTimersByTime(400))
+    await act(() => vi.advanceTimersByTime(1500))
     expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument()
   })
 
-  it('starts preview after 1.5s hover delay', async () => {
+  it('starts preview after 400ms focus delay + 1.5s preview delay', async () => {
     const activate = vi.fn()
     mockUsePreview.mockReturnValue({ activeId: null, activeKey: null, activate, deactivate: vi.fn() })
     render(<PosterCard title="Movie" mediaId="movie-1" trailerKey="abc123" onClick={() => {}} />)
     const card = screen.getByRole('button')
     fireEvent.mouseEnter(card)
     expect(activate).not.toHaveBeenCalled()
+    // Focus timer fires at 400ms
+    await act(() => vi.advanceTimersByTime(400))
+    expect(activate).not.toHaveBeenCalled()
+    // Preview timer fires 1500ms after focus
     await act(() => vi.advanceTimersByTime(1500))
     expect(activate).toHaveBeenCalledWith('movie-1', 'abc123')
   })
@@ -98,7 +103,8 @@ describe('PosterCard', () => {
     render(<PosterCard title="Movie" mediaId="movie-1" trailerKey="abc123" onClick={() => {}} />)
     const card = screen.getByRole('button')
     fireEvent.mouseEnter(card)
-    await act(() => vi.advanceTimersByTime(2000))
+    await act(() => vi.advanceTimersByTime(400))
+    await act(() => vi.advanceTimersByTime(1500))
     expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument()
   })
 
@@ -123,16 +129,19 @@ describe('PosterCard', () => {
     await act(async () => {})
     const card = screen.getByRole('button')
     fireEvent.mouseEnter(card)
-    await act(() => vi.advanceTimersByTime(2000))
+    await act(() => vi.advanceTimersByTime(400))
+    await act(() => vi.advanceTimersByTime(1500))
     expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument()
   })
 
-  it('focus triggers preview after 1.5s', async () => {
+  it('focus triggers preview after 400ms + 1.5s', async () => {
     const activate = vi.fn()
     mockUsePreview.mockReturnValue({ activeId: null, activeKey: null, activate, deactivate: vi.fn() })
     render(<PosterCard title="Movie" mediaId="movie-1" trailerKey="abc123" onClick={() => {}} />)
     const card = screen.getByRole('button')
     fireEvent.focus(card)
+    expect(activate).not.toHaveBeenCalled()
+    await act(() => vi.advanceTimersByTime(400))
     expect(activate).not.toHaveBeenCalled()
     await act(() => vi.advanceTimersByTime(1500))
     expect(activate).toHaveBeenCalledWith('movie-1', 'abc123')
@@ -161,5 +170,77 @@ describe('PosterCard', () => {
     render(<PosterCard title="Movie" onClick={() => {}} />)
     const card = screen.getByRole('button')
     expect(card.className).toContain('w-full')
+  })
+
+  // --- New tests for per-card hover isolation and preview cleanup ---
+
+  it('portal does not mount before 400ms sustained hover', async () => {
+    render(<PosterCard title="Movie" mediaId="movie-1" trailerKey={null} onClick={() => {}} />)
+    const card = screen.getByRole('button')
+    fireEvent.mouseEnter(card)
+    await act(() => vi.advanceTimersByTime(399))
+    expect(screen.queryByTestId('focused-card-portal')).not.toBeInTheDocument()
+  })
+
+  it('portal mounts after 400ms sustained hover', async () => {
+    render(<PosterCard title="Movie" mediaId="movie-1" trailerKey={null} onClick={() => {}} />)
+    const card = screen.getByRole('button')
+    fireEvent.mouseEnter(card)
+    await act(() => vi.advanceTimersByTime(400))
+    expect(screen.getByTestId('focused-card-portal')).toBeInTheDocument()
+  })
+
+  it('portal unmounts when mouse leaves', async () => {
+    render(<PosterCard title="Movie" mediaId="movie-1" trailerKey={null} onClick={() => {}} />)
+    const card = screen.getByRole('button')
+    fireEvent.mouseEnter(card)
+    await act(() => vi.advanceTimersByTime(400))
+    expect(screen.getByTestId('focused-card-portal')).toBeInTheDocument()
+    fireEvent.mouseLeave(card)
+    await act(async () => {})
+    expect(screen.queryByTestId('focused-card-portal')).not.toBeInTheDocument()
+  })
+
+  it('hover isolation: quick hover on card A then B leaves A without portal', async () => {
+    const { container } = render(
+      <div>
+        <PosterCard title="Card A" mediaId="a" trailerKey={null} onClick={() => {}} />
+        <PosterCard title="Card B" mediaId="b" trailerKey={null} onClick={() => {}} />
+      </div>,
+    )
+    const [cardA, cardB] = container.querySelectorAll('[role="button"]')
+    // Hover A briefly (200ms) then immediately move to B
+    fireEvent.mouseEnter(cardA)
+    await act(() => vi.advanceTimersByTime(200))
+    fireEvent.mouseLeave(cardA)
+    fireEvent.mouseEnter(cardB)
+    // Advance past A's 400ms threshold — A must NOT focus
+    await act(() => vi.advanceTimersByTime(400))
+    // Only B's portal should be visible; A must not have entered focused state
+    const portals = screen.queryAllByTestId('focused-card-portal')
+    expect(portals.length).toBe(1)
+  })
+
+  it('preview cleanup: deactivate is called and portal unmounts on leave', async () => {
+    const deactivate = vi.fn()
+    mockUsePreview.mockReturnValue({ activeId: 'movie-1', activeKey: 'abc123', activate: vi.fn(), deactivate })
+    render(<PosterCard title="Movie" mediaId="movie-1" trailerKey="abc123" onClick={() => {}} />)
+    const card = screen.getByRole('button')
+    fireEvent.mouseEnter(card)
+    await act(() => vi.advanceTimersByTime(400))
+    expect(screen.getByTestId('focused-card-portal')).toBeInTheDocument()
+    fireEvent.mouseLeave(card)
+    await act(async () => {})
+    expect(deactivate).toHaveBeenCalled()
+    expect(screen.queryByTestId('focused-card-portal')).not.toBeInTheDocument()
+  })
+
+  it('no-preview card: portal renders without PreviewPlayer', async () => {
+    render(<PosterCard title="No Trailer" mediaId="movie-2" trailerKey={null} onClick={() => {}} />)
+    const card = screen.getByRole('button')
+    fireEvent.mouseEnter(card)
+    await act(() => vi.advanceTimersByTime(400))
+    expect(screen.getByTestId('focused-card-portal')).toBeInTheDocument()
+    expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument()
   })
 })

@@ -1,7 +1,7 @@
 {
   "ticket_id": "T086",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T086-fix-shelf-card-hover-state-and-add-focused-netflix",
   "issue_number": 181,
-  "updated_at": "2026-08-17T13:52:38Z"
+  "updated_at": "2026-08-17T14:24:10Z"
 }

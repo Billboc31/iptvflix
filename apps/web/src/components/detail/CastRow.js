@@ -1,7 +1,0 @@
-import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
-export default function CastRow({ cast, director }) {
-    if (cast.length === 0 && !director)
-        return null;
-    return (_jsxs("div", { className: "mb-6", children: [director && (_jsxs("p", { className: "text-sm text-gray-400 mb-3", children: [_jsx("span", { className: "font-medium text-gray-300", children: "R\u00E9alisateur :" }), " ", director] })), cast.length > 0 && (_jsxs(_Fragment, { children: [_jsx("p", { className: "text-xs font-medium text-gray-400 uppercase tracking-wide mb-2", children: "Casting" }), _jsx("div", { className: "flex gap-3 overflow-x-auto pb-2", children: cast.map((member, i) => (_jsxs("div", { className: "flex-shrink-0 w-20 text-center", children: [_jsx("div", { className: "w-20 h-20 rounded-full overflow-hidden bg-white/10 mb-1 mx-auto", children: member.profileUrl ? (_jsx("img", { src: member.profileUrl, alt: member.name, className: "w-full h-full object-cover" })) : (_jsx("div", { className: "w-full h-full flex items-center justify-center text-2xl text-gray-500", children: "\uD83D\uDC64" })) }), _jsx("p", { className: "text-xs text-white font-medium truncate", children: member.name }), member.character && (_jsx("p", { className: "text-xs text-gray-500 truncate", children: member.character }))] }, i))) })] }))] }));
-}
-//# sourceMappingURL=CastRow.js.map
