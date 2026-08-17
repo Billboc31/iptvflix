@@ -183,7 +183,10 @@ export default function PlayerPage() {
           if (Hls.isSupported()) {
             hlsInstance = new Hls({
               enableWorker: true,
-              maxBufferLength: 30,
+              maxBufferLength: 60,
+              maxMaxBufferLength: 180,
+              lowLatencyMode: false,
+              progressive: true,
               xhrSetup(xhr, requestUrl) {
                 const apiBase = import.meta.env.VITE_API_BASE ?? ''
                 let sameOrigin = !apiBase

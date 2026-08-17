@@ -14,6 +14,7 @@ import { getPlaybackDiag } from '../services/playback-diag.js'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const UPSTREAM_TIMEOUT_MS = 30_000
+const SEGMENT_TIMEOUT_MS = 15_000
 
 // Rewrites provider HLS manifest segment URIs to proxy through IPTVFlix,
 // keeping provider credentials server-side.
@@ -212,7 +213,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
 
       if (!streamBody) return reply.send('')
       try {
-        return reply.send(Readable.fromWeb(streamBody as import('stream/web').ReadableStream))
+        return reply.send(Readable.fromWeb(streamBody as import('stream/web').ReadableStream, { highWaterMark: 256 * 1024 }))
       } catch (err) {
         app.log.error({ ...logCtx, err }, 'playback-gateway: failed to pipe upstream body')
         return reply.status(502).send({ error: 'Erreur fournisseur' })
@@ -250,29 +251,45 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
 
       const logCtx = { sessionId, mediaId: session.mediaId, segmentUrl: segmentUrl.slice(0, 80) }
 
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS)
-      request.raw.on('close', () => controller.abort())
+      type FetchOutcome =
+        | { ok: true; res: Response }
+        | { ok: false; retriable: boolean; netErr: boolean; upstreamStatus?: number }
 
-      let upstreamRes: Response
-      try {
-        upstreamRes = await fetch(segmentUrl, {
-          signal: controller.signal,
-          headers: XTREAM_STREAM_HEADERS,
-        })
-        clearTimeout(timeoutId)
-      } catch (err) {
-        clearTimeout(timeoutId)
-        const isAbort = err instanceof Error && err.name === 'AbortError'
-        app.log.warn({ ...logCtx }, `playback-gateway: segment ${isAbort ? 'timeout' : 'fetch error'}`)
-        return reply.status(504).send({ error: 'Fournisseur ne répond pas' })
+      async function fetchSegment(): Promise<FetchOutcome> {
+        const ctrl = new AbortController()
+        const tId = setTimeout(() => ctrl.abort(), SEGMENT_TIMEOUT_MS)
+        const onClose = () => ctrl.abort()
+        request.raw.on('close', onClose)
+        try {
+          const res = await fetch(segmentUrl, { signal: ctrl.signal, headers: XTREAM_STREAM_HEADERS })
+          clearTimeout(tId)
+          request.raw.off('close', onClose)
+          if (!res.ok) return { ok: false, retriable: res.status >= 500, netErr: false, upstreamStatus: res.status }
+          return { ok: true, res }
+        } catch (err) {
+          clearTimeout(tId)
+          request.raw.off('close', onClose)
+          return { ok: false, retriable: true, netErr: true }
+        }
       }
 
-      if (!upstreamRes.ok) {
-        app.log.warn({ ...logCtx, upstreamStatus: upstreamRes.status }, 'playback-gateway: segment upstream error')
-        return reply.status(upstreamRes.status).send({ error: 'Segment unavailable' })
+      let outcome = await fetchSegment()
+      if (!outcome.ok && outcome.retriable) {
+        app.log.warn({ ...logCtx, upstreamStatus: outcome.upstreamStatus }, 'playback-gateway: segment attempt failed, retrying')
+        await new Promise<void>((resolve) => setTimeout(resolve, 1000))
+        outcome = await fetchSegment()
       }
 
+      if (!outcome.ok) {
+        if (outcome.netErr) {
+          app.log.warn({ ...logCtx }, 'playback-gateway: segment timeout or fetch error')
+          return reply.status(504).send({ error: 'Fournisseur ne répond pas' })
+        }
+        app.log.warn({ ...logCtx, upstreamStatus: outcome.upstreamStatus }, 'playback-gateway: segment upstream error')
+        return reply.status(outcome.upstreamStatus ?? 502).send({ error: 'Segment unavailable' })
+      }
+
+      const upstreamRes = outcome.res
       reply.header('Content-Type', upstreamRes.headers.get('Content-Type') ?? 'video/MP2T')
       const contentLength = upstreamRes.headers.get('Content-Length')
       if (contentLength) reply.header('Content-Length', contentLength)
@@ -317,7 +334,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
       app.log.info({ ...logCtx, playlistSizeBytes: playlistBytes, segmentCount }, 'playback-gateway: serving HLS playlist')
 
       reply.header('Content-Type', 'application/vnd.apple.mpegurl')
-      reply.header('Cache-Control', 'no-cache')
+      reply.header('Cache-Control', 'max-age=4, public')
       return reply.status(200).send(result.content)
     },
   )

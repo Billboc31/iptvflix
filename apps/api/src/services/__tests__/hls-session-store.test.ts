@@ -212,8 +212,8 @@ describe('getSegment', () => {
     const proc = makeFakeProcess()
     mockSpawn.mockReturnValue(proc)
 
-    // Generate 501 segment filenames
-    const manySegments = Array.from({ length: 501 }, (_, i) => `seg${String(i).padStart(5, '0')}.ts`)
+    // Generate 1501 segment filenames
+    const manySegments = Array.from({ length: 1501 }, (_, i) => `seg${String(i).padStart(5, '0')}.ts`)
     mockReaddir.mockResolvedValue(manySegments)
 
     const { createHlsSession, getSegment } = await import('../hls-session-store.js')

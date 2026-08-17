@@ -66,8 +66,8 @@ describe('expired session returns null', () => {
 
     expect(getSession(sessionId)).not.toBeNull()
 
-    // Advance past 2-hour TTL
-    vi.advanceTimersByTime(2 * 60 * 60 * 1000 + 1)
+    // Advance past 4-hour TTL
+    vi.advanceTimersByTime(4 * 60 * 60 * 1000 + 1)
 
     expect(getSession(sessionId)).toBeNull()
   })

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { DeliveryMode } from './playback-compat.js'
 
-const TTL_MS = 2 * 60 * 60 * 1000 // 2 hours
+const TTL_MS = 4 * 60 * 60 * 1000 // 4 hours
 
 export type SessionEntry = {
   sessionId: string
