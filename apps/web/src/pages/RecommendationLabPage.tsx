@@ -116,20 +116,35 @@ function QueryPlanPanel({ plan }: { plan: RecommendationQueryPlan }) {
         <div>
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Filtres durs</p>
           <div className="text-xs space-y-0.5">
-            {plan.hardFilters.maxRuntimeMinutes !== undefined && (
-              <div className="text-gray-300">Durée max : {plan.hardFilters.maxRuntimeMinutes} min</div>
-            )}
             {plan.hardFilters.minReleaseYear !== undefined && (
               <div className="text-gray-300">Année min : {plan.hardFilters.minReleaseYear}</div>
             )}
             {plan.hardFilters.maxReleaseYear !== undefined && (
               <div className="text-gray-300">Année max : {plan.hardFilters.maxReleaseYear}</div>
             )}
+            {plan.hardFilters.maxRuntimeMinutes !== undefined && (
+              <div className="flex items-center gap-2 text-gray-400">
+                Durée max : {plan.hardFilters.maxRuntimeMinutes} min
+                <span className="px-1.5 py-0.5 rounded text-xs bg-yellow-500/10 text-yellow-500 border border-yellow-500/20">non appliqué</span>
+              </div>
+            )}
             {plan.hardFilters.audioLanguages && plan.hardFilters.audioLanguages.length > 0 && (
-              <div className="text-gray-300">Langues audio : {plan.hardFilters.audioLanguages.join(', ')}</div>
+              <div className="flex items-center gap-2 text-gray-400">
+                Langues audio : {plan.hardFilters.audioLanguages.join(', ')}
+                <span className="px-1.5 py-0.5 rounded text-xs bg-yellow-500/10 text-yellow-500 border border-yellow-500/20">non appliqué</span>
+              </div>
+            )}
+            {plan.hardFilters.includeGenres && plan.hardFilters.includeGenres.length > 0 && (
+              <div className="flex items-center gap-2 text-gray-400">
+                Genres requis : {plan.hardFilters.includeGenres.join(', ')}
+                <span className="px-1.5 py-0.5 rounded text-xs bg-yellow-500/10 text-yellow-500 border border-yellow-500/20">non appliqué</span>
+              </div>
             )}
             {plan.hardFilters.excludeGenres && plan.hardFilters.excludeGenres.length > 0 && (
-              <div className="text-red-400">Genres exclus : {plan.hardFilters.excludeGenres.join(', ')}</div>
+              <div className="flex items-center gap-2 text-red-400">
+                Genres exclus : {plan.hardFilters.excludeGenres.join(', ')}
+                <span className="px-1.5 py-0.5 rounded text-xs bg-yellow-500/10 text-yellow-500 border border-yellow-500/20">non appliqué</span>
+              </div>
             )}
           </div>
           {plan.userConstraints.length > 0 && (

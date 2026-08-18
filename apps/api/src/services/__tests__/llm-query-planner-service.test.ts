@@ -119,26 +119,26 @@ describe('LlmQueryPlannerService — malformed LLM response', () => {
   })
 })
 
-// 6. Provider timeout
+// 6. Provider timeout — exercises the real withTimeout(8000ms) via fake timers
 describe('LlmQueryPlannerService — provider timeout', () => {
   it('returns fallback plan on timeout without throwing', async () => {
-    const neverResolves = new Promise<RecommendationQueryPlan>(() => {})
-    const provider = makeMockProvider(() => neverResolves)
-    const service = new LlmQueryPlannerService(provider)
+    vi.useFakeTimers()
+    try {
+      const provider = makeMockProvider(() => new Promise<RecommendationQueryPlan>(() => {}))
+      const service = new LlmQueryPlannerService(provider)
 
-    // We override timeout to 50ms for the test by directly testing the fallback
-    // The real service uses 8s; here we test by making provider reject with timeout error
-    const timeoutProvider = makeMockProvider(() =>
-      Promise.reject(new Error('LLM planner timed out after 8000ms')),
-    )
-    const timeoutService = new LlmQueryPlannerService(timeoutProvider)
-    const result = await timeoutService.plan('anime action', null)
+      const resultPromise = service.plan('anime action', null)
+      await vi.advanceTimersByTimeAsync(8001)
+      const result = await resultPromise
 
-    expect(result.plannerFallback).toBe(true)
-    expect(result.rawQuery).toBe('anime action')
-    expect(result.semanticIntent).toBe('anime action')
+      expect(result.plannerFallback).toBe(true)
+      expect(result.rawQuery).toBe('anime action')
+      expect(result.semanticIntent).toBe('anime action')
+    } finally {
+      vi.useRealTimers()
+    }
   })
-}, 10000)
+})
 
 // 7. Prompt-injection-like query text
 describe('LlmQueryPlannerService — prompt injection attempt', () => {

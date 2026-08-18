@@ -10,6 +10,34 @@ import { OPENAI_API_KEY, LLM_PLANNER_MODEL } from '../config/env.js'
 import type { CompactTasteContext, RecommendationQueryPlan } from '@iptvflix/api-contracts'
 
 // ---------------------------------------------------------------------------
+// profileContext sanitisation — validate shape and bound string lengths
+// to prevent prompt-injection via caller-controlled context fields.
+// ---------------------------------------------------------------------------
+
+const PROFILE_MAX_ITEMS = 20
+const PROFILE_MAX_ITEM_LEN = 100
+
+function sanitizeStringArray(field: unknown): string[] {
+  if (!Array.isArray(field)) return []
+  return (field as unknown[])
+    .filter((item): item is string => typeof item === 'string')
+    .slice(0, PROFILE_MAX_ITEMS)
+    .map((s) => s.slice(0, PROFILE_MAX_ITEM_LEN))
+}
+
+function sanitizeProfileContext(raw: unknown): CompactTasteContext | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const obj = raw as Record<string, unknown>
+  return {
+    topGenres: sanitizeStringArray(obj.topGenres),
+    topThemes: sanitizeStringArray(obj.topThemes),
+    likedPeople: sanitizeStringArray(obj.likedPeople),
+    recentlyWatched: sanitizeStringArray(obj.recentlyWatched),
+    negativeSignals: sanitizeStringArray(obj.negativeSignals),
+  }
+}
+
+// ---------------------------------------------------------------------------
 // In-process LRU cache for query plans (max 100 entries, 5-minute TTL)
 // ---------------------------------------------------------------------------
 
@@ -90,9 +118,12 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
     }
 
     const rawQuery = query.trim()
+    if (rawQuery.length > 500) {
+      return reply.status(400).send({ error: 'query must not exceed 500 characters' })
+    }
     const topK = Math.min(Math.max(1, Number(body?.topK ?? 10)), 50)
     const expandWithLlm = body?.expandWithLlm === true
-    const profileContext = body?.profileContext ?? null
+    const profileContext = sanitizeProfileContext(body?.profileContext)
 
     const compareQuery = body?.compareQuery && typeof body.compareQuery === 'string'
       ? body.compareQuery.trim()
@@ -121,14 +152,22 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
         retrievalService.retrieve(effectiveCompareQuery, topK),
       ])
 
-      // Apply mediaTypes filter from plan root (maxRuntimeMinutes omitted — runtime not in SemanticResult)
+      // Apply hard filters available in SemanticResult.
+      // Enforced: mediaTypes, minReleaseYear, maxReleaseYear (year field present after enrichWithMetadata).
+      // NOT enforced (no genre/audio data in SemanticResult): excludeGenres, includeGenres,
+      // audioLanguages, maxRuntimeMinutes — shown in QueryPlanPanel as unenforced.
       const filteredTypes = plan.mediaTypes.length > 0 && plan.mediaTypes.length < 2
         ? new Set(plan.mediaTypes)
         : null
 
-      const filteredResults = filteredTypes
-        ? expandedResults.filter((r) => filteredTypes.has(r.mediaType))
-        : expandedResults
+      const { minReleaseYear, maxReleaseYear } = plan.hardFilters
+
+      const filteredResults = expandedResults.filter((r) => {
+        if (filteredTypes && !filteredTypes.has(r.mediaType)) return false
+        if (minReleaseYear !== undefined && r.year !== null && r.year < minReleaseYear) return false
+        if (maxReleaseYear !== undefined && r.year !== null && r.year > maxReleaseYear) return false
+        return true
+      })
 
       const mapResult = (r: (typeof filteredResults)[number]) => ({
         mediaId: r.mediaId,
