@@ -101,6 +101,20 @@ function decadeKey(year: number | null): string | null {
   return `${Math.floor(year / 10) * 10}s`
 }
 
+function countryScoreKeys(countries: unknown): string[] {
+  if (!Array.isArray(countries)) return []
+  const keys: string[] = []
+  for (const c of countries) {
+    if (typeof c === 'string' && c.length > 0) {
+      keys.push(c)
+    } else if (c && typeof c === 'object' && 'iso3166_1' in c) {
+      const code = (c as { iso3166_1?: unknown }).iso3166_1
+      if (typeof code === 'string' && code.length > 0) keys.push(code)
+    }
+  }
+  return keys
+}
+
 export async function buildTaste(profileId: string): Promise<ProfileTaste> {
   const now = new Date()
 
@@ -165,10 +179,8 @@ export async function buildTaste(profileId: string): Promise<ProfileTaste> {
           languageScores[movie.originalLanguage] = (languageScores[movie.originalLanguage] ?? 0) + weight
         }
         // countries
-        if (Array.isArray(movie.productionCountries)) {
-          for (const c of movie.productionCountries as string[]) {
-            countryScores[c] = (countryScores[c] ?? 0) + weight
-          }
+        for (const c of countryScoreKeys(movie.productionCountries)) {
+          countryScores[c] = (countryScores[c] ?? 0) + weight
         }
         // decade
         const dk = decadeKey(movie.year)
@@ -197,10 +209,8 @@ export async function buildTaste(profileId: string): Promise<ProfileTaste> {
         if (s.originalLanguage) {
           languageScores[s.originalLanguage] = (languageScores[s.originalLanguage] ?? 0) + weight
         }
-        if (Array.isArray(s.productionCountries)) {
-          for (const c of s.productionCountries as string[]) {
-            countryScores[c] = (countryScores[c] ?? 0) + weight
-          }
+        for (const c of countryScoreKeys(s.productionCountries)) {
+          countryScores[c] = (countryScores[c] ?? 0) + weight
         }
         const dk = decadeKey(s.firstAirYear)
         if (dk) decadeScores[dk] = (decadeScores[dk] ?? 0) + weight
