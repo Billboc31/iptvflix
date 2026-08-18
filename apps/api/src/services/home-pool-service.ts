@@ -315,6 +315,18 @@ export async function persistFixedShelvesForSession(
   sessionId: string,
   fixed: ShelfResponse[],
 ): Promise<void> {
+  const existing = await db
+    .select({ id: shelfInstances.id })
+    .from(shelfInstances)
+    .where(
+      and(
+        eq(shelfInstances.homeSessionId, sessionId),
+        eq(shelfInstances.generationType, 'SYSTEM_FIXED'),
+      ),
+    )
+    .limit(1)
+  if (existing.length > 0) return
+
   const shelfInstanceService = new ShelfInstanceService(db)
   const now = new Date()
 
