@@ -1,0 +1,136 @@
+I have enough information to write the complete review. Let me produce it now.
+
+---
+
+## PR Review — T108: Expand TMDB Discovery Catalog
+
+## Résumé
+
+L'implémentation livre le cœur du ticket : nouveaux feeds bootstrap (`now_playing`/`airing_today`), variables d'env configurables, endpoint de stats catalog, filtres de politique de disponibilité (`WATCH_NOW`/`DISCOVERY`/`UPCOMING`/`ALL`), stub d'embedding-backfill, et vérification que la liste de lecture fonctionne pour les titres sans disponibilité. Le code est globalement propre et conforme au plan. Un bug de cross-mapping dans le client TMDB doit être corrigé avant merge.
+
+---
+
+## Vérifications effectuées
+
+- `catalog-bootstrap-service.ts` : logique de steps, quality floor, upsert, checkpoint resumability
+- `catalog-sync-service.ts` : flux Xtream/Plex/M3U, logique d'Availability, déduplication canonique
+- `discovery-candidate-pool-service.ts` : refresh, evict, materialize
+- `apps/api/src/providers/metadata/tmdb/client.ts` : routage des feeds movie/series
+- `apps/api/src/providers/metadata/types.ts` : type `DiscoveryFeed`
+- `apps/api/src/routes/catalog-stats.ts` : agrégats SQL
+- `apps/api/src/routes/embedding-backfill.ts` : stub 501
+- `apps/api/src/routes/recommendations.ts` : validation du paramètre `policy`
+- `apps/api/src/services/recommendation-ranking-service.ts` : filtrage par `AvailabilityPolicy`
+- `apps/api/src/config/env.ts` : nouvelles variables d'env
+- `apps/api/src/db/schema/availabilities.ts` + migration `0034_t093_variant_metadata.sql`
+- Tous les tests correspondants (6 suites)
+
+---
+
+## Points validés
+
+1. **Nouveaux feeds bootstrap corrects** — `now_playing` pour MOVIE → `/movie/now_playing`, `airing_today` pour SERIES → `/tv/airing_today`. Les appels effectués par `buildSteps()` + `execute()` sont corrects.
+2. **Limites de pages élevées et configurables** — `CATALOG_BOOTSTRAP_MAX_PAGES_PER_FEED` 20→50, `CATALOG_BOOTSTRAP_MAX_PAGES_PER_GENRE` 10→20, tous via env vars.
+3. **Quality floor correctement borné aux steps genre/language** — les feed steps (déjà curatés par TMDB) sont exemptés.
+4. **Checkpoint persisté page par page** — reprise idempotente confirmée par la structure `checkpoint[key] = { done: false, lastPage: page }`.
+5. **Upsert sur `tmdbId`** — `onConflictDoUpdate` préserve l'identité canonique ; `xmax = 0` distingue created vs updated. Test unitaire valide.
+6. **`GET /admin/catalog-stats`** — 8 requêtes parallèles, agrégats corrects, `withoutAvailability = total - withAvailability`, stub `embeddingPending: 0` documenté.
+7. **`POST /admin/embedding-backfill`** — 501 avec `eligibleMovies`/`eligibleSeries` (count sur `metadataEnrichedAt IS NOT NULL`), integration point clair pour #205.
+8. **`AvailabilityPolicy`** — `WATCH_NOW` filtre sur présence d'une row AVAILABLE, `UPCOMING` filtre sur `status`, `DISCOVERY`/`ALL` incluent tout. Logique correcte et testée.
+9. **Profile watchlist pour titres non-disponibles** — tests vérifient add/get/delete sans guard d'availability. Réponse 404 uniquement si le titre est absent du catalogue canonique.
+10. **Enregistrement des routes** — `catalogStatsRoutes` et `embeddingBackfillRoutes` enregistrés dans `protectedApp` (admin-gated). ✓
+11. **Migration additive et idempotente** — `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. Aucun reset DB requis.
+
+---
+
+## Problèmes détectés
+
+### 🔴 BLOQUANT — Cross-mapping TMDB feeds dans le client
+
+**Fichier** : `apps/api/src/providers/metadata/tmdb/client.ts`, lignes 470-471 et 502-503
+
+Dans `fetchMovieFeed`, le record `paths` contient :
+```ts
+now_playing: '/movie/now_playing',   // ✓ correct
+airing_today: '/tv/airing_today',    // ✗ WRONG — TV endpoint dans une fonction movie
+```
+
+Dans `fetchSeriesFeed`, le record `paths` contient :
+```ts
+airing_today: '/tv/airing_today',    // ✓ correct
+now_playing: '/movie/now_playing',   // ✗ WRONG — movie endpoint dans une fonction series
+```
+
+**Pourquoi c'est un bug réel** : `DiscoveryCandidatePoolService.refreshPool(feeds, mediaTypes)` itère sur `feeds × mediaTypes`. Si appelé avec `feeds = ['airing_today']` et `mediaTypes = ['MOVIE', 'SERIES']`, l'itération `'airing_today' × 'MOVIE'` invoque `fetchMovieFeed('airing_today', page)` → `/tv/airing_today`. Résultat : des séries TV sont insérées dans la `discovery_candidates` table avec `mediaType = 'MOVIE'`. Aucun type error côté TypeScript car `DiscoveryFeed` est shared entre les deux méthodes.
+
+**Correction** : retirer `airing_today` du `paths` de `fetchMovieFeed` (ou lever une erreur explicite), et retirer `now_playing` du `paths` de `fetchSeriesFeed`. Ces feed values sont media-type-specific par nature.
+
+---
+
+### 🟡 OBSERVATION — Migration T093 portée par T108
+
+`apps/api/migrations/0034_t093_variant_metadata.sql` est nommée T093 et ajoute des colonnes (`codec_name`, `hdr_format`, `release_hint`, `audio_format`) qui appartiennent au ticket T093. Cette migration apparaît dans le diff T108 car la branche est issue d'un état `main` qui ne contenait pas encore T093.
+
+**Impact** : si T093 est mergé séparément, la migration est appliquée deux fois (safe grâce à `IF NOT EXISTS`), mais le fichier SQL sera en conflit. Le scope de T108 ne devrait pas inclure des migrations d'un autre ticket.
+
+**Correction recommandée** : rebaser T108 sur un `main` incluant T093, ou extraire les colonnes T093 en les dépendances explicites.
+
+---
+
+### 🟡 OBSERVATION — SQL brut avec noms de tables hardcodés dans `catalog-stats.ts`
+
+Lignes 27-33 :
+```ts
+sql<number>`cast(count(*) filter (where exists (
+  select 1 from movie_availabilities where movie_id = movies.id and status = 'AVAILABLE'
+)) as integer)`
+```
+
+Les noms `movie_availabilities`, `series_availabilities` sont des strings littéraux. Si les tables sont renommées dans Drizzle, ces requêtes silently broken. Préférer `getTableName(movieAvailabilities)` ou utiliser une sub-query Drizzle.
+
+---
+
+### 🟡 OBSERVATION — Test d'intégration manquant pour le flux bootstrap → sync attache Availability
+
+`catalog-sync.test.ts` teste l'idempotence de `upsertMovieBatch` (created/updated counts) mais pas le flux complet : "bootstrapped movie (tmdbId=X, 0 availability) + syncCatalog avec snapshot contenant tmdbId=X → une seule row movies + une seule movieAvailabilities row." C'est l'un des critères d'acceptation critiques du ticket.
+
+---
+
+### 🟡 OBSERVATION — `rankRecommendations` charge l'intégralité de movies+series en mémoire
+
+```ts
+db.select({...}).from(movies)        // tous les films
+db.select({...}).from(seriesTbl)     // toutes les séries
+```
+
+Avec la cible de 50k+ titres explicite dans ce ticket, cette requête devient un bottleneck de latence et de mémoire pour chaque appel de recommandations. Le plan documente ce choix comme exclu du scope T108, mais le ticket lui-même rend ce pattern significativement plus problématique. À tracker pour résolution rapide.
+
+---
+
+## Risques éventuels
+
+- **Cross-mapping bug** : risque de corruption silencieuse de `discovery_candidates` (séries traitées comme movies) si `DiscoveryCandidatePoolService.refreshPool` est appelé avec des combinaisons feed/mediaType non anticipées par le bootstrap.
+- **Scale des recommandations** : degradation de performance en production dès que le catalog bootstrap réussit son objectif de 50k titres.
+- **Migration T093** : risque de conflit de merge si T093 n'est pas encore mergé.
+
+---
+
+## Actions demandées
+
+1. **Corriger le cross-mapping dans `fetchMovieFeed` et `fetchSeriesFeed`** — retirer les entrées croisées (`airing_today` de `fetchMovieFeed`, `now_playing` de `fetchSeriesFeed`), ou les remplacer par un throw explicite :
+   ```ts
+   // Dans fetchMovieFeed
+   if (feed === 'airing_today') throw new Error('airing_today is a series-only feed')
+   // Dans fetchSeriesFeed
+   if (feed === 'now_playing') throw new Error('now_playing is a movie-only feed')
+   ```
+
+2. **(Optionnel pour ce ticket)** Ajouter un test qui passe un snapshot Xtream contenant le `tmdbId` d'un movie déjà bootstrappé et vérifie : `movies.id` inchangé, 1 seule `movieAvailabilities` row créée.
+
+---
+
+## Décision
+
+Le bug de cross-mapping dans le client TMDB peut entraîner une insertion silencieuse de séries TV avec `mediaType = 'MOVIE'` dans `discovery_candidates` — comportement incorrect et non testé. Il doit être corrigé avant merge.
+
+IMPLEMENTATION_FIX_REQUIRED
