@@ -12,3 +12,8 @@
 [2026-08-18T12:07:22Z] snapshot: runtime-prompt=runs/T106/prompts/planner-attempt-1.md
 [2026-08-18T12:14:18Z] compose: preferring on-disk runs/T106/plan.md over chatty stdout (agent Write beat meta-report)
 [2026-08-18T12:14:19Z] auto-run: step=planner done rc=0
+[2026-08-18T12:54:39Z] conflict-resolver: [pass 1/3] conflicted=['apps/api/src/db/schema/index.ts', 'apps/api/src/services/interaction-event-service.ts', 'packages/api-contracts/src/interaction-events.ts'] | staged=['apps/api/src/db/schema/index.ts', 'apps/api/src/services/interaction-event-service.ts', 'packages/api-contracts/src/interaction-events.ts'] | unresolved=[] | continue_rc=1 | next_source=[]
+[2026-08-18T12:54:39Z] conflict-resolver: all conflicts resolved after 1 pass(es)
+[2026-08-18T12:54:39Z] conflict-resolver: running tests
+[2026-08-18T12:54:39Z] conflict-resolver: test-report written: runs/T106/conflict/test-report.md
+[2026-08-18T12:54:39Z] conflict-resolver: staging and committing resolution artifacts
