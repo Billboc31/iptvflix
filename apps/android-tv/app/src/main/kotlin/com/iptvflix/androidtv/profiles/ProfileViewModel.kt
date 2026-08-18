@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.iptvflix.androidtv.App
+import com.iptvflix.androidtv.network.InteractionEventService
 import com.iptvflix.androidtv.network.ProfileResponse
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +22,7 @@ data class ProfileUiState(
 class ProfileViewModel(app: Application) : AndroidViewModel(app) {
 
     private val container get() = getApplication<App>()
+    private val interactionEvents by lazy { InteractionEventService(container.apiClient) }
 
     private val _uiState = MutableStateFlow(ProfileUiState())
     val uiState: StateFlow<ProfileUiState> = _uiState
@@ -51,6 +53,11 @@ class ProfileViewModel(app: Application) : AndroidViewModel(app) {
                 container.secureStorage.saveLastUsedProfileId(profileId)
                 result.profile
             }.onSuccess {
+                viewModelScope.launch {
+                    runCatching {
+                        interactionEvents.emit(mapOf("eventType" to "PROFILE_SELECTED", "clientType" to "android-tv"))
+                    }
+                }
                 onSuccess()
             }.onFailure { err ->
                 Log.e(TAG, "Failed to select profile $profileId", err)

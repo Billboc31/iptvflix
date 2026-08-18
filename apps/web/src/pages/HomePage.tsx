@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import HeroSection from '../components/content/HeroSection.js'
 import ShelfRow from '../components/content/ShelfRow.js'
@@ -13,6 +13,7 @@ import { useHome } from '../hooks/useHome.js'
 import { useArrivals } from '../hooks/useArrivals.js'
 import { useOpenDetail } from '../hooks/useOpenDetail.js'
 import { useProfile } from '../context/ProfileContext.js'
+import { useInteractionEvents } from '../hooks/useInteractionEvents.js'
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -21,7 +22,13 @@ export default function HomePage() {
   const { data: movies, loading: moviesLoading } = useMovies({ pageSize: 1 })
   const { data: homeData, isLoading: homeLoading } = useHome(currentProfile?.id ?? '', profileVersion)
   const { arrivals, refresh: refreshArrivals } = useArrivals('unread')
+  const { emit: emitEvent } = useInteractionEvents()
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false)
+
+  useEffect(() => {
+    emitEvent({ eventType: 'HOME_OPENED', clientType: 'web' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileVersion])
 
   const shelves = homeData?.shelves ?? []
   const isLoading = moviesLoading || homeLoading

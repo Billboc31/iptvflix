@@ -9,6 +9,7 @@ import { genres } from '../db/schema/genres.js'
 import { collections } from '../db/schema/collections.js'
 import { mediaVideos } from '../db/schema/media-videos.js'
 import { mediaCredits } from '../db/schema/media-credits.js'
+import { persons } from '../db/schema/persons.js'
 import type { MetadataProvider, ExternalVideo, ExternalCreditPerson, ExternalSeasonEpisode, ExternalMovieMetadata, ExternalSeriesMetadata } from '../providers/metadata/types.js'
 
 type Db = PostgresJsDatabase<typeof schema>
@@ -530,8 +531,32 @@ export class MetadataEnrichmentService {
 
     if (credits.length === 0) return
 
+    // Upsert persons for any credit that carries a TMDB person ID
+    const personIdByTmdbId = new Map<number, string>()
+    const creditsWithPersonId = await Promise.all(
+      credits.map(async (c) => {
+        if (!c.tmdbPersonId) return { ...c, resolvedPersonId: null }
+        const cached = personIdByTmdbId.get(c.tmdbPersonId)
+        if (cached) return { ...c, resolvedPersonId: cached }
+        const [row] = await this.db
+          .insert(persons)
+          .values({
+            tmdbPersonId: c.tmdbPersonId,
+            name: c.name,
+            profilePath: c.profilePath ?? null,
+          })
+          .onConflictDoUpdate({
+            target: persons.tmdbPersonId,
+            set: { name: c.name, profilePath: c.profilePath ?? null },
+          })
+          .returning({ id: persons.id })
+        if (row) personIdByTmdbId.set(c.tmdbPersonId, row.id)
+        return { ...c, resolvedPersonId: row?.id ?? null }
+      }),
+    )
+
     await this.db.insert(mediaCredits).values(
-      credits.map((c) => ({
+      creditsWithPersonId.map((c) => ({
         mediaType,
         mediaId,
         role: c.role,
@@ -539,6 +564,12 @@ export class MetadataEnrichmentService {
         character: c.character,
         creditOrder: c.order,
         profilePath: c.profilePath,
+        tmdbPersonId: c.tmdbPersonId ?? null,
+        personId: c.resolvedPersonId ?? null,
+        department: c.department ?? null,
+        job: c.job ?? null,
+        isDirector: c.role === 'director',
+        isCreator: c.role === 'creator',
       })),
     )
   }

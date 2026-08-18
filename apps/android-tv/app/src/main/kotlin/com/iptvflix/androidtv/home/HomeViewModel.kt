@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.iptvflix.androidtv.App
 import com.iptvflix.androidtv.network.ApiException
+import com.iptvflix.androidtv.network.InteractionEventService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -41,6 +42,8 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
     private val container get() = getApplication<App>()
     private val json = Json { ignoreUnknownKeys = true }
+    private val interactionEvents by lazy { InteractionEventService(container.apiClient) }
+    private var hasEmittedHomeOpened = false
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState
@@ -77,6 +80,12 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 container.apiClient.get("/devices/me")
                 _uiState.value = _uiState.value.copy(connectionStatus = ConnectionStatus.Connected)
+                if (!hasEmittedHomeOpened) {
+                    hasEmittedHomeOpened = true
+                    runCatching {
+                        interactionEvents.emit(mapOf("eventType" to "HOME_OPENED", "clientType" to "android-tv"))
+                    }
+                }
                 delay(30_000)
             } catch (e: ApiException) {
                 if (e.code == 401) {

@@ -7,6 +7,7 @@ import type {
   ExternalSeriesCandidate,
 } from '@iptvflix/api-contracts'
 import { searchContent, searchDiscover, materializeMovie, materializeSeries } from '../lib/api.js'
+import { useInteractionEvents } from '../hooks/useInteractionEvents.js'
 import PosterCard from '../components/content/PosterCard.js'
 import Spinner from '../components/ui/Spinner.js'
 import EmptyState from '../components/ui/EmptyState.js'
@@ -18,6 +19,7 @@ export default function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const openDetail = useOpenDetail()
+  const { emit: emitEvent } = useInteractionEvents()
   const initial = searchParams.get('q') ?? ''
 
   const [query, setQuery] = useState(initial)
@@ -48,6 +50,12 @@ export default function SearchPage() {
     setExternalLoading(true)
     setError(null)
     setExternalError(null)
+
+    emitEvent({
+      eventType: 'SEARCH_PERFORMED',
+      searchQueryNormalized: debouncedQuery.trim().toLowerCase(),
+      clientType: 'web',
+    })
 
     searchContent(debouncedQuery)
       .then(({ movies: m, series: s }) => {
@@ -166,7 +174,10 @@ export default function SearchPage() {
                 year={m.year}
                 posterUrl={m.posterUrl}
                 quality={m.quality}
-                onClick={() => openDetail('movie', m.id)}
+                onClick={() => {
+                  emitEvent({ eventType: 'SEARCH_RESULT_OPENED', mediaType: 'MOVIE', mediaId: m.id, searchQueryNormalized: debouncedQuery.trim().toLowerCase(), clientType: 'web' })
+                  openDetail('movie', m.id)
+                }}
               />
             ))}
           </div>
@@ -185,7 +196,10 @@ export default function SearchPage() {
                 title={s.title}
                 year={s.year}
                 posterUrl={s.posterUrl}
-                onClick={() => openDetail('series', s.id)}
+                onClick={() => {
+                  emitEvent({ eventType: 'SEARCH_RESULT_OPENED', mediaType: 'SERIES', mediaId: s.id, searchQueryNormalized: debouncedQuery.trim().toLowerCase(), clientType: 'web' })
+                  openDetail('series', s.id)
+                }}
               />
             ))}
           </div>

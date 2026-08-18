@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import type { Location } from 'react-router-dom'
 import type { SeriesDetailResponse } from '@iptvflix/api-contracts'
 import { getSeries, getProfile, fetchContinueWatching, ApiError } from '../lib/api.js'
+import { useInteractionEvents } from '../hooks/useInteractionEvents.js'
 import { useDevices } from '../hooks/useDevices.js'
 import Badge from '../components/ui/Badge.js'
 import Button from '../components/ui/Button.js'
@@ -46,6 +47,7 @@ export default function SeriesDetailPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { devices } = useDevices()
+  const { emit: emitEvent } = useInteractionEvents()
   const [series, setSeries] = useState<SeriesDetailResponse | null>(null)
 
   const modalState = location.state as { background?: Location; scrollY?: number } | null
@@ -102,7 +104,10 @@ export default function SeriesDetailPage() {
         const s = await getSeries(id!)
         if (cancelled) return
         setSeries(s)
-        if (initial) setLoading(false)
+        if (initial) {
+          setLoading(false)
+          emitEvent({ eventType: 'DETAIL_OPENED', mediaType: 'SERIES', mediaId: id!, clientType: 'web' })
+        }
         return s
       } catch (err) {
         if (cancelled) return

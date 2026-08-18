@@ -1,4 +1,6 @@
 import type {
+  InteractionEventBody,
+  BatchEventResponse,
   ArrivalItem,
   MovieResponse,
   MovieDetailResponse,
@@ -406,4 +408,12 @@ export function sendShelfConceptFeedback(
   body: import('@iptvflix/api-contracts').ShelfConceptFeedbackBody,
 ): Promise<void> {
   return request(`/shelf-concepts/${id}/feedback`, { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function recordInteractionEvent(event: InteractionEventBody): Promise<void> {
+  return request('/interaction-events', { method: 'POST', body: JSON.stringify(event) })
+}
+
+export function batchRecordInteractionEvents(events: InteractionEventBody[]): Promise<BatchEventResponse> {
+  return request('/interaction-events/batch', { method: 'POST', body: JSON.stringify({ events }) })
 }

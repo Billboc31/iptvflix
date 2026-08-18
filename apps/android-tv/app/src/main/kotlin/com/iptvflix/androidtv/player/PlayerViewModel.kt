@@ -12,6 +12,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import com.iptvflix.androidtv.App
 import com.iptvflix.androidtv.command.PlaybackCommand
+import com.iptvflix.androidtv.network.InteractionEventService
 import com.iptvflix.androidtv.playback.PlaybackApi
 import com.iptvflix.androidtv.playback.PlaybackResolver
 import com.iptvflix.androidtv.playback.TrackInfo
@@ -58,6 +59,31 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private var progressReporter: ProgressReporter? = null
     private var reporterJob: Job? = null
 
+    private val interactionEvents: InteractionEventService by lazy {
+        InteractionEventService(container.apiClient)
+    }
+    private var currentCommand: PlaybackCommand? = null
+    private var sessionId: String? = null
+    private var hasEmittedPlay = false
+
+    private fun emitEvent(eventType: String, extra: Map<String, Any?> = emptyMap()) {
+        val cmd = currentCommand ?: return
+        viewModelScope.launch {
+            runCatching {
+                val params = buildMap<String, Any?> {
+                    put("eventType", eventType)
+                    put("mediaType", cmd.mediaType.uppercase())
+                    put("mediaId", cmd.mediaId)
+                    put("clientType", "android-tv")
+                    sessionId?.let { put("sessionId", it) }
+                    put("positionMs", player.currentPosition)
+                    putAll(extra)
+                }
+                interactionEvents.emit(params)
+            }.onFailure { Log.w(TAG, "emitEvent $eventType failed: ${it.message}") }
+        }
+    }
+
     init {
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
@@ -67,11 +93,34 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     state == Player.STATE_READY -> PlayerUiState.Paused
                     else -> _uiState.value
                 }
+                if (state == Player.STATE_ENDED) {
+                    emitEvent("PLAY_COMPLETED")
+                }
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (player.playbackState == Player.STATE_READY) {
                     _uiState.value = if (isPlaying) PlayerUiState.Playing else PlayerUiState.Paused
+                    if (isPlaying && !hasEmittedPlay) {
+                        hasEmittedPlay = true
+                        viewModelScope.launch {
+                            runCatching {
+                                val cmd = currentCommand ?: return@runCatching
+                                val params = buildMap<String, Any?> {
+                                    put("eventType", "PLAY_STARTED")
+                                    put("mediaType", cmd.mediaType.uppercase())
+                                    put("mediaId", cmd.mediaId)
+                                    put("clientType", "android-tv")
+                                    put("positionMs", cmd.startPositionMs)
+                                }
+                                sessionId = interactionEvents.emitBatch(listOf(params))
+                            }.onFailure { Log.w(TAG, "PLAY_STARTED failed: ${it.message}") }
+                        }
+                    } else if (isPlaying && hasEmittedPlay) {
+                        emitEvent("PLAY_RESUMED")
+                    } else if (!isPlaying) {
+                        emitEvent("PLAY_PAUSED")
+                    }
                 }
             }
 
@@ -104,6 +153,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun load(command: PlaybackCommand) {
+        currentCommand = command
+        hasEmittedPlay = false
+        sessionId = null
         viewModelScope.launch {
             _uiState.value = PlayerUiState.Buffering
             runCatching {

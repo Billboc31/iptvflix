@@ -48,6 +48,7 @@ import { shelfConceptsRoutes } from './routes/shelf-concepts.js'
 import { failRunningJobsRoutes } from './routes/fail-running-jobs.js'
 import { episodeSegmentsRoutes } from './routes/episodes.js'
 import { segmentAdminRoutes } from './routes/segment-admin.js'
+import { adminRoutes } from './routes/admin.js'
 import { authenticate, requireProfile } from './plugins/auth.js'
 import { failInterruptedRuns } from './services/fail-interrupted-runs.js'
 import { runSeed } from './db/seed.js'
@@ -219,6 +220,7 @@ await app.register(async function protectedScope(protectedApp) {
   await protectedApp.register(recommendationLabRoutes)
   await protectedApp.register(shelfConceptsRoutes)
   await protectedApp.register(segmentAdminRoutes)
+  await protectedApp.register(adminRoutes)
 
   // Profile-scoped routes — also require a profileId in the session JWT
   await protectedApp.register(async function profileScope(profileApp) {
