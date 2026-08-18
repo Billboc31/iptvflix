@@ -6,14 +6,17 @@ import { http, HttpResponse } from 'msw'
 import { server } from '../test/handlers.js'
 import { MOCK_MOVIE, MOCK_UNMATCHED_MOVIE, MOCK_MOVIE_NO_TRAILER } from '../test/handlers.js'
 import MovieDetailPage from './MovieDetailPage.js'
+import { ProfileProvider } from '../context/ProfileContext.js'
 
 function renderPage(id = 'movie-1') {
   return render(
-    <MemoryRouter initialEntries={[`/movies/${id}`]}>
-      <Routes>
-        <Route path="/movies/:id" element={<MovieDetailPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <ProfileProvider>
+      <MemoryRouter initialEntries={[`/movies/${id}`]}>
+        <Routes>
+          <Route path="/movies/:id" element={<MovieDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    </ProfileProvider>,
   )
 }
 

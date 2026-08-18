@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { MeResponse } from '@iptvflix/api-contracts'
 import { login as apiLogin, logout as apiLogout, getMe } from '../lib/api.js'
+import { clearLastProfileId } from './ProfileContext.js'
 
 type AuthState = {
   isAuthenticated: boolean
@@ -39,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function logout(): Promise<void> {
     await apiLogout()
+    clearLastProfileId()
     setIsAuthenticated(false)
     setUsername(null)
   }

@@ -4,12 +4,15 @@ import { MemoryRouter } from 'react-router-dom'
 import { http, HttpResponse } from 'msw'
 import { server, MOCK_CONTINUE_WATCHING } from '../../test/handlers.js'
 import ContinueWatchingRow from './ContinueWatchingRow.js'
+import { ProfileProvider } from '../../context/ProfileContext.js'
 
 function renderRow() {
   return render(
-    <MemoryRouter>
-      <ContinueWatchingRow />
-    </MemoryRouter>,
+    <ProfileProvider>
+      <MemoryRouter>
+        <ContinueWatchingRow />
+      </MemoryRouter>
+    </ProfileProvider>,
   )
 }
 

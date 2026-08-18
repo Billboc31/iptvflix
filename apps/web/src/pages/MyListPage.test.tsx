@@ -5,12 +5,15 @@ import { MemoryRouter } from 'react-router-dom'
 import { http, HttpResponse } from 'msw'
 import { server, MOCK_WATCHLIST_ENTRY } from '../test/handlers.js'
 import MyListPage from './MyListPage.js'
+import { ProfileProvider } from '../context/ProfileContext.js'
 
 function renderPage() {
   return render(
-    <MemoryRouter>
-      <MyListPage />
-    </MemoryRouter>,
+    <ProfileProvider>
+      <MemoryRouter>
+        <MyListPage />
+      </MemoryRouter>
+    </ProfileProvider>,
   )
 }
 

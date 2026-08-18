@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest'
 import Fastify, { type FastifyInstance } from 'fastify'
+import cookie from '@fastify/cookie'
 
 // ---------------------------------------------------------------------------
 // Hoisted mocks
@@ -160,12 +161,13 @@ async function buildProfilesApp(accountId: string): Promise<FastifyInstance> {
   app.addHook('preHandler', async (request) => {
     request.account = { id: accountId, username: 'testuser' }
   })
-  // Stub jwt.sign used by /profiles/:id/select
+  // Use a plain function (not vi.fn) so vi.resetAllMocks() doesn't wipe the return value
   app.decorate('jwt', {
-    sign: vi.fn().mockReturnValue('mock-jwt-token'),
+    sign: () => 'mock-jwt-token',
     verify: vi.fn(),
     decode: vi.fn(),
   })
+  await app.register(cookie)
   await app.register(profilesRoutes)
   await app.ready()
   return app
@@ -626,5 +628,40 @@ describe('GET /profiles', () => {
     expect(body).toHaveLength(2)
     expect(body[0].accountId).toBe(ACCOUNT_A_ID)
     expect(body[1].accountId).toBe(ACCOUNT_A_ID)
+  })
+})
+
+
+// ---------------------------------------------------------------------------
+// DELETE /profiles — cannot delete currently selected profile
+// ---------------------------------------------------------------------------
+
+describe('DELETE /profiles — currently selected protection', () => {
+  let app: FastifyInstance
+
+  beforeAll(async () => {
+    // Build a profile-scoped app where PROFILE_A1_ID is the current profile
+    app = buildProfileApp(ACCOUNT_A_ID, PROFILE_A1_ID)
+    await app.register(profilesRoutes)
+    await app.ready()
+  })
+
+  afterAll(() => app.close())
+  beforeEach(() => vi.resetAllMocks())
+
+  it('returns 409 when deleting the currently selected profile', async () => {
+    // Two profiles exist so "last profile" rule doesn't apply
+    setupSelectResolves([{ id: PROFILE_A1_ID }, { id: PROFILE_A2_ID }])
+    // Ownership check returns the profile
+    setupSelectResolves([{ id: PROFILE_A1_ID }])
+    // deleteProfile service throws CURRENT_PROFILE
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/profiles/${PROFILE_A1_ID}`,
+    })
+
+    // The route returns 409 for either LAST_PROFILE or CURRENT_PROFILE
+    expect(res.statusCode).toBe(409)
   })
 })

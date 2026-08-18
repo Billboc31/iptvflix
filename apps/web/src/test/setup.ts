@@ -2,6 +2,42 @@ import '@testing-library/jest-dom'
 import { server } from './handlers.js'
 import { beforeAll, afterEach, afterAll, vi } from 'vitest'
 
+// Node v22+ exposes a built-in localStorage global that lacks .clear() without --localstorage-file.
+// jsdom 25 running under Node 25 inherits this broken stub. Provide a proper in-memory Storage.
+function makeWebStorage(): Storage {
+  let store: Record<string, string> = {}
+  return {
+    get length() {
+      return Object.keys(store).length
+    },
+    key(index: number): string | null {
+      return Object.keys(store)[index] ?? null
+    },
+    getItem(key: string): string | null {
+      return Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null
+    },
+    setItem(key: string, value: string): void {
+      store[key] = String(value)
+    },
+    removeItem(key: string): void {
+      delete store[key]
+    },
+    clear(): void {
+      store = {}
+    },
+  }
+}
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  writable: true,
+  value: makeWebStorage(),
+})
+Object.defineProperty(globalThis, 'sessionStorage', {
+  configurable: true,
+  writable: true,
+  value: makeWebStorage(),
+})
+
 // jsdom does not implement window.matchMedia; provide a minimal stub
 Object.defineProperty(window, 'matchMedia', {
   writable: true,

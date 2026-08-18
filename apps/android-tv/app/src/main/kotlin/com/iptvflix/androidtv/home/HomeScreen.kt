@@ -1,6 +1,8 @@
 package com.iptvflix.androidtv.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,10 +16,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -27,6 +36,7 @@ import androidx.tv.material3.Text
 @Composable
 fun HomeScreen(
     onRevoked: () -> Unit,
+    onChangeProfile: () -> Unit = {},
     vm: HomeViewModel = viewModel(),
 ) {
     val state by vm.uiState.collectAsState()
@@ -65,7 +75,36 @@ fun HomeScreen(
                 Text("Last played:", color = Color(0xFF888888), fontSize = 14.sp)
                 Text(title, color = Color(0xFFCCCCCC), fontSize = 20.sp)
             }
+            Spacer(Modifier.height(40.dp))
+            ChangeProfileButton(onClick = onChangeProfile)
         }
+    }
+}
+
+@Composable
+private fun ChangeProfileButton(onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (focused) Color(0xFF2D2D42) else Color(0xFF1E1E30))
+            .then(if (focused) Modifier.border(2.dp, Color(0xFFE50914), RoundedCornerShape(8.dp)) else Modifier)
+            .padding(horizontal = 24.dp, vertical = 12.dp)
+            .onFocusChanged { focused = it.isFocused }
+            .focusable(true)
+            .onKeyEvent { event ->
+                if (event.key == Key.Enter || event.key == Key.DirectionCenter) {
+                    onClick()
+                    true
+                } else false
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            "Changer de profil",
+            color = if (focused) Color.White else Color(0xFFAAAAAA),
+            fontSize = 16.sp,
+        )
     }
 }
 

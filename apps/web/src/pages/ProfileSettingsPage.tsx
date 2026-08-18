@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { ProfilePreferences, SourceResponse } from '@iptvflix/api-contracts'
 import { getProfile, listSources, updateProfilePreferences } from '../lib/api.js'
+import { useProfile } from '../context/ProfileContext.js'
 import Button from '../components/ui/Button.js'
 import Spinner from '../components/ui/Spinner.js'
 
@@ -213,6 +214,7 @@ function SourcePriorityInput({
 }
 
 export default function ProfileSettingsPage() {
+  const { currentProfile } = useProfile()
   const [prefs, setPrefs] = useState<ProfilePreferences>({
     preferredAudioLanguages: [],
     preferredSubtitleLanguages: [],
@@ -267,6 +269,11 @@ export default function ProfileSettingsPage() {
 
   return (
     <div className="max-w-xl mx-auto px-6 py-8">
+      {currentProfile && (
+        <p className="text-xs font-medium text-[#e50914] uppercase tracking-widest mb-1">
+          Préférences du profil — {currentProfile.name}
+        </p>
+      )}
       <h1 className="text-2xl font-bold text-white mb-2">Préférences de lecture</h1>
       <p className="text-gray-400 text-sm mb-4">
         Ces préférences sont indépendantes de la langue de l'interface.

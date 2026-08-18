@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
 import type { Location } from 'react-router-dom'
 import { ToastProvider } from './components/ui/Toast.js'
 import { PreviewProvider } from './contexts/PreviewContext.js'
@@ -15,12 +15,39 @@ import OnboardingPage from './pages/OnboardingPage.js'
 import MyListPage from './pages/MyListPage.js'
 import ProfileSettingsPage from './pages/ProfileSettingsPage.js'
 import DeviceSettingsPage from './pages/DeviceSettingsPage.js'
+import ProfileChoosePage from './pages/ProfileChoosePage.js'
+import ProfileManagePage from './pages/ProfileManagePage.js'
+import ProfileCreatePage from './pages/ProfileCreatePage.js'
+import ProfileEditPage from './pages/ProfileEditPage.js'
 import LoginPage from './pages/LoginPage.js'
 import PlayerPage from './pages/PlayerPage.js'
 import ArrivalsPage from './pages/ArrivalsPage.js'
 import RecommendationLabPage from './pages/RecommendationLabPage.js'
 import { AuthProvider } from './context/AuthContext.js'
+import { ProfileProvider, useProfile } from './context/ProfileContext.js'
 import ProtectedRoute from './components/ProtectedRoute.js'
+import Spinner from './components/ui/Spinner.js'
+
+function ProfileProviderRoute() {
+  return (
+    <ProfileProvider>
+      <Outlet />
+    </ProfileProvider>
+  )
+}
+
+function ProfileRequiredRoute() {
+  const { currentProfile, isLoading } = useProfile()
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 bg-[#0a0a0f] flex items-center justify-center">
+        <Spinner />
+      </div>
+    )
+  }
+  if (!currentProfile) return <Navigate to="/profiles/choose" replace />
+  return <Outlet />
+}
 
 function AppRoutes() {
   const location = useLocation()
@@ -28,38 +55,48 @@ function AppRoutes() {
 
   return (
     <>
-      {/* Primary routes — rendered at background location (browsing page) when modal is open */}
+      {/* Primary routes */}
       <Routes location={background ?? location}>
-        {/* Public — login */}
+        {/* Public */}
         <Route path="/login" element={<LoginPage />} />
 
         {/* Protected scope */}
         <Route element={<ProtectedRoute />}>
-          {/* Player — full-screen, no AppShell */}
-          <Route path="/player/:mediaType/:mediaId" element={<PlayerPage />} />
+          <Route element={<ProfileProviderRoute />}>
+            {/* Profile chooser — accessible without a selected profile */}
+            <Route path="/profiles/choose" element={<ProfileChoosePage />} />
 
-          {/* Onboarding — no AppShell */}
-          <Route path="/onboarding" element={<OnboardingPage />} />
+            {/* Routes that require a profile to be selected */}
+            <Route element={<ProfileRequiredRoute />}>
+              {/* Full-screen, no AppShell */}
+              <Route path="/player/:mediaType/:mediaId" element={<PlayerPage />} />
+              <Route path="/onboarding" element={<OnboardingPage />} />
 
-          {/* Main app — wrapped in AppShell */}
-          <Route element={<AppShell />}>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/movies" element={<MoviesPage />} />
-            <Route path="/movies/:id" element={<MovieDetailPage />} />
-            <Route path="/series" element={<SeriesPage />} />
-            <Route path="/series/:id" element={<SeriesDetailPage />} />
-            <Route path="/search" element={<SearchPage />} />
-            <Route path="/sources" element={<SourcesPage />} />
-            <Route path="/my-list" element={<MyListPage />} />
-            <Route path="/settings/playback" element={<ProfileSettingsPage />} />
-            <Route path="/settings/devices" element={<DeviceSettingsPage />} />
-            <Route path="/arrivals" element={<ArrivalsPage />} />
-            <Route path="/lab" element={<RecommendationLabPage />} />
+              {/* Main app — wrapped in AppShell */}
+              <Route element={<AppShell />}>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/movies" element={<MoviesPage />} />
+                <Route path="/movies/:id" element={<MovieDetailPage />} />
+                <Route path="/series" element={<SeriesPage />} />
+                <Route path="/series/:id" element={<SeriesDetailPage />} />
+                <Route path="/search" element={<SearchPage />} />
+                <Route path="/sources" element={<SourcesPage />} />
+                <Route path="/my-list" element={<MyListPage />} />
+                <Route path="/settings/playback" element={<ProfileSettingsPage />} />
+                <Route path="/settings/devices" element={<DeviceSettingsPage />} />
+                <Route path="/arrivals" element={<ArrivalsPage />} />
+                <Route path="/lab" element={<RecommendationLabPage />} />
+                {/* Profile management */}
+                <Route path="/profiles" element={<ProfileManagePage />} />
+                <Route path="/profiles/create" element={<ProfileCreatePage />} />
+                <Route path="/profiles/:profileId/edit" element={<ProfileEditPage />} />
+              </Route>
+            </Route>
           </Route>
         </Route>
       </Routes>
 
-      {/* Modal overlay routes — rendered at current location when background state is present */}
+      {/* Modal overlay routes */}
       {background && (
         <Routes>
           <Route element={<ProtectedRoute />}>

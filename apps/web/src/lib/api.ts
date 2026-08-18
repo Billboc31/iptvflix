@@ -34,6 +34,9 @@ import type {
   GenerateShelfResponse,
   ProfileResponse,
   UpdateProfilePreferencesBody,
+  CreateProfileBody,
+  UpdateProfileBody,
+  SelectProfileResponse,
   FeedbackItem,
   SetFeedbackBody,
   HomeResponse,
@@ -273,6 +276,28 @@ export function getProfile(): Promise<ProfileResponse> {
 
 export function updateProfilePreferences(body: UpdateProfilePreferencesBody): Promise<ProfileResponse> {
   return request('/profile/preferences', { method: 'PATCH', body: JSON.stringify(body) })
+}
+
+export function listProfiles(): Promise<ProfileResponse[]> {
+  return request('/profiles')
+}
+
+export async function selectProfile(profileId: string): Promise<SelectProfileResponse> {
+  const res = await request<SelectProfileResponse>(`/profiles/${profileId}/select`, { method: 'POST' })
+  if (res.token) setStoredAuthToken(res.token)
+  return res
+}
+
+export function createProfile(body: CreateProfileBody): Promise<ProfileResponse> {
+  return request('/profiles', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function updateProfile(profileId: string, body: UpdateProfileBody): Promise<ProfileResponse> {
+  return request(`/profiles/${profileId}`, { method: 'PATCH', body: JSON.stringify(body) })
+}
+
+export function deleteProfile(profileId: string): Promise<void> {
+  return request(`/profiles/${profileId}`, { method: 'DELETE' })
 }
 
 export function fetchFeedback(): Promise<FeedbackItem[]> {

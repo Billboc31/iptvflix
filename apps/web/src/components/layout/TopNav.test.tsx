@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import TopNav from './TopNav.js'
 
+vi.mock('../ProfileSwitcherPopover.js', () => ({ default: () => null }))
+
 const mockNavigate = vi.fn()
 
 vi.mock('react-router-dom', async (importOriginal) => {

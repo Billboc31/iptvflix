@@ -3,17 +3,20 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import MediaActions from './MediaActions.js'
+import { ProfileProvider } from '../../context/ProfileContext.js'
 
 function renderActions(props: Partial<Parameters<typeof MediaActions>[0]> = {}) {
   return render(
-    <MemoryRouter>
-      <MediaActions
-        mediaType="MOVIE"
-        mediaId="movie-1"
-        availabilityStatus="AVAILABLE"
-        {...props}
-      />
-    </MemoryRouter>,
+    <ProfileProvider>
+      <MemoryRouter>
+        <MediaActions
+          mediaType="MOVIE"
+          mediaId="movie-1"
+          availabilityStatus="AVAILABLE"
+          {...props}
+        />
+      </MemoryRouter>
+    </ProfileProvider>,
   )
 }
 

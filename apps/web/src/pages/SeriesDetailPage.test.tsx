@@ -6,14 +6,17 @@ import { http, HttpResponse } from 'msw'
 import { server } from '../test/handlers.js'
 import { MOCK_SERIES, MOCK_EPISODES } from '../test/handlers.js'
 import SeriesDetailPage from './SeriesDetailPage.js'
+import { ProfileProvider } from '../context/ProfileContext.js'
 
 function renderPage(id = 'series-1') {
   return render(
-    <MemoryRouter initialEntries={[`/series/${id}`]}>
-      <Routes>
-        <Route path="/series/:id" element={<SeriesDetailPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <ProfileProvider>
+      <MemoryRouter initialEntries={[`/series/${id}`]}>
+        <Routes>
+          <Route path="/series/:id" element={<SeriesDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    </ProfileProvider>,
   )
 }
 
