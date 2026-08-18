@@ -3,7 +3,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import Fastify, { type FastifyInstance } from 'fastify'
 import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { db } from '../../db/client.js'
 import {
   sources,
@@ -367,6 +367,153 @@ describe('Vertical slice integration — source config → sync → catalog quer
     // No sync run should exist for this source
     const runs = await db.select().from(syncRuns).where(eq(syncRuns.sourceId, source.id))
     expect(runs).toHaveLength(0)
+  })
+
+  it('episode slice — catalog API exposes episode availability and progress is tracked per episode', async () => {
+    mswServer.use(
+      http.get(`${FAKE_BASE}/player_api.php`, ({ request }) => {
+        const url = new URL(request.url)
+        const action = url.searchParams.get('action') ?? ''
+
+        if (action === 'get_server_info' || action === 'get_account_info') {
+          return HttpResponse.json(FAKE_ACCOUNT_INFO)
+        }
+        if (action === 'get_vod_categories' || action === 'get_series_categories') {
+          return HttpResponse.json([{ category_id: '10', category_name: 'Drama', parent_id: 0 }])
+        }
+        if (action === 'get_vod_streams') return HttpResponse.json([])
+        if (action === 'get_series') return HttpResponse.json(FAKE_SERIES_LIST)
+        if (action === 'get_series_info') {
+          return HttpResponse.json({
+            info: {
+              name: 'Integration Series One', cover: '', plot: '', cast: '', director: '',
+              genre: '', releaseDate: '2022-01-01', last_modified: '', rating: '8.5',
+              rating_5based: 4.25, backdrop_path: [], youtube_trailer: '', episode_run_time: '45',
+              category_id: '10', category_name: 'Drama',
+            },
+            episodes: {
+              '1': [
+                {
+                  id: '8001', episode_num: 1, title: 'Pilot FR 1080p', container_extension: 'mp4',
+                  info: { duration_secs: 2700, duration: '45:00', releasedate: '2022-01-15' },
+                },
+                {
+                  id: '8002', episode_num: 2, title: 'Second Episode', container_extension: 'mp4',
+                  info: { duration_secs: 2400, duration: '40:00', releasedate: '2022-01-22' },
+                },
+              ],
+            },
+          })
+        }
+        return HttpResponse.json([])
+      }),
+    )
+
+    // 1. Create source and sync (XTREAM_FETCH_SERIES_INFO is set globally in beforeAll)
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/sources',
+      body: { name: 'Catalog Episode Source', type: 'XTREAM', baseUrl: FAKE_BASE, username: 'testuser', password: 'testpass' },
+    })
+    expect(createRes.statusCode).toBe(201)
+    const source = createRes.json<{ id: string }>()
+    cleanupSourceId = source.id
+
+    const syncRes = await app.inject({ method: 'POST', url: '/sync-runs', body: { sourceId: source.id } })
+    expect(syncRes.statusCode).toBe(201)
+    const { id: syncRunId } = syncRes.json<{ id: string }>()
+    const completedRun = await waitForSyncRunId(syncRunId)
+    expect(completedRun.status).toBe('COMPLETED')
+
+    // 2. Resolve canonical series ID
+    const [seriesAvailRow] = await db
+      .select({ seriesId: seriesAvailabilities.seriesId })
+      .from(seriesAvailabilities)
+      .where(
+        and(
+          eq(seriesAvailabilities.providerId, source.id),
+          eq(seriesAvailabilities.providerItemId, '6001'),
+        ),
+      )
+    expect(seriesAvailRow).toBeDefined()
+    const seriesId = seriesAvailRow!.seriesId
+
+    // 3. Season 1 must exist with correct seriesId
+    const [seasonRow] = await db
+      .select()
+      .from(seasons)
+      .where(and(eq(seasons.seriesId, seriesId), eq(seasons.seasonNumber, 1)))
+    expect(seasonRow).toBeDefined()
+
+    // 4. Two episode rows in season 1 with correct episodeNumbers
+    const episodeRows = await db
+      .select()
+      .from(episodes)
+      .where(eq(episodes.seasonId, seasonRow!.id))
+      .orderBy(asc(episodes.episodeNumber))
+    expect(episodeRows.length).toBeGreaterThanOrEqual(2)
+    const ep1 = episodeRows.find((e) => e.episodeNumber === 1)
+    const ep2 = episodeRows.find((e) => e.episodeNumber === 2)
+    expect(ep1).toBeDefined()
+    expect(ep2).toBeDefined()
+
+    const ep1Id = ep1!.id
+
+    // 5. episodeAvailabilities keyed by canonical episodeId, not series/season ID
+    const ep1Avails = await db
+      .select()
+      .from(episodeAvailabilities)
+      .where(
+        and(
+          eq(episodeAvailabilities.episodeId, ep1Id),
+          eq(episodeAvailabilities.providerId, source.id),
+        ),
+      )
+    expect(ep1Avails).toHaveLength(1)
+    expect(ep1Avails[0]?.status).toBe('AVAILABLE')
+    expect(ep1Avails[0]?.providerItemId).toBe('8001')
+    expect(ep1Avails[0]?.episodeId).toBe(ep1Id)
+    expect(ep1Avails[0]?.containerExtension).toBe('mp4')
+
+    // 6. Catalog API returns episodes with correct availability metadata
+    const epListRes = await app.inject({ method: 'GET', url: `/series/${seriesId}/seasons/1/episodes` })
+    expect(epListRes.statusCode).toBe(200)
+    const epList = epListRes.json<any[]>()
+    const ep1Response = epList.find((e) => e.id === ep1Id)
+    expect(ep1Response).toBeDefined()
+    expect(ep1Response).toMatchObject({ episodeNumber: 1, availabilityStatus: 'AVAILABLE', availabilityCount: 1 })
+    expect((ep1Response?.variants ?? []).length).toBeGreaterThanOrEqual(1)
+
+    // 7. Progress stored keyed on (profileId, EPISODE, episodeId), not parent series
+    const [profile] = await db.insert(profiles).values({ name: 'Catalog Episode Watcher' }).returning()
+    cleanupProfileId = profile.id
+    await upsertProgress(profile.id, 'EPISODE', ep1Id, 840, 2700)
+
+    const [progressRow] = await db
+      .select()
+      .from(viewingProgress)
+      .where(
+        and(
+          eq(viewingProgress.profileId, profile.id),
+          eq(viewingProgress.mediaType, 'EPISODE'),
+          eq(viewingProgress.mediaId, ep1Id),
+        ),
+      )
+    expect(progressRow).toBeDefined()
+    expect(progressRow?.progressSeconds).toBe(840)
+    expect(progressRow?.mediaId).toBe(ep1Id)
+
+    // 8. Catalog reflects per-episode watch state — only episode 1 is in_progress
+    const profileEpRes = await app.inject({
+      method: 'GET',
+      url: `/series/${seriesId}/seasons/1/episodes?profileId=${profile.id}`,
+    })
+    expect(profileEpRes.statusCode).toBe(200)
+    const profileEpList = profileEpRes.json<any[]>()
+    const ep1WithProfile = profileEpList.find((e) => e.id === ep1Id)
+    const ep2WithProfile = profileEpList.find((e) => e.id === ep2!.id)
+    expect(ep1WithProfile?.watchState).toBe('in_progress')
+    expect(ep2WithProfile?.watchState).toBe('not_started')
   })
 
   it('sync error — MSW returns 500, sync run records FAILED status', async () => {
