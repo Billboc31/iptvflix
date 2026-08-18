@@ -13,10 +13,3 @@ export class IntroDbNetworkError extends Error {
     this.name = 'IntroDbNetworkError'
   }
 }
-
-export class IntroDbNoDataError extends Error {
-  constructor() {
-    super('IntroDB returned no segment data')
-    this.name = 'IntroDbNoDataError'
-  }
-}

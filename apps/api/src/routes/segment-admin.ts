@@ -17,10 +17,10 @@ export async function segmentAdminRoutes(app: FastifyInstance): Promise<void> {
       totalSegmentRows: count(),
     }).from(mediaSegments)
 
-    const withAnySegment = await db
-      .selectDistinct({ episodeId: mediaSegments.episodeId })
-      .from(mediaSegments)
-    const withAnyCount = withAnySegment.length
+    const [anyRow] = await db.select({
+      withAny: sql<number>`cast(count(distinct episode_id) as integer)`,
+    }).from(mediaSegments)
+    const withAnyCount = Number(anyRow?.withAny ?? 0)
     const noData = totalEpisodes - withAnyCount
 
     const providerRows = await db
