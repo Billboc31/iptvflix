@@ -384,8 +384,8 @@ describe('DELETE /continue-watching/:mediaType/:mediaId', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('dismissed item is absent from subsequent GET /continue-watching', async () => {
-    // After dismissal the DB leftJoin filters it out — simulate empty result
+  it('GET returns empty list when leftJoin filters all dismissed items', async () => {
+    // Simulates the DB-level leftJoin + IS NULL that excludes dismissed items
     setupContinueWatchingSelect([])
 
     const res = await app.inject({ method: 'GET', url: '/continue-watching' })

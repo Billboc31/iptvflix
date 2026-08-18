@@ -11,13 +11,14 @@ function renderCard(
   item: ContinueWatchingItem,
   onDismiss: (mediaType: ProgressMediaType, mediaId: string) => Promise<void> = vi.fn().mockResolvedValue(undefined),
   initialPath = '/',
+  dismissError?: string | null,
 ) {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
       <Routes>
         <Route
           path="*"
-          element={<ContinueWatchingCard item={item} onDismiss={onDismiss} />}
+          element={<ContinueWatchingCard item={item} onDismiss={onDismiss} dismissError={dismissError} />}
         />
       </Routes>
     </MemoryRouter>,
@@ -54,7 +55,6 @@ describe('ContinueWatchingCard — MOVIE', () => {
   it('play button navigates with source=continue_watching', async () => {
     const user = userEvent.setup()
     // We capture the navigate destination via location display
-    let navigatedTo = ''
     render(
       <MemoryRouter initialEntries={['/']}>
         <Routes>
@@ -116,51 +116,60 @@ describe('ContinueWatchingCard — overflow menu', () => {
     expect(onDismiss).toHaveBeenCalledWith('MOVIE', MOCK_CONTINUE_WATCHING.mediaId)
   })
 
-  it('shows error message when dismiss fails', async () => {
+  it('shows dismiss error message when dismissError prop is set', () => {
+    renderCard(MOCK_CONTINUE_WATCHING, undefined, '/', 'Erreur lors de la suppression')
+    expect(screen.getByText('Erreur lors de la suppression')).toBeInTheDocument()
+  })
+
+  it('does not show dismiss error when dismissError prop is null', () => {
+    renderCard(MOCK_CONTINUE_WATCHING, undefined, '/', null)
+    expect(screen.queryByText('Erreur lors de la suppression')).toBeNull()
+  })
+
+  it('dismiss rejected by onDismiss does not crash the card', async () => {
     const user = userEvent.setup()
     const onDismiss = vi.fn().mockRejectedValue(new Error('network error'))
     renderCard(MOCK_CONTINUE_WATCHING, onDismiss)
     await user.click(screen.getByRole('button', { name: "Plus d'options" }))
     await user.click(screen.getByText('Supprimer de Reprendre'))
+    // error display is managed at Row level via dismissError prop — card stays stable
     await waitFor(() => {
-      expect(screen.getByText('Erreur lors de la suppression')).toBeInTheDocument()
+      expect(screen.queryByRole('menu')).toBeNull()
     })
   })
 })
 
-describe('ContinueWatchingCard — optimistic removal', () => {
-  it('item disappears immediately on dismiss and reappears on failure', async () => {
+describe('ContinueWatchingCard — keyboard navigation in overflow menu', () => {
+  it('first menuitem receives focus when menu opens', async () => {
     const user = userEvent.setup()
-    let rejectDismiss: (e: Error) => void
-    const onDismiss = vi.fn().mockReturnValue(
-      new Promise<void>((_, reject) => { rejectDismiss = reject }),
-    )
-    const items = [MOCK_CONTINUE_WATCHING]
-    const { rerender } = render(
-      <MemoryRouter>
-        {items.map((item) => (
-          <ContinueWatchingCard key={item.id} item={item} onDismiss={onDismiss} />
-        ))}
-      </MemoryRouter>,
-    )
-    // Open menu and click dismiss
+    renderCard(MOCK_CONTINUE_WATCHING)
     await user.click(screen.getByRole('button', { name: "Plus d'options" }))
-    await user.click(screen.getByText('Supprimer de Reprendre'))
-    // The item's dismiss was triggered; simulate API failure
-    rejectDismiss!(new Error('fail'))
-    await waitFor(() => {
-      expect(screen.getByText('Erreur lors de la suppression')).toBeInTheDocument()
-    })
+    const firstItem = screen.getByRole('menuitem', { name: 'Détails' })
+    expect(firstItem).toHaveFocus()
+  })
+
+  it('ArrowDown moves focus to next menuitem', async () => {
+    const user = userEvent.setup()
+    renderCard(MOCK_CONTINUE_WATCHING)
+    await user.click(screen.getByRole('button', { name: "Plus d'options" }))
+    await user.keyboard('{ArrowDown}')
+    expect(screen.getByRole('menuitem', { name: 'Supprimer de Reprendre' })).toHaveFocus()
+  })
+
+  it('ArrowUp from first item wraps to last', async () => {
+    const user = userEvent.setup()
+    renderCard(MOCK_CONTINUE_WATCHING)
+    await user.click(screen.getByRole('button', { name: "Plus d'options" }))
+    await user.keyboard('{ArrowUp}')
+    expect(screen.getByRole('menuitem', { name: 'Supprimer de Reprendre' })).toHaveFocus()
   })
 })
 
 describe('ContinueWatchingCard — direct resume (no resume dialog)', () => {
   it('DELETE /continue-watching is called with correct params on dismiss via API handler', async () => {
     const user = userEvent.setup()
-    let deleteCalled = false
     server.use(
       http.delete('/api/continue-watching/:mediaType/:mediaId', () => {
-        deleteCalled = true
         return new HttpResponse(null, { status: 204 })
       }),
     )

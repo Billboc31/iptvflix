@@ -1,28 +1,24 @@
-Implementation complete. Here's a summary of what was done:
+TypeScript propre. Voici un résumé des changements effectués :
 
 ---
 
-## T095 — Implementation summary
+## Fixes appliqués
 
-**Files created (5):**
-- `apps/api/migrations/0042_t095_continue_watching_dismissals.sql` — migration for the new table
-- `apps/api/src/db/schema/continue-watching-dismissals.ts` — Drizzle schema (profileId + mediaType + mediaId unique, cascades on profile delete)
-- `apps/web/src/components/content/ContinueWatchingCard.tsx` — card with three interaction zones (▶ Play, ⓘ Info, ⋮ Overflow)
-- `apps/web/src/components/content/ContinueWatchingOverflowMenu.tsx` — accessible dropdown menu (role="menu", Escape/click-outside to close)
-- `apps/web/src/components/content/ContinueWatchingCard.test.tsx` — 14 component tests
+**P1 — Feedback d'erreur lors du rollback optimistic (bloquant)**
 
-**Files modified (12):**
-- `apps/api/migrations/meta/_journal.json` — journal entry for migration 42
-- `apps/api/src/db/schema/index.ts` — export new schema
-- `packages/api-contracts/src/user-state.ts` — `ContinueWatchingItem` extended with `seriesId/seasonNumber/episodeNumber/episodeTitle`
-- `apps/api/src/services/viewing-progress-service.ts` — `listContinueWatching` filters dismissed items (LEFT JOIN + isNull), enriches episode items (joined seasons), new `dismissContinueWatching`, `upsertProgress` clears dismissal on ≥5% (re-entry rule)
-- `apps/api/src/routes/viewing-progress.ts` — `DELETE /continue-watching/:mediaType/:mediaId`
-- `apps/api/src/routes/__tests__/viewing-progress.test.ts` — 19 tests (expanded from 11, covering dismissal, episode fields, re-entry)
-- `apps/web/src/lib/api.ts` — `dismissContinueWatching()`
-- `apps/web/src/hooks/useContinueWatching.ts` — `dismissItem` with optimistic removal + rollback
-- `apps/web/src/components/content/ContinueWatchingRow.tsx` — now uses `ContinueWatchingCard`
-- `apps/web/src/pages/PlayerPage.tsx` — skips resume dialog when `source=continue_watching`
-- `apps/web/src/test/handlers.ts` — extended `MOCK_CONTINUE_WATCHING` + `MOCK_CONTINUE_WATCHING_EPISODE` + DELETE handler
-- `apps/web/src/components/content/ContinueWatchingRow.test.tsx` — updated for new card structure
+- `useContinueWatching.ts` : ajout de `dismissError: string | null` et `dismissErrorFor: string | null`. `dismissItem` capture l'erreur en interne (sans throw) et met à jour ces états après rollback.
+- `ContinueWatchingRow.tsx` : passe `dismissError` uniquement à la carte dont le `mediaId` correspond à `dismissErrorFor`.
+- `ContinueWatchingCard.tsx` : reçoit `dismissError` en prop, supprime l'état local. `handleDismiss` catch-et-supprime (l'erreur remonte via le hook).
+- Tests mis à jour : l'erreur est maintenant testée via le prop direct ; ajout de tests pour la navigation clavier.
 
-**All 19 backend + 17 frontend tests pass. TypeScript compiles cleanly on all changed files.**
+**P2 — Navigation clavier dans le menu (bloquant)**
+
+- `ContinueWatchingOverflowMenu.tsx` : focus automatique sur le premier `menuitem` à l'ouverture (`useEffect` au montage), et gestion `ArrowDown`/`ArrowUp` avec wrap cyclique.
+
+**P3 — Débordement viewport (significatif)**
+
+- `ContinueWatchingOverflowMenu.tsx` : ajout de `max-w-[min(208px,90vw)]` sur le conteneur du menu.
+
+**P4 — Test trompeur (mineur)**
+
+- `viewing-progress.test.ts` : renommage de `"dismissed item is absent from subsequent GET /continue-watching"` → `"GET returns empty list when leftJoin filters all dismissed items"`.

@@ -6,13 +6,13 @@ import ContinueWatchingOverflowMenu from './ContinueWatchingOverflowMenu.js'
 type Props = {
   item: ContinueWatchingItem
   onDismiss: (mediaType: ProgressMediaType, mediaId: string) => Promise<void>
+  dismissError?: string | null
 }
 
-export default function ContinueWatchingCard({ item, onDismiss }: Props) {
+export default function ContinueWatchingCard({ item, onDismiss, dismissError }: Props) {
   const navigate = useNavigate()
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
-  const [dismissError, setDismissError] = useState<string | null>(null)
   const menuTriggerRef = useRef<HTMLButtonElement>(null)
 
   const pct = item.durationSeconds > 0
@@ -37,11 +37,10 @@ export default function ContinueWatchingCard({ item, onDismiss }: Props) {
 
   async function handleDismiss() {
     setMenuOpen(false)
-    setDismissError(null)
     try {
       await onDismiss(item.mediaType, item.mediaId)
     } catch {
-      setDismissError('Erreur lors de la suppression')
+      // error is surfaced via dismissError prop from useContinueWatching hook
     }
   }
 

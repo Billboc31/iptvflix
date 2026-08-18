@@ -10,9 +10,29 @@ type Props = {
 export default function ContinueWatchingOverflowMenu({ onClose, onDetails, onDismiss, triggerRef }: Props) {
   const menuRef = useRef<HTMLDivElement>(null)
 
+  // Focus first menuitem on open (ARIA Menu Button pattern)
+  useEffect(() => {
+    menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
+  }, [])
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        onClose()
+        return
+      }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        const menuItems = Array.from(
+          menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [],
+        )
+        if (menuItems.length === 0) return
+        const idx = menuItems.indexOf(document.activeElement as HTMLButtonElement)
+        const next = e.key === 'ArrowDown'
+          ? menuItems[(idx + 1) % menuItems.length]
+          : menuItems[(idx - 1 + menuItems.length) % menuItems.length]
+        next?.focus()
+      }
     }
     function handleClickOutside(e: MouseEvent) {
       if (
@@ -36,7 +56,7 @@ export default function ContinueWatchingOverflowMenu({ onClose, onDetails, onDis
       ref={menuRef}
       role="menu"
       aria-label="Options"
-      className="absolute bottom-full right-0 mb-1 w-52 bg-[#1a1a24] border border-white/10 rounded-lg shadow-xl z-20 py-1"
+      className="absolute bottom-full right-0 mb-1 w-52 max-w-[min(208px,90vw)] bg-[#1a1a24] border border-white/10 rounded-lg shadow-xl z-20 py-1"
     >
       <button
         type="button"

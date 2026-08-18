@@ -8,6 +8,8 @@ export type UseContinueWatchingResult = {
   loading: boolean
   error: Error | null
   dismissItem: (mediaType: ProgressMediaType, mediaId: string) => Promise<void>
+  dismissError: string | null
+  dismissErrorFor: string | null
 }
 
 export function useContinueWatching(): UseContinueWatchingResult {
@@ -15,6 +17,8 @@ export function useContinueWatching(): UseContinueWatchingResult {
   const [items, setItems] = useState<ContinueWatchingItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
+  const [dismissError, setDismissError] = useState<string | null>(null)
+  const [dismissErrorFor, setDismissErrorFor] = useState<string | null>(null)
 
   useEffect(() => {
     setItems([])
@@ -27,15 +31,18 @@ export function useContinueWatching(): UseContinueWatchingResult {
   }, [profileVersion])
 
   async function dismissItem(mediaType: ProgressMediaType, mediaId: string): Promise<void> {
+    setDismissError(null)
+    setDismissErrorFor(null)
     const previous = items
     setItems((current) => current.filter((i) => !(i.mediaType === mediaType && i.mediaId === mediaId)))
     try {
       await dismissContinueWatching(mediaType, mediaId)
-    } catch (e) {
+    } catch {
       setItems(previous)
-      throw e
+      setDismissError('Erreur lors de la suppression')
+      setDismissErrorFor(mediaId)
     }
   }
 
-  return { items, loading, error, dismissItem }
+  return { items, loading, error, dismissItem, dismissError, dismissErrorFor }
 }
