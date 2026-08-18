@@ -11,3 +11,8 @@
 [2026-08-18T08:37:16Z] compose: task (canonical prompt)
 [2026-08-18T08:37:16Z] snapshot: runtime-prompt=runs/T096/prompts/planner-attempt-1.md
 [2026-08-18T08:41:17Z] auto-run: step=planner done rc=0
+[2026-08-18T09:45:17Z] conflict-resolver: [pass 1/3] conflicted=['apps/api/package.json', 'apps/api/src/config/env.ts', 'apps/api/src/db/schema/index.ts', 'apps/api/src/index.ts', 'packages/api-contracts/src/index.ts'] | staged=['apps/api/package.json', 'apps/api/src/config/env.ts', 'apps/api/src/db/schema/index.ts', 'apps/api/src/index.ts', 'packages/api-contracts/src/index.ts'] | unresolved=[] | continue_rc=0
+[2026-08-18T09:45:17Z] conflict-resolver: all conflicts resolved after 1 pass(es)
+[2026-08-18T09:45:17Z] conflict-resolver: running tests
+[2026-08-18T09:45:17Z] conflict-resolver: test-report written: runs/T096/conflict/test-report.md
+[2026-08-18T09:45:17Z] conflict-resolver: staging and committing resolution artifacts
