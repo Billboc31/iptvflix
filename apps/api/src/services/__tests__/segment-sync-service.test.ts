@@ -6,6 +6,7 @@ import { series as seriesTable } from '../../db/schema/series.js'
 import { seasons } from '../../db/schema/seasons.js'
 import { episodes } from '../../db/schema/episodes.js'
 import { mediaSegments } from '../../db/schema/media-segments.js'
+import { segmentSelections } from '../../db/schema/segment-selections.js'
 import { SegmentSyncService } from '../segment-sync-service.js'
 import type { CanonicalEpisodeRef, RawSegment, SegmentProvider } from '../../providers/segments/types.js'
 import type { TmdbClient } from '../../providers/metadata/tmdb/client.js'
@@ -210,6 +211,109 @@ describe('SegmentSyncService', () => {
       const svc = new SegmentSyncService(db, makeTmdbClient(), [])
       const counters = await svc.syncEpisodeById('00000000-0000-0000-0000-000000000000')
       expect(counters.errors).toBe(1)
+    })
+  })
+
+  describe('multi-provider path (T097)', () => {
+    const INTRO_INTRODB: RawSegment = {
+      type: 'INTRO',
+      startMs: 60000,
+      endMs: 120000,
+      sourceProvider: 'introdb',
+      submissionCount: 10,
+    }
+    const INTRO_THEINTRODB: RawSegment = {
+      type: 'INTRO',
+      startMs: 60500,
+      endMs: 120500,
+      sourceProvider: 'theintrodb',
+      submissionCount: 5,
+    }
+
+    it('two providers succeed — merged selection is upserted into segment_selections', async () => {
+      const p1 = makeProvider([INTRO_INTRODB])
+      const p2 = makeProvider([INTRO_THEINTRODB])
+      const svc = new SegmentSyncService(db, makeTmdbClient(), [p1, p2], ['introdb', 'theintrodb'])
+      await svc.syncEpisode(testEpisodeId, testSeriesId, 1, 1)
+
+      const selections = await db.select().from(segmentSelections).where(eq(segmentSelections.episodeId, testEpisodeId))
+      expect(selections).toHaveLength(1)
+      expect(selections[0].type).toBe('INTRO')
+      // introdb has higher submissionCount — wins
+      expect(selections[0].selectedProvider).toBe('introdb')
+      expect(selections[0].selectionReason).toBe('cluster-consensus')
+      const provenance = selections[0].provenance as Array<{ provider: string }>
+      expect(provenance).toHaveLength(2)
+    })
+
+    it('one provider fails — the other provider raw rows are stored and merge runs on partial data', async () => {
+      const p1 = makeProvider([INTRO_INTRODB])
+      const p2: SegmentProvider = {
+        fetchEpisodeSegments: vi.fn().mockRejectedValue(new Error('network error')),
+      }
+      const svc = new SegmentSyncService(db, makeTmdbClient(), [p1, p2], ['introdb', 'theintrodb'])
+      const counters = await svc.syncEpisode(testEpisodeId, testSeriesId, 1, 1)
+
+      // Error is counted for the failing provider
+      expect(counters.errors).toBe(1)
+      // But raw segments from the successful provider are stored
+      const rawRows = await db.select().from(mediaSegments).where(eq(mediaSegments.episodeId, testEpisodeId))
+      expect(rawRows).toHaveLength(1)
+      expect(rawRows[0].sourceProvider).toBe('introdb')
+      // Merge runs on partial data → selection stored
+      const selections = await db.select().from(segmentSelections).where(eq(segmentSelections.episodeId, testEpisodeId))
+      expect(selections).toHaveLength(1)
+      expect(selections[0].selectionReason).toBe('sole-provider')
+    })
+
+    it('idempotent — second sync overwrites segment_selections without creating duplicates', async () => {
+      const svc = new SegmentSyncService(db, makeTmdbClient(), [makeProvider([INTRO_INTRODB])], ['introdb'])
+      await svc.syncEpisode(testEpisodeId, testSeriesId, 1, 1)
+      await svc.syncEpisode(testEpisodeId, testSeriesId, 1, 1)
+
+      const selections = await db.select().from(segmentSelections).where(eq(segmentSelections.episodeId, testEpisodeId))
+      expect(selections).toHaveLength(1)
+    })
+
+    it('passes seriesTmdbId to providers via CanonicalEpisodeRef', async () => {
+      const provider = makeProvider([INTRO_INTRODB])
+      const svc = new SegmentSyncService(db, makeTmdbClient(), [provider])
+      await svc.syncEpisode(testEpisodeId, testSeriesId, 1, 1)
+
+      const call = (provider.fetchEpisodeSegments as ReturnType<typeof vi.fn>).mock.calls[0][0] as CanonicalEpisodeRef
+      expect(call.seriesTmdbId).toBe(T_TMDB_SERIES)
+    })
+
+    describe('backfillCatalog — provider-aware filterUnsynced', () => {
+      it('re-processes episodes synced by only a subset of configured providers', async () => {
+        // Seed both test episodes with IntroDB data only (simulating a T096 backfill)
+        const svcIntroDB = new SegmentSyncService(db, makeTmdbClient(), [makeProvider([INTRO_INTRODB])])
+        await svcIntroDB.syncEpisode(testEpisodeId, testSeriesId, 1, 1)
+        await svcIntroDB.syncEpisode(testEpisodeId2, testSeriesId, 1, 2)
+
+        // Backfill with both providers — episodes only have 1 of 2 providers, so they must be re-processed
+        const p2 = makeProvider([INTRO_THEINTRODB])
+        const svcBoth = new SegmentSyncService(
+          db,
+          makeTmdbClient(),
+          [makeProvider([INTRO_INTRODB]), p2],
+          ['introdb', 'theintrodb'],
+        )
+        const result = await svcBoth.backfillCatalog({ concurrency: 1, force: false })
+
+        // Both episodes were only partially synced (introdb only), so both should be re-processed
+        expect(result.processed).toBeGreaterThanOrEqual(2)
+        expect((p2.fetchEpisodeSegments as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(2)
+
+        // After re-sync, testEpisodeId has rows from both providers
+        const rows = await db
+          .select({ provider: mediaSegments.sourceProvider })
+          .from(mediaSegments)
+          .where(eq(mediaSegments.episodeId, testEpisodeId))
+        const providers = new Set(rows.map((r) => r.provider))
+        expect(providers.has('introdb')).toBe(true)
+        expect(providers.has('theintrodb')).toBe(true)
+      })
     })
   })
 })

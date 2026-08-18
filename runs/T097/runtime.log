@@ -1,0 +1,25 @@
+[2026-08-18T10:08:25Z] auto-run start: state=INIT
+[2026-08-18T10:08:25Z] auto-run: running step=planner
+[2026-08-18T10:08:30Z] auto-run: pre-planner rebase onto integration ok
+[2026-08-18T10:08:30Z] prompt: resolved=prompts/generic/planner.md source=generic
+[2026-08-18T10:08:30Z] prompt: generic fallback — injecting runs/T097/ticket.md
+[2026-08-18T10:08:30Z] compose: global-context=docs/ai/global-context.md
+[2026-08-18T10:08:30Z] compose: role=ai/roles/planner.md
+[2026-08-18T10:08:30Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-18T10:08:30Z] compose: skill=ai/skills/architecture-discipline.md
+[2026-08-18T10:08:30Z] compose: skill=ai/skills/documentation.md
+[2026-08-18T10:08:30Z] compose: task (canonical prompt)
+[2026-08-18T10:08:30Z] snapshot: runtime-prompt=runs/T097/prompts/planner-attempt-1.md
+[2026-08-18T10:18:43Z] compose: preferring on-disk runs/T097/plan.md over chatty stdout (agent Write beat meta-report)
+[2026-08-18T10:18:43Z] auto-run: step=planner done rc=0
+[2026-08-18T11:10:05Z] conflict-resolver: rebase clean — no conflicts
+[2026-08-18T11:10:05Z] conflict-resolver: running tests
+[2026-08-18T11:10:05Z] conflict-resolver: test-report written: runs/T097/conflict/test-report.md
+[2026-08-18T11:10:05Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-18T11:10:05Z] conflict-resolver: commit: sha=f6d3e2c
+[2026-08-18T11:10:05Z] conflict-resolver: git push --force-with-lease origin ticket/T097-extend-mediasegment-ingestion-with-theintrodb-and
+[2026-08-18T11:10:08Z] conflict-resolver: push succeeded
+[2026-08-18T11:10:08Z] conflict-resolver: state → CONFLICT_RESOLVED_REVIEW_NEEDED
+[2026-08-18T11:10:08Z] auto-finalize-conflict: gate disabled for project='iptvflix'
+[2026-08-18T11:10:08Z] conflict-resolver: transition CONFLICT_RESOLVED_REVIEW_NEEDED → TEST_COMPLETE (auto, PROJECT_SETTING)
+[2026-08-18T11:10:08Z] auto-run: TEST_COMPLETE — running PR lifecycle
