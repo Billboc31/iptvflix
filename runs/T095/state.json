@@ -3,5 +3,8 @@
   "state": "PLAN_APPROVED",
   "branch": "ticket/T095-improve-continue-watching-cards-with-direct-resume",
   "issue_number": 195,
-  "updated_at": "2026-08-18T12:50:21Z"
+  "updated_at": "2026-08-18T12:53:57Z",
+  "pre_conflict_state": "PLAN_APPROVED",
+  "conflict_detected_at": "2026-08-18T12:52:32Z",
+  "conflicted_files": []
 }
