@@ -3,8 +3,10 @@
   "state": "IMPLEMENTATION_FIX_REQUIRED",
   "branch": "ticket/T100-capture-and-persist-comprehensive-profile-interact",
   "issue_number": 203,
-  "updated_at": "2026-08-18T12:21:00Z",
+  "updated_at": "2026-08-18T12:26:17Z",
   "pre_conflict_state": "IMPLEMENTATION_FIX_REQUIRED",
-  "conflict_detected_at": "2026-08-18T12:08:38Z",
-  "conflicted_files": []
+  "conflict_detected_at": "2026-08-18T12:21:46Z",
+  "conflicted_files": [
+    "apps/api/migrations/meta/_journal.json"
+  ]
 }
