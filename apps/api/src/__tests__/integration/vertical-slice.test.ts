@@ -369,7 +369,7 @@ describe('Vertical slice integration — source config → sync → catalog quer
     expect(runs).toHaveLength(0)
   })
 
-  it('episode slice — catalog API exposes episode availability and progress is tracked per episode', async () => {
+  it('episode slice: catalog API exposes episode availability and progress is tracked per episode', async () => {
     mswServer.use(
       http.get(`${FAKE_BASE}/player_api.php`, ({ request }) => {
         const url = new URL(request.url)
