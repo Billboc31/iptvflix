@@ -1,7 +1,7 @@
 {
   "ticket_id": "T098",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T098-introduce-account-profile-foundation-and-move-all",
   "issue_number": 201,
-  "updated_at": "2026-08-18T07:42:02Z"
+  "updated_at": "2026-08-18T08:07:08Z"
 }
