@@ -1,9 +1,8 @@
 import { upsertFeedback, removeFeedback, listFeedback } from '../services/feedback-service.js';
 import { NotFoundError } from '../errors.js';
-import { DEFAULT_PROFILE_ID } from '../services/profile-service.js';
 export async function feedbackRoutes(app) {
-    app.get('/feedback', async () => {
-        return listFeedback(DEFAULT_PROFILE_ID);
+    app.get('/feedback', async (request) => {
+        return listFeedback(request.profileId);
     });
     app.put('/feedback/:mediaType/:mediaId', async (request, reply) => {
         const { mediaType, mediaId } = request.params;
@@ -18,7 +17,7 @@ export async function feedbackRoutes(app) {
             return reply.status(400).send({ error: 'feedback must be LIKE, DISLIKE, or NOT_INTERESTED' });
         }
         try {
-            const item = await upsertFeedback(DEFAULT_PROFILE_ID, mediaType, mediaId, feedback);
+            const item = await upsertFeedback(request.profileId, mediaType, mediaId, feedback);
             return reply.status(200).send(item);
         }
         catch (err) {
@@ -33,7 +32,7 @@ export async function feedbackRoutes(app) {
         if (mediaType !== 'MOVIE' && mediaType !== 'SERIES') {
             return reply.status(400).send({ error: 'mediaType must be MOVIE or SERIES' });
         }
-        await removeFeedback(DEFAULT_PROFILE_ID, mediaType, mediaId);
+        await removeFeedback(request.profileId, mediaType, mediaId);
         return reply.status(204).send();
     });
 }

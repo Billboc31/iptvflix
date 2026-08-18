@@ -1,4 +1,6 @@
 import { and, asc, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { mediaVideos } from '../db/schema/media-videos.js';
+import { resolveMediaImageUrl } from '../lib/tmdb-image.js';
 const QUALITY_ORDER = { '4K': 3, '1080p': 2, '720p': 1, '480p': 0 };
 function bestQuality(qualities) {
     let best = null;
@@ -14,14 +16,9 @@ function bestQuality(qualities) {
 }
 import { db } from '../db/client.js';
 import { genres, movieAvailabilities, movieGenres, movies, seasons, series, seriesAvailabilities, seriesGenres, } from '../db/schema/index.js';
-export class NotFoundError extends Error {
-    statusCode = 404;
-    constructor(entity, id) {
-        super(`${entity} ${id} not found`);
-    }
-}
+export { NotFoundError } from './not-found-error.js';
 export async function listMovies(filters) {
-    const { q, genreId, year, availability, sortBy = 'title', page = 1, pageSize = 20 } = filters;
+    const { q, genreId, year, availability, upcoming, sortBy = 'title', page = 1, pageSize = 20 } = filters;
     const conditions = [];
     if (q) {
         const pattern = `%${q}%`;
@@ -39,6 +36,9 @@ export async function listMovies(filters) {
     else if (availability === 'UNAVAILABLE') {
         conditions.push(sql `NOT EXISTS (SELECT 1 FROM movie_availabilities WHERE movie_id = ${movies.id} AND status = 'AVAILABLE')`);
     }
+    if (upcoming === true) {
+        conditions.push(sql `(${movies.theatricalReleaseDate} > NOW() OR ${movies.status} IN ('Rumored', 'Planned', 'In Production', 'Post Production'))`);
+    }
     const where = conditions.length > 0 ? and(...conditions) : undefined;
     const [countRow] = await db.select({ value: count() }).from(movies).where(where);
     const total = Number(countRow.value);
@@ -51,6 +51,12 @@ export async function listMovies(filters) {
             sql `(SELECT MAX(last_seen_at) FROM movie_availabilities WHERE movie_id = movies.id) DESC NULLS LAST`,
             asc(movies.title),
         ];
+    }
+    else if (sortBy === 'popularity') {
+        orderByClause = [sql `${movies.popularity} DESC NULLS LAST`, asc(movies.title)];
+    }
+    else if (sortBy === 'voteAverage') {
+        orderByClause = [sql `${movies.voteAverage} DESC NULLS LAST`, asc(movies.title)];
     }
     else {
         orderByClause = [asc(movies.title)];
@@ -66,7 +72,7 @@ export async function listMovies(filters) {
         return { items: [], total, page, pageSize };
     }
     const ids = rows.map((r) => r.id);
-    const [genreRows, availCountRows, qualityRows] = await Promise.all([
+    const [genreRows, availCountRows, qualityRows, trailerRows] = await Promise.all([
         db
             .select({ movieId: movieGenres.movieId, name: genres.name })
             .from(movieGenres)
@@ -81,6 +87,10 @@ export async function listMovies(filters) {
             .select({ movieId: movieAvailabilities.movieId, videoQuality: movieAvailabilities.videoQuality })
             .from(movieAvailabilities)
             .where(and(inArray(movieAvailabilities.movieId, ids), eq(movieAvailabilities.status, 'AVAILABLE'))),
+        db
+            .select({ mediaId: mediaVideos.mediaId, youtubeKey: mediaVideos.youtubeKey })
+            .from(mediaVideos)
+            .where(and(eq(mediaVideos.mediaType, 'movie'), inArray(mediaVideos.mediaId, ids))),
     ]);
     const genreMap = new Map();
     for (const { movieId, name } of genreRows) {
@@ -98,6 +108,11 @@ export async function listMovies(filters) {
         bucket.push(videoQuality);
         qualityBuckets.set(movieId, bucket);
     }
+    const trailerKeyMap = new Map();
+    for (const { mediaId, youtubeKey } of trailerRows) {
+        if (!trailerKeyMap.has(mediaId))
+            trailerKeyMap.set(mediaId, youtubeKey);
+    }
     const items = rows.map((m) => {
         const availabilityCount = availCountMap.get(m.id) ?? 0;
         return {
@@ -105,13 +120,14 @@ export async function listMovies(filters) {
             title: m.title,
             year: m.year,
             synopsis: m.synopsis,
-            posterUrl: m.posterPath,
-            backdropUrl: m.backdropPath,
+            posterUrl: resolveMediaImageUrl(m.posterPath),
+            backdropUrl: resolveMediaImageUrl(m.backdropPath, 'w780'),
             runtime: m.durationMinutes,
             genres: genreMap.get(m.id) ?? [],
             quality: bestQuality(qualityBuckets.get(m.id) ?? []),
             availabilityCount,
             availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
+            trailerKey: trailerKeyMap.get(m.id) ?? null,
         };
     });
     return { items, total, page, pageSize };
@@ -120,7 +136,7 @@ export async function getMovie(id) {
     const [row] = await db.select().from(movies).where(eq(movies.id, id));
     if (!row)
         return null;
-    const [genreRows, availCountRows] = await Promise.all([
+    const [genreRows, availCountRows, trailerRow] = await Promise.all([
         db
             .select({ name: genres.name })
             .from(movieGenres)
@@ -130,6 +146,11 @@ export async function getMovie(id) {
             .select({ cnt: count() })
             .from(movieAvailabilities)
             .where(and(eq(movieAvailabilities.movieId, id), eq(movieAvailabilities.status, 'AVAILABLE'))),
+        db
+            .select({ youtubeKey: mediaVideos.youtubeKey })
+            .from(mediaVideos)
+            .where(and(eq(mediaVideos.mediaType, 'movie'), eq(mediaVideos.mediaId, id)))
+            .limit(1),
     ]);
     const availabilityCount = Number(availCountRows[0]?.cnt ?? 0);
     return {
@@ -137,17 +158,18 @@ export async function getMovie(id) {
         title: row.title,
         year: row.year,
         synopsis: row.synopsis,
-        posterUrl: row.posterPath,
-        backdropUrl: row.backdropPath,
+        posterUrl: resolveMediaImageUrl(row.posterPath),
+        backdropUrl: resolveMediaImageUrl(row.backdropPath, 'w780'),
         runtime: row.durationMinutes,
         genres: genreRows.map((g) => g.name),
         quality: null,
         availabilityCount,
         availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
+        trailerKey: trailerRow[0]?.youtubeKey ?? null,
     };
 }
 export async function listSeries(filters) {
-    const { q, genreId, year, availability, sortBy = 'title', page = 1, pageSize = 20 } = filters;
+    const { q, genreId, year, availability, upcoming, sortBy = 'title', page = 1, pageSize = 20 } = filters;
     const conditions = [];
     if (q) {
         const pattern = `%${q}%`;
@@ -165,6 +187,9 @@ export async function listSeries(filters) {
     else if (availability === 'UNAVAILABLE') {
         conditions.push(sql `NOT EXISTS (SELECT 1 FROM series_availabilities WHERE series_id = ${series.id} AND status = 'AVAILABLE')`);
     }
+    if (upcoming === true) {
+        conditions.push(sql `(${series.inProduction} = true OR ${series.status} IN ('In Production', 'Planned'))`);
+    }
     const where = conditions.length > 0 ? and(...conditions) : undefined;
     const [countRow] = await db.select({ value: count() }).from(series).where(where);
     const total = Number(countRow.value);
@@ -177,6 +202,12 @@ export async function listSeries(filters) {
             sql `(SELECT MAX(last_seen_at) FROM series_availabilities WHERE series_id = series.id) DESC NULLS LAST`,
             asc(series.title),
         ];
+    }
+    else if (sortBy === 'popularity') {
+        orderByClause = [sql `${series.popularity} DESC NULLS LAST`, asc(series.title)];
+    }
+    else if (sortBy === 'voteAverage') {
+        orderByClause = [sql `${series.voteAverage} DESC NULLS LAST`, asc(series.title)];
     }
     else {
         orderByClause = [asc(series.title)];
@@ -230,8 +261,8 @@ export async function listSeries(filters) {
             title: s.title,
             year: s.firstAirYear,
             synopsis: s.synopsis,
-            posterUrl: s.posterPath,
-            backdropUrl: s.backdropPath,
+            posterUrl: resolveMediaImageUrl(s.posterPath),
+            backdropUrl: resolveMediaImageUrl(s.backdropPath, 'w780'),
             genres: genreMap.get(s.id) ?? [],
             seasonCount: seasonMap.get(s.id) ?? 0,
             availabilityCount,
@@ -262,8 +293,8 @@ export async function getSeries(id) {
         title: row.title,
         year: row.firstAirYear,
         synopsis: row.synopsis,
-        posterUrl: row.posterPath,
-        backdropUrl: row.backdropPath,
+        posterUrl: resolveMediaImageUrl(row.posterPath),
+        backdropUrl: resolveMediaImageUrl(row.backdropPath, 'w780'),
         genres: genreRows.map((g) => g.name),
         seasonCount: Number(seasonCountRows[0]?.cnt ?? 0),
         availabilityCount,
@@ -276,19 +307,19 @@ export async function searchContent(q) {
         db
             .select()
             .from(movies)
-            .where(or(ilike(movies.title, pattern), ilike(movies.originalTitle, pattern)))
+            .where(or(ilike(movies.title, pattern), ilike(movies.originalTitle, pattern), sql `${movies.localizations}->'fr'->>'title' ILIKE ${pattern}`))
             .orderBy(asc(movies.title))
             .limit(20),
         db
             .select()
             .from(series)
-            .where(or(ilike(series.title, pattern), ilike(series.originalTitle, pattern)))
+            .where(or(ilike(series.title, pattern), ilike(series.originalTitle, pattern), sql `${series.localizations}->'fr'->>'title' ILIKE ${pattern}`))
             .orderBy(asc(series.title))
             .limit(20),
     ]);
     const movieIds = movieRows.map((m) => m.id);
     const seriesIds = seriesRows.map((s) => s.id);
-    const [mGenreRows, mAvailCountRows, mQualityRows, sGenreRows, sAvailCountRows, sSeasonCounts] = await Promise.all([
+    const [mGenreRows, mAvailCountRows, mQualityRows, sGenreRows, sAvailCountRows, sSeasonCounts, mTrailerRows] = await Promise.all([
         movieIds.length > 0
             ? db
                 .select({ movieId: movieGenres.movieId, name: genres.name })
@@ -330,6 +361,12 @@ export async function searchContent(q) {
                 .where(inArray(seasons.seriesId, seriesIds))
                 .groupBy(seasons.seriesId)
             : Promise.resolve([]),
+        movieIds.length > 0
+            ? db
+                .select({ mediaId: mediaVideos.mediaId, youtubeKey: mediaVideos.youtubeKey })
+                .from(mediaVideos)
+                .where(and(eq(mediaVideos.mediaType, 'movie'), inArray(mediaVideos.mediaId, movieIds)))
+            : Promise.resolve([]),
     ]);
     const mGenreMap = new Map();
     for (const { movieId, name } of mGenreRows) {
@@ -361,6 +398,10 @@ export async function searchContent(q) {
     for (const { seriesId, cnt } of sSeasonCounts) {
         sSeasonMap.set(seriesId, Number(cnt));
     }
+    const mTrailerKeyMap = new Map();
+    for (const { mediaId, youtubeKey } of mTrailerRows) {
+        mTrailerKeyMap.set(mediaId, youtubeKey);
+    }
     return {
         movies: movieRows.map((m) => {
             const availabilityCount = mAvailCountMap.get(m.id) ?? 0;
@@ -369,13 +410,14 @@ export async function searchContent(q) {
                 title: m.title,
                 year: m.year,
                 synopsis: m.synopsis,
-                posterUrl: m.posterPath,
-                backdropUrl: m.backdropPath,
+                posterUrl: resolveMediaImageUrl(m.posterPath),
+                backdropUrl: resolveMediaImageUrl(m.backdropPath, 'w780'),
                 runtime: m.durationMinutes,
                 genres: mGenreMap.get(m.id) ?? [],
                 quality: bestQuality(mQualityBuckets.get(m.id) ?? []),
                 availabilityCount,
                 availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
+                trailerKey: mTrailerKeyMap.get(m.id) ?? null,
             };
         }),
         series: seriesRows.map((s) => {
@@ -385,8 +427,8 @@ export async function searchContent(q) {
                 title: s.title,
                 year: s.firstAirYear,
                 synopsis: s.synopsis,
-                posterUrl: s.posterPath,
-                backdropUrl: s.backdropPath,
+                posterUrl: resolveMediaImageUrl(s.posterPath),
+                backdropUrl: resolveMediaImageUrl(s.backdropPath, 'w780'),
                 genres: sGenreMap.get(s.id) ?? [],
                 seasonCount: sSeasonMap.get(s.id) ?? 0,
                 availabilityCount,

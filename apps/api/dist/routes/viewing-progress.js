@@ -1,6 +1,5 @@
 import { upsertProgress, listContinueWatching } from '../services/viewing-progress-service.js';
 import { NotFoundError } from '../errors.js';
-import { DEFAULT_PROFILE_ID } from '../services/profile-service.js';
 export async function viewingProgressRoutes(app) {
     app.put('/progress/:mediaType/:mediaId', async (request, reply) => {
         const { mediaType, mediaId } = request.params;
@@ -18,7 +17,7 @@ export async function viewingProgressRoutes(app) {
             return reply.status(400).send({ error: 'progressSeconds must be between 0 and durationSeconds' });
         }
         try {
-            const row = await upsertProgress(DEFAULT_PROFILE_ID, mediaType, mediaId, progressSeconds, durationSeconds);
+            const row = await upsertProgress(request.profileId, mediaType, mediaId, progressSeconds, durationSeconds);
             return reply.status(200).send(row);
         }
         catch (err) {
@@ -28,8 +27,8 @@ export async function viewingProgressRoutes(app) {
             throw err;
         }
     });
-    app.get('/continue-watching', async () => {
-        return listContinueWatching(DEFAULT_PROFILE_ID);
+    app.get('/continue-watching', async (request) => {
+        return listContinueWatching(request.profileId);
     });
 }
 //# sourceMappingURL=viewing-progress.js.map

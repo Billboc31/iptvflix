@@ -1,11 +1,6 @@
 import { TmdbRateLimitError, TmdbNetworkError } from './errors.js';
+import { parseYear } from '../../../lib/parse-year.js';
 const BASE_URL = 'https://api.themoviedb.org/3';
-function parseYear(dateStr) {
-    if (!dateStr || dateStr.length < 4)
-        return null;
-    const n = parseInt(dateStr.substring(0, 4), 10);
-    return isNaN(n) ? null : n;
-}
 function deriveReleaseStatus(dateStr) {
     if (!dateStr)
         return null;
@@ -20,12 +15,35 @@ function mapMovieDetail(raw) {
         posterPath: raw.poster_path ?? null,
         backdropPath: raw.backdrop_path ?? null,
         genres: raw.genres.map((g) => g.name),
+        genreObjects: raw.genres.map((g) => ({ name: g.name, tmdbId: g.id })),
         runtimeMinutes: raw.runtime ?? null,
         imdbId: raw.imdb_id ?? null,
         popularity: raw.popularity ?? null,
         voteAverage: raw.vote_average ?? null,
+        voteCount: raw.vote_count ?? null,
         releaseStatus: raw.status ?? null,
+        status: raw.status ?? null,
         releaseDate: raw.release_date || null,
+        originalLanguage: raw.original_language ?? null,
+        spokenLanguages: raw.spoken_languages
+            ? raw.spoken_languages.map((l) => ({ iso639_1: l.iso_639_1, name: l.name }))
+            : null,
+        productionCountries: raw.production_countries
+            ? raw.production_countries.map((c) => ({ iso3166_1: c.iso_3166_1, name: c.name }))
+            : null,
+        tagline: raw.tagline ?? null,
+        keywords: raw.keywords?.results?.map((k) => k.name) ?? null,
+        belongsToCollection: raw.belongs_to_collection
+            ? {
+                tmdbId: raw.belongs_to_collection.id,
+                name: raw.belongs_to_collection.name,
+                posterPath: raw.belongs_to_collection.poster_path ?? null,
+                backdropPath: raw.belongs_to_collection.backdrop_path ?? null,
+            }
+            : null,
+        externalIds: raw.external_ids
+            ? raw.external_ids
+            : null,
     };
 }
 function mapSeriesDetail(raw) {
@@ -37,12 +55,50 @@ function mapSeriesDetail(raw) {
         posterPath: raw.poster_path ?? null,
         backdropPath: raw.backdrop_path ?? null,
         genres: raw.genres.map((g) => g.name),
+        genreObjects: raw.genres.map((g) => ({ name: g.name, tmdbId: g.id })),
         imdbId: null,
         popularity: raw.popularity ?? null,
         voteAverage: raw.vote_average ?? null,
+        voteCount: raw.vote_count ?? null,
         status: raw.status ?? null,
         releaseStatus: raw.status ?? null,
         firstAirDate: raw.first_air_date || null,
+        originalLanguage: raw.original_language ?? null,
+        spokenLanguages: raw.spoken_languages
+            ? raw.spoken_languages.map((l) => ({ iso639_1: l.iso_639_1, name: l.name }))
+            : null,
+        productionCountries: raw.production_countries
+            ? raw.production_countries.map((c) => ({ iso3166_1: c.iso_3166_1, name: c.name }))
+            : null,
+        tagline: raw.tagline ?? null,
+        inProduction: raw.in_production ?? null,
+        networks: raw.networks
+            ? raw.networks.map((n) => ({
+                id: n.id,
+                name: n.name,
+                logoPath: n.logo_path ?? null,
+                originCountry: n.origin_country,
+            }))
+            : null,
+        createdBy: raw.created_by
+            ? raw.created_by.map((c) => ({ id: c.id, name: c.name, profilePath: c.profile_path ?? null }))
+            : null,
+        numberOfSeasons: raw.number_of_seasons ?? null,
+        numberOfEpisodes: raw.number_of_episodes ?? null,
+        keywords: raw.keywords?.results?.map((k) => k.name) ?? null,
+        externalIds: raw.external_ids
+            ? raw.external_ids
+            : null,
+        seasons: raw.seasons
+            ? raw.seasons.map((s) => ({
+                tmdbId: s.id,
+                seasonNumber: s.season_number,
+                name: s.name ?? null,
+                airDate: s.air_date ?? null,
+                posterPath: s.poster_path ?? null,
+                episodeCount: s.episode_count,
+            }))
+            : null,
     };
 }
 const MAX_CAST = 10;
@@ -81,8 +137,11 @@ export class TmdbClient {
             throw new TmdbRateLimitError();
         return retried;
     }
-    async getMovieMetadata(tmdbId) {
-        const response = await this.fetchWithRetry(`${BASE_URL}/movie/${tmdbId}`);
+    async getMovieMetadata(tmdbId, opts) {
+        const params = new URLSearchParams({ append_to_response: 'keywords,external_ids' });
+        if (opts?.language)
+            params.set('language', opts.language);
+        const response = await this.fetchWithRetry(`${BASE_URL}/movie/${tmdbId}?${params}`);
         if (response.status === 404)
             return null;
         if (!response.ok)
@@ -95,8 +154,11 @@ export class TmdbClient {
             throw new TmdbNetworkError('Could not parse TMDB movie response');
         }
     }
-    async getSeriesMetadata(tmdbId) {
-        const response = await this.fetchWithRetry(`${BASE_URL}/tv/${tmdbId}`);
+    async getSeriesMetadata(tmdbId, opts) {
+        const params = new URLSearchParams({ append_to_response: 'keywords,external_ids' });
+        if (opts?.language)
+            params.set('language', opts.language);
+        const response = await this.fetchWithRetry(`${BASE_URL}/tv/${tmdbId}?${params}`);
         if (response.status === 404)
             return null;
         if (!response.ok)
@@ -107,6 +169,19 @@ export class TmdbClient {
         }
         catch {
             throw new TmdbNetworkError('Could not parse TMDB series response');
+        }
+    }
+    async fetchCollection(collectionTmdbId) {
+        const response = await this.fetchWithRetry(`${BASE_URL}/collection/${collectionTmdbId}`);
+        if (response.status === 404)
+            return null;
+        if (!response.ok)
+            throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`);
+        try {
+            return (await response.json());
+        }
+        catch {
+            throw new TmdbNetworkError('Could not parse TMDB collection response');
         }
     }
     async getMovieVideos(tmdbId) {
@@ -163,6 +238,9 @@ export class TmdbClient {
                 role: 'cast',
                 order: c.order,
                 profilePath: c.profile_path,
+                tmdbPersonId: c.id ?? null,
+                department: 'Acting',
+                job: null,
             }));
             const directors = (raw.crew ?? [])
                 .filter((c) => c.job === 'Director')
@@ -172,6 +250,9 @@ export class TmdbClient {
                 role: 'director',
                 order: i,
                 profilePath: c.profile_path,
+                tmdbPersonId: c.id ?? null,
+                department: 'Directing',
+                job: 'Director',
             }));
             return [...cast, ...directors];
         }
@@ -193,6 +274,9 @@ export class TmdbClient {
                 role: 'cast',
                 order: c.order,
                 profilePath: c.profile_path,
+                tmdbPersonId: c.id ?? null,
+                department: 'Acting',
+                job: null,
             }));
             const creators = (raw.crew ?? [])
                 .filter((c) => c.job === 'Creator' || c.job === 'Executive Producer')
@@ -200,9 +284,12 @@ export class TmdbClient {
                 .map((c, i) => ({
                 name: c.name,
                 character: null,
-                role: 'director',
+                role: 'creator',
                 order: i,
                 profilePath: c.profile_path,
+                tmdbPersonId: c.id ?? null,
+                department: 'Writing',
+                job: c.job ?? null,
             }));
             return [...cast, ...creators];
         }
@@ -237,6 +324,78 @@ export class TmdbClient {
         }
         catch {
             return null;
+        }
+    }
+    async getSeasonEpisodes(tmdbSeriesId, seasonNumber) {
+        const response = await this.fetchWithRetry(`${BASE_URL}/tv/${tmdbSeriesId}/season/${seasonNumber}`);
+        if (response.status === 404)
+            return [];
+        if (!response.ok)
+            return [];
+        try {
+            const raw = (await response.json());
+            return (raw.episodes ?? []).map((ep) => ({
+                episodeNumber: ep.episode_number,
+                title: ep.name || null,
+                synopsis: ep.overview || null,
+                airDate: ep.air_date || null,
+                runtimeMinutes: ep.runtime ?? null,
+                stillPath: ep.still_path ?? null,
+                tmdbId: ep.id ?? null,
+                voteAverage: ep.vote_average ?? null,
+                voteCount: ep.vote_count ?? null,
+            }));
+        }
+        catch {
+            return [];
+        }
+    }
+    async getMovieSimilar(tmdbId, page = 1) {
+        const params = new URLSearchParams({ page: String(page) });
+        const response = await this.fetchWithRetry(`${BASE_URL}/movie/${tmdbId}/similar?${params}`);
+        if (!response.ok)
+            throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`);
+        try {
+            return (await response.json());
+        }
+        catch {
+            throw new TmdbNetworkError('Could not parse TMDB movie similar response');
+        }
+    }
+    async getMovieRecommendations(tmdbId, page = 1) {
+        const params = new URLSearchParams({ page: String(page) });
+        const response = await this.fetchWithRetry(`${BASE_URL}/movie/${tmdbId}/recommendations?${params}`);
+        if (!response.ok)
+            throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`);
+        try {
+            return (await response.json());
+        }
+        catch {
+            throw new TmdbNetworkError('Could not parse TMDB movie recommendations response');
+        }
+    }
+    async getSeriesSimilar(tmdbId, page = 1) {
+        const params = new URLSearchParams({ page: String(page) });
+        const response = await this.fetchWithRetry(`${BASE_URL}/tv/${tmdbId}/similar?${params}`);
+        if (!response.ok)
+            throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`);
+        try {
+            return (await response.json());
+        }
+        catch {
+            throw new TmdbNetworkError('Could not parse TMDB series similar response');
+        }
+    }
+    async getSeriesRecommendations(tmdbId, page = 1) {
+        const params = new URLSearchParams({ page: String(page) });
+        const response = await this.fetchWithRetry(`${BASE_URL}/tv/${tmdbId}/recommendations?${params}`);
+        if (!response.ok)
+            throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`);
+        try {
+            return (await response.json());
+        }
+        catch {
+            throw new TmdbNetworkError('Could not parse TMDB series recommendations response');
         }
     }
     async searchMovies(query, year) {
@@ -296,13 +455,19 @@ export class TmdbClient {
         }
     }
     async fetchMovieFeed(feed, page) {
+        if (feed === 'airing_today')
+            throw new Error('airing_today is a series-only feed');
         const paths = {
             popular: '/movie/popular',
             trending: '/trending/movie/week',
             upcoming: '/movie/upcoming',
+            now_playing: '/movie/now_playing',
         };
+        const path = paths[feed];
+        if (!path)
+            throw new Error(`Unknown movie feed: ${feed}`);
         const params = new URLSearchParams({ page: String(page) });
-        const response = await this.fetchWithRetry(`${BASE_URL}${paths[feed]}?${params}`);
+        const response = await this.fetchWithRetry(`${BASE_URL}${path}?${params}`);
         if (!response.ok)
             throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`);
         try {
@@ -318,6 +483,7 @@ export class TmdbClient {
                 releaseDate: item.release_date || null,
                 popularity: item.popularity ?? null,
                 voteAverage: item.vote_average ?? null,
+                voteCount: item.vote_count ?? null,
             }));
         }
         catch (err) {
@@ -327,13 +493,19 @@ export class TmdbClient {
         }
     }
     async fetchSeriesFeed(feed, page) {
+        if (feed === 'now_playing')
+            throw new Error('now_playing is a movie-only feed');
         const paths = {
             popular: '/tv/popular',
             trending: '/trending/tv/week',
             upcoming: '/tv/on_the_air',
+            airing_today: '/tv/airing_today',
         };
+        const path = paths[feed];
+        if (!path)
+            throw new Error(`Unknown series feed: ${feed}`);
         const params = new URLSearchParams({ page: String(page) });
-        const response = await this.fetchWithRetry(`${BASE_URL}${paths[feed]}?${params}`);
+        const response = await this.fetchWithRetry(`${BASE_URL}${path}?${params}`);
         if (!response.ok)
             throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`);
         try {
@@ -349,12 +521,140 @@ export class TmdbClient {
                 firstAirDate: item.first_air_date || null,
                 popularity: item.popularity ?? null,
                 voteAverage: item.vote_average ?? null,
+                voteCount: item.vote_count ?? null,
             }));
         }
         catch (err) {
             if (err instanceof TmdbNetworkError)
                 throw err;
             throw new TmdbNetworkError('Could not parse TMDB series feed response');
+        }
+    }
+    async fetchMovieTopRated(page) {
+        const params = new URLSearchParams({ page: String(page) });
+        const response = await this.fetchWithRetry(`${BASE_URL}/movie/top_rated?${params}`);
+        if (!response.ok)
+            throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`);
+        try {
+            const raw = (await response.json());
+            return (raw.results ?? []).map((item) => ({
+                externalId: String(item.id),
+                title: item.title ?? item.name ?? '',
+                year: parseYear(item.release_date ?? item.first_air_date),
+                mediaType: 'MOVIE',
+                posterPath: item.poster_path ?? null,
+                synopsis: item.overview || null,
+                releaseStatus: deriveReleaseStatus(item.release_date),
+                releaseDate: item.release_date || null,
+                popularity: item.popularity ?? null,
+                voteAverage: item.vote_average ?? null,
+                voteCount: item.vote_count ?? null,
+            }));
+        }
+        catch (err) {
+            if (err instanceof TmdbNetworkError)
+                throw err;
+            throw new TmdbNetworkError('Could not parse TMDB movie top_rated response');
+        }
+    }
+    async fetchSeriesTopRated(page) {
+        const params = new URLSearchParams({ page: String(page) });
+        const response = await this.fetchWithRetry(`${BASE_URL}/tv/top_rated?${params}`);
+        if (!response.ok)
+            throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`);
+        try {
+            const raw = (await response.json());
+            return (raw.results ?? []).map((item) => ({
+                externalId: String(item.id),
+                title: item.name ?? item.title ?? '',
+                year: parseYear(item.first_air_date ?? item.release_date),
+                mediaType: 'SERIES',
+                posterPath: item.poster_path ?? null,
+                synopsis: item.overview || null,
+                releaseStatus: deriveReleaseStatus(item.first_air_date),
+                firstAirDate: item.first_air_date || null,
+                popularity: item.popularity ?? null,
+                voteAverage: item.vote_average ?? null,
+                voteCount: item.vote_count ?? null,
+            }));
+        }
+        catch (err) {
+            if (err instanceof TmdbNetworkError)
+                throw err;
+            throw new TmdbNetworkError('Could not parse TMDB series top_rated response');
+        }
+    }
+    async fetchMovieDiscover(discoverParams, page) {
+        const params = new URLSearchParams({ sort_by: 'popularity.desc', page: String(page) });
+        if (discoverParams.genreId != null)
+            params.set('with_genres', String(discoverParams.genreId));
+        if (discoverParams.language)
+            params.set('with_original_language', discoverParams.language);
+        const response = await this.fetchWithRetry(`${BASE_URL}/discover/movie?${params}`);
+        if (!response.ok)
+            throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`);
+        try {
+            const raw = (await response.json());
+            return (raw.results ?? []).map((item) => ({
+                externalId: String(item.id),
+                title: item.title ?? item.name ?? '',
+                year: parseYear(item.release_date ?? item.first_air_date),
+                mediaType: 'MOVIE',
+                posterPath: item.poster_path ?? null,
+                synopsis: item.overview || null,
+                releaseStatus: deriveReleaseStatus(item.release_date),
+                releaseDate: item.release_date || null,
+                popularity: item.popularity ?? null,
+                voteAverage: item.vote_average ?? null,
+                voteCount: item.vote_count ?? null,
+            }));
+        }
+        catch (err) {
+            if (err instanceof TmdbNetworkError)
+                throw err;
+            throw new TmdbNetworkError('Could not parse TMDB movie discover response');
+        }
+    }
+    async getSeriesExternalIds(tmdbSeriesId) {
+        const response = await this.fetchWithRetry(`${BASE_URL}/tv/${tmdbSeriesId}/external_ids`);
+        if (!response.ok)
+            return {};
+        try {
+            return (await response.json());
+        }
+        catch {
+            return {};
+        }
+    }
+    async fetchSeriesDiscover(discoverParams, page) {
+        const params = new URLSearchParams({ sort_by: 'popularity.desc', page: String(page) });
+        if (discoverParams.genreId != null)
+            params.set('with_genres', String(discoverParams.genreId));
+        if (discoverParams.language)
+            params.set('with_original_language', discoverParams.language);
+        const response = await this.fetchWithRetry(`${BASE_URL}/discover/tv?${params}`);
+        if (!response.ok)
+            throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`);
+        try {
+            const raw = (await response.json());
+            return (raw.results ?? []).map((item) => ({
+                externalId: String(item.id),
+                title: item.name ?? item.title ?? '',
+                year: parseYear(item.first_air_date ?? item.release_date),
+                mediaType: 'SERIES',
+                posterPath: item.poster_path ?? null,
+                synopsis: item.overview || null,
+                releaseStatus: deriveReleaseStatus(item.first_air_date),
+                firstAirDate: item.first_air_date || null,
+                popularity: item.popularity ?? null,
+                voteAverage: item.vote_average ?? null,
+                voteCount: item.vote_count ?? null,
+            }));
+        }
+        catch (err) {
+            if (err instanceof TmdbNetworkError)
+                throw err;
+            throw new TmdbNetworkError('Could not parse TMDB series discover response');
         }
     }
 }

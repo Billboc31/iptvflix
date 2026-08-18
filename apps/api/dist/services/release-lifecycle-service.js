@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { movies } from '../db/schema/movies.js';
 import { series } from '../db/schema/series.js';
 import { releaseEvents } from '../db/schema/release-lifecycle.js';
+import { recordArrivalsForFollowers } from './arrival-service.js';
 export async function upsertReleaseFields(mediaType, mediaId, fields) {
     if (Object.keys(fields).length === 0)
         return;
@@ -14,10 +15,16 @@ export async function upsertReleaseFields(mediaType, mediaId, fields) {
     }
 }
 export async function recordReleaseEvent(mediaType, mediaId, eventType, occurredAt, sourceId) {
-    await db
+    const inserted = await db
         .insert(releaseEvents)
         .values({ mediaType, mediaId, eventType, occurredAt, sourceId: sourceId ?? null })
-        .onConflictDoNothing();
+        .onConflictDoNothing()
+        .returning({ id: releaseEvents.id });
+    if (inserted.length > 0 &&
+        eventType === 'SOURCE_APPEARED' &&
+        (mediaType === 'MOVIE' || mediaType === 'SERIES')) {
+        await recordArrivalsForFollowers(mediaType, mediaId, sourceId ?? null, inserted[0].id, occurredAt);
+    }
 }
 export async function getTimeline(mediaType, mediaId) {
     const events = await db

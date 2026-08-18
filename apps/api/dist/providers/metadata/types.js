@@ -1,8 +1,8 @@
 export class NoopMetadataProvider {
-    async getMovieMetadata(_tmdbId) {
+    async getMovieMetadata(_tmdbId, _opts) {
         return null;
     }
-    async getSeriesMetadata(_tmdbId) {
+    async getSeriesMetadata(_tmdbId, _opts) {
         return null;
     }
     async searchMovies(_query, _year) {
@@ -15,6 +15,18 @@ export class NoopMetadataProvider {
         return [];
     }
     async fetchSeriesFeed(_feed, _page) {
+        return [];
+    }
+    async fetchMovieTopRated(_page) {
+        return [];
+    }
+    async fetchSeriesTopRated(_page) {
+        return [];
+    }
+    async fetchMovieDiscover(_params, _page) {
+        return [];
+    }
+    async fetchSeriesDiscover(_params, _page) {
         return [];
     }
     async getMovieVideos(_tmdbId) {
@@ -34,6 +46,9 @@ export class NoopMetadataProvider {
     }
     async getSeriesCertification(_tmdbId) {
         return null;
+    }
+    async getSeasonEpisodes(_tmdbSeriesId, _seasonNumber) {
+        return [];
     }
 }
 //# sourceMappingURL=types.js.map

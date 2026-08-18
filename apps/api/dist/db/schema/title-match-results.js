@@ -23,5 +23,5 @@ export const titleMatchResults = pgTable('title_match_results', {
     matchedAt: timestamp('matched_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [unique().on(t.providerId, t.providerItemId)]);
+}, (t) => [unique().on(t.providerId, t.providerItemId, t.mediaType)]);
 //# sourceMappingURL=title-match-results.js.map

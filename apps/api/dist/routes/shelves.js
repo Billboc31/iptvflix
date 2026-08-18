@@ -1,7 +1,6 @@
 import { listShelves, getShelf, createShelf, updateShelf, deleteShelf, addMember, removeMember, reorderMembers, } from '../services/shelf-service.js';
 import { generateShelfFromSeeds, refreshGeneratedShelf } from '../services/shelf-generation-service.js';
 import { NotFoundError, ForbiddenError, ValidationError } from '../errors.js';
-import { DEFAULT_PROFILE_ID } from '../services/profile-service.js';
 function handleServiceError(err, reply) {
     if (err instanceof ForbiddenError)
         return reply.status(403).send({ error: err.message });
@@ -12,8 +11,8 @@ function handleServiceError(err, reply) {
     throw err;
 }
 export async function shelvesRoutes(app) {
-    app.get('/shelves', async () => {
-        return listShelves(DEFAULT_PROFILE_ID);
+    app.get('/shelves', async (request) => {
+        return listShelves(request.profileId);
     });
     app.post('/shelves', async (request, reply) => {
         const { title, type, rules, layoutHint } = request.body ?? {};
@@ -27,7 +26,7 @@ export async function shelvesRoutes(app) {
             return reply.status(400).send({ error: 'rules are required for DYNAMIC shelves', validationError: true });
         }
         try {
-            const summary = await createShelf(DEFAULT_PROFILE_ID, { title, type, rules, layoutHint });
+            const summary = await createShelf(request.profileId, { title, type, rules, layoutHint });
             return reply.status(201).send(summary);
         }
         catch (err) {
@@ -36,7 +35,7 @@ export async function shelvesRoutes(app) {
     });
     app.get('/shelves/:id', async (request, reply) => {
         try {
-            const shelf = await getShelf(request.params.id, DEFAULT_PROFILE_ID);
+            const shelf = await getShelf(request.params.id, request.profileId);
             return shelf;
         }
         catch (err) {
@@ -45,7 +44,7 @@ export async function shelvesRoutes(app) {
     });
     app.patch('/shelves/:id', async (request, reply) => {
         try {
-            const summary = await updateShelf(request.params.id, DEFAULT_PROFILE_ID, request.body ?? {});
+            const summary = await updateShelf(request.params.id, request.profileId, request.body ?? {});
             return summary;
         }
         catch (err) {
@@ -54,7 +53,7 @@ export async function shelvesRoutes(app) {
     });
     app.delete('/shelves/:id', async (request, reply) => {
         try {
-            await deleteShelf(request.params.id, DEFAULT_PROFILE_ID);
+            await deleteShelf(request.params.id, request.profileId);
             return reply.status(204).send();
         }
         catch (err) {
@@ -70,7 +69,7 @@ export async function shelvesRoutes(app) {
             return reply.status(400).send({ error: 'mediaType must be MOVIE or SERIES' });
         }
         try {
-            await addMember(request.params.id, DEFAULT_PROFILE_ID, { mediaType, mediaId });
+            await addMember(request.params.id, request.profileId, { mediaType, mediaId });
             return reply.status(204).send();
         }
         catch (err) {
@@ -83,7 +82,7 @@ export async function shelvesRoutes(app) {
             return reply.status(400).send({ error: 'mediaType must be MOVIE or SERIES' });
         }
         try {
-            await removeMember(request.params.id, DEFAULT_PROFILE_ID, mediaType, mediaId);
+            await removeMember(request.params.id, request.profileId, mediaType, mediaId);
             return reply.status(204).send();
         }
         catch (err) {
@@ -96,7 +95,7 @@ export async function shelvesRoutes(app) {
             return reply.status(400).send({ error: 'members must be an array' });
         }
         try {
-            await reorderMembers(request.params.id, DEFAULT_PROFILE_ID, members);
+            await reorderMembers(request.params.id, request.profileId, members);
             return reply.status(204).send();
         }
         catch (err) {
@@ -123,7 +122,7 @@ export async function shelvesRoutes(app) {
             return reply.status(400).send({ error: 'mediaType must be MOVIE or SERIES', validationError: true });
         }
         try {
-            const result = await generateShelfFromSeeds(DEFAULT_PROFILE_ID, { title, seedMediaIds, mediaType, availableToMe, limit });
+            const result = await generateShelfFromSeeds(request.profileId, { title, seedMediaIds, mediaType, availableToMe, limit });
             return reply.status(201).send(result);
         }
         catch (err) {
@@ -132,7 +131,7 @@ export async function shelvesRoutes(app) {
     });
     app.post('/shelves/:id/refresh', async (request, reply) => {
         try {
-            const result = await refreshGeneratedShelf(request.params.id, DEFAULT_PROFILE_ID);
+            const result = await refreshGeneratedShelf(request.params.id, request.profileId);
             return result;
         }
         catch (err) {

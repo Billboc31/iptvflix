@@ -1,9 +1,13 @@
-import { and, eq, inArray, isNotNull, isNull, lt, or } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { movies, movieGenres } from '../db/schema/movies.js';
 import { series, seriesGenres } from '../db/schema/series.js';
+import { seasons } from '../db/schema/seasons.js';
+import { episodes } from '../db/schema/episodes.js';
 import { genres } from '../db/schema/genres.js';
+import { collections } from '../db/schema/collections.js';
 import { mediaVideos } from '../db/schema/media-videos.js';
 import { mediaCredits } from '../db/schema/media-credits.js';
+import { persons } from '../db/schema/persons.js';
 const DEFAULT_STALE_DAYS = 7;
 const ENRICH_THROTTLE_MS = 250;
 function slugify(name) {
@@ -29,10 +33,12 @@ export class MetadataEnrichmentService {
     db;
     provider;
     staleDays;
-    constructor(db, provider, staleDays = DEFAULT_STALE_DAYS) {
+    onEnriched;
+    constructor(db, provider, staleDays = DEFAULT_STALE_DAYS, onEnriched) {
         this.db = db;
         this.provider = provider;
         this.staleDays = staleDays;
+        this.onEnriched = onEnriched;
     }
     async enrichMovie(movieId, opts) {
         const staleDays = opts?.staleDays ?? this.staleDays;
@@ -68,6 +74,29 @@ export class MetadataEnrichmentService {
         }
         if (metadata === null)
             return 'provider-failed';
+        // Upsert collection if movie belongs to one
+        let collectionId = null;
+        if (metadata.belongsToCollection) {
+            const bc = metadata.belongsToCollection;
+            const [collRow] = await this.db
+                .insert(collections)
+                .values({
+                tmdbId: bc.tmdbId,
+                name: bc.name,
+                posterPath: bc.posterPath,
+                backdropPath: bc.backdropPath,
+            })
+                .onConflictDoUpdate({
+                target: collections.tmdbId,
+                set: {
+                    name: bc.name,
+                    posterPath: bc.posterPath,
+                    backdropPath: bc.backdropPath,
+                },
+            })
+                .returning({ id: collections.id });
+            collectionId = collRow?.id ?? null;
+        }
         await this.db
             .update(movies)
             .set({
@@ -80,13 +109,24 @@ export class MetadataEnrichmentService {
             durationMinutes: metadata.runtimeMinutes,
             imdbId: metadata.imdbId,
             voteAverage: metadata.voteAverage,
+            voteCount: metadata.voteCount ?? null,
             certification,
             metadataProvider: 'tmdb',
             metadataEnrichedAt: new Date(),
             updatedAt: new Date(),
+            status: metadata.status ?? metadata.releaseStatus ?? null,
+            popularity: metadata.popularity ?? null,
+            originalLanguage: metadata.originalLanguage ?? null,
+            spokenLanguages: metadata.spokenLanguages ?? null,
+            productionCountries: metadata.productionCountries ?? null,
+            tagline: metadata.tagline ?? null,
+            keywords: metadata.keywords ?? null,
+            externalIds: metadata.externalIds ?? null,
+            collectionId,
+            tmdbSyncedAt: new Date(),
         })
             .where(eq(movies.id, movieId));
-        await this.upsertGenres(metadata.genres, async (genreIds) => {
+        await this.upsertGenres(metadata.genres, metadata.genreObjects, async (genreIds) => {
             await this.db.delete(movieGenres).where(eq(movieGenres.movieId, movieId));
             if (genreIds.length > 0) {
                 await this.db
@@ -96,6 +136,8 @@ export class MetadataEnrichmentService {
         });
         await this.persistVideos('movie', movieId, videos);
         await this.persistCredits('movie', movieId, credits);
+        await this.persistFrenchLocalization('movie', movieId, movie.tmdbId, metadata.title, metadata.synopsis ?? null, metadata.tagline ?? null);
+        this.onEnriched?.(movieId, 'MOVIE');
         return 'enriched';
     }
     async enrichSeries(seriesId, opts) {
@@ -143,14 +185,28 @@ export class MetadataEnrichmentService {
             backdropPath: metadata.backdropPath,
             imdbId: metadata.imdbId,
             voteAverage: metadata.voteAverage,
+            voteCount: metadata.voteCount ?? null,
             certification,
             status: metadata.status,
             metadataProvider: 'tmdb',
             metadataEnrichedAt: new Date(),
             updatedAt: new Date(),
+            popularity: metadata.popularity ?? null,
+            originalLanguage: metadata.originalLanguage ?? null,
+            spokenLanguages: metadata.spokenLanguages ?? null,
+            productionCountries: metadata.productionCountries ?? null,
+            tagline: metadata.tagline ?? null,
+            inProduction: metadata.inProduction ?? null,
+            networks: metadata.networks ?? null,
+            createdBy: metadata.createdBy ?? null,
+            numberOfSeasons: metadata.numberOfSeasons ?? null,
+            numberOfEpisodes: metadata.numberOfEpisodes ?? null,
+            keywords: metadata.keywords ?? null,
+            externalIds: metadata.externalIds ?? null,
+            tmdbSyncedAt: new Date(),
         })
             .where(eq(series.id, seriesId));
-        await this.upsertGenres(metadata.genres, async (genreIds) => {
+        await this.upsertGenres(metadata.genres, metadata.genreObjects, async (genreIds) => {
             await this.db.delete(seriesGenres).where(eq(seriesGenres.seriesId, seriesId));
             if (genreIds.length > 0) {
                 await this.db
@@ -160,7 +216,183 @@ export class MetadataEnrichmentService {
         });
         await this.persistVideos('series', seriesId, videos);
         await this.persistCredits('series', seriesId, credits);
+        await this.persistFrenchLocalization('series', seriesId, seriesRow.tmdbId, metadata.title, metadata.synopsis ?? null, metadata.tagline ?? null);
+        // Upsert canonical season rows from TMDB — creates them if absent, updates if present
+        if (metadata.seasons && metadata.seasons.length > 0) {
+            for (const s of metadata.seasons) {
+                await this.db
+                    .insert(seasons)
+                    .values({
+                    seriesId,
+                    seasonNumber: s.seasonNumber,
+                    tmdbId: s.tmdbId ?? null,
+                    title: s.name ?? null,
+                    posterPath: s.posterPath ?? null,
+                    episodeCount: s.episodeCount ?? null,
+                    airYear: s.airDate ? new Date(s.airDate).getFullYear() : null,
+                })
+                    .onConflictDoUpdate({
+                    target: [seasons.seriesId, seasons.seasonNumber],
+                    set: {
+                        tmdbId: sql `EXCLUDED.tmdb_id`,
+                        title: sql `EXCLUDED.title`,
+                        posterPath: sql `EXCLUDED.poster_path`,
+                        episodeCount: sql `EXCLUDED.episode_count`,
+                        airYear: sql `EXCLUDED.air_year`,
+                        updatedAt: sql `now()`,
+                    },
+                });
+            }
+        }
+        try {
+            await this.enrichSeriesSeasons(seriesId);
+        }
+        catch (err) {
+            console.warn(`[enrichment] enrichSeriesSeasons(${seriesId}) failed:`, err);
+        }
+        this.onEnriched?.(seriesId, 'SERIES');
         return 'enriched';
+    }
+    async enrichSeriesSeasons(seriesId) {
+        const emptyCounters = { enriched: 0, skipped: 0, failed: 0 };
+        const [seriesRow] = await this.db
+            .select({ id: series.id, tmdbId: series.tmdbId })
+            .from(series)
+            .where(eq(series.id, seriesId));
+        if (!seriesRow || seriesRow.tmdbId === null) {
+            return { result: 'no-tmdb-id', episodes: emptyCounters };
+        }
+        if (!this.provider.getSeasonEpisodes) {
+            return { result: 'no-tmdb-id', episodes: emptyCounters };
+        }
+        const tmdbId = seriesRow.tmdbId;
+        const seasonRows = await this.db
+            .select({ id: seasons.id, seasonNumber: seasons.seasonNumber })
+            .from(seasons)
+            .where(eq(seasons.seriesId, seriesId));
+        const counters = { enriched: 0, skipped: 0, failed: 0 };
+        let firstCall = true;
+        for (const season of seasonRows) {
+            if (!firstCall)
+                await delay(ENRICH_THROTTLE_MS);
+            firstCall = false;
+            let tmdbEpisodes;
+            try {
+                tmdbEpisodes = await this.provider.getSeasonEpisodes(tmdbId, season.seasonNumber);
+            }
+            catch {
+                counters.failed++;
+                continue;
+            }
+            for (const tmdbEp of tmdbEpisodes) {
+                try {
+                    await this.db
+                        .insert(episodes)
+                        .values({
+                        seasonId: season.id,
+                        seriesId,
+                        episodeNumber: tmdbEp.episodeNumber,
+                        title: tmdbEp.title ?? null,
+                        synopsis: tmdbEp.synopsis ?? null,
+                        airDate: tmdbEp.airDate ?? null,
+                        durationMinutes: tmdbEp.runtimeMinutes ?? null,
+                        tmdbId: tmdbEp.tmdbId ?? null,
+                        posterPath: tmdbEp.stillPath ?? null,
+                        voteAverage: tmdbEp.voteAverage ?? null,
+                        voteCount: tmdbEp.voteCount ?? null,
+                    })
+                        .onConflictDoUpdate({
+                        target: [episodes.seasonId, episodes.episodeNumber],
+                        set: {
+                            title: sql `EXCLUDED.title`,
+                            synopsis: sql `EXCLUDED.synopsis`,
+                            airDate: sql `EXCLUDED.air_date`,
+                            durationMinutes: sql `EXCLUDED.duration_minutes`,
+                            tmdbId: sql `EXCLUDED.tmdb_id`,
+                            posterPath: sql `EXCLUDED.poster_path`,
+                            voteAverage: sql `EXCLUDED.vote_average`,
+                            voteCount: sql `EXCLUDED.vote_count`,
+                            updatedAt: sql `now()`,
+                        },
+                    });
+                    counters.enriched++;
+                }
+                catch {
+                    counters.failed++;
+                }
+            }
+        }
+        return { result: 'enriched', episodes: counters };
+    }
+    /**
+     * Ensures a canonical movie row exists for the given TMDB ID.
+     * When the movie is not in the local DB, fetches the title from TMDB and inserts
+     * a canonical skeleton (no provider metadata). Enrichment fills the rest later.
+     */
+    async importMovieByTmdbId(tmdbId) {
+        const [existing] = await this.db
+            .select({ id: movies.id })
+            .from(movies)
+            .where(eq(movies.tmdbId, tmdbId));
+        if (existing)
+            return existing;
+        let title;
+        try {
+            const meta = await this.provider.getMovieMetadata(tmdbId);
+            if (!meta)
+                return null;
+            title = meta.title;
+        }
+        catch {
+            return null;
+        }
+        const [inserted] = await this.db
+            .insert(movies)
+            .values({ title, tmdbId, matchStatus: 'MATCHED' })
+            .onConflictDoNothing({ target: movies.tmdbId })
+            .returning({ id: movies.id });
+        if (inserted)
+            return inserted;
+        const [row] = await this.db
+            .select({ id: movies.id })
+            .from(movies)
+            .where(eq(movies.tmdbId, tmdbId));
+        return row ?? null;
+    }
+    /**
+     * Ensures a canonical series row exists for the given TMDB ID.
+     * When the series is not in the local DB, fetches the title from TMDB and inserts
+     * a canonical skeleton (no provider metadata). Enrichment fills the rest later.
+     */
+    async importSeriesByTmdbId(tmdbId) {
+        const [existing] = await this.db
+            .select({ id: series.id })
+            .from(series)
+            .where(eq(series.tmdbId, tmdbId));
+        if (existing)
+            return existing;
+        let title;
+        try {
+            const meta = await this.provider.getSeriesMetadata(tmdbId);
+            if (!meta)
+                return null;
+            title = meta.title;
+        }
+        catch {
+            return null;
+        }
+        const [inserted] = await this.db
+            .insert(series)
+            .values({ title, tmdbId, matchStatus: 'MATCHED' })
+            .onConflictDoNothing({ target: series.tmdbId })
+            .returning({ id: series.id });
+        if (inserted)
+            return inserted;
+        const [row] = await this.db
+            .select({ id: series.id })
+            .from(series)
+            .where(eq(series.tmdbId, tmdbId));
+        return row ?? null;
     }
     async enrichPending(opts) {
         const staleDays = opts?.staleDays ?? this.staleDays;
@@ -238,7 +470,31 @@ export class MetadataEnrichmentService {
             .where(and(eq(mediaCredits.mediaType, mediaType), eq(mediaCredits.mediaId, mediaId)));
         if (credits.length === 0)
             return;
-        await this.db.insert(mediaCredits).values(credits.map((c) => ({
+        // Upsert persons for any credit that carries a TMDB person ID
+        const personIdByTmdbId = new Map();
+        const creditsWithPersonId = await Promise.all(credits.map(async (c) => {
+            if (!c.tmdbPersonId)
+                return { ...c, resolvedPersonId: null };
+            const cached = personIdByTmdbId.get(c.tmdbPersonId);
+            if (cached)
+                return { ...c, resolvedPersonId: cached };
+            const [row] = await this.db
+                .insert(persons)
+                .values({
+                tmdbPersonId: c.tmdbPersonId,
+                name: c.name,
+                profilePath: c.profilePath ?? null,
+            })
+                .onConflictDoUpdate({
+                target: persons.tmdbPersonId,
+                set: { name: c.name, profilePath: c.profilePath ?? null },
+            })
+                .returning({ id: persons.id });
+            if (row)
+                personIdByTmdbId.set(c.tmdbPersonId, row.id);
+            return { ...c, resolvedPersonId: row?.id ?? null };
+        }));
+        await this.db.insert(mediaCredits).values(creditsWithPersonId.map((c) => ({
             mediaType,
             mediaId,
             role: c.role,
@@ -246,16 +502,64 @@ export class MetadataEnrichmentService {
             character: c.character,
             creditOrder: c.order,
             profilePath: c.profilePath,
+            tmdbPersonId: c.tmdbPersonId ?? null,
+            personId: c.resolvedPersonId ?? null,
+            department: c.department ?? null,
+            job: c.job ?? null,
+            isDirector: c.role === 'director',
+            isCreator: c.role === 'creator',
         })));
     }
-    async upsertGenres(genreNames, linkFn) {
+    async persistFrenchLocalization(mediaType, mediaId, tmdbId, defaultTitle, defaultSynopsis, defaultTagline) {
+        let frMetadata;
+        try {
+            frMetadata =
+                mediaType === 'movie'
+                    ? await this.provider.getMovieMetadata(tmdbId, { language: 'fr-FR' })
+                    : await this.provider.getSeriesMetadata(tmdbId, { language: 'fr-FR' });
+        }
+        catch {
+            return;
+        }
+        if (!frMetadata)
+            return;
+        const fr = {};
+        if (frMetadata.title && frMetadata.title !== defaultTitle)
+            fr.title = frMetadata.title;
+        const frSynopsis = frMetadata.synopsis ?? null;
+        if (frSynopsis && frSynopsis !== defaultSynopsis)
+            fr.synopsis = frSynopsis;
+        const frTagline = frMetadata.tagline ?? null;
+        if (frTagline && frTagline !== defaultTagline)
+            fr.tagline = frTagline;
+        if (Object.keys(fr).length === 0)
+            return;
+        if (mediaType === 'movie') {
+            await this.db.update(movies).set({ localizations: { fr } }).where(eq(movies.id, mediaId));
+        }
+        else {
+            await this.db.update(series).set({ localizations: { fr } }).where(eq(series.id, mediaId));
+        }
+    }
+    async upsertGenres(genreNames, genreObjects, linkFn) {
         if (genreNames.length === 0) {
             await linkFn([]);
             return;
         }
-        const genreValues = genreNames.map((name) => ({ name, slug: slugify(name) }));
-        const slugs = genreValues.map((g) => g.slug);
-        await this.db.insert(genres).values(genreValues).onConflictDoNothing();
+        let slugs;
+        if (genreObjects && genreObjects.length > 0) {
+            const genreValues = genreObjects.map((g) => ({ name: g.name, slug: slugify(g.name), tmdbId: g.tmdbId }));
+            slugs = genreValues.map((g) => g.slug);
+            await this.db
+                .insert(genres)
+                .values(genreValues)
+                .onConflictDoUpdate({ target: genres.slug, set: { tmdbId: sql `EXCLUDED.tmdb_id` } });
+        }
+        else {
+            const genreValues = genreNames.map((name) => ({ name, slug: slugify(name) }));
+            slugs = genreValues.map((g) => g.slug);
+            await this.db.insert(genres).values(genreValues).onConflictDoNothing();
+        }
         const genreRows = await this.db
             .select({ id: genres.id, slug: genres.slug })
             .from(genres)

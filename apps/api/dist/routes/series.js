@@ -1,6 +1,7 @@
-import { listSeries } from '../services/catalog-service.js';
+import { listSeries, NotFoundError } from '../services/catalog-service.js';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export async function seriesRoutes(app) {
+export async function seriesRoutes(app, opts = {}) {
+    const { similarTitlesService } = opts;
     app.get('/series', async (request, reply) => {
         const q = request.query;
         const page = q.page !== undefined ? Number(q.page) : 1;
@@ -26,10 +27,21 @@ export async function seriesRoutes(app) {
         if (sortBy !== undefined &&
             sortBy !== 'title' &&
             sortBy !== 'year' &&
-            sortBy !== 'recentAvailability') {
+            sortBy !== 'recentAvailability' &&
+            sortBy !== 'popularity' &&
+            sortBy !== 'voteAverage') {
             return reply
                 .status(400)
-                .send({ error: 'sortBy must be title, year, or recentAvailability' });
+                .send({ error: 'sortBy must be title, year, recentAvailability, popularity, or voteAverage' });
+        }
+        let upcoming;
+        if (q.upcoming !== undefined) {
+            if (q.upcoming === 'true')
+                upcoming = true;
+            else if (q.upcoming === 'false')
+                upcoming = false;
+            else
+                return reply.status(400).send({ error: 'upcoming must be true or false' });
         }
         let search;
         if (q.q !== undefined) {
@@ -53,10 +65,38 @@ export async function seriesRoutes(app) {
             year,
             availability: availability,
             sortBy: sortBy,
+            upcoming,
             q: search,
             genreId,
         };
         return listSeries(filters);
+    });
+    app.get('/series/:id/similar', async (request, reply) => {
+        if (!similarTitlesService) {
+            return reply.status(503).send({ error: 'Similar titles service not configured' });
+        }
+        const { id } = request.params;
+        if (!UUID_RE.test(id)) {
+            return reply.status(400).send({ error: 'id must be a valid UUID' });
+        }
+        const q = request.query;
+        let limit = 20;
+        if (q.limit !== undefined) {
+            limit = Number(q.limit);
+            if (!Number.isInteger(limit) || limit < 1 || limit > 40) {
+                return reply.status(400).send({ error: 'limit must be an integer between 1 and 40' });
+            }
+        }
+        try {
+            const items = await similarTitlesService.getSimilarSeries(id, limit);
+            return { items };
+        }
+        catch (err) {
+            if (err instanceof NotFoundError) {
+                return reply.status(404).send({ error: err.message });
+            }
+            throw err;
+        }
     });
 }
 //# sourceMappingURL=series.js.map

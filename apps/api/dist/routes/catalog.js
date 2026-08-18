@@ -6,11 +6,13 @@ import { seasons } from '../db/schema/seasons.js';
 import { episodes } from '../db/schema/episodes.js';
 import { genres } from '../db/schema/genres.js';
 import { movieAvailabilities, seriesAvailabilities, episodeAvailabilities, } from '../db/schema/availabilities.js';
+import { sources } from '../db/schema/sources.js';
 import { mediaVideos } from '../db/schema/media-videos.js';
 import { mediaCredits } from '../db/schema/media-credits.js';
 import { viewingProgress } from '../db/schema/viewing-progress.js';
 import { getDefaultProfilePreferences } from '../services/profile-service.js';
 import { resolveVariant } from '../services/availability-resolver.js';
+import { resolveMediaImageUrl } from '../lib/tmdb-image.js';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w185';
 function deriveEnrichmentStatus(row) {
     const hasExternalId = row.tmdbId !== null || row.imdbId !== null;
@@ -63,7 +65,8 @@ function mapCreditsToCast(creditRows) {
     const director = directorRow?.name ?? null;
     return { cast, director };
 }
-export async function catalogRoutes(app) {
+const hydrationInProgress = new Set();
+export async function catalogRoutes(app, opts = {}) {
     // ---------------------------------------------------------------------------
     // GET /movies/:id
     // ---------------------------------------------------------------------------
@@ -93,8 +96,14 @@ export async function catalogRoutes(app) {
                 subtitleLanguage: movieAvailabilities.subtitleLanguage,
                 videoQuality: movieAvailabilities.videoQuality,
                 rawTitle: movieAvailabilities.rawTitle,
+                sourceDisplayName: sources.name,
+                codecName: movieAvailabilities.codecName,
+                hdrFormat: movieAvailabilities.hdrFormat,
+                releaseHint: movieAvailabilities.releaseHint,
+                audioFormat: movieAvailabilities.audioFormat,
             })
                 .from(movieAvailabilities)
+                .leftJoin(sources, eq(sql `${sources.id}::text`, movieAvailabilities.providerId))
                 .where(eq(movieAvailabilities.movieId, id)),
             getDefaultProfilePreferences(),
             db
@@ -123,13 +132,24 @@ export async function catalogRoutes(app) {
         const { selectedVariantId } = resolveVariant(variantRows, prefs);
         const trailerKey = videoRows[0]?.youtubeKey ?? null;
         const { cast, director } = mapCreditsToCast(creditRows);
+        if (movie.tmdbId != null &&
+            movie.metadataEnrichedAt == null &&
+            opts.enrichmentService &&
+            !hydrationInProgress.has(id)) {
+            console.info(`[catalog] Triggering async metadata hydration for movie ${id}`);
+            hydrationInProgress.add(id);
+            void opts.enrichmentService
+                .enrichMovie(id, { force: true })
+                .finally(() => hydrationInProgress.delete(id));
+            reply.header('X-Metadata-Hydrating', 'true');
+        }
         const response = {
             id: movie.id,
             title: movie.title,
             year: movie.year,
             synopsis: movie.synopsis,
-            posterUrl: movie.posterPath,
-            backdropUrl: movie.backdropPath,
+            posterUrl: resolveMediaImageUrl(movie.posterPath),
+            backdropUrl: resolveMediaImageUrl(movie.backdropPath, 'w780'),
             runtime: movie.durationMinutes,
             genres: filterString(genreRows.map((r) => r.name)),
             quality: bestQuality(variants.map((v) => v.videoQuality)),
@@ -190,8 +210,14 @@ export async function catalogRoutes(app) {
                 subtitleLanguage: seriesAvailabilities.subtitleLanguage,
                 videoQuality: seriesAvailabilities.videoQuality,
                 rawTitle: seriesAvailabilities.rawTitle,
+                sourceDisplayName: sources.name,
+                codecName: seriesAvailabilities.codecName,
+                hdrFormat: seriesAvailabilities.hdrFormat,
+                releaseHint: seriesAvailabilities.releaseHint,
+                audioFormat: seriesAvailabilities.audioFormat,
             })
                 .from(seriesAvailabilities)
+                .leftJoin(sources, eq(sql `${sources.id}::text`, seriesAvailabilities.providerId))
                 .where(eq(seriesAvailabilities.seriesId, id)),
             getDefaultProfilePreferences(),
             db
@@ -225,6 +251,15 @@ export async function catalogRoutes(app) {
                 .where(and(eq(mediaCredits.mediaType, 'series'), eq(mediaCredits.mediaId, id)))
                 .orderBy(asc(mediaCredits.creditOrder)),
         ]);
+        // Fire-and-forget hierarchy hydration when canonical seasons are missing
+        if (seasonRows.length === 0 && seriesRow.tmdbId != null && opts.enrichmentService && !hydrationInProgress.has(id)) {
+            console.info(`[catalog] Triggering async hierarchy hydration for series ${id}`);
+            hydrationInProgress.add(id);
+            void opts.enrichmentService
+                .enrichSeries(id, { force: true })
+                .finally(() => hydrationInProgress.delete(id));
+            reply.header('X-Hierarchy-Hydrating', 'true');
+        }
         const availabilityCount = Number(availCountRows[0]?.cnt ?? 0);
         const seriesVariants = seriesVariantRows;
         const { selectedVariantId } = resolveVariant(seriesVariantRows, prefs);
@@ -236,8 +271,8 @@ export async function catalogRoutes(app) {
             title: seriesRow.title,
             year: seriesRow.firstAirYear,
             synopsis: seriesRow.synopsis,
-            posterUrl: seriesRow.posterPath,
-            backdropUrl: seriesRow.backdropPath,
+            posterUrl: resolveMediaImageUrl(seriesRow.posterPath),
+            backdropUrl: resolveMediaImageUrl(seriesRow.backdropPath, 'w780'),
             genres: filterString(genreRows.map((r) => r.name)),
             seasonCount: seasonRows.length,
             availabilityCount,
@@ -309,8 +344,14 @@ export async function catalogRoutes(app) {
                 subtitleLanguage: episodeAvailabilities.subtitleLanguage,
                 videoQuality: episodeAvailabilities.videoQuality,
                 rawTitle: episodeAvailabilities.rawTitle,
+                sourceDisplayName: sources.name,
+                codecName: episodeAvailabilities.codecName,
+                hdrFormat: episodeAvailabilities.hdrFormat,
+                releaseHint: episodeAvailabilities.releaseHint,
+                audioFormat: episodeAvailabilities.audioFormat,
             })
                 .from(episodeAvailabilities)
+                .leftJoin(sources, eq(sql `${sources.id}::text`, episodeAvailabilities.providerId))
                 .where(inArray(episodeAvailabilities.episodeId, episodeIds)),
             profileId
                 ? db
@@ -341,6 +382,7 @@ export async function catalogRoutes(app) {
                 synopsis: e.synopsis,
                 durationMinutes: e.durationMinutes,
                 airDate: e.airDate,
+                posterUrl: resolveMediaImageUrl(e.posterPath),
                 availabilityCount,
                 availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
                 selectedVariantId,

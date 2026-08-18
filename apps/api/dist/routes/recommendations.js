@@ -1,11 +1,22 @@
 import { rankRecommendations } from '../services/recommendation-ranking-service.js';
+import { getCurrentProfile } from '../services/profile-service.js';
 import { NotFoundError } from '../errors.js';
+const VALID_POLICIES = new Set(['ALL', 'WATCH_NOW', 'DISCOVERY', 'UPCOMING']);
 export async function recommendationRoutes(app) {
     app.get('/profiles/:profileId/recommendations', async (request, reply) => {
         const { profileId } = request.params;
-        const { mediaType, availableToMe, includeSeen, limit } = request.query;
+        const { mediaType, availableToMe, policy, includeSeen, limit } = request.query;
+        try {
+            await getCurrentProfile(request.account.id, profileId);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Profile does not belong to this account' });
+        }
         if (mediaType !== undefined && mediaType !== 'MOVIE' && mediaType !== 'SERIES') {
             return reply.status(400).send({ error: 'mediaType must be MOVIE or SERIES' });
+        }
+        if (policy !== undefined && !VALID_POLICIES.has(policy)) {
+            return reply.status(400).send({ error: 'policy must be ALL, WATCH_NOW, DISCOVERY, or UPCOMING' });
         }
         const limitNum = limit !== undefined ? parseInt(limit, 10) : undefined;
         if (limitNum !== undefined && (isNaN(limitNum) || limitNum < 1 || limitNum > 100)) {
@@ -15,6 +26,7 @@ export async function recommendationRoutes(app) {
             const result = await rankRecommendations(profileId, {
                 mediaType: mediaType,
                 availableToMe: availableToMe === 'true',
+                availabilityPolicy: policy,
                 includeSeen: includeSeen === 'true',
                 limit: limitNum,
             });

@@ -1,8 +1,5 @@
 import type { GenreResponse, MovieFilters, MovieResponse, PaginatedList, SeriesFilters, SeriesResponse } from '@iptvflix/api-contracts';
-export declare class NotFoundError extends Error {
-    readonly statusCode = 404;
-    constructor(entity: string, id: string);
-}
+export { NotFoundError } from './not-found-error.js';
 export declare function listMovies(filters: MovieFilters): Promise<PaginatedList<MovieResponse>>;
 export declare function getMovie(id: string): Promise<MovieResponse | null>;
 export declare function listSeries(filters: SeriesFilters): Promise<PaginatedList<SeriesResponse>>;

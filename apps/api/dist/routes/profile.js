@@ -1,10 +1,10 @@
-import { DEFAULT_PROFILE_ID, getDefaultProfile, getDefaultProfilePreferences, updateDefaultProfilePreferences, } from '../services/profile-service.js';
+import { getProfile, getProfilePreferences, updateProfilePreferences, } from '../services/profile-service.js';
 const VALID_QUALITIES = new Set(['4K', '1080p', '720p', '480p']);
 export async function profileRoutes(app) {
-    app.get('/profile', async (_request, reply) => {
+    app.get('/profile', async (request, reply) => {
         try {
-            const profile = await getDefaultProfile();
-            const preferences = await getDefaultProfilePreferences();
+            const profile = await getProfile(request.profileId);
+            const preferences = await getProfilePreferences(request.profileId);
             return reply.send({
                 id: profile.id,
                 name: profile.name,
@@ -12,7 +12,7 @@ export async function profileRoutes(app) {
             });
         }
         catch {
-            return reply.status(500).send({ error: 'Profile not found' });
+            return reply.status(404).send({ error: 'Profile not found' });
         }
     });
     app.patch('/profile/preferences', async (request, reply) => {
@@ -37,10 +37,13 @@ export async function profileRoutes(app) {
             !VALID_QUALITIES.has(body.maxVideoQuality)) {
             return reply.status(400).send({ error: 'maxVideoQuality must be 4K, 1080p, 720p, 480p, or null' });
         }
-        const preferences = await updateDefaultProfilePreferences(body);
+        if (body.autoplayPreviews !== undefined && typeof body.autoplayPreviews !== 'boolean') {
+            return reply.status(400).send({ error: 'autoplayPreviews must be a boolean' });
+        }
+        const preferences = await updateProfilePreferences(request.profileId, body);
         return reply.send({
-            id: DEFAULT_PROFILE_ID,
-            name: 'Default',
+            id: request.profileId,
+            name: 'Profile',
             preferences,
         });
     });

@@ -1,8 +1,8 @@
 import { eq, lt, sql } from 'drizzle-orm';
 import { discoveryCandidate } from '../db/schema/index.js';
 import { TmdbRateLimitError } from '../providers/metadata/tmdb/errors.js';
+import { DISCOVERY_POOL_MAX_PAGES_PER_FEED } from '../config/env.js';
 const CANDIDATE_TTL_DAYS = 7;
-const MAX_PAGES_PER_FEED = 3;
 const FEED_PAGE_DELAY_MS = 250;
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -30,7 +30,7 @@ export class DiscoveryCandidatePoolService {
         await this.crossReferenceCanonicals();
     }
     async refreshFeedType(feed, mediaType) {
-        for (let page = 1; page <= MAX_PAGES_PER_FEED; page++) {
+        for (let page = 1; page <= DISCOVERY_POOL_MAX_PAGES_PER_FEED; page++) {
             if (page > 1)
                 await sleep(FEED_PAGE_DELAY_MS);
             let candidates;

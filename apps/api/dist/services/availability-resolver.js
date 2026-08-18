@@ -10,6 +10,19 @@ export function isAboveCap(quality, maxVideoQuality) {
     const capRank = QUALITY_ORDER[maxVideoQuality] ?? Infinity;
     return QUALITY_ORDER[quality] > capRank;
 }
+function containerRank(ext) {
+    const e = (ext ?? '').toLowerCase();
+    if (e === 'mp4' || e === 'm4v')
+        return 0;
+    if (e === 'mkv')
+        return 1;
+    // Provider-native HLS/.ts are often blocked (HTTP 551) on this panel — prefer last.
+    if (e === 'm3u8' || e === 'm3u')
+        return 3;
+    if (e === 'ts' || e === 'm2ts')
+        return 4;
+    return 2;
+}
 function scoreTuple(variant, prefs) {
     const audioIdx = variant.audioLanguage !== null
         ? prefs.preferredAudioLanguages.indexOf(variant.audioLanguage)
@@ -21,16 +34,19 @@ function scoreTuple(variant, prefs) {
     const subtitleScore = subIdx >= 0 ? subIdx : prefs.preferredSubtitleLanguages.length;
     const srcIdx = prefs.preferredSourceIds.indexOf(variant.providerId);
     const sourceScore = srcIdx >= 0 ? srcIdx : prefs.preferredSourceIds.length;
+    // Prefer progressive mp4 over mkv/ts so HTTPS web players have a chance
+    // (mkv/hevc need remux; provider-native m3u8 is often unsupported on this panel).
+    const containerScore = containerRank(variant.containerExtension);
     const qualityScore = -qualityRank(variant.videoQuality);
-    return [audioScore, subtitleScore, sourceScore, qualityScore, variant.id];
+    return [audioScore, subtitleScore, sourceScore, containerScore, qualityScore, variant.id];
 }
 function compareTuples(a, b) {
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
         const diff = a[i] - b[i];
         if (diff !== 0)
             return diff;
     }
-    return a[4] < b[4] ? -1 : a[4] > b[4] ? 1 : 0;
+    return a[5] < b[5] ? -1 : a[5] > b[5] ? 1 : 0;
 }
 function resolveReason(winner, prefs, candidates) {
     if (candidates.length === 1)

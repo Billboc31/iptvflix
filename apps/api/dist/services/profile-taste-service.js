@@ -1,6 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { count, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { profileTaste, explicitFeedback, viewingProgress, watchlist, episodes, movieGenres, seriesGenres, genres, } from '../db/schema/index.js';
+import { profileTaste, explicitFeedback, viewingProgress, watchlist, episodes, movieGenres, seriesGenres, genres, movies, series, mediaCredits, profileInteractionEvents, } from '../db/schema/index.js';
 export const SIGNAL_WEIGHTS = {
     LIKE: 3,
     DISLIKE: -3,
@@ -23,7 +23,7 @@ async function loadGenres(mediaType, mediaId) {
         .innerJoin(genres, eq(seriesGenres.genreId, genres.id))
         .where(eq(seriesGenres.seriesId, mediaId));
 }
-function buildOutput(profileId, genreScoresMap, genreMetaMap, positiveMediaIds, negativeMediaIds, signalCount, builtAt) {
+function buildOutput(profileId, genreScoresMap, genreMetaMap, positiveMediaIds, negativeMediaIds, signalCount, builtAt, extra) {
     const genreScores = Object.entries(genreScoresMap)
         .filter(([, score]) => score !== 0)
         .map(([genreId, score]) => ({
@@ -40,7 +40,39 @@ function buildOutput(profileId, genreScoresMap, genreMetaMap, positiveMediaIds, 
         negativeMediaIds,
         signalCount,
         builtAt: builtAt.toISOString(),
+        personScores: extra.personScores,
+        personMeta: extra.personMeta,
+        keywordScores: extra.keywordScores,
+        franchiseScores: extra.franchiseScores,
+        languageScores: extra.languageScores,
+        countryScores: extra.countryScores,
+        decadeScores: extra.decadeScores,
+        mediaTypePreferences: extra.mediaTypePreferences,
+        completionRate: extra.completionRate,
+        historyEventCount: extra.historyEventCount,
+        tasteVersion: extra.tasteVersion,
     };
+}
+function decadeKey(year) {
+    if (!year)
+        return null;
+    return `${Math.floor(year / 10) * 10}s`;
+}
+function countryScoreKeys(countries) {
+    if (!Array.isArray(countries))
+        return [];
+    const keys = [];
+    for (const c of countries) {
+        if (typeof c === 'string' && c.length > 0) {
+            keys.push(c);
+        }
+        else if (c && typeof c === 'object' && 'iso3166_1' in c) {
+            const code = c.iso3166_1;
+            if (typeof code === 'string' && code.length > 0)
+                keys.push(code);
+        }
+    }
+    return keys;
 }
 export async function buildTaste(profileId) {
     const now = new Date();
@@ -53,6 +85,14 @@ export async function buildTaste(profileId) {
     const genreMetaMap = {};
     const positiveSet = new Set();
     const negativeSet = new Set();
+    const personScores = {};
+    const personMeta = {};
+    const keywordScores = {};
+    const franchiseScores = {};
+    const languageScores = {};
+    const countryScores = {};
+    const decadeScores = {};
+    const mediaTypeCounts = {};
     let signalCount = 0;
     function accumulate(genreRows, weight) {
         for (const g of genreRows) {
@@ -60,10 +100,94 @@ export async function buildTaste(profileId) {
             genreMetaMap[g.id] = { slug: g.slug, name: g.name };
         }
     }
+    async function accumulateMediaFeatures(mediaType, mediaId, weight) {
+        // genre
+        accumulate(await loadGenres(mediaType, mediaId), weight);
+        // media type preference
+        mediaTypeCounts[mediaType] = (mediaTypeCounts[mediaType] ?? 0) + weight;
+        if (mediaType === 'MOVIE') {
+            const [movie] = await db
+                .select({
+                keywords: movies.keywords,
+                originalLanguage: movies.originalLanguage,
+                productionCountries: movies.productionCountries,
+                year: movies.year,
+                collectionId: movies.collectionId,
+            })
+                .from(movies)
+                .where(eq(movies.id, mediaId));
+            if (movie) {
+                // keywords
+                if (Array.isArray(movie.keywords)) {
+                    for (const kw of movie.keywords) {
+                        keywordScores[kw] = (keywordScores[kw] ?? 0) + weight;
+                    }
+                }
+                // language
+                if (movie.originalLanguage) {
+                    languageScores[movie.originalLanguage] = (languageScores[movie.originalLanguage] ?? 0) + weight;
+                }
+                // countries
+                for (const c of countryScoreKeys(movie.productionCountries)) {
+                    countryScores[c] = (countryScores[c] ?? 0) + weight;
+                }
+                // decade
+                const dk = decadeKey(movie.year);
+                if (dk)
+                    decadeScores[dk] = (decadeScores[dk] ?? 0) + weight;
+                // franchise
+                if (movie.collectionId) {
+                    franchiseScores[movie.collectionId] = (franchiseScores[movie.collectionId] ?? 0) + weight;
+                }
+            }
+        }
+        else {
+            const [s] = await db
+                .select({
+                keywords: series.keywords,
+                originalLanguage: series.originalLanguage,
+                productionCountries: series.productionCountries,
+                firstAirYear: series.firstAirYear,
+            })
+                .from(series)
+                .where(eq(series.id, mediaId));
+            if (s) {
+                if (Array.isArray(s.keywords)) {
+                    for (const kw of s.keywords) {
+                        keywordScores[kw] = (keywordScores[kw] ?? 0) + weight;
+                    }
+                }
+                if (s.originalLanguage) {
+                    languageScores[s.originalLanguage] = (languageScores[s.originalLanguage] ?? 0) + weight;
+                }
+                for (const c of countryScoreKeys(s.productionCountries)) {
+                    countryScores[c] = (countryScores[c] ?? 0) + weight;
+                }
+                const dk = decadeKey(s.firstAirYear);
+                if (dk)
+                    decadeScores[dk] = (decadeScores[dk] ?? 0) + weight;
+            }
+        }
+        // credits — persons
+        const credits = await db
+            .select({
+            personId: mediaCredits.personId,
+            name: mediaCredits.name,
+            role: mediaCredits.role,
+        })
+            .from(mediaCredits)
+            .where(eq(mediaCredits.mediaId, mediaId));
+        for (const c of credits) {
+            if (!c.personId)
+                continue;
+            personScores[c.personId] = (personScores[c.personId] ?? 0) + weight;
+            personMeta[c.personId] = { name: c.name, role: c.role };
+        }
+    }
     for (const fb of feedbackRows) {
         const weight = SIGNAL_WEIGHTS[fb.feedback];
         const mediaType = fb.mediaType;
-        accumulate(await loadGenres(mediaType, fb.mediaId), weight);
+        await accumulateMediaFeatures(mediaType, fb.mediaId, weight);
         if (fb.feedback === 'LIKE') {
             positiveSet.add(fb.mediaId);
         }
@@ -96,19 +220,42 @@ export async function buildTaste(profileId) {
             resolvedType = 'SERIES';
             resolvedId = ep.seriesId;
         }
-        accumulate(await loadGenres(resolvedType, resolvedId), weight);
+        await accumulateMediaFeatures(resolvedType, resolvedId, weight);
         if (isCompleted)
             positiveSet.add(resolvedId);
         signalCount++;
     }
     for (const wl of watchlistRows) {
         const mediaType = wl.mediaType;
-        accumulate(await loadGenres(mediaType, wl.mediaId), SIGNAL_WEIGHTS.WATCHLIST);
+        await accumulateMediaFeatures(mediaType, wl.mediaId, SIGNAL_WEIGHTS.WATCHLIST);
         signalCount++;
+    }
+    // compute completionRate from event history
+    const [[startedRow], [completedRow], [eventCountRow]] = await Promise.all([
+        db
+            .select({ c: count() })
+            .from(profileInteractionEvents)
+            .where(sql `${profileInteractionEvents.profileId} = ${profileId} AND ${profileInteractionEvents.eventType} = 'PLAY_STARTED'`),
+        db
+            .select({ c: count() })
+            .from(profileInteractionEvents)
+            .where(sql `${profileInteractionEvents.profileId} = ${profileId} AND ${profileInteractionEvents.eventType} = 'PLAY_COMPLETED'`),
+        db
+            .select({ c: count() })
+            .from(profileInteractionEvents)
+            .where(eq(profileInteractionEvents.profileId, profileId)),
+    ]);
+    const startedCount = Number(startedRow?.c ?? 0);
+    const completedCount = Number(completedRow?.c ?? 0);
+    const historyEventCount = Number(eventCountRow?.c ?? 0);
+    const completionRate = startedCount > 0 ? completedCount / startedCount : null;
+    const mediaTypePreferences = {};
+    for (const [mt, w] of Object.entries(mediaTypeCounts)) {
+        mediaTypePreferences[mt.toLowerCase()] = w;
     }
     const sortedPositive = [...positiveSet].sort();
     const sortedNegative = [...negativeSet].sort();
-    await db
+    const [upserted] = await db
         .insert(profileTaste)
         .values({
         profileId,
@@ -118,6 +265,17 @@ export async function buildTaste(profileId) {
         negativeMediaIds: sortedNegative,
         signalCount,
         builtAt: now,
+        personScores,
+        personMeta,
+        keywordScores,
+        franchiseScores,
+        languageScores,
+        countryScores,
+        decadeScores,
+        mediaTypePreferences,
+        completionRate: completionRate !== null ? String(completionRate) : null,
+        historyEventCount,
+        tasteVersion: 1,
     })
         .onConflictDoUpdate({
         target: profileTaste.profileId,
@@ -128,9 +286,33 @@ export async function buildTaste(profileId) {
             negativeMediaIds: sortedNegative,
             signalCount,
             builtAt: now,
+            personScores,
+            personMeta,
+            keywordScores,
+            franchiseScores,
+            languageScores,
+            countryScores,
+            decadeScores,
+            mediaTypePreferences,
+            completionRate: completionRate !== null ? String(completionRate) : null,
+            historyEventCount,
+            tasteVersion: sql `${profileTaste.tasteVersion} + 1`,
         },
+    })
+        .returning({ tasteVersion: profileTaste.tasteVersion });
+    return buildOutput(profileId, genreScoresMap, genreMetaMap, sortedPositive, sortedNegative, signalCount, now, {
+        personScores,
+        personMeta,
+        keywordScores,
+        franchiseScores,
+        languageScores,
+        countryScores,
+        decadeScores,
+        mediaTypePreferences,
+        completionRate,
+        historyEventCount,
+        tasteVersion: upserted?.tasteVersion ?? 1,
     });
-    return buildOutput(profileId, genreScoresMap, genreMetaMap, sortedPositive, sortedNegative, signalCount, now);
 }
 export async function getTaste(profileId) {
     const [row] = await db
@@ -140,6 +322,18 @@ export async function getTaste(profileId) {
     if (!row) {
         return buildTaste(profileId);
     }
-    return buildOutput(profileId, row.genreScores, row.genreMeta, row.positiveMediaIds, row.negativeMediaIds, row.signalCount, row.builtAt);
+    return buildOutput(profileId, row.genreScores, row.genreMeta, row.positiveMediaIds, row.negativeMediaIds, row.signalCount, row.builtAt, {
+        personScores: row.personScores ?? {},
+        personMeta: row.personMeta ?? {},
+        keywordScores: row.keywordScores ?? {},
+        franchiseScores: row.franchiseScores ?? {},
+        languageScores: row.languageScores ?? {},
+        countryScores: row.countryScores ?? {},
+        decadeScores: row.decadeScores ?? {},
+        mediaTypePreferences: row.mediaTypePreferences ?? {},
+        completionRate: row.completionRate ? Number(row.completionRate) : null,
+        historyEventCount: row.historyEventCount,
+        tasteVersion: row.tasteVersion,
+    });
 }
 //# sourceMappingURL=profile-taste-service.js.map

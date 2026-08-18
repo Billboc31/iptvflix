@@ -6,6 +6,8 @@ export type ResolvableVariant = {
     audioLanguage: string | null;
     subtitleLanguage: string | null;
     videoQuality: string | null;
+    /** Used to prefer browser-native containers (mp4) over mkv/ts when selecting. */
+    containerExtension?: string | null;
 };
 export type ResolveResult = {
     selectedVariantId: string | null;

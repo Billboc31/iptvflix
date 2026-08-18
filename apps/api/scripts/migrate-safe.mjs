@@ -66,6 +66,25 @@ async function applyStatement(tx, stmt) {
   }
 }
 
+function describeUrl(url) {
+  try {
+    const parsed = new URL(url.replace(/^postgres(ql)?:/i, 'https:'))
+    return { host: parsed.hostname, port: parsed.port || '5432' }
+  } catch {
+    return { host: '(unparseable)', port: '' }
+  }
+}
+
+function openSql(url) {
+  const forcePlain =
+    /localhost|127\.0\.0\.1|railway\.internal|proxy\.rlwy\.net/i.test(url)
+  return postgres(url, {
+    max: 1,
+    connect_timeout: 10,
+    ssl: forcePlain ? false : undefined,
+  })
+}
+
 async function main() {
   const url = process.env.DATABASE_URL
   if (!url) {
@@ -73,7 +92,16 @@ async function main() {
     process.exit(1)
   }
 
-  const sql = postgres(url, { max: 1 })
+  const target = describeUrl(url)
+  console.log(`[migrate-safe] postgres host=${target.host} port=${target.port}`)
+  if (target.port === '14740') {
+    console.error(
+      '[migrate-safe] DATABASE_URL points at the embeddings/pgvector instance (port 14740), which is empty. Use the catalog Postgres (original plugin / port 29385), not this URL.',
+    )
+    process.exit(1)
+  }
+
+  const sql = openSql(url)
   try {
     await sql`CREATE SCHEMA IF NOT EXISTS drizzle`
     await sql`
@@ -90,28 +118,40 @@ async function main() {
 
     if (pending.length === 0) {
       console.log('[migrate-safe] No pending migrations.')
-      return
+    } else {
+      console.log(`[migrate-safe] Applying ${pending.length} migration(s) by idx...`)
+      for (const migration of pending) {
+        console.log(`[migrate-safe] -> ${String(migration.idx).padStart(4, '0')} ${migration.tag}`)
+        const statements = migration.query
+          .split('--> statement-breakpoint')
+          .map((s) => s.trim())
+          .filter(Boolean)
+
+        await sql.begin(async (tx) => {
+          for (const stmt of statements) {
+            await applyStatement(tx, stmt)
+          }
+          await tx`
+            INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
+            VALUES (${migration.hash}, ${migration.when})
+          `
+        })
+      }
+      console.log('[migrate-safe] Done.')
     }
 
-    console.log(`[migrate-safe] Applying ${pending.length} migration(s) by idx...`)
-    for (const migration of pending) {
-      console.log(`[migrate-safe] -> ${String(migration.idx).padStart(4, '0')} ${migration.tag}`)
-      const statements = migration.query
-        .split('--> statement-breakpoint')
-        .map((s) => s.trim())
-        .filter(Boolean)
-
-      await sql.begin(async (tx) => {
-        for (const stmt of statements) {
-          await applyStatement(tx, stmt)
-        }
-        await tx`
-          INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
-          VALUES (${migration.hash}, ${migration.when})
-        `
-      })
+    try {
+      const rows = await sql`SELECT count(*)::int AS n FROM movies`
+      const n = rows[0]?.n ?? 0
+      console.log(`[migrate-safe] movies=${n}`)
+      if (n === 0) {
+        console.warn(
+          '[migrate-safe] catalog is empty — DATABASE_URL may point at the embeddings Postgres, not the catalog instance',
+        )
+      }
+    } catch {
+      // movies table missing until early migrations run
     }
-    console.log('[migrate-safe] Done.')
   } finally {
     await sql.end({ timeout: 5 })
   }

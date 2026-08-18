@@ -1,9 +1,8 @@
 import { addToWatchlist, removeFromWatchlist, listWatchlist } from '../services/watchlist-service.js';
 import { NotFoundError } from '../errors.js';
-import { DEFAULT_PROFILE_ID } from '../services/profile-service.js';
 export async function watchlistRoutes(app) {
-    app.get('/watchlist', async () => {
-        return listWatchlist(DEFAULT_PROFILE_ID);
+    app.get('/watchlist', async (request) => {
+        return listWatchlist(request.profileId);
     });
     app.post('/watchlist', async (request, reply) => {
         const { mediaType, mediaId } = request.body ?? {};
@@ -14,7 +13,7 @@ export async function watchlistRoutes(app) {
             return reply.status(400).send({ error: 'mediaType must be MOVIE or SERIES' });
         }
         try {
-            const entry = await addToWatchlist(DEFAULT_PROFILE_ID, mediaType, mediaId);
+            const entry = await addToWatchlist(request.profileId, mediaType, mediaId);
             return reply.status(201).send(entry);
         }
         catch (err) {
@@ -29,7 +28,7 @@ export async function watchlistRoutes(app) {
         if (mediaType !== 'MOVIE' && mediaType !== 'SERIES') {
             return reply.status(400).send({ error: 'mediaType must be MOVIE or SERIES' });
         }
-        await removeFromWatchlist(DEFAULT_PROFILE_ID, mediaType, mediaId);
+        await removeFromWatchlist(request.profileId, mediaType, mediaId);
         return reply.status(204).send();
     });
 }

@@ -11,5 +11,9 @@ export const seasons = pgTable('seasons', {
     synopsis: text('synopsis'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    // TMDB-first catalog fields
+    tmdbId: integer('tmdb_id').unique(),
+    posterPath: text('poster_path'),
+    episodeCount: integer('episode_count'),
 }, (t) => [unique().on(t.seriesId, t.seasonNumber)]);
 //# sourceMappingURL=seasons.js.map

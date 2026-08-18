@@ -1,3 +1,19 @@
+export declare const matchStatusEnum: import("drizzle-orm/pg-core").PgEnum<["PENDING", "MATCHED", "UNMATCHED"]>;
+type SpokenLanguage = {
+    iso639_1: string;
+    name: string;
+};
+type ProductionCountry = {
+    iso3166_1: string;
+    name: string;
+};
+type Localizations = {
+    fr?: {
+        title?: string;
+        synopsis?: string;
+        tagline?: string;
+    };
+};
 export declare const movies: import("drizzle-orm/pg-core").PgTableWithColumns<{
     name: "movies";
     schema: undefined;
@@ -206,6 +222,23 @@ export declare const movies: import("drizzle-orm/pg-core").PgTableWithColumns<{
             identity: undefined;
             generated: undefined;
         }, {}, {}>;
+        matchStatus: import("drizzle-orm/pg-core").PgColumn<{
+            name: "match_status";
+            tableName: "movies";
+            dataType: "string";
+            columnType: "PgEnumColumn";
+            data: "PENDING" | "MATCHED" | "UNMATCHED";
+            driverParam: string;
+            notNull: true;
+            hasDefault: true;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: ["PENDING", "MATCHED", "UNMATCHED"];
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
         metadataProvider: import("drizzle-orm/pg-core").PgColumn<{
             name: "metadata_provider";
             tableName: "movies";
@@ -325,6 +358,222 @@ export declare const movies: import("drizzle-orm/pg-core").PgTableWithColumns<{
             identity: undefined;
             generated: undefined;
         }, {}, {}>;
+        popularity: import("drizzle-orm/pg-core").PgColumn<{
+            name: "popularity";
+            tableName: "movies";
+            dataType: "number";
+            columnType: "PgReal";
+            data: number;
+            driverParam: string | number;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        voteCount: import("drizzle-orm/pg-core").PgColumn<{
+            name: "vote_count";
+            tableName: "movies";
+            dataType: "number";
+            columnType: "PgInteger";
+            data: number;
+            driverParam: string | number;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        originalLanguage: import("drizzle-orm/pg-core").PgColumn<{
+            name: "original_language";
+            tableName: "movies";
+            dataType: "string";
+            columnType: "PgVarchar";
+            data: string;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {
+            length: 10;
+        }>;
+        spokenLanguages: import("drizzle-orm/pg-core").PgColumn<{
+            name: "spoken_languages";
+            tableName: "movies";
+            dataType: "json";
+            columnType: "PgJsonb";
+            data: SpokenLanguage[];
+            driverParam: unknown;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {
+            $type: SpokenLanguage[];
+        }>;
+        productionCountries: import("drizzle-orm/pg-core").PgColumn<{
+            name: "production_countries";
+            tableName: "movies";
+            dataType: "json";
+            columnType: "PgJsonb";
+            data: ProductionCountry[];
+            driverParam: unknown;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {
+            $type: ProductionCountry[];
+        }>;
+        tagline: import("drizzle-orm/pg-core").PgColumn<{
+            name: "tagline";
+            tableName: "movies";
+            dataType: "string";
+            columnType: "PgText";
+            data: string;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        status: import("drizzle-orm/pg-core").PgColumn<{
+            name: "status";
+            tableName: "movies";
+            dataType: "string";
+            columnType: "PgText";
+            data: string;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        keywords: import("drizzle-orm/pg-core").PgColumn<{
+            name: "keywords";
+            tableName: "movies";
+            dataType: "json";
+            columnType: "PgJsonb";
+            data: string[];
+            driverParam: unknown;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {
+            $type: string[];
+        }>;
+        collectionId: import("drizzle-orm/pg-core").PgColumn<{
+            name: "collection_id";
+            tableName: "movies";
+            dataType: "string";
+            columnType: "PgUUID";
+            data: string;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        externalIds: import("drizzle-orm/pg-core").PgColumn<{
+            name: "external_ids";
+            tableName: "movies";
+            dataType: "json";
+            columnType: "PgJsonb";
+            data: Record<string, string | number | null>;
+            driverParam: unknown;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {
+            $type: Record<string, string | number | null>;
+        }>;
+        tmdbSyncedAt: import("drizzle-orm/pg-core").PgColumn<{
+            name: "tmdb_synced_at";
+            tableName: "movies";
+            dataType: "date";
+            columnType: "PgTimestamp";
+            data: Date;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        localizations: import("drizzle-orm/pg-core").PgColumn<{
+            name: "localizations";
+            tableName: "movies";
+            dataType: "json";
+            columnType: "PgJsonb";
+            data: Localizations;
+            driverParam: unknown;
+            notNull: false;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {
+            $type: Localizations;
+        }>;
     };
     dialect: "pg";
 }>;
@@ -369,4 +618,5 @@ export declare const movieGenres: import("drizzle-orm/pg-core").PgTableWithColum
     };
     dialect: "pg";
 }>;
+export {};
 //# sourceMappingURL=movies.d.ts.map

@@ -6,13 +6,37 @@ export interface ExternalMovieMetadata {
     posterPath: string | null;
     backdropPath: string | null;
     genres: string[];
+    genreObjects?: Array<{
+        name: string;
+        tmdbId: number;
+    }>;
     runtimeMinutes: number | null;
     imdbId: string | null;
     popularity: number | null;
     voteAverage: number | null;
+    voteCount?: number | null;
     certification: string | null;
     releaseStatus?: string | null;
+    status?: string | null;
     releaseDate?: string | null;
+    originalLanguage?: string | null;
+    spokenLanguages?: Array<{
+        iso639_1: string;
+        name: string;
+    }> | null;
+    productionCountries?: Array<{
+        iso3166_1: string;
+        name: string;
+    }> | null;
+    tagline?: string | null;
+    keywords?: string[] | null;
+    belongsToCollection?: {
+        tmdbId: number;
+        name: string;
+        posterPath: string | null;
+        backdropPath: string | null;
+    } | null;
+    externalIds?: Record<string, string | number | null> | null;
 }
 export interface ExternalSeriesMetadata {
     title: string;
@@ -22,13 +46,52 @@ export interface ExternalSeriesMetadata {
     posterPath: string | null;
     backdropPath: string | null;
     genres: string[];
+    genreObjects?: Array<{
+        name: string;
+        tmdbId: number;
+    }>;
     imdbId: string | null;
     popularity: number | null;
     voteAverage: number | null;
+    voteCount?: number | null;
     certification: string | null;
     status: string | null;
     releaseStatus?: string | null;
     firstAirDate?: string | null;
+    originalLanguage?: string | null;
+    spokenLanguages?: Array<{
+        iso639_1: string;
+        name: string;
+    }> | null;
+    productionCountries?: Array<{
+        iso3166_1: string;
+        name: string;
+    }> | null;
+    tagline?: string | null;
+    inProduction?: boolean | null;
+    networks?: Array<{
+        id: number;
+        name: string;
+        logoPath: string | null;
+        originCountry: string;
+    }> | null;
+    createdBy?: Array<{
+        id: number;
+        name: string;
+        profilePath: string | null;
+    }> | null;
+    numberOfSeasons?: number | null;
+    numberOfEpisodes?: number | null;
+    keywords?: string[] | null;
+    externalIds?: Record<string, string | number | null> | null;
+    seasons?: Array<{
+        tmdbId: number;
+        seasonNumber: number;
+        name: string | null;
+        airDate: string | null;
+        posterPath: string | null;
+        episodeCount: number;
+    }> | null;
 }
 export interface ExternalVideo {
     key: string;
@@ -40,11 +103,29 @@ export interface ExternalVideo {
 export interface ExternalCreditPerson {
     name: string;
     character: string | null;
-    role: 'cast' | 'director';
+    role: 'cast' | 'director' | 'creator';
     order: number;
     profilePath: string | null;
+    tmdbPersonId?: number | null;
+    department?: string | null;
+    job?: string | null;
 }
-export type DiscoveryFeed = 'popular' | 'trending' | 'upcoming';
+export interface ExternalSeasonEpisode {
+    episodeNumber: number;
+    title: string | null;
+    synopsis: string | null;
+    airDate: string | null;
+    runtimeMinutes: number | null;
+    stillPath: string | null;
+    tmdbId?: number | null;
+    voteAverage?: number | null;
+    voteCount?: number | null;
+}
+export type DiscoveryFeed = 'popular' | 'trending' | 'upcoming' | 'now_playing' | 'airing_today';
+export type DiscoverParams = {
+    genreId?: number;
+    language?: string;
+};
 export interface MetadataCandidate {
     externalId: string;
     title: string;
@@ -57,33 +138,52 @@ export interface MetadataCandidate {
     firstAirDate?: string | null;
     popularity?: number | null;
     voteAverage?: number | null;
+    voteCount?: number | null;
 }
 export interface MetadataProvider {
-    getMovieMetadata(tmdbId: number): Promise<ExternalMovieMetadata | null>;
-    getSeriesMetadata(tmdbId: number): Promise<ExternalSeriesMetadata | null>;
+    getMovieMetadata(tmdbId: number, opts?: {
+        language?: string;
+    }): Promise<ExternalMovieMetadata | null>;
+    getSeriesMetadata(tmdbId: number, opts?: {
+        language?: string;
+    }): Promise<ExternalSeriesMetadata | null>;
     searchMovies(query: string, year?: number | null): Promise<MetadataCandidate[]>;
     searchSeries(query: string, year?: number | null): Promise<MetadataCandidate[]>;
     fetchMovieFeed(feed: DiscoveryFeed, page: number): Promise<MetadataCandidate[]>;
     fetchSeriesFeed(feed: DiscoveryFeed, page: number): Promise<MetadataCandidate[]>;
+    fetchMovieTopRated(page: number): Promise<MetadataCandidate[]>;
+    fetchSeriesTopRated(page: number): Promise<MetadataCandidate[]>;
+    fetchMovieDiscover(params: DiscoverParams, page: number): Promise<MetadataCandidate[]>;
+    fetchSeriesDiscover(params: DiscoverParams, page: number): Promise<MetadataCandidate[]>;
     getMovieVideos(tmdbId: number): Promise<ExternalVideo[]>;
     getSeriesVideos(tmdbId: number): Promise<ExternalVideo[]>;
     getMovieCredits(tmdbId: number): Promise<ExternalCreditPerson[]>;
     getSeriesCredits(tmdbId: number): Promise<ExternalCreditPerson[]>;
     getMovieCertification(tmdbId: number): Promise<string | null>;
     getSeriesCertification(tmdbId: number): Promise<string | null>;
+    getSeasonEpisodes?(tmdbSeriesId: number, seasonNumber: number): Promise<ExternalSeasonEpisode[]>;
 }
 export declare class NoopMetadataProvider implements MetadataProvider {
-    getMovieMetadata(_tmdbId: number): Promise<ExternalMovieMetadata | null>;
-    getSeriesMetadata(_tmdbId: number): Promise<ExternalSeriesMetadata | null>;
+    getMovieMetadata(_tmdbId: number, _opts?: {
+        language?: string;
+    }): Promise<ExternalMovieMetadata | null>;
+    getSeriesMetadata(_tmdbId: number, _opts?: {
+        language?: string;
+    }): Promise<ExternalSeriesMetadata | null>;
     searchMovies(_query: string, _year?: number | null): Promise<MetadataCandidate[]>;
     searchSeries(_query: string, _year?: number | null): Promise<MetadataCandidate[]>;
     fetchMovieFeed(_feed: DiscoveryFeed, _page: number): Promise<MetadataCandidate[]>;
     fetchSeriesFeed(_feed: DiscoveryFeed, _page: number): Promise<MetadataCandidate[]>;
+    fetchMovieTopRated(_page: number): Promise<MetadataCandidate[]>;
+    fetchSeriesTopRated(_page: number): Promise<MetadataCandidate[]>;
+    fetchMovieDiscover(_params: DiscoverParams, _page: number): Promise<MetadataCandidate[]>;
+    fetchSeriesDiscover(_params: DiscoverParams, _page: number): Promise<MetadataCandidate[]>;
     getMovieVideos(_tmdbId: number): Promise<ExternalVideo[]>;
     getSeriesVideos(_tmdbId: number): Promise<ExternalVideo[]>;
     getMovieCredits(_tmdbId: number): Promise<ExternalCreditPerson[]>;
     getSeriesCredits(_tmdbId: number): Promise<ExternalCreditPerson[]>;
     getMovieCertification(_tmdbId: number): Promise<string | null>;
     getSeriesCertification(_tmdbId: number): Promise<string | null>;
+    getSeasonEpisodes(_tmdbSeriesId: number, _seasonNumber: number): Promise<ExternalSeasonEpisode[]>;
 }
 //# sourceMappingURL=types.d.ts.map

@@ -104,6 +104,7 @@ app.setErrorHandler((error, _request, reply) => {
 await app.register(cors, { origin: CORS_ORIGIN, credentials: true })
 await app.register(jwt, { secret: JWT_SECRET })
 await app.register(cookie)
+await app.register(healthRoutes)
 
 // Run idempotent boot-time seed (account + default profile) before accepting requests
 try {
@@ -129,7 +130,6 @@ const similarTitlesService = TMDB_API_KEY
   : undefined
 
 // Public routes
-await app.register(healthRoutes)
 await app.register(mediaRelayHeartbeatRoutes)
 await app.register(authRoutes)
 await app.register(moviesRoutes, { similarTitlesService })
