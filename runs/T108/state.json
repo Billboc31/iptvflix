@@ -1,7 +1,7 @@
 {
   "ticket_id": "T108",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T108-expand-tmdb-discovery-catalog-beyond-current-iptv",
   "issue_number": 211,
-  "updated_at": "2026-08-17T21:44:04Z"
+  "updated_at": "2026-08-18T07:42:28Z"
 }
