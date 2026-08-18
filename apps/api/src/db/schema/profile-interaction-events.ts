@@ -1,6 +1,7 @@
 import { pgTable, uuid, text, timestamp, integer, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { profiles } from './profiles.js'
+import { viewingSessions } from './viewing-sessions.js'
 
 export const profileInteractionEvents = pgTable(
   'profile_interaction_events',
@@ -30,7 +31,7 @@ export const profileInteractionEvents = pgTable(
     availabilityId: uuid('availability_id'),
     clientType: text('client_type'),
     appVersion: text('app_version'),
-    sessionId: uuid('session_id'),
+    sessionId: uuid('session_id').references(() => viewingSessions.id, { onDelete: 'set null' }),
     referrerSurface: text('referrer_surface'),
     schemaVersion: integer('schema_version').notNull().default(1),
     idempotencyKey: text('idempotency_key'),

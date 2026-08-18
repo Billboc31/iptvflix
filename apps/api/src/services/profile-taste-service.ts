@@ -82,6 +82,17 @@ function buildOutput(
     negativeMediaIds,
     signalCount,
     builtAt: builtAt.toISOString(),
+    personScores: extra.personScores,
+    personMeta: extra.personMeta,
+    keywordScores: extra.keywordScores,
+    franchiseScores: extra.franchiseScores,
+    languageScores: extra.languageScores,
+    countryScores: extra.countryScores,
+    decadeScores: extra.decadeScores,
+    mediaTypePreferences: extra.mediaTypePreferences,
+    completionRate: extra.completionRate,
+    historyEventCount: extra.historyEventCount,
+    tasteVersion: extra.tasteVersion,
   }
 }
 
@@ -291,7 +302,7 @@ export async function buildTaste(profileId: string): Promise<ProfileTaste> {
   const sortedPositive = [...positiveSet].sort()
   const sortedNegative = [...negativeSet].sort()
 
-  await db
+  const [upserted] = await db
     .insert(profileTaste)
     .values({
       profileId,
@@ -335,6 +346,7 @@ export async function buildTaste(profileId: string): Promise<ProfileTaste> {
         tasteVersion: sql`${profileTaste.tasteVersion} + 1`,
       },
     })
+    .returning({ tasteVersion: profileTaste.tasteVersion })
 
   return buildOutput(profileId, genreScoresMap, genreMetaMap, sortedPositive, sortedNegative, signalCount, now, {
     personScores,
@@ -347,7 +359,7 @@ export async function buildTaste(profileId: string): Promise<ProfileTaste> {
     mediaTypePreferences,
     completionRate,
     historyEventCount,
-    tasteVersion: 1,
+    tasteVersion: upserted?.tasteVersion ?? 1,
   })
 }
 

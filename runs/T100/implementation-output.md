@@ -1,13 +1,11 @@
-The file looks correct. The fix is complete.
+All three fixes are in place. Here's what was changed:
 
-**What changed in `PlayerViewModel.kt`:**
+**Files modified:**
 
-- **`sessionEnded: Boolean` flag** — tracks whether the session has been closed (either by `PLAY_COMPLETED` or `PLAY_ABANDONED`). Reset to `false` in `load()`, set to `true` on `STATE_ENDED`.
+1. **`packages/api-contracts/src/taste.ts`** — Extended `ProfileTaste` with 10 missing fields: `personScores`, `personMeta`, `keywordScores`, `franchiseScores`, `languageScores`, `countryScores`, `decadeScores`, `mediaTypePreferences`, `completionRate`, `historyEventCount`, `tasteVersion`.
 
-- **`emitAbandonIfNeeded(positionMs: Long)`** — guards against double-firing (`if (sessionEnded) return`), then emits `PLAY_ABANDONED` with the correct `mediaType`, `mediaId`, `sessionId`, and pre-captured position. Fire-and-forget with logged failure (never breaks playback).
+2. **`apps/api/src/services/profile-taste-service.ts`** — Two changes:
+   - `buildOutput` now spreads all `extra` fields into the returned object (was silently dropping them).
+   - `buildTaste` uses `.returning({ tasteVersion: profileTaste.tasteVersion })` on the upsert so the actual post-conflict incremented version is returned, not a hardcoded `1`.
 
-- **`stop()`** — captures `currentPosition` before stopping the player (position resets to 0 after `player.stop()`), then calls `emitAbandonIfNeeded` inside the existing `NonCancellable` coroutine alongside the progress flush.
-
-- **`onCleared()`** — same pattern: captures position first, then calls `emitAbandonIfNeeded` inside the existing `withTimeout(2_000L)` block so both the progress report and the abandon event are flushed within the 2s budget.
-
-This ensures `ViewingSession.endedAt` is always populated on Android TV — whether the user presses back, the ViewModel is destroyed by the system, or playback ends naturally.
+3. **`apps/api/src/db/schema/profile-interaction-events.ts`** — Added `import { viewingSessions }` and wired `sessionId` with `.references(() => viewingSessions.id, { onDelete: 'set null' })` to align the Drizzle schema with the migration SQL.
