@@ -1,18 +1,13 @@
-T100 is fully implemented. Here's a summary of what was completed in this session:
+The file looks correct. The fix is complete.
 
-**Android TV (final pieces)**
-- `PlayerViewModel.kt`: `load()` now resets `currentCommand`, `hasEmittedPlay`, and `sessionId` before loading, so all event emissions have the correct media context
-- `ProfileViewModel.kt`: emits `PROFILE_SELECTED` after successful profile switch
-- `HomeViewModel.kt`: emits `HOME_OPENED` once on first successful connection confirmation
+**What changed in `PlayerViewModel.kt`:**
 
-**All 17 plan sections are implemented:**
+- **`sessionEnded: Boolean` flag** — tracks whether the session has been closed (either by `PLAY_COMPLETED` or `PLAY_ABANDONED`). Reset to `false` in `load()`, set to `true` on `STATE_ENDED`.
 
-| Area | Deliverables |
-|---|---|
-| DB | `0039_t100_…v2.sql` migration + `persons`, `viewing_sessions` schema + extensions to `profile_interaction_events`, `media_credits`, `profile_taste` |
-| API contracts | 47-event taxonomy, extended `InteractionEventBody`, `InteractionEventBatch`, `BatchEventResponse` |
-| API services | `interaction-event-service` (idempotency + batch), `viewing-session-service`, `playback-milestone-service`, `profile-taste-service` (rich signals), `metadata-enrichment-service` (persons), `retention-service` |
-| API routes | `POST /interaction-events/batch` (auto-open/close sessions, returns `sessionId`), 5 admin endpoints |
-| Scripts | `backfill-interaction-events.ts` (idempotent, schemaVersion=0) |
-| Web | `useInteractionEvents`, `useProgressSync` milestones, PlayerPage/MovieDetailPage/SeriesDetailPage/SearchPage/HomePage/ProfileChoosePage/useWatchlist/useFeedback all instrumented |
-| Android TV | `InteractionEventService`, `PlayerViewModel` (full playback lifecycle), `ProfileViewModel` (PROFILE_SELECTED), `HomeViewModel` (HOME_OPENED) |
+- **`emitAbandonIfNeeded(positionMs: Long)`** — guards against double-firing (`if (sessionEnded) return`), then emits `PLAY_ABANDONED` with the correct `mediaType`, `mediaId`, `sessionId`, and pre-captured position. Fire-and-forget with logged failure (never breaks playback).
+
+- **`stop()`** — captures `currentPosition` before stopping the player (position resets to 0 after `player.stop()`), then calls `emitAbandonIfNeeded` inside the existing `NonCancellable` coroutine alongside the progress flush.
+
+- **`onCleared()`** — same pattern: captures position first, then calls `emitAbandonIfNeeded` inside the existing `withTimeout(2_000L)` block so both the progress report and the abandon event are flushed within the 2s budget.
+
+This ensures `ViewingSession.endedAt` is always populated on Android TV — whether the user presses back, the ViewModel is destroyed by the system, or playback ends naturally.

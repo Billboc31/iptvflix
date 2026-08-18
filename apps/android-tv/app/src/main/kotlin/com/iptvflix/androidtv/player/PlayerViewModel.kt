@@ -65,6 +65,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private var currentCommand: PlaybackCommand? = null
     private var sessionId: String? = null
     private var hasEmittedPlay = false
+    private var sessionEnded = false
 
     private fun emitEvent(eventType: String, extra: Map<String, Any?> = emptyMap()) {
         val cmd = currentCommand ?: return
@@ -94,6 +95,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     else -> _uiState.value
                 }
                 if (state == Player.STATE_ENDED) {
+                    sessionEnded = true
                     emitEvent("PLAY_COMPLETED")
                 }
             }
@@ -156,6 +158,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         currentCommand = command
         hasEmittedPlay = false
         sessionId = null
+        sessionEnded = false
         viewModelScope.launch {
             _uiState.value = PlayerUiState.Buffering
             runCatching {
@@ -194,10 +197,31 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun seekBack() = player.seekTo(maxOf(0L, player.currentPosition - SEEK_STEP_MS))
 
     fun stop() {
-        viewModelScope.launch(NonCancellable) { progressReporter?.reportNow() }
+        val positionMs = player.currentPosition
+        viewModelScope.launch(NonCancellable) {
+            progressReporter?.reportNow()
+            emitAbandonIfNeeded(positionMs)
+        }
         reporterJob?.cancel()
         player.stop()
         _uiState.value = PlayerUiState.Idle
+    }
+
+    private suspend fun emitAbandonIfNeeded(positionMs: Long) {
+        if (sessionEnded) return
+        val cmd = currentCommand ?: return
+        sessionEnded = true
+        runCatching {
+            val params = buildMap<String, Any?> {
+                put("eventType", "PLAY_ABANDONED")
+                put("mediaType", cmd.mediaType.uppercase())
+                put("mediaId", cmd.mediaId)
+                put("clientType", "android-tv")
+                sessionId?.let { put("sessionId", it) }
+                put("positionMs", positionMs)
+            }
+            interactionEvents.emitBatch(listOf(params))
+        }.onFailure { Log.w(TAG, "PLAY_ABANDONED failed: ${it.message}") }
     }
 
     fun selectTrack(trackId: String) {
@@ -210,10 +234,14 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
-        // runBlocking with NonCancellable ensures the final progress report is flushed
-        // before viewModelScope cancels — without this the coroutine is dropped silently.
+        val positionMs = player.currentPosition
+        // runBlocking with NonCancellable ensures final progress/abandon are flushed
+        // before viewModelScope cancels — without this the coroutines are dropped silently.
         runBlocking(NonCancellable) {
-            runCatching { withTimeout(2_000L) { progressReporter?.reportNow() } }
+            runCatching { withTimeout(2_000L) {
+                progressReporter?.reportNow()
+                emitAbandonIfNeeded(positionMs)
+            } }
         }
         reporterJob?.cancel()
         player.release()
