@@ -2,7 +2,6 @@ import type { FastifyInstance } from 'fastify'
 import type { UpsertProgressBody, ProgressMediaType } from '@iptvflix/api-contracts'
 import { upsertProgress, listContinueWatching } from '../services/viewing-progress-service.js'
 import { NotFoundError } from '../errors.js'
-import { DEFAULT_PROFILE_ID } from '../services/profile-service.js'
 
 export async function viewingProgressRoutes(app: FastifyInstance): Promise<void> {
   app.put<{ Params: { mediaType: string; mediaId: string }; Body: UpsertProgressBody }>(
@@ -24,7 +23,7 @@ export async function viewingProgressRoutes(app: FastifyInstance): Promise<void>
       }
       try {
         const row = await upsertProgress(
-          DEFAULT_PROFILE_ID,
+          request.profileId!,
           mediaType as ProgressMediaType,
           mediaId,
           progressSeconds,
@@ -40,7 +39,7 @@ export async function viewingProgressRoutes(app: FastifyInstance): Promise<void>
     },
   )
 
-  app.get('/continue-watching', async () => {
-    return listContinueWatching(DEFAULT_PROFILE_ID)
+  app.get('/continue-watching', async (request) => {
+    return listContinueWatching(request.profileId!)
   })
 }

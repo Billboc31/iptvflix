@@ -6,7 +6,7 @@ import { viewingProgress } from '../db/schema/viewing-progress.js'
 import { buildXtreamMovieUrl, buildXtreamEpisodeUrl, browserSafeXtreamUrl } from '../providers/xtream/playback.js'
 import { buildM3UStreamUrl } from '../providers/m3u/playback.js'
 import { resolveVariant } from './availability-resolver.js'
-import { getDefaultProfilePreferences } from './profile-service.js'
+import { getProfilePreferences } from './profile-service.js'
 import { ValidationError, ForbiddenError, NotFoundError } from '../errors.js'
 import { createSession, patchSession } from './playback-session-store.js'
 import { probeMedia } from './media-prober.js'
@@ -117,7 +117,7 @@ export async function resolvePlayback(
 
   const [allRows, prefs] = await Promise.all([
     fetchAvailabilities(mediaType, mediaId),
-    getDefaultProfilePreferences(),
+    getProfilePreferences(profileId),
   ])
 
   const providerIds = [...new Set(allRows.map((r) => r.providerId))]

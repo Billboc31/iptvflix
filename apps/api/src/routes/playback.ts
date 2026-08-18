@@ -5,7 +5,6 @@ import type { FastifyInstance } from 'fastify'
 import type { PlaybackResolveRequest, PlaybackErrorCategory } from '@iptvflix/api-contracts'
 import { resolvePlayback } from '../services/playback-resolver.js'
 import { getSession } from '../services/playback-session-store.js'
-import { DEFAULT_PROFILE_ID } from '../services/profile-service.js'
 import { ValidationError, ForbiddenError, NotFoundError } from '../errors.js'
 import { getPlaylist, getSegment, SEGMENT_RE } from '../services/hls-session-store.js'
 import { XTREAM_STREAM_HEADERS, fetchXtreamStream } from '../providers/xtream/playback.js'
@@ -70,7 +69,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
 
       try {
         const session = await resolvePlayback(
-          DEFAULT_PROFILE_ID,
+          request.profileId!,
           mediaType,
           mediaId,
           availabilityId,
@@ -107,7 +106,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({ error: 'Playback session not found or expired', errorCategory: 'SESSION_EXPIRED' as PlaybackErrorCategory })
       }
 
-      if (session.profileId !== DEFAULT_PROFILE_ID) {
+      if (session.profileId !== request.profileId) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
@@ -310,7 +309,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({ error: 'Playback session not found or expired' })
       }
 
-      if (session.profileId !== DEFAULT_PROFILE_ID) {
+      if (session.profileId !== request.profileId) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
@@ -354,7 +353,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({ error: 'Playback session not found or expired' })
       }
 
-      if (session.profileId !== DEFAULT_PROFILE_ID) {
+      if (session.profileId !== request.profileId) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 

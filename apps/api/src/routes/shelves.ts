@@ -12,7 +12,6 @@ import {
 } from '../services/shelf-service.js'
 import { generateShelfFromSeeds, refreshGeneratedShelf } from '../services/shelf-generation-service.js'
 import { NotFoundError, ForbiddenError, ValidationError } from '../errors.js'
-import { DEFAULT_PROFILE_ID } from '../services/profile-service.js'
 
 function handleServiceError(err: unknown, reply: FastifyReply): ReturnType<FastifyReply['send']> {
   if (err instanceof ForbiddenError) return reply.status(403).send({ error: err.message })
@@ -22,8 +21,8 @@ function handleServiceError(err: unknown, reply: FastifyReply): ReturnType<Fasti
 }
 
 export async function shelvesRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/shelves', async () => {
-    return listShelves(DEFAULT_PROFILE_ID)
+  app.get('/shelves', async (request) => {
+    return listShelves(request.profileId!)
   })
 
   app.post<{ Body: CreateShelfBody }>('/shelves', async (request, reply) => {
@@ -38,7 +37,7 @@ export async function shelvesRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: 'rules are required for DYNAMIC shelves', validationError: true })
     }
     try {
-      const summary = await createShelf(DEFAULT_PROFILE_ID, { title, type, rules, layoutHint })
+      const summary = await createShelf(request.profileId!, { title, type, rules, layoutHint })
       return reply.status(201).send(summary)
     } catch (err) {
       return handleServiceError(err, reply)
@@ -47,7 +46,7 @@ export async function shelvesRoutes(app: FastifyInstance): Promise<void> {
 
   app.get<{ Params: { id: string } }>('/shelves/:id', async (request, reply) => {
     try {
-      const shelf = await getShelf(request.params.id, DEFAULT_PROFILE_ID)
+      const shelf = await getShelf(request.params.id, request.profileId!)
       return shelf
     } catch (err) {
       return handleServiceError(err, reply)
@@ -56,7 +55,7 @@ export async function shelvesRoutes(app: FastifyInstance): Promise<void> {
 
   app.patch<{ Params: { id: string }; Body: UpdateShelfBody }>('/shelves/:id', async (request, reply) => {
     try {
-      const summary = await updateShelf(request.params.id, DEFAULT_PROFILE_ID, request.body ?? {})
+      const summary = await updateShelf(request.params.id, request.profileId!, request.body ?? {})
       return summary
     } catch (err) {
       return handleServiceError(err, reply)
@@ -65,7 +64,7 @@ export async function shelvesRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete<{ Params: { id: string } }>('/shelves/:id', async (request, reply) => {
     try {
-      await deleteShelf(request.params.id, DEFAULT_PROFILE_ID)
+      await deleteShelf(request.params.id, request.profileId!)
       return reply.status(204).send()
     } catch (err) {
       return handleServiceError(err, reply)
@@ -83,7 +82,7 @@ export async function shelvesRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: 'mediaType must be MOVIE or SERIES' })
       }
       try {
-        await addMember(request.params.id, DEFAULT_PROFILE_ID, { mediaType, mediaId })
+        await addMember(request.params.id, request.profileId!, { mediaType, mediaId })
         return reply.status(204).send()
       } catch (err) {
         return handleServiceError(err, reply)
@@ -99,7 +98,7 @@ export async function shelvesRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: 'mediaType must be MOVIE or SERIES' })
       }
       try {
-        await removeMember(request.params.id, DEFAULT_PROFILE_ID, mediaType, mediaId)
+        await removeMember(request.params.id, request.profileId!, mediaType, mediaId)
         return reply.status(204).send()
       } catch (err) {
         return handleServiceError(err, reply)
@@ -115,7 +114,7 @@ export async function shelvesRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: 'members must be an array' })
       }
       try {
-        await reorderMembers(request.params.id, DEFAULT_PROFILE_ID, members)
+        await reorderMembers(request.params.id, request.profileId!, members)
         return reply.status(204).send()
       } catch (err) {
         return handleServiceError(err, reply)
@@ -145,7 +144,7 @@ export async function shelvesRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
-      const result = await generateShelfFromSeeds(DEFAULT_PROFILE_ID, { title, seedMediaIds, mediaType, availableToMe, limit })
+      const result = await generateShelfFromSeeds(request.profileId!, { title, seedMediaIds, mediaType, availableToMe, limit })
       return reply.status(201).send(result)
     } catch (err) {
       return handleServiceError(err, reply)
@@ -154,7 +153,7 @@ export async function shelvesRoutes(app: FastifyInstance): Promise<void> {
 
   app.post<{ Params: { id: string } }>('/shelves/:id/refresh', async (request, reply) => {
     try {
-      const result = await refreshGeneratedShelf(request.params.id, DEFAULT_PROFILE_ID)
+      const result = await refreshGeneratedShelf(request.params.id, request.profileId!)
       return result
     } catch (err) {
       return handleServiceError(err, reply)

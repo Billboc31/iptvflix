@@ -1,19 +1,18 @@
 import type { FastifyInstance } from 'fastify'
 import type { UpdateProfilePreferencesBody } from '@iptvflix/api-contracts'
 import {
-  DEFAULT_PROFILE_ID,
-  getDefaultProfile,
-  getDefaultProfilePreferences,
-  updateDefaultProfilePreferences,
+  getProfile,
+  getProfilePreferences,
+  updateProfilePreferences,
 } from '../services/profile-service.js'
 
 const VALID_QUALITIES = new Set(['4K', '1080p', '720p', '480p'])
 
 export async function profileRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/profile', async (_request, reply) => {
+  app.get('/profile', async (request, reply) => {
     try {
-      const profile = await getDefaultProfile()
-      const preferences = await getDefaultProfilePreferences()
+      const profile = await getProfile(request.profileId!)
+      const preferences = await getProfilePreferences(request.profileId!)
       return reply.send({
         id: profile.id,
         name: profile.name,
@@ -64,10 +63,10 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: 'autoplayPreviews must be a boolean' })
     }
 
-    const preferences = await updateDefaultProfilePreferences(body)
+    const preferences = await updateProfilePreferences(request.profileId!, body)
     return reply.send({
-      id: DEFAULT_PROFILE_ID,
-      name: 'Default',
+      id: request.profileId,
+      name: 'Profile',
       preferences,
     })
   })

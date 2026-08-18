@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify'
 import bcrypt from 'bcrypt'
+import { eq } from 'drizzle-orm'
 import type { LoginRequest, LoginResponse, MeResponse } from '@iptvflix/api-contracts'
 import { authenticate } from '../plugins/auth.js'
-import { AUTH_USERNAME, AUTH_PASSWORD_HASH } from '../config/env.js'
+import { db } from '../db/client.js'
+import { accounts } from '../db/schema/index.js'
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 
@@ -12,15 +14,22 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     if (!username || !password) {
       return reply.status(400).send({ error: 'username and password are required' } as never)
     }
-    if (username !== AUTH_USERNAME) {
+
+    const [account] = await db.select().from(accounts).where(eq(accounts.username, username))
+    if (!account) {
       return reply.status(401).send({ error: 'Invalid credentials' } as never)
     }
-    const valid = await bcrypt.compare(password, AUTH_PASSWORD_HASH)
+
+    const valid = await bcrypt.compare(password, account.passwordHash)
     if (!valid) {
       return reply.status(401).send({ error: 'Invalid credentials' } as never)
     }
-    const token = app.jwt.sign({ username }, { expiresIn: '1h' })
-    // Cookie for same-site / desktop; body token for Safari/iOS (third-party cookies blocked).
+
+    const token = app.jwt.sign(
+      { accountId: account.id, username: account.username },
+      { expiresIn: '30d' },
+    )
+
     return reply
       .setCookie('token', token, {
         httpOnly: true,

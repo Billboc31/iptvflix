@@ -4,6 +4,7 @@ export type HealthResponse = {
 }
 
 export * from './auth.js'
+export * from './account.js'
 export * from './sources.js'
 export * from './catalog.js'
 export * from './sync.js'
@@ -17,3 +18,4 @@ export * from './home.js'
 export * from './device.js'
 export * from './playback.js'
 export * from './arrivals.js'
+export * from './interaction-events.js'

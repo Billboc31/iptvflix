@@ -72,6 +72,9 @@ function setupDelete() {
 const app = Fastify({ logger: false })
 
 beforeAll(async () => {
+  app.addHook('preHandler', async (request) => {
+    request.profileId = PROFILE_ID
+  })
   await app.register(followReleaseRoutes)
   await app.ready()
 })
