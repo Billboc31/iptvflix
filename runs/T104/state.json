@@ -3,5 +3,8 @@
   "state": "PLAN_APPROVED",
   "branch": "ticket/T104-implement-hybrid-recommendation-reranking-with-pro",
   "issue_number": 207,
-  "updated_at": "2026-08-18T10:07:55Z"
+  "updated_at": "2026-08-18T10:09:46Z",
+  "pre_conflict_state": "PLAN_APPROVED",
+  "conflict_detected_at": "2026-08-18T10:08:28Z",
+  "conflicted_files": []
 }
