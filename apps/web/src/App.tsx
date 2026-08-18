@@ -29,19 +29,9 @@ import ProtectedRoute from './components/ProtectedRoute.js'
 import Spinner from './components/ui/Spinner.js'
 
 function ProfileProviderRoute() {
-  const location = useLocation()
-  const background = (location.state as { background?: Location } | null)?.background
-
   return (
     <ProfileProvider>
       <Outlet />
-      {/* Modal detail overlays share this provider — WatchlistButton calls useProfile(). */}
-      {background && (
-        <Routes>
-          <Route path="/movies/:id" element={<MovieDetailPage />} />
-          <Route path="/series/:id" element={<SeriesDetailPage />} />
-        </Routes>
-      )}
     </ProfileProvider>
   )
 }
@@ -108,6 +98,19 @@ function AppRoutes() {
           </Route>
         </Route>
       </Routes>
+
+      {/* Top-level overlay so the modal matches the real URL, not the background location.
+          Own ProfileProvider: WatchlistButton calls useProfile(). */}
+      {background && (
+        <Routes>
+          <Route element={<ProtectedRoute />}>
+            <Route element={<ProfileProviderRoute />}>
+              <Route path="/movies/:id" element={<MovieDetailPage />} />
+              <Route path="/series/:id" element={<SeriesDetailPage />} />
+            </Route>
+          </Route>
+        </Routes>
+      )}
     </>
   )
 }

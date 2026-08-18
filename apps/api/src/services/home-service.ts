@@ -65,34 +65,58 @@ export async function buildHome(profileId: string, cursor?: string): Promise<Hom
   // ── First request (no cursor) ─────────────────────────────────────────────
   const session = await getOrCreateSession(profileId)
 
-  const [fixed, initialUnserved] = await Promise.all([
-    buildFixedShelves(profileId),
-    countUnserved(session.id),
-  ])
-
-  // If pool is empty synchronously fill it on first load (user waits once).
-  if (initialUnserved === 0 && session.cursorReference !== 'exhausted') {
-    try {
-      await fillPoolAsync(session.id, profileId, HOME_POOL_TARGET)
-    } catch (err) {
-      console.error('[home-service] sync fillPool failed, will use fallback:', err)
-    }
+  let fixed: ShelfResponse[] = []
+  try {
+    fixed = await buildFixedShelves(profileId)
+  } catch (err) {
+    console.error('[home-service] fixed shelves failed:', err)
   }
 
-  const afterFillUnserved = await countUnserved(session.id)
   let coldStart = false
   let generatedShelves: ShelfResponse[] = []
+  let remaining = 0
 
-  if (afterFillUnserved > 0) {
-    const { shelves: batchRows } = await serveBatch(session.id, 0, HOME_BATCH_SIZE)
-    generatedShelves = await batchRowsToShelfResponses(batchRows)
-  } else {
-    coldStart = true
-    try {
-      const fallback = await buildFallbackShelf()
-      if (fallback.items.length > 0) generatedShelves = [fallback]
-    } catch (err) {
-      console.error('[home-service] fallback shelf failed:', err)
+  try {
+    let initialUnserved = await countUnserved(session.id)
+
+    // If pool is empty synchronously fill it on first load (user waits once).
+    if (initialUnserved === 0 && session.cursorReference !== 'exhausted') {
+      try {
+        await fillPoolAsync(session.id, profileId, HOME_POOL_TARGET)
+      } catch (err) {
+        console.error('[home-service] sync fillPool failed, will use fallback:', err)
+      }
+    }
+
+    const afterFillUnserved = await countUnserved(session.id)
+
+    if (afterFillUnserved > 0) {
+      const { shelves: batchRows } = await serveBatch(session.id, 0, HOME_BATCH_SIZE)
+      generatedShelves = await batchRowsToShelfResponses(batchRows)
+    } else {
+      coldStart = true
+      try {
+        const fallback = await buildFallbackShelf()
+        if (fallback.items.length > 0) generatedShelves = [fallback]
+      } catch (err) {
+        console.error('[home-service] fallback shelf failed:', err)
+      }
+    }
+
+    remaining = await countUnserved(session.id)
+    if (remaining < HOME_POOL_MIN) {
+      fillPool(session.id, profileId, HOME_POOL_TARGET)
+    }
+  } catch (err) {
+    console.error('[home-service] recommendation pool failed — serving fixed/fallback shelves:', err)
+    coldStart = generatedShelves.length === 0
+    if (generatedShelves.length === 0) {
+      try {
+        const fallback = await buildFallbackShelf()
+        if (fallback.items.length > 0) generatedShelves = [fallback]
+      } catch (fallbackErr) {
+        console.error('[home-service] fallback shelf failed:', fallbackErr)
+      }
     }
   }
 
@@ -101,12 +125,6 @@ export async function buildHome(profileId: string, cursor?: string): Promise<Hom
     persistFixedShelvesForSession(profileId, session.id, fixed).catch((err) => {
       console.error('[home-service] persistFixedShelves error (swallowed):', err)
     })
-  }
-
-  // Replenish pool asynchronously if running low.
-  const remaining = await countUnserved(session.id)
-  if (remaining < HOME_POOL_MIN) {
-    fillPool(session.id, profileId, HOME_POOL_TARGET)
   }
 
   const hasMore = remaining > 0 || session.cursorReference !== 'exhausted'

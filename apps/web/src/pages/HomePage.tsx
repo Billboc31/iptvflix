@@ -6,6 +6,7 @@ import GenerateShelfDialog from '../components/content/GenerateShelfDialog.js'
 import ArrivalCard from '../components/content/ArrivalCard.js'
 import HorizontalRow from '../components/content/HorizontalRow.js'
 import EmptyState from '../components/ui/EmptyState.js'
+import ErrorState from '../components/ui/ErrorState.js'
 import Skeleton from '../components/ui/Skeleton.js'
 import Spinner from '../components/ui/Spinner.js'
 import Button from '../components/ui/Button.js'
@@ -39,6 +40,7 @@ export default function HomePage() {
     isLoading: homeLoading,
     isFetchingMore,
     hasMore,
+    error: homeError,
     loadMore,
   } = useInfiniteHome(currentProfile?.id ?? '', profileVersion)
   const { arrivals, refresh: refreshArrivals } = useArrivals('unread')
@@ -123,6 +125,12 @@ export default function HomePage() {
       )}
 
       {/* Shelf rows */}
+      {!homeLoading && homeError && allShelves.length === 0 && (
+        <ErrorState
+          message="Impossible de charger les recommandations. Le catalogue reste disponible via Films."
+          onRetry={() => window.location.reload()}
+        />
+      )}
       {!homeLoading && (
         <>
           <div className="flex justify-end px-4 py-2">

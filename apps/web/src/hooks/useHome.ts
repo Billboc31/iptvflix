@@ -49,7 +49,7 @@ export function useInfiniteHome(profileId: string, profileVersion: number): UseI
         try {
           const result = await fetchHomePage(profileId)
           if (!cancelled) {
-            setAllShelves(result.shelves)
+            setAllShelves(result.shelves ?? [])
             setSessionId(result.sessionId)
             setNextCursor(result.nextCursor)
             setHasMore(result.nextCursor !== null)
@@ -89,7 +89,7 @@ export function useInfiniteHome(profileId: string, profileVersion: number): UseI
       while (attempt < MAX_RETRIES) {
         try {
           const result = await fetchHomePage(profileId, cursorToFetch)
-          setAllShelves((prev) => [...prev, ...result.shelves])
+          setAllShelves((prev) => [...prev, ...(result.shelves ?? [])])
           setSessionId(result.sessionId)
           setNextCursor(result.nextCursor)
           setHasMore(result.nextCursor !== null)

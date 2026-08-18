@@ -9,7 +9,7 @@ type ShelfRowProps = {
 
 export default function ShelfRow({ shelf }: ShelfRowProps) {
   const openDetail = useOpenDetail()
-  if (shelf.items.length === 0) return null
+  if (!shelf.items?.length) return null
 
   return (
     <div className="mt-8">
