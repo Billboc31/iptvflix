@@ -77,7 +77,7 @@ export class ShelfFatigueService {
             : shelfConceptFatigue.visibleImpressionCount,
           // Reset streak if last impression was outside the lookback window; prevents stale history from triggering cooldown
           zeroInteractionStreakCount: wasVisible
-            ? sql`CASE WHEN ${shelfConceptFatigue.lastShownAt} IS NULL OR ${shelfConceptFatigue.lastShownAt} < ${lookbackCutoff} THEN 1 ELSE ${shelfConceptFatigue.zeroInteractionStreakCount} + 1 END`
+            ? sql`CASE WHEN ${shelfConceptFatigue.lastShownAt} IS NULL OR ${shelfConceptFatigue.lastShownAt} < ${lookbackCutoff.toISOString()}::timestamptz THEN 1 ELSE ${shelfConceptFatigue.zeroInteractionStreakCount} + 1 END`
             : shelfConceptFatigue.zeroInteractionStreakCount,
           lastShownAt: now,
           updatedAt: now,

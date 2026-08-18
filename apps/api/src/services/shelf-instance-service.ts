@@ -63,7 +63,7 @@ export class ShelfInstanceService {
     const [instance] = await this.db
       .update(shelfInstances)
       .set({
-        firstDisplayedAt: sql`COALESCE(${shelfInstances.firstDisplayedAt}, ${at})`,
+        firstDisplayedAt: sql`COALESCE(${shelfInstances.firstDisplayedAt}, ${at.toISOString()}::timestamptz)`,
         lastDisplayedAt: at,
       })
       .where(eq(shelfInstances.id, shelfInstanceId))
@@ -291,7 +291,7 @@ export class ShelfInstanceService {
         .where(
           and(
             eq(shelfInstances.profileId, profileId),
-            sql`${shelfInstances.createdAt} < ${new Date(before)}`,
+            sql`${shelfInstances.createdAt} < ${new Date(before).toISOString()}::timestamptz`,
           ),
         )
         .orderBy(sql`${shelfInstances.createdAt} DESC`)
