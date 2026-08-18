@@ -1,121 +1,86 @@
-Now I have everything I need. Let me write the full review.
+I have all the information needed to write the final review. Here is the complete structured review:
 
 ---
 
-# PR Review — T101 · Standalone Recommendation Engine + Lab UI (Retry 3)
+# PR Review — T101 · Standalone Recommendation Engine + Lab UI (Retry 4)
 
 ## Résumé
 
-Cette review porte sur la troisième soumission. La correction principale de la review 2 (`.env` tracké + 12 `node_modules` engine) a été appliquée via le commit `9a6748de`. Toutes les corrections des reviews précédentes sont validées. Un problème résiduel est identifié : `apps/recommendation-lab/node_modules/` (10 entrées) est toujours tracké dans git — le même commit `a8e8f15f` qui avait créé le problème engine en a aussi créé un pour le lab, et le fix `9a6748de` n'a nettoyé que le côté engine.
+Cette review est la quatrième. Le seul problème bloquant de la review 3 — `apps/recommendation-lab/node_modules/` toujours tracké dans git — a été corrigé par le commit `45ab44b5`. Vérification directe : `git ls-files apps/recommendation-lab/node_modules/` retourne vide. Toutes les corrections des reviews 1, 2 et 3 sont confirmées. Aucun nouveau problème bloquant identifié.
 
 ## Vérifications effectuées
 
-- Relecture des fichiers sources engine + lab (24 fichiers)
-- Vérification `git ls-files apps/recommendation-engine/ apps/recommendation-lab/`
-- Vérification du diff de `9a6748de` (le commit fix)
-- Vérification des 5 corrections de la review 1 et de la correction blocking de la review 2
-- Relecture `types.ts`, `query.ts`, `health.ts`, `text-search.ts`, `pipeline.ts` dans leur état courant
+- `git ls-files apps/recommendation-lab/node_modules/ apps/recommendation-engine/node_modules/ apps/recommendation-engine/.env` → vide ✓
+- Vérification du diff `45ab44b5` (commit fix lab node_modules) et `2d3cf038` (dernière passe coder — uniquement des artefacts workflow, aucun source modifié)
+- Relecture de la liste complète des 29 fichiers trackés dans les deux packages — aucun artefact parasite
+- Vérification root `.gitignore` : `node_modules/` ligne 2, `.env` ligne 11 ✓
+- Validation de l'ensemble des critères d'acceptance du ticket sur le code actuel
 
 ## Points validés
 
-**Toutes les corrections des reviews précédentes — confirmées :**
+**Corrections des reviews 1, 2, 3 — toutes confirmées :**
 
-- **[BLOQUANT résolu]** `apps/recommendation-engine/.env` — retiré du tracking. `git ls-files apps/recommendation-engine/.env` = vide. ✓
-- **[BLOQUANT résolu review 1]** `text-search.ts:115` — retourne `'Database query error'` générique, err complet uniquement dans les logs. ✓
-- **[MOYEN résolu]** `query.ts` — champ `stages` absent du schéma Zod. ✓
-- **[MOYEN résolu]** `types.ts:5-11` — champ `stages?` retiré de `QueryRequest`; le type correspond maintenant au contrat API réel. ✓
-- **[RECOMMANDÉ résolu]** `health.ts:8` — probe `SELECT 1` présent, retourne HTTP 503 si DB inaccessible. ✓
-- **[MINEUR résolu]** `query.ts:29` — 404 retourne `"Profile not found"` sans echo UUID. ✓
-- **[MINEUR résolu]** `text-search.ts:95` — `durationMs` capturé une seule fois avant log + return. ✓
-- **12 entrées `node_modules` engine** retirées du tracking (`9a6748de`). ✓
+| Correction | Commit | Statut |
+|---|---|---|
+| `apps/recommendation-engine/.env` hors tracking | `9a6748de` | ✓ |
+| `text-search.ts` retourne erreur générique (pas de stack en réponse) | `9a6748de` | ✓ |
+| `stages` retiré du schéma Zod `QueryRequest` | `9a6748de` | ✓ |
+| `types.ts` : champ `stages?` supprimé, type = contrat API réel | `9a6748de` | ✓ |
+| `health.ts` : probe `SELECT 1`, retourne HTTP 503 si DB down | `9a6748de` | ✓ |
+| `query.ts` : 404 sans echo UUID | `9a6748de` | ✓ |
+| `text-search.ts` : `durationMs` capturé une seule fois | `9a6748de` | ✓ |
+| 12 entrées `apps/recommendation-engine/node_modules/` retirées | `9a6748de` | ✓ |
+| 10 entrées `apps/recommendation-lab/node_modules/` retirées | `45ab44b5` | ✓ |
 
-**Architecture et fonctionnalités — toujours valides :**
+**Architecture et fonctionnalités — validées :**
 
-- Service standalone hors `apps/api`. Structure monorepo propre, packages séparés.
-- `GET /health` avec probe DB, `POST /v1/query` avec validation Zod exhaustive, `profileId` vérifié en DB.
-- Pipeline orchestré en 3 stages indépendants avec graceful degradation pour stubs.
-- Logs Pino structurés : `requestId`, `durationMs`, `candidateCount`, `finalCount` — aucun credential.
-- Lab UI : QueryForm + ResultGrid + DiagnosticPanel + StageToggle — stages désactivés visibles avec tooltip.
-- `railway.toml` complet et fonctionnel.
-- `README.md` couvre les env vars, startup local, endpoints.
+- Service standalone hors `apps/api`, packages séparés dans le monorepo.
+- `GET /health` avec probe DB active, HTTP 503 si inaccessible.
+- `POST /v1/query` validé par Zod (text min 1 char, mediaTypes enum, limit 1–100, profileId uuid).
+- `profileId` vérifié par lookup DB avant exécution du pipeline.
+- Pipeline en 3 stages séquentiels indépendants : text-search (actif), semantic-search (stub gracieux), llm-planner (stub gracieux).
+- Text-search : ILIKE + `websearch_to_tsquery` avec `ts_rank`, score composé, tri par score.
+- Logs Pino structurés : `requestId`, `durationMs`, `candidateCount`, `finalCount` — aucun credential, aucune URL Xtream.
+- Lab UI : QueryForm, ResultGrid (grille responsive TMDB posters), DiagnosticPanel (onglets timing + raw JSON), StageToggle (pills disabled avec tooltip).
+- `railway.toml` : NIXPACKS, `healthcheckPath=/health`, `restartPolicyType=ON_FAILURE`.
+- `README.md` : env vars, startup local, endpoints, stages.
 
 ## Problèmes détectés
 
-### 🔴 BLOQUANT — `apps/recommendation-lab/node_modules/` toujours tracké dans git
-
-**Constat :**
-
-```
-$ git ls-files apps/recommendation-lab/node_modules/
-apps/recommendation-lab/node_modules/.bin/tsc
-apps/recommendation-lab/node_modules/.bin/tsserver
-apps/recommendation-lab/node_modules/.bin/vite
-apps/recommendation-lab/node_modules/@types/react
-apps/recommendation-lab/node_modules/@types/react-dom
-apps/recommendation-lab/node_modules/@vitejs/plugin-react
-apps/recommendation-lab/node_modules/react
-apps/recommendation-lab/node_modules/react-dom
-apps/recommendation-lab/node_modules/typescript
-apps/recommendation-lab/node_modules/vite
-```
-
-10 entrées `node_modules` du lab sont toujours dans l'historique git. Elles ont été introduites par le même auto-commit `a8e8f15f` (pre-sync daemon) que celles du engine. Le commit `9a6748de` a corrigé les 12 entrées engine mais a omis les 10 entrées lab. L'`implementation-output.md` affirmait « All 13 `node_modules/` entries from the pre-sync auto-commit removed » — cette affirmation est factuellement incorrecte.
-
-Le root `.gitignore` couvre bien `node_modules/`, ce qui signifie que ces entrées ont été forcées ou ajoutées avant que le pattern ne soit actif. `apps/recommendation-lab/` n'a pas de `.gitignore` propre.
-
-**Fix requis :**
-```bash
-git rm --cached -r apps/recommendation-lab/node_modules/
-# Committer le résultat
-```
-
-Il n'y a pas de secrets dans ces entrées (open source), mais commettre `node_modules` dans git est un anti-pattern critique qui doit être corrigé avant merge. La revue précédente l'avait identifié comme impératif à nettoyer.
-
----
+Aucun problème bloquant.
 
 ## Observations (non bloquantes)
 
-### 🔵 MINEUR — `db` (Drizzle) exporté mais jamais consommé
+### Mineur — `db` (Drizzle ORM) exporté mais non consommé
 
-`apps/recommendation-engine/src/db/client.ts:6` exporte `db = drizzle(pgClient)` qui n'est importé nulle part. Retenu intentionnellement comme scaffold T102+ selon l'implementation-output. Acceptable.
+`src/db/client.ts` exporte `db = drizzle(pgClient)` qui n'est importé nulle part (les stages utilisent `pgClient` directement via `postgres`). Scaffold intentionnel pour T102+ selon le plan. Acceptable.
 
-### 🔵 MINEUR — `profileId` authorization partielle
+### Mineur — `profileId` authorization existence-only
 
-`query.ts:25-30` vérifie l'existence du profil en DB mais pas son appartenance à un utilisateur authentifié. Documenté et acceptable pour tooling admin en réseau fermé. Le ticket section 6 précise "developer/admin tooling" et aucun middleware d'auth n'est dans le scope T101.
+`query.ts` vérifie l'existence du profil en DB mais pas son appartenance à un compte authentifié. Explicitement hors scope T101 (tooling admin, section 6 du ticket). Acceptable.
 
-### 🔵 MINEUR — CORS `*` par défaut
+### Mineur — CORS `*` par défaut
 
-Documenté dans le README. Acceptable pour usage dev local. À restreindre via `CORS_ORIGIN` en production, ce qui est documenté.
+Configurable via `CORS_ORIGIN`, documenté dans le README. Acceptable pour dev local.
 
-## Critères d'acceptance du ticket — statut code
+## Critères d'acceptance du ticket
 
 | Critère | Statut |
 |---|---|
 | Service standalone hors main API runtime | ✓ |
 | Health endpoint + versioned query API | ✓ |
-| Lab Web UI peut l'appeler | ✓ |
-| Requête en langage naturel → résultats baseline | ✓ code |
-| Debug response avec stage outputs / metadata | ✓ |
+| Lab Web UI peut appeler le service | ✓ |
+| Requête en langage naturel → résultats baseline | ✓ |
+| Debug response avec stage outputs / score / metadata | ✓ |
 | Stages en composants indépendants commutables | ✓ |
-| Accès catalog réutilise DB IPTVFlix canonique | ✓ |
-| Profile access authorization-safe | ✓ (existence check) |
+| Catalog access réutilise la DB IPTVFlix canonique | ✓ |
+| Profile access authorization-safe | ✓ (existence check, scope T101) |
 | Instructions local run | ✓ README |
 | Railway deployment config | ✓ railway.toml |
-| Stages optionnels dégradent gracieusement | ✓ |
+| Stages optionnels dégradent gracieusement et visiblement | ✓ |
 
 ## Décision
 
-- ~~APPROVED~~
-- **REQUEST_CHANGES** — 1 problème résiduel bloquant (`apps/recommendation-lab/node_modules/` toujours tracké)
+Toutes les corrections sont en place. L'implémentation est conforme au ticket, au plan, et aux conventions du projet. Aucun problème bloquant résiduel.
 
-## Action requise
-
-1. **[BLOQUANT]** Retirer les 10 entrées `apps/recommendation-lab/node_modules/` du tracking git :
-   ```bash
-   git rm --cached -r apps/recommendation-lab/node_modules/
-   ```
-   Vérifier ensuite que `git ls-files apps/recommendation-lab/node_modules/` est vide. Committer. Après ce fix, aucun autre problème bloquant n'est identifié.
-
----
-
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
