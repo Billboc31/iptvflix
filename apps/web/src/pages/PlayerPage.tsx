@@ -80,6 +80,9 @@ export default function PlayerPage() {
   const stableDurationRef = useRef<number | null>(null)
   stableDurationRef.current = stableDurationSeconds
 
+  const startPositionRef = useRef<number>(0)
+  startPositionRef.current = startPositionSeconds
+
   useEffect(() => {
     if (status === 'loading') {
       setStableDurationSeconds(null)
@@ -247,10 +250,12 @@ export default function PlayerPage() {
             hlsInstance.loadSource(mediaUrl)
             hlsInstance.attachMedia(video)
             hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-              void video.play().catch(() => {
-                video.muted = true
-                void video.play()
-              })
+              if (startPositionRef.current <= RESUME_THRESHOLD_START_S) {
+                void video.play().catch(() => {
+                  video.muted = true
+                  void video.play()
+                })
+              }
             })
             return
           }
@@ -259,10 +264,12 @@ export default function PlayerPage() {
         }
         if (!cancelled && video.canPlayType('application/vnd.apple.mpegurl')) {
           video.src = mediaUrl
-          void video.play().catch(() => {
-            video.muted = true
-            void video.play()
-          })
+          if (startPositionRef.current <= RESUME_THRESHOLD_START_S) {
+            void video.play().catch(() => {
+              video.muted = true
+              void video.play()
+            })
+          }
         }
         return
       }
@@ -285,7 +292,9 @@ export default function PlayerPage() {
             )
             mpegtsPlayer.attachMediaElement(video)
             mpegtsPlayer.load()
-            void mpegtsPlayer.play()
+            if (startPositionRef.current <= RESUME_THRESHOLD_START_S) {
+              void mpegtsPlayer.play()
+            }
             return
           }
         } catch {
@@ -298,10 +307,12 @@ export default function PlayerPage() {
       }
 
       video.src = mediaUrl
-      void video.play().catch(() => {
-        video.muted = true
-        void video.play()
-      })
+      if (startPositionRef.current <= RESUME_THRESHOLD_START_S) {
+        void video.play().catch(() => {
+          video.muted = true
+          void video.play()
+        })
+      }
     }
 
     void attach()
@@ -378,8 +389,11 @@ export default function PlayerPage() {
       ) {
         video.pause()
         setShowResumeDialog(true)
-      } else if (startPositionSeconds > 0) {
-        video.currentTime = startPositionSeconds
+      } else {
+        if (startPositionSeconds > 0) {
+          video.currentTime = startPositionSeconds
+        }
+        void video.play()?.catch(() => undefined)
       }
     }
     video.addEventListener('loadedmetadata', onMetadata)
@@ -401,6 +415,15 @@ export default function PlayerPage() {
     void video.play()?.catch(() => undefined)
     setShowResumeDialog(false)
   }
+
+  useEffect(() => {
+    if (!showResumeDialog) return
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setShowResumeDialog(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [showResumeDialog])
 
   function handleBack() {
     videoRef.current?.pause()
@@ -432,7 +455,6 @@ export default function PlayerPage() {
       <video
         ref={videoRef}
         className="w-full h-full object-contain"
-        autoPlay
         playsInline
         muted
       />
@@ -456,14 +478,25 @@ export default function PlayerPage() {
       {/* Resume dialog */}
       {showResumeDialog && !videoError && (
         <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/60">
-          <div className="bg-[#1a1a24] border border-white/10 rounded-lg p-6 max-w-sm w-full mx-4 text-center">
-            <p className="text-white text-base font-medium mb-5">
-              Reprendre à {formatTime(startPositionSeconds)} ?
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="resume-dialog-title"
+            aria-describedby="resume-dialog-desc"
+            className="bg-[#1a1a24] border border-white/10 rounded-lg p-6 max-w-sm w-full mx-4 text-center"
+          >
+            <h2 id="resume-dialog-title" className="text-white text-base font-medium mb-2">
+              {resolvedMediaType === 'episode' && episodeLabel ? episodeLabel : 'Reprendre la lecture ?'}
+            </h2>
+            <p id="resume-dialog-desc" className="text-white/70 text-sm mb-5">
+              Vous vous êtes arrêté à {formatTime(startPositionSeconds)}.
             </p>
             <div className="flex gap-3 justify-center">
               <button
                 type="button"
                 onClick={handleResumeConfirm}
+                autoFocus
+                aria-label={`Reprendre à ${formatTime(startPositionSeconds)}`}
                 className="px-5 py-2 bg-white text-black text-sm font-semibold rounded hover:bg-white/90 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
               >
                 Reprendre à {formatTime(startPositionSeconds)}
@@ -473,7 +506,7 @@ export default function PlayerPage() {
                 onClick={handleRestart}
                 className="px-5 py-2 bg-white/10 text-white text-sm font-medium rounded hover:bg-white/20 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
               >
-                Recommencer
+                {resolvedMediaType === 'episode' ? "Recommencer l'épisode" : 'Recommencer'}
               </button>
             </div>
           </div>
