@@ -502,6 +502,22 @@ describe('POST /interaction-events', () => {
 // Boot-time seed idempotency
 // ---------------------------------------------------------------------------
 
+function mockSelectWhere(rows: object[]) {
+  mockDb.select.mockReturnValueOnce({
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue(rows),
+    }),
+  })
+}
+
+function mockUpdate() {
+  mockDb.update.mockReturnValue({
+    set: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue([]),
+    }),
+  })
+}
+
 describe('runSeed — idempotent', () => {
   beforeEach(() => vi.resetAllMocks())
 
@@ -509,53 +525,23 @@ describe('runSeed — idempotent', () => {
     const existingAccount = { id: ACCOUNT_A_ID, username: 'admin', passwordHash: 'hash' }
     const existingProfile = makeProfile('00000000-0000-0000-0000-000000000001', ACCOUNT_A_ID, 'Default')
 
-    // First call: select account → found
-    mockDb.select.mockReturnValueOnce({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([existingAccount]),
-      }),
-    })
-    // Second call: select legacy profile (pre-T098 unlinked check) → already linked (accountId set)
-    mockDb.select.mockReturnValueOnce({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([]), // no unlinked legacy profile
-      }),
-    })
-    // Third call: select existing profile for account → found
-    mockDb.select.mockReturnValueOnce({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([{ id: existingProfile.id }]),
-      }),
-    })
+    mockSelectWhere([existingAccount])
+    mockUpdate()
+    mockSelectWhere([{ id: existingProfile.id }])
 
     await runSeed()
 
-    // insert should NOT be called (account and profile both exist)
     expect(mockDb.insert).not.toHaveBeenCalled()
+    expect(mockDb.update).toHaveBeenCalledTimes(1)
   })
 
-  it('links the pre-T098 default profile to the default account', async () => {
+  it('reattaches all unlinked pre-T098 profiles to the default account', async () => {
     const account = { id: ACCOUNT_A_ID, username: 'admin', passwordHash: 'hash' }
-    const legacyProfile = { ...makeProfile('00000000-0000-0000-0000-000000000001', ACCOUNT_A_ID, 'Default'), accountId: null }
+    const linked = makeProfile('00000000-0000-0000-0000-000000000001', ACCOUNT_A_ID, 'Default')
 
-    // select account → found
-    mockDb.select.mockReturnValueOnce({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([account]),
-      }),
-    })
-    // select unlinked legacy profile → found (accountId is null)
-    mockDb.select.mockReturnValueOnce({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([legacyProfile]),
-      }),
-    })
-    // update to link it
-    mockDb.update.mockReturnValueOnce({
-      set: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([]),
-      }),
-    })
+    mockSelectWhere([account])
+    mockUpdate()
+    mockSelectWhere([{ id: linked.id }])
 
     await runSeed()
 
@@ -566,31 +552,17 @@ describe('runSeed — idempotent', () => {
   it('creates account and default profile on a fresh DB', async () => {
     const newAccount = { id: ACCOUNT_A_ID, username: 'admin', passwordHash: 'hash' }
 
-    // select account → not found
-    mockDb.select.mockReturnValueOnce({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([]),
-      }),
-    })
-    // insert account
+    mockSelectWhere([])
     mockDb.insert.mockReturnValueOnce({
       values: vi.fn().mockReturnValue({
-        returning: vi.fn().mockResolvedValue([newAccount]),
+        onConflictDoNothing: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([newAccount]),
+        }),
       }),
     })
-    // select unlinked legacy profile → not found
-    mockDb.select.mockReturnValueOnce({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([]),
-      }),
-    })
-    // select existing profile for account → not found
-    mockDb.select.mockReturnValueOnce({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([]),
-      }),
-    })
-    // insert default profile
+    mockUpdate()
+    mockSelectWhere([])
+    mockSelectWhere([])
     mockDb.insert.mockReturnValueOnce({
       values: vi.fn().mockResolvedValue([]),
     })

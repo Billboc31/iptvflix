@@ -65,14 +65,14 @@ ALTER TABLE "media_credits" ADD COLUMN IF NOT EXISTS "is_director" boolean NOT N
 ALTER TABLE "media_credits" ADD COLUMN IF NOT EXISTS "is_creator" boolean NOT NULL DEFAULT false;--> statement-breakpoint
 
 -- Extend profile_taste with rich feature scores for recommendation models
-ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "person_scores" jsonb NOT NULL DEFAULT '{}';--> statement-breakpoint
-ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "person_meta" jsonb NOT NULL DEFAULT '{}';--> statement-breakpoint
-ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "keyword_scores" jsonb NOT NULL DEFAULT '{}';--> statement-breakpoint
-ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "franchise_scores" jsonb NOT NULL DEFAULT '{}';--> statement-breakpoint
-ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "language_scores" jsonb NOT NULL DEFAULT '{}';--> statement-breakpoint
-ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "country_scores" jsonb NOT NULL DEFAULT '{}';--> statement-breakpoint
-ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "decade_scores" jsonb NOT NULL DEFAULT '{}';--> statement-breakpoint
-ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "media_type_preferences" jsonb NOT NULL DEFAULT '{}';--> statement-breakpoint
+ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "person_scores" jsonb NOT NULL DEFAULT '{}'::jsonb;--> statement-breakpoint
+ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "person_meta" jsonb NOT NULL DEFAULT '{}'::jsonb;--> statement-breakpoint
+ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "keyword_scores" jsonb NOT NULL DEFAULT '{}'::jsonb;--> statement-breakpoint
+ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "franchise_scores" jsonb NOT NULL DEFAULT '{}'::jsonb;--> statement-breakpoint
+ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "language_scores" jsonb NOT NULL DEFAULT '{}'::jsonb;--> statement-breakpoint
+ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "country_scores" jsonb NOT NULL DEFAULT '{}'::jsonb;--> statement-breakpoint
+ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "decade_scores" jsonb NOT NULL DEFAULT '{}'::jsonb;--> statement-breakpoint
+ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "media_type_preferences" jsonb NOT NULL DEFAULT '{}'::jsonb;--> statement-breakpoint
 ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "completion_rate" numeric;--> statement-breakpoint
 ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "avg_progress_percent" integer;--> statement-breakpoint
 ALTER TABLE "profile_taste" ADD COLUMN IF NOT EXISTS "taste_version" integer NOT NULL DEFAULT 1;--> statement-breakpoint

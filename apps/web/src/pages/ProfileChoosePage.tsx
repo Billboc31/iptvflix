@@ -41,6 +41,12 @@ export default function ProfileChoosePage() {
         <p className="text-red-400 text-sm mb-6" role="alert">{error}</p>
       )}
 
+      {profiles.length === 0 && (
+        <p className="text-gray-400 text-sm mb-8 text-center max-w-sm">
+          Aucun profil n’est lié à ce compte. Créez-en un pour continuer.
+        </p>
+      )}
+
       <div className="flex flex-wrap gap-8 justify-center max-w-2xl">
         {profiles.map((profile) => {
           const isSelecting = selecting === profile.id
@@ -73,12 +79,23 @@ export default function ProfileChoosePage() {
         })}
       </div>
 
-      <button
-        onClick={() => navigate('/profiles')}
-        className="mt-12 text-sm text-gray-500 hover:text-white border border-white/10 hover:border-white/30 px-5 py-2 rounded-md transition-colors"
-      >
-        Gérer les profils
-      </button>
+      <div className="mt-12 flex flex-wrap gap-3 justify-center">
+        {profiles.length === 0 ? (
+          <button
+            onClick={() => navigate('/profiles/create')}
+            className="text-sm text-white border border-white/30 hover:bg-white/10 px-5 py-2 rounded-md transition-colors"
+          >
+            Créer un profil
+          </button>
+        ) : (
+          <button
+            onClick={() => navigate('/profiles')}
+            className="text-sm text-gray-500 hover:text-white border border-white/10 hover:border-white/30 px-5 py-2 rounded-md transition-colors"
+          >
+            Gérer les profils
+          </button>
+        )}
+      </div>
     </div>
   )
 }

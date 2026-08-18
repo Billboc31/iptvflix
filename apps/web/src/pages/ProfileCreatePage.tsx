@@ -25,7 +25,7 @@ export default function ProfileCreatePage() {
     try {
       await createProfile({ name: trimmed, avatarKey, isKids })
       await refreshProfiles()
-      navigate('/profiles')
+      navigate('/profiles/choose')
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setError('Vous avez atteint le nombre maximum de profils.')

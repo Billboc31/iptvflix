@@ -66,6 +66,13 @@ function AppRoutes() {
             {/* Profile chooser — accessible without a selected profile */}
             <Route path="/profiles/choose" element={<ProfileChoosePage />} />
 
+            {/* Create/manage profiles even when none are selected (T098 leftover). */}
+            <Route element={<AppShell />}>
+              <Route path="/profiles" element={<ProfileManagePage />} />
+              <Route path="/profiles/create" element={<ProfileCreatePage />} />
+              <Route path="/profiles/:profileId/edit" element={<ProfileEditPage />} />
+            </Route>
+
             {/* Routes that require a profile to be selected */}
             <Route element={<ProfileRequiredRoute />}>
               {/* Full-screen, no AppShell */}
@@ -86,10 +93,6 @@ function AppRoutes() {
                 <Route path="/settings/devices" element={<DeviceSettingsPage />} />
                 <Route path="/arrivals" element={<ArrivalsPage />} />
                 <Route path="/lab" element={<RecommendationLabPage />} />
-                {/* Profile management */}
-                <Route path="/profiles" element={<ProfileManagePage />} />
-                <Route path="/profiles/create" element={<ProfileCreatePage />} />
-                <Route path="/profiles/:profileId/edit" element={<ProfileEditPage />} />
               </Route>
             </Route>
           </Route>
