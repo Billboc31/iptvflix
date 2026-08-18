@@ -3,8 +3,10 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T099-add-profile-selector-and-profile-management-ux-on",
   "issue_number": 202,
-  "updated_at": "2026-08-18T10:04:23Z",
+  "updated_at": "2026-08-18T10:04:34Z",
   "pre_conflict_state": "IMPLEMENTATION_FIX_REQUIRED",
   "conflict_detected_at": "2026-08-18T09:41:45Z",
-  "conflicted_files": []
+  "conflicted_files": [],
+  "pr_number": 219,
+  "pr_synced": true
 }
