@@ -1,39 +1,21 @@
-**50/50 tests pass.** All existing IntroDB tests and all new T097 tests green.
-
-Here's a complete summary of everything delivered:
+No TypeScript errors in the modified files. Here's a summary of all changes made:
 
 ---
 
-## Changes summary
+**BLOQUANT 1 — `filterUnsynced` now provider-aware** (`segment-sync-service.ts:259-281`)
 
-### New files created (12)
+Changed from "skip any episode with ANY segment in `media_segments`" to "skip only episodes where ALL configured providers have contributed at least one segment row." Episodes enriched only by IntroDB (T096) are now re-processed on the next backfill so TheIntroDB can enrich them — without needing `--force`.
 
-| File | Purpose |
-|------|---------|
-| `providers/segments/theintrodb/types.ts` | TheIntroDB API v3 wire types |
-| `providers/segments/theintrodb/errors.ts` | `TheIntroDbRateLimitError`, `TheIntroDbNetworkError` |
-| `providers/segments/theintrodb/mapper.ts` | Maps response → `RawSegment[]`; picks best entry per type by `submissions`; logs unknown keys |
-| `providers/segments/theintrodb/client.ts` | HTTP client; TMDB primary path, IMDb fallback; 429 backoff; rate-limit header warnings; timeout |
-| `providers/segments/theintrodb/__tests__/client.test.ts` | 12 tests covering all client paths |
-| `providers/segments/theintrodb/__tests__/mapper.test.ts` | 11 tests including anime fixture |
-| `services/segment-merger.ts` | Pure function; ±2s clustering; submissionCount → confidence → providerPriority ranking; duration sanity; full provenance |
-| `services/__tests__/segment-merger.test.ts` | 13 tests (cluster-consensus, sole-provider, disagreement, duration, provenance) |
-| `db/schema/segment-selections.ts` | Drizzle schema for `segment_selections` (unique on `episode_id, type`) |
-| `migrations/0038_t097_segment_selections.sql` | SQL migration |
-| `runs/T097/provider-research.md` | TheIntroDB: CONDITIONALLY VIABLE; SkipMe: NOT VIABLE with evidence |
-| `runs/T097/anime-validation.md` | ≥3 anime episodes validated; AniList gap documented; season-0 behaviour documented |
+**BLOQUANT 2 — Network access documented + TheIntroDB smoke test coverage** 
 
-### Modified files (10)
+Created `runs/T097/network-access-statement.md` explicitly stating that the environment has no public internet access (NXDOMAIN), explains the mock-server validation approach used, and gives the exact `curl` commands for live verification from a connected environment.
 
-| File | Change |
-|------|--------|
-| `providers/segments/types.ts` | Added `seriesTmdbId?: number | null` to `CanonicalEpisodeRef` |
-| `db/schema/index.ts` | Exports `segment-selections` |
-| `migrations/meta/_journal.json` | Added entry for migration 0038 |
-| `services/segment-sync-service.ts` | `providerPriority` 4th param (optional, default `[]`); resolves `seriesTmdbId`; calls `mergeSegments`; upserts into `segment_selections` |
-| `services/__tests__/segment-sync-service.test.ts` | Added 4 new cases: two-provider, one-provider-fails, idempotent, seriesTmdbId propagation |
-| `routes/episodes.ts` | `GET /episodes/:id/segments` now queries `segment_selections` |
-| `routes/segment-admin.ts` | Enhanced: `episodesWithMergedSelection`, `byProvider` with type breakdown, overlap count, `disagreementRate`, `noDataRate`; episode detail includes `selections` alongside raw segments |
-| `config/env.ts` | Added `THEINTRODB_BASE_URL` |
-| `index.ts` | Registers `TheIntroDbClient`; passes `providerPriority = ['introdb', 'theintrodb']` |
-| `scripts/backfill-segments.ts` | Adds `TheIntroDbClient` to provider array |
+Extended `smoke-test-segments.ts` with a full mock TheIntroDB server (`GET /media?tmdb_id=...`) and a T097 section that verifies: both providers contribute raw segments, `mergeSegments` produces `segment_selections`, and the client API returns a clean normalized payload without provider fields.
+
+**OBSERVATION 1 — Unimplemented metrics are now `null`** (`segment-admin.ts:91-93`)
+
+`identifierMismatchRate`, `animeEpisodes`, and `animeWithAnySegment` now return `null` with inline comments explaining they require infrastructure not yet in the schema (`isAnime` field, per-lookup mismatch tracking).
+
+**New test** (`segment-sync-service.test.ts`)
+
+Added `backfillCatalog — provider-aware filterUnsynced` test that seeds both test episodes with IntroDB-only data, runs a two-provider backfill without `--force`, and asserts both episodes are re-processed and TheIntroDB segments are stored.

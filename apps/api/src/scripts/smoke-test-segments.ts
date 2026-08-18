@@ -1,10 +1,16 @@
 /**
- * End-to-end smoke test for T096 segment sync pipeline.
+ * End-to-end smoke test for T096/T097 segment sync pipeline.
  *
- * NOTE: api.introdb.net does not resolve (NXDOMAIN) from this environment.
- * This script starts a local mock HTTP server on a random port that speaks
- * the exact IntroDB /segments wire format, then exercises the full pipeline:
- *   mock IntroDB → IntroDbClient → SegmentSyncService → postgres DB
+ * NETWORK ACCESS NOTE (see runs/T097/network-access-statement.md):
+ * Neither api.introdb.net nor api.theintrodb.org resolve (NXDOMAIN) from this
+ * environment. Both scripts use local mock HTTP servers that speak the exact
+ * wire formats of each provider. The pipeline logic (client → SegmentSyncService
+ * → merger → DB → API route) is exercised end-to-end; only the external hostname
+ * is replaced with a loopback address.
+ *
+ * Mock servers:
+ *   - IntroDB:     GET /segments?imdb_id=...&season=...&episode=...
+ *   - TheIntroDB:  GET /media?tmdb_id=...&season=...&episode=...
  *
  * The IMDb IDs used (tt0388629, tt0434665, tt0903747) are the real public IDs
  * for One Piece, Bleach, and Breaking Bad. The timestamp fixtures are
@@ -25,8 +31,10 @@ import { seasons as seasonsTable } from '../db/schema/seasons.js'
 import { episodes as episodesTable } from '../db/schema/episodes.js'
 import { mediaSegments } from '../db/schema/media-segments.js'
 import { IntroDbClient } from '../providers/segments/introdb/client.js'
+import { TheIntroDbClient } from '../providers/segments/theintrodb/client.js'
 import { SegmentSyncService } from '../services/segment-sync-service.js'
 import { TmdbClient } from '../providers/metadata/tmdb/client.js'
+import { segmentSelections } from '../db/schema/segment-selections.js'
 import { episodeSegmentsRoutes } from '../routes/episodes.js'
 
 // ---------------------------------------------------------------------------
@@ -64,6 +72,72 @@ const MOCK_RESPONSES: Record<string, Record<string, IntroDbResponseFixture>> = {
     '1:1': { intro: { start: 5.0, end: 30.0 }, outro: { start: 2600.0, end: 2700.0 }, confidence: 0.90, submissionCount: 523 },
     '1:2': { intro: { start: 8.0, end: 30.0 }, outro: { start: 2550.0, end: 2700.0 }, confidence: 0.88, submissionCount: 456 },
   },
+}
+
+// ---------------------------------------------------------------------------
+// TheIntroDB wire-format fixtures (timestamps in seconds; response per /media endpoint)
+// Responds to: GET /media?tmdb_id=...&season=...&episode=...
+// ---------------------------------------------------------------------------
+type TheIntroDbResponseFixture = {
+  intro?: { start: number; end: number; submissions?: number; verified?: boolean }[]
+  recap?: { start: number; end: number; submissions?: number }[]
+  credits?: { start: number; end: number; submissions?: number }[]
+  preview?: { start: number; end: number; submissions?: number }[]
+}
+
+const THEINTRODB_MOCK_RESPONSES: Record<string, Record<string, TheIntroDbResponseFixture>> = {
+  // One Piece — TMDB 37854
+  '37854': {
+    '1:1': { intro: [{ start: 5.0, end: 95.0, submissions: 88, verified: true }] },
+    '1:2': { recap: [{ start: 0.0, end: 30.0, submissions: 60 }], intro: [{ start: 90.0, end: 120.0, submissions: 72 }] },
+  },
+  // Bleach — TMDB 46298
+  '46298': {
+    '1:1': { intro: [{ start: 63.0, end: 88.0, submissions: 55 }] },
+  },
+  // Breaking Bad — TMDB 1396 (live-action)
+  '1396': {
+    '1:1': { intro: [{ start: 5.0, end: 30.0, submissions: 40 }], credits: [{ start: 2600.0, end: 2700.0, submissions: 30 }] },
+    '1:2': { intro: [{ start: 8.0, end: 30.0, submissions: 35 }] },
+  },
+}
+
+function startMockTheIntroDbServer(): Promise<{ url: string; stop: () => void; requestLog: string[] }> {
+  const requestLog: string[] = []
+
+  const server = createServer((req, res) => {
+    const url = new URL(req.url ?? '/', `http://localhost`)
+    if (url.pathname !== '/media') {
+      res.writeHead(404).end(JSON.stringify({ error: 'not found' }))
+      return
+    }
+
+    const tmdbId = url.searchParams.get('tmdb_id') ?? ''
+    const season = url.searchParams.get('season') ?? ''
+    const episode = url.searchParams.get('episode') ?? ''
+    const key = `${season}:${episode}`
+
+    requestLog.push(`tmdb:${tmdbId} S${season}E${episode}`)
+
+    const fixture = THEINTRODB_MOCK_RESPONSES[tmdbId]?.[key]
+    if (!fixture) {
+      res.writeHead(404).end(JSON.stringify({ error: 'no segment data' }))
+      return
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(fixture))
+  })
+
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address() as AddressInfo
+      resolve({
+        url: `http://127.0.0.1:${port}`,
+        stop: () => server.close(),
+        requestLog,
+      })
+    })
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -339,11 +413,119 @@ async function main(): Promise<void> {
     }
     console.log(`  Total IntroDB requests: ${requestLog.length}`)
 
+    // -----------------------------------------------------------------------
+    // T097 multi-provider extension
+    // Exercises TheIntroDB adapter + segment merger + segment_selections upsert
+    // -----------------------------------------------------------------------
+    console.log('\n=== T097 Multi-Provider Smoke Test ===\n')
+
+    const { url: theIntroDbUrl, stop: stopTheIntroDb, requestLog: theIntroDbLog } = await startMockTheIntroDbServer()
+    console.log(`Mock TheIntroDB server: ${theIntroDbUrl}\n`)
+
+    try {
+      // Re-seed test data (cleanupTestData not called yet)
+      // The existing segments from T096 pass remain in DB — simulate catalog with IntroDB data already
+
+      console.log('--- T097 multi-provider sync (IntroDB + TheIntroDB) ---')
+      const introDbClient = new IntroDbClient({ baseUrl: mockUrl })
+      const theIntroDbClient = new TheIntroDbClient({ baseUrl: theIntroDbUrl })
+      const tmdbClient2 = new TmdbClient({ apiKey: 'smoke-test-stub' })
+      const multiProviderService = new SegmentSyncService(
+        db,
+        tmdbClient2,
+        [introDbClient, theIntroDbClient],
+        ['introdb', 'theintrodb'],
+      )
+
+      // syncEpisode for Breaking Bad S1E1 (has data in both mocks) and One Piece S1E1
+      const bbSeries = TEST_DATA.find((s) => s.label === 'Breaking Bad')!
+      const opSeries = TEST_DATA.find((s) => s.label === 'One Piece')!
+      const bbEpisodeId = bbSeries.seasons[0].episodes[0].episodeId!
+      const opEpisodeId = opSeries.seasons[0].episodes[0].episodeId!
+
+      await multiProviderService.syncEpisode(bbEpisodeId, bbSeries.seriesId!, 1, 1)
+      await multiProviderService.syncEpisode(opEpisodeId, opSeries.seriesId!, 1, 1)
+
+      // Verify both providers contributed raw segments for Breaking Bad S1E1
+      console.log('\n--- Raw segments after multi-provider sync ---')
+      for (const { label, seriesId, ep } of [
+        { label: 'Breaking Bad', seriesId: bbSeries.seriesId!, ep: bbEpisodeId },
+        { label: 'One Piece', seriesId: opSeries.seriesId!, ep: opEpisodeId },
+      ]) {
+        const rawRows = await db
+          .select({ type: mediaSegments.type, provider: mediaSegments.sourceProvider, startMs: mediaSegments.startMs, endMs: mediaSegments.endMs })
+          .from(mediaSegments)
+          .where(eq(mediaSegments.episodeId, ep))
+          .orderBy(mediaSegments.startMs)
+
+        const providerSet = new Set(rawRows.map((r) => r.provider))
+        console.log(`  ${label} (${ep}):`)
+        for (const r of rawRows) {
+          console.log(`    [${r.provider}] ${r.type}: ${r.startMs}ms – ${r.endMs}ms`)
+        }
+        if (!providerSet.has('theintrodb')) {
+          throw new Error(`No TheIntroDB raw segments persisted for ${label}`)
+        }
+      }
+
+      // Verify merged segment_selections are present
+      console.log('\n--- Merged segment_selections ---')
+      for (const { label, ep } of [
+        { label: 'Breaking Bad', ep: bbEpisodeId },
+        { label: 'One Piece', ep: opEpisodeId },
+      ]) {
+        const selections = await db
+          .select({
+            type: segmentSelections.type,
+            startMs: segmentSelections.startMs,
+            endMs: segmentSelections.endMs,
+            selectedProvider: segmentSelections.selectedProvider,
+            reason: segmentSelections.selectionReason,
+          })
+          .from(segmentSelections)
+          .where(eq(segmentSelections.episodeId, ep))
+          .orderBy(segmentSelections.startMs)
+
+        console.log(`  ${label} (${ep}):`)
+        for (const s of selections) {
+          console.log(`    ${s.type}: ${s.startMs}ms – ${s.endMs}ms [${s.selectedProvider}/${s.reason}]`)
+        }
+        if (selections.length === 0) throw new Error(`No merged selections for ${label}`)
+      }
+
+      // Verify API still returns clean client-facing payload (no provider fields)
+      console.log('\n--- API endpoint verification (T097) ---')
+      const bbApiBody = (await verifyApiEndpoint(bbEpisodeId)) as {
+        episodeId: string
+        segments: Array<{ type: string; startMs: number; endMs: number }>
+      }
+      console.log(`  Breaking Bad S1E1 → ${bbApiBody.segments.length} normalized segments`)
+      for (const seg of bbApiBody.segments) {
+        console.log(`    ${seg.type}: ${seg.startMs}ms – ${seg.endMs}ms`)
+      }
+      if (bbApiBody.segments.length === 0) throw new Error('API returned no segments for Breaking Bad after multi-provider sync')
+      const leaked = bbApiBody.segments.some((s: Record<string, unknown>) => 'sourceProvider' in s || 'selectedProvider' in s)
+      if (leaked) throw new Error('API leaked internal provider fields to client (T097 check)')
+
+      console.log('\n--- TheIntroDB mock request log ---')
+      for (const entry of theIntroDbLog) {
+        console.log(`  GET /media?tmdb_id=... → ${entry}`)
+      }
+      console.log(`  Total TheIntroDB requests: ${theIntroDbLog.length}`)
+
+      if (theIntroDbLog.length === 0) throw new Error('TheIntroDB mock was never called — pipeline did not reach TheIntroDbClient')
+
+      console.log('\n=== T097 MULTI-PROVIDER TEST PASSED ===')
+    } finally {
+      stopTheIntroDb()
+    }
+
     console.log('\n=== SMOKE TEST PASSED ===')
     console.log(`  Segments persisted: ${pass2Count}`)
     console.log(`  Idempotency: OK`)
     console.log(`  API endpoint: OK`)
     console.log(`  IntroDB requests: ${requestLog.length}`)
+    console.log(`  TheIntroDB requests: verified (see T097 section above)`)
   } finally {
     stopMock()
     await cleanupTestData()

@@ -88,9 +88,9 @@ export async function segmentAdminRoutes(app: FastifyInstance): Promise<void> {
       providerOverlap: { 'introdb+theintrodb': overlapCount },
       disagreementRate,
       noDataRate,
-      identifierMismatchRate: 0,
-      animeEpisodes: 0,
-      animeWithAnySegment: 0,
+      identifierMismatchRate: null, // not implemented — requires per-lookup mismatch tracking
+      animeEpisodes: null,           // not implemented — requires isAnime field in episodes schema
+      animeWithAnySegment: null,     // not implemented — requires isAnime field in episodes schema
     }
   })
 

@@ -283,5 +283,37 @@ describe('SegmentSyncService', () => {
       const call = (provider.fetchEpisodeSegments as ReturnType<typeof vi.fn>).mock.calls[0][0] as CanonicalEpisodeRef
       expect(call.seriesTmdbId).toBe(T_TMDB_SERIES)
     })
+
+    describe('backfillCatalog — provider-aware filterUnsynced', () => {
+      it('re-processes episodes synced by only a subset of configured providers', async () => {
+        // Seed both test episodes with IntroDB data only (simulating a T096 backfill)
+        const svcIntroDB = new SegmentSyncService(db, makeTmdbClient(), [makeProvider([INTRO_INTRODB])])
+        await svcIntroDB.syncEpisode(testEpisodeId, testSeriesId, 1, 1)
+        await svcIntroDB.syncEpisode(testEpisodeId2, testSeriesId, 1, 2)
+
+        // Backfill with both providers — episodes only have 1 of 2 providers, so they must be re-processed
+        const p2 = makeProvider([INTRO_THEINTRODB])
+        const svcBoth = new SegmentSyncService(
+          db,
+          makeTmdbClient(),
+          [makeProvider([INTRO_INTRODB]), p2],
+          ['introdb', 'theintrodb'],
+        )
+        const result = await svcBoth.backfillCatalog({ concurrency: 1, force: false })
+
+        // Both episodes were only partially synced (introdb only), so both should be re-processed
+        expect(result.processed).toBeGreaterThanOrEqual(2)
+        expect((p2.fetchEpisodeSegments as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(2)
+
+        // After re-sync, testEpisodeId has rows from both providers
+        const rows = await db
+          .select({ provider: mediaSegments.sourceProvider })
+          .from(mediaSegments)
+          .where(eq(mediaSegments.episodeId, testEpisodeId))
+        const providers = new Set(rows.map((r) => r.provider))
+        expect(providers.has('introdb')).toBe(true)
+        expect(providers.has('theintrodb')).toBe(true)
+      })
+    })
   })
 })

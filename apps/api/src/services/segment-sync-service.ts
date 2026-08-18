@@ -261,14 +261,27 @@ export class SegmentSyncService {
     rows: Array<{ episodeId: string; seriesId: string; seasonNumber: number; episodeNumber: number }>,
   ): Promise<typeof rows> {
     if (episodeIds.length === 0) return []
+    if (this.providers.length === 0) return []
 
-    const existing = await this.db
-      .selectDistinct({ episodeId: mediaSegments.episodeId })
+    // An episode is "fully synced" only when every configured provider has contributed at
+    // least one segment row. Episodes enriched by a subset of providers (e.g. only IntroDB
+    // from a previous T096 run) are re-processed so new providers can enrich them.
+    const result = await this.db
+      .select({
+        episodeId: mediaSegments.episodeId,
+        providersSeen: sql<number>`cast(count(distinct source_provider) as integer)`,
+      })
       .from(mediaSegments)
       .where(inArray(mediaSegments.episodeId, episodeIds))
+      .groupBy(mediaSegments.episodeId)
 
-    const synced = new Set(existing.map((r) => r.episodeId))
-    return rows.filter((r) => !synced.has(r.episodeId))
+    const providerCount = this.providers.length
+    const fullySynced = new Set(
+      result
+        .filter((r) => Number(r.providersSeen) >= providerCount)
+        .map((r) => r.episodeId),
+    )
+    return rows.filter((r) => !fullySynced.has(r.episodeId))
   }
 
   private printProgress(totals: BackfillResult): void {
