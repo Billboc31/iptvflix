@@ -463,15 +463,17 @@ export class TmdbClient implements MetadataProvider {
   }
 
   async fetchMovieFeed(feed: DiscoveryFeed, page: number): Promise<MetadataCandidate[]> {
-    const paths: Record<DiscoveryFeed, string> = {
+    if (feed === 'airing_today') throw new Error('airing_today is a series-only feed')
+    const paths: Partial<Record<DiscoveryFeed, string>> = {
       popular: '/movie/popular',
       trending: '/trending/movie/week',
       upcoming: '/movie/upcoming',
       now_playing: '/movie/now_playing',
-      airing_today: '/tv/airing_today',
     }
+    const path = paths[feed]
+    if (!path) throw new Error(`Unknown movie feed: ${feed}`)
     const params = new URLSearchParams({ page: String(page) })
-    const response = await this.fetchWithRetry(`${BASE_URL}${paths[feed]}?${params}`)
+    const response = await this.fetchWithRetry(`${BASE_URL}${path}?${params}`)
     if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
     try {
       const raw = (await response.json()) as TmdbSearchResponse
@@ -495,15 +497,17 @@ export class TmdbClient implements MetadataProvider {
   }
 
   async fetchSeriesFeed(feed: DiscoveryFeed, page: number): Promise<MetadataCandidate[]> {
-    const paths: Record<DiscoveryFeed, string> = {
+    if (feed === 'now_playing') throw new Error('now_playing is a movie-only feed')
+    const paths: Partial<Record<DiscoveryFeed, string>> = {
       popular: '/tv/popular',
       trending: '/trending/tv/week',
       upcoming: '/tv/on_the_air',
       airing_today: '/tv/airing_today',
-      now_playing: '/movie/now_playing',
     }
+    const path = paths[feed]
+    if (!path) throw new Error(`Unknown series feed: ${feed}`)
     const params = new URLSearchParams({ page: String(page) })
-    const response = await this.fetchWithRetry(`${BASE_URL}${paths[feed]}?${params}`)
+    const response = await this.fetchWithRetry(`${BASE_URL}${path}?${params}`)
     if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
     try {
       const raw = (await response.json()) as TmdbSearchResponse
