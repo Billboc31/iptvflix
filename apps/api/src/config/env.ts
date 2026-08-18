@@ -102,6 +102,22 @@ export const MEDIA_RELAY_ENABLED = Boolean(MEDIA_RELAY_URL && MEDIA_RELAY_SECRET
 
 export const OPENAI_API_KEY: string | undefined = process.env.OPENAI_API_KEY || undefined
 export const LLM_PLANNER_MODEL: string = process.env.LLM_PLANNER_MODEL ?? 'gpt-4o-mini'
+
+export const SHELF_CONCEPT_PERSONALIZED_RATIO = Number(process.env.SHELF_CONCEPT_PERSONALIZED_RATIO ?? 0.70)
+export const SHELF_CONCEPT_EXPLORATION_RATIO = Number(process.env.SHELF_CONCEPT_EXPLORATION_RATIO ?? 0.20)
+export const SHELF_CONCEPT_DISCOVERY_RATIO = Number(process.env.SHELF_CONCEPT_DISCOVERY_RATIO ?? 0.10)
+export const SHELF_CONCEPT_BATCH_SIZE = Number(process.env.SHELF_CONCEPT_BATCH_SIZE ?? 20)
+export const SHELF_CONCEPT_TTL_HOURS = Number(process.env.SHELF_CONCEPT_TTL_HOURS ?? 48)
+export const SHELF_CONCEPT_MIN_POOL_SIZE = Number(process.env.SHELF_CONCEPT_MIN_POOL_SIZE ?? 8)
+export const SHELF_CONCEPT_SEMANTIC_DEDUP_THRESHOLD = Number(process.env.SHELF_CONCEPT_SEMANTIC_DEDUP_THRESHOLD ?? 0.85)
+export const SHELF_CONCEPT_LLM_MODEL: string = process.env.SHELF_CONCEPT_LLM_MODEL ?? process.env.LLM_PLANNER_MODEL ?? 'gpt-4o-mini'
+
+const _ratioSum = SHELF_CONCEPT_PERSONALIZED_RATIO + SHELF_CONCEPT_EXPLORATION_RATIO + SHELF_CONCEPT_DISCOVERY_RATIO
+if (Math.abs(_ratioSum - 1.0) > 0.01) {
+  console.warn(
+    `[shelf-concept] SHELF_CONCEPT_*_RATIO values sum to ${_ratioSum.toFixed(3)}, not 1.0 — they will be normalized at runtime`,
+  )
+}
 export const SEGMENT_REFRESH_ENABLED =
   process.env.SEGMENT_REFRESH_ENABLED !== undefined
     ? process.env.SEGMENT_REFRESH_ENABLED === 'true'
