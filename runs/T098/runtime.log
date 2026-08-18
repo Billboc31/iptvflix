@@ -39,3 +39,8 @@
 [2026-08-18T08:34:27Z] push: pushing branch=ticket/T098-introduce-account-profile-foundation-and-move-all
 [2026-08-18T08:34:29Z] push: done branch=ticket/T098-introduce-account-profile-foundation-and-move-all
 [2026-08-18T08:34:29Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-18T08:36:27Z] conflict-resolver: [pass 2/3] conflicted=['apps/api/src/routes/recommendations.ts'] | staged=['apps/api/src/routes/recommendations.ts'] | unresolved=[] | continue_rc=1 | next_source=[]
+[2026-08-18T08:36:27Z] conflict-resolver: all conflicts resolved after 2 pass(es)
+[2026-08-18T08:36:27Z] conflict-resolver: running tests
+[2026-08-18T08:36:27Z] conflict-resolver: test-report written: runs/T098/conflict/test-report.md
+[2026-08-18T08:36:27Z] conflict-resolver: staging and committing resolution artifacts
