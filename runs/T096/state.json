@@ -1,7 +1,7 @@
 {
   "ticket_id": "T096",
-  "state": "IMPLEMENTATION_REVIEW_NEEDED",
+  "state": "IMPLEMENTATION_FIX_REQUIRED",
   "branch": "ticket/T096-import-and-sync-intro-recap-outro-credits-segment",
   "issue_number": 197,
-  "updated_at": "2026-08-18T09:04:38Z"
+  "updated_at": "2026-08-18T09:09:17Z"
 }
