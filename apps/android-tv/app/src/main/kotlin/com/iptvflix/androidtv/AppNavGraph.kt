@@ -13,17 +13,19 @@ import com.iptvflix.androidtv.command.CommandViewModel
 import com.iptvflix.androidtv.home.HomeScreen
 import com.iptvflix.androidtv.pairing.PairingScreen
 import com.iptvflix.androidtv.player.PlayerScreen
+import com.iptvflix.androidtv.profiles.WhoIsWatchingScreen
 import com.iptvflix.androidtv.storage.SecureStorage
 
-private enum class Screen { Pairing, Home, Player }
+private enum class Screen { Pairing, WhoIsWatching, Home, Player }
 
 @Composable
 fun AppNavGraph() {
     val context = LocalContext.current
     val secureStorage = remember { SecureStorage(context) }
 
+    val hasPairedDevice = secureStorage.getDeviceToken() != null
     var currentScreen by remember {
-        mutableStateOf(if (secureStorage.getDeviceToken() != null) Screen.Home else Screen.Pairing)
+        mutableStateOf(if (hasPairedDevice) Screen.WhoIsWatching else Screen.Pairing)
     }
 
     val commandVm: CommandViewModel = viewModel()
@@ -40,10 +42,15 @@ fun AppNavGraph() {
 
     when (currentScreen) {
         Screen.Pairing -> PairingScreen(
-            onPaired = { currentScreen = Screen.Home },
+            onPaired = { currentScreen = Screen.WhoIsWatching },
+        )
+        Screen.WhoIsWatching -> WhoIsWatchingScreen(
+            lastUsedProfileId = secureStorage.getLastUsedProfileId(),
+            onProfileSelected = { currentScreen = Screen.Home },
         )
         Screen.Home -> HomeScreen(
             onRevoked = { currentScreen = Screen.Pairing },
+            onChangeProfile = { currentScreen = Screen.WhoIsWatching },
         )
         Screen.Player -> PlayerScreen(
             command = commandVm.currentCommand(),

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { fetchWatchlist, addToWatchlist, removeFromWatchlist } from '../lib/api.js'
+import { useProfile } from '../context/ProfileContext.js'
 import type { WatchlistEntry, WatchlistMediaType } from '@iptvflix/api-contracts'
 
 export type UseWatchlistResult = {
@@ -10,15 +11,18 @@ export type UseWatchlistResult = {
 }
 
 export function useWatchlist(): UseWatchlistResult {
+  const { profileVersion } = useProfile()
   const [entries, setEntries] = useState<WatchlistEntry[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    setEntries([])
+    setLoading(true)
     fetchWatchlist()
       .then(setEntries)
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [profileVersion])
 
   const add = useCallback(async (mediaType: WatchlistMediaType, mediaId: string) => {
     const optimistic: WatchlistEntry = {
@@ -40,7 +44,6 @@ export function useWatchlist(): UseWatchlistResult {
   }, [])
 
   const remove = useCallback(async (mediaType: WatchlistMediaType, mediaId: string) => {
-    // Optimistic remove; re-fetch on error to restore correct state
     setEntries((prev) => prev.filter((e) => !(e.mediaType === mediaType && e.mediaId === mediaId)))
     try {
       await removeFromWatchlist(mediaType, mediaId)

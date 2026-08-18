@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { fetchShelves } from '../lib/api.js'
+import { useProfile } from '../context/ProfileContext.js'
 import type { ShelfSummaryResponse } from '@iptvflix/api-contracts'
 
 export type UseShelvesResult = {
@@ -10,6 +11,7 @@ export type UseShelvesResult = {
 }
 
 export function useShelves(): UseShelvesResult {
+  const { profileVersion } = useProfile()
   const [shelves, setShelves] = useState<ShelfSummaryResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
@@ -27,8 +29,9 @@ export function useShelves(): UseShelvesResult {
   }, [])
 
   useEffect(() => {
+    setShelves([])
     refetch()
-  }, [refetch])
+  }, [refetch, profileVersion])
 
   return { shelves, loading, error, refetch }
 }

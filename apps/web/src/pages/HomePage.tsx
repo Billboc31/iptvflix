@@ -12,14 +12,14 @@ import { useMovies } from '../hooks/useMovies.js'
 import { useHome } from '../hooks/useHome.js'
 import { useArrivals } from '../hooks/useArrivals.js'
 import { useOpenDetail } from '../hooks/useOpenDetail.js'
-
-const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
+import { useProfile } from '../context/ProfileContext.js'
 
 export default function HomePage() {
   const navigate = useNavigate()
   const openDetail = useOpenDetail()
+  const { currentProfile, profileVersion } = useProfile()
   const { data: movies, loading: moviesLoading } = useMovies({ pageSize: 1 })
-  const { data: homeData, isLoading: homeLoading } = useHome(DEFAULT_PROFILE_ID)
+  const { data: homeData, isLoading: homeLoading } = useHome(currentProfile?.id ?? '', profileVersion)
   const { arrivals, refresh: refreshArrivals } = useArrivals('unread')
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false)
 

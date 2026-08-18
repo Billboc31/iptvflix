@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import SettingsMenu from './SettingsMenu.js'
+import ProfileSwitcherPopover from '../ProfileSwitcherPopover.js'
 
 const NAV_ITEMS = [
   { label: 'Accueil', to: '/', end: true },
@@ -72,12 +73,15 @@ export default function TopNav() {
             🔍
           </button>
 
+          {/* Profile switcher */}
+          <ProfileSwitcherPopover />
+
           {/* Settings menu */}
           <SettingsMenu />
         </div>
       </div>
 
-      {/* Mobile nav strip — all five destinations, horizontally scrollable, mobile only */}
+      {/* Mobile nav strip */}
       <nav
         className="flex md:hidden overflow-x-auto border-t border-white/5"
         aria-label="Navigation mobile"

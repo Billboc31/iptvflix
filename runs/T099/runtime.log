@@ -1,0 +1,41 @@
+[2026-08-18T08:37:12Z] auto-run start: state=INIT
+[2026-08-18T08:37:12Z] auto-run: running step=planner
+[2026-08-18T08:37:18Z] auto-run: pre-planner rebase onto integration ok
+[2026-08-18T08:37:18Z] prompt: resolved=prompts/generic/planner.md source=generic
+[2026-08-18T08:37:18Z] prompt: generic fallback — injecting runs/T099/ticket.md
+[2026-08-18T08:37:18Z] compose: global-context=docs/ai/global-context.md
+[2026-08-18T08:37:18Z] compose: role=ai/roles/planner.md
+[2026-08-18T08:37:18Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-18T08:37:18Z] compose: skill=ai/skills/architecture-discipline.md
+[2026-08-18T08:37:18Z] compose: skill=ai/skills/documentation.md
+[2026-08-18T08:37:18Z] compose: task (canonical prompt)
+[2026-08-18T08:37:18Z] snapshot: runtime-prompt=runs/T099/prompts/planner-attempt-1.md
+[2026-08-18T08:43:48Z] compose: preferring on-disk runs/T099/plan.md over chatty stdout (agent Write beat meta-report)
+[2026-08-18T08:43:48Z] auto-run: step=planner done rc=0
+[2026-08-18T09:44:57Z] conflict-resolver: [pass 1/3] conflicted=['apps/web/src/App.tsx', 'packages/api-contracts/src/index.ts'] | staged=['apps/web/src/App.tsx', 'packages/api-contracts/src/index.ts'] | unresolved=[] | continue_rc=1 | next_source=[]
+[2026-08-18T09:44:57Z] conflict-resolver: all conflicts resolved after 1 pass(es)
+[2026-08-18T09:44:57Z] conflict-resolver: running tests
+[2026-08-18T09:44:57Z] conflict-resolver: test-report written: runs/T099/conflict/test-report.md
+[2026-08-18T09:44:57Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-18T09:58:04Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-18T09:58:04Z] auto-run: running step=tester
+[2026-08-18T09:58:05Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-18T09:58:05Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-18T09:58:05Z] prompt: generic fallback — injecting runs/T099/ticket.md
+[2026-08-18T09:58:05Z] compose: global-context=docs/ai/global-context.md
+[2026-08-18T09:58:05Z] compose: role=ai/roles/tester.md
+[2026-08-18T09:58:05Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-18T09:58:05Z] compose: skill=ai/skills/testing.md
+[2026-08-18T09:58:05Z] compose: skill=ai/skills/debugging.md
+[2026-08-18T09:58:05Z] compose: task (canonical prompt)
+[2026-08-18T09:58:05Z] snapshot: runtime-prompt=runs/T099/prompts/tester-attempt-1.md
+[2026-08-18T10:04:23Z] auto-run: step=tester done rc=0
+[2026-08-18T10:04:23Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-18T10:04:23Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-18T10:04:24Z] commit-checkpoint: unstaged runtime garbage: ['runs/T099/daemon.lock', 'runs/T099/runtime.log', 'runs/T099/workflow-status.md']
+[2026-08-18T10:04:24Z] commit-checkpoint: sha=02623ed files=3 title='test(T099/workflow): tester — update 3 file(s)'
+[2026-08-18T10:04:24Z] auto-run: auto-push triggered
+[2026-08-18T10:04:24Z] push: tolerating runtime dirty files (not blocking): ['runs/T099/daemon.lock', 'runs/T099/runtime.log', 'runs/T099/workflow-status.md']
+[2026-08-18T10:04:24Z] push: pushing branch=ticket/T099-add-profile-selector-and-profile-management-ux-on
+[2026-08-18T10:04:26Z] push: done branch=ticket/T099-add-profile-selector-and-profile-management-ux-on
+[2026-08-18T10:04:26Z] auto-run: TEST_COMPLETE — running PR lifecycle

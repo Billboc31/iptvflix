@@ -8,15 +8,17 @@ export type UseHomeResult = {
   error: Error | null
 }
 
-export function useHome(profileId: string): UseHomeResult {
+export function useHome(profileId: string, profileVersion: number): UseHomeResult {
   const [data, setData] = useState<HomeResponse | undefined>(undefined)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
   useEffect(() => {
+    if (!profileId) return
     let cancelled = false
     setIsLoading(true)
     setError(null)
+    setData(undefined)
     fetchHome(profileId)
       .then((result) => {
         if (!cancelled) {
@@ -33,7 +35,7 @@ export function useHome(profileId: string): UseHomeResult {
     return () => {
       cancelled = true
     }
-  }, [profileId])
+  }, [profileId, profileVersion])
 
   return { data, isLoading, error }
 }

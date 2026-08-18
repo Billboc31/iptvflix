@@ -15,6 +15,7 @@ import type {
   ShelfSummaryResponse,
   ShelfResponse,
   ProfileResponse,
+  SelectProfileResponse,
   DeviceResponse,
   PairingCodeDetailResponse,
   PlaybackCommandResponse,
@@ -308,18 +309,69 @@ const seriesList: PaginatedList<SeriesResponse> = {
   pageSize: 20,
 }
 
-const defaultProfile: ProfileResponse = {
+export const MOCK_PROFILE_A: ProfileResponse = {
+  id: 'profile-a-001',
+  accountId: 'account-001',
+  name: 'Alice',
+  avatarKey: 'avatar_01',
+  isKids: false,
+  maturityLevel: null,
+  preferredUiLanguage: null,
+  preferredAudioLanguages: [],
+  preferredSubtitleLanguages: [],
+  preferredSourceIds: [],
+  maxVideoQuality: null,
+  subtitlesEnabledPreference: null,
+  autoplayPreviews: true,
+  autoplayNextEpisode: true,
+  autoSkipIntro: false,
+  autoSkipRecap: false,
+  neverStopMode: false,
+  createdAt: '2024-01-01T00:00:00Z',
+  updatedAt: '2024-01-01T00:00:00Z',
+  lastUsedAt: null,
+}
+
+export const MOCK_PROFILE_B: ProfileResponse = {
+  ...MOCK_PROFILE_A,
+  id: 'profile-b-002',
+  name: 'Bob',
+  avatarKey: 'avatar_02',
+}
+
+export const MOCK_PROFILE_KIDS: ProfileResponse = {
+  ...MOCK_PROFILE_A,
+  id: 'profile-c-003',
+  name: 'Tom',
+  avatarKey: 'avatar_03',
+  isKids: true,
+}
+
+export const MOCK_SELECT_PROFILE_RESPONSE: SelectProfileResponse = {
+  token: 'mock-profile-jwt-token',
+  profile: MOCK_PROFILE_A,
+}
+
+// Legacy single-profile endpoint shape (used by ProfileSettingsPage)
+const legacyProfileShape = {
   id: '00000000-0000-0000-0000-000000000001',
   name: 'Default',
   preferences: MOCK_PROFILE_PREFERENCES,
 }
 
 export const handlers = [
-  http.get('/api/profile', () => HttpResponse.json(defaultProfile)),
+  http.get('/api/profile', () => HttpResponse.json(legacyProfileShape)),
   http.patch('/api/profile/preferences', async ({ request }) => {
-    const body = await request.json() as Partial<ProfileResponse['preferences']>
-    return HttpResponse.json({ ...defaultProfile, preferences: { ...MOCK_PROFILE_PREFERENCES, ...body } })
+    const body = await request.json() as Record<string, unknown>
+    return HttpResponse.json({ ...legacyProfileShape, preferences: { ...MOCK_PROFILE_PREFERENCES, ...body } })
   }),
+  http.get('/api/profiles', () => HttpResponse.json([MOCK_PROFILE_A, MOCK_PROFILE_B, MOCK_PROFILE_KIDS])),
+  http.post('/api/profiles', () => HttpResponse.json(MOCK_PROFILE_A, { status: 201 })),
+  http.patch('/api/profiles/:id', ({ params }) =>
+    HttpResponse.json({ ...MOCK_PROFILE_A, id: (params as { id: string }).id }),
+  ),
+  http.delete('/api/profiles/:id', () => new HttpResponse(null, { status: 204 })),
+  http.post('/api/profiles/:id/select', () => HttpResponse.json(MOCK_SELECT_PROFILE_RESPONSE)),
   http.get('/api/movies', () => HttpResponse.json(moviesList)),
   http.get('/api/movies/:id/similar', () => HttpResponse.json([MOCK_SIMILAR_MOVIE])),
   http.get('/api/movies/:id', () => HttpResponse.json(MOCK_MOVIE)),
