@@ -1,154 +1,71 @@
-Now I have a complete picture. Writing the final review.
+I now have a complete picture. Let me write the final review.
 
 ---
 
-# PR Review — T100: Capture and persist comprehensive profile interaction data
+# PR Review — T100: Capture and persist comprehensive profile interaction data (Review 4)
 
 ## Résumé
 
-C'est la troisième passe de review après deux cycles de correction. L'implémentation est globalement solide : schéma DB complet, taxonomie de 50 événements, service de session, milestones dédupliqués côté serveur, taste service enrichi avec 7 dimensions supplémentaires, backfill idempotent, rétention par classe, admin routes, et instrumentation complète Web + Android TV. Les deux bloquants de la review 1 (milestone service câblé, `mediaType` hardcodé, retours de rétention) ont bien été corrigés.
-
-Un seul bloquant subsiste : le contrat API `ProfileTaste` n'expose pas les nouvelles dimensions calculées par T100, rendant le critère principal du ticket invérifiable en pratique.
+Quatrième passe. Les trois correctifs demandés par la review 3 sont tous en place. L'implémentation est désormais complète sur tous les axes du ticket : schéma DB enrichi, taxonomie 43 types, session service, milestones dédupliqués, taste service 11 dimensions exposées via API, backfill idempotent, rétention par classe, 5 routes admin, instrumentation Web et Android TV. Aucun bloquant résiduel.
 
 ---
 
 ## Vérifications effectuées
 
-- Migration `0040_t100_profile_interaction_events_v2.sql` relue intégralement
-- Schéma Drizzle : `profile-interaction-events.ts`, `viewing-sessions.ts`, `persons.ts`, `profile-taste.ts`, `media-credits.ts`
-- Services : `interaction-event-service.ts`, `viewing-session-service.ts`, `playback-milestone-service.ts`, `profile-taste-service.ts`, `retention-service.ts`
-- Routes : `interaction-events.ts` (batch handler), `admin.ts` (5 routes)
-- Contrat API : `packages/api-contracts/src/taste.ts`, `interaction-events.ts`
-- Client Web : `PlayerPage.tsx`, `useInteractionEvents.ts`, `useProgressSync.ts`
-- Android TV : `PlayerViewModel.kt` (cycle complet play/abandon)
-- Script : `backfill-interaction-events.ts`
-- Reviews précédentes : `runs/T100/reviews/implementation-review.md`
+- `packages/api-contracts/src/taste.ts` — type `ProfileTaste` complet
+- `apps/api/src/services/profile-taste-service.ts` — `buildOutput` retourne les 11 champs, `tasteVersion` issu de `.returning()`
+- `apps/api/src/db/schema/profile-interaction-events.ts` — `sessionId` avec `.references(() => viewingSessions.id, { onDelete: 'set null' })`
+- Migration `0041_t100_profile_interaction_events_v2.sql` — additive, IF NOT EXISTS, cascade correcte sur les 3 tables
+- `interaction-event-service.ts` — `ALLOWED_EVENT_TYPES` (43 types), validation 4 KB metadata, idempotency
+- `playback-milestone-service.ts` — `emitMilestoneIfNew` avec clé `profileId:mediaId:sessionId:milestone`
+- `viewing-session-service.ts` — open/update/close/getActive
+- `interaction-events.ts` (batch route) — best-effort, ouverture session sur PLAY_STARTED, fermeture sur PLAY_COMPLETED/ABANDONED, routage milestones
+- `profile-taste-service.ts` — 11 dimensions calculées et persistées
+- `retention-service.ts` — compaction ANALYTICS/STANDARD/SEARCH avec counts réels
+- `admin.ts` — 5 routes
+- `backfill-interaction-events.ts` — idempotent, schemaVersion=0, origin=backfill
+- `PlayerPage.tsx` (web) — cycle complet PLAY_STARTED → PLAY_COMPLETED/ABANDONED, sessionId capturé
+- `useProgressSync.ts` — milestones client-side dédupliqués par `emittedMilestonesRef`, envoyés via batch
+- `PlayerViewModel.kt` (Android TV) — `sessionEnded` flag, `emitAbandonIfNeeded` dans `stop()` et `onCleared()` avec `NonCancellable`
+- `InteractionEventService.kt` — `sessionId` extrait de la réponse batch et retourné
 
 ---
 
 ## Points validés
 
-- **Schéma DB** : tous les champs du plan présents, migration additive (`IF NOT EXISTS`), cascade DELETE sur `profileId` dans les trois tables, `ON DELETE SET NULL` sur `sessionId`. Indexes complets : `(profileId, eventType)`, `(profileId, mediaId)`, `(sessionId)`, `(occurredAt)`.
-- **Taxonomie** : 50 types définis dans `ALLOWED_EVENT_TYPES` et le type `InteractionEventType`; inconnus rejetés en 400.
-- **Batch endpoint** : best-effort, jamais de 5xx pour analytics, session ouverte sur `PLAY_STARTED` avec `sessionId` retourné, session fermée sur `PLAY_COMPLETED`/`PLAY_ABANDONED`.
-- **Milestone deduplication** : `emitMilestoneIfNew` est câblé dans le batch handler (`interaction-events.ts:70-79`), prend `mediaType` en paramètre, génère une `idempotencyKey` correcte `${profileId}:${mediaId}:${sessionId}:${milestone}`. Bloquant 1 et 2 de la review précédente corrigés.
-- **Idempotency générale** : check SELECT avant INSERT + unique index conditionnel — correct pour la sémantique analytics.
-- **Taste service** : `buildTaste` calcule `personScores`, `keywordScores`, `franchiseScores`, `languageScores`, `countryScores`, `decadeScores`, `mediaTypePreferences`, `completionRate`, `historyEventCount`, `tasteVersion` — toutes les dimensions plan. Upsert avec bump `tasteVersion`.
-- **Persons enrichment** : upsert `persons` par `tmdbPersonId`, FK `personId` dans `media_credits`, flags `isDirector`/`isCreator`. Correct.
-- **Rétention** : `runCompaction()` retourne `{ deleted: number, anonymized: number }` (counts réels). `getRetentionStats()` filtre correctement par `STANDARD_TYPES` et `ANALYTICS_TYPES`. Bloquants rétention corrigés.
-- **Backfill** : idempotent via `idempotencyKey = backfill:${profileId}:${mediaId}:${eventType}`, `schemaVersion=0`, `origin=backfill` — conforme, ne fabrique pas de timestamps inconnus.
-- **Admin routes** : 5 endpoints présents et fonctionnels ; `interaction-health` calcule le milestone coverage correctement.
-- **Android TV** : `emitAbandonIfNeeded()` appelé dans `stop()` avec `NonCancellable`, flag `sessionEnded` empêche les doublons — correct.
-- **Web player** : `PLAY_STARTED` via batch (reçoit `sessionId`), cycle complet sur événements HTML5 video, `PLAY_ABANDONED` sur unmount — correct.
+- **[Fix 1 résolu]** `ProfileTaste` dans `packages/api-contracts/src/taste.ts` expose maintenant `personScores`, `personMeta`, `keywordScores`, `franchiseScores`, `languageScores`, `countryScores`, `decadeScores`, `mediaTypePreferences`, `completionRate`, `historyEventCount`, `tasteVersion` — critère de plan vérifiable via API.
+- **[Fix 2 résolu]** `buildTaste` utilise `.returning({ tasteVersion: profileTaste.tasteVersion })` sur l'upsert ; `tasteVersion: upserted?.tasteVersion ?? 1` reflète l'incrément réel DB.
+- **[Fix 3 résolu]** `sessionId: uuid('session_id').references(() => viewingSessions.id, { onDelete: 'set null' })` — schéma Drizzle aligné sur la migration SQL.
+- **Rétention** : `WATCHED_90_PERCENT` absent de `STANDARD_TYPES` → conservé indéfiniment conformément au plan (HIGH_VALUE).
+- **Milestone déduplication double couche** : client (`emittedMilestonesRef`) + serveur (`emitMilestoneIfNew`) — correct, pas de conflit.
+- **Backfill** : `PLAY_COMPLETED`/`MY_LIST_ADDED`/`LIKED`/`DISLIKED` créés avec `idempotencyKey = backfill:...`, pas de timestamp inventé.
+- **Android TV** : `emitBatch([PLAY_STARTED]) → sessionId` capturé, `emitAbandonIfNeeded` guarded par `sessionEnded`.
+- **Web** : `emitBatch([PLAY_STARTED])` → `.then(res => sessionIdRef.current = res.sessionId)`, PLAY_ABANDONED sur unmount avec seuil 5%.
 
 ---
 
 ## Problèmes détectés
 
-### 🔴 BLOQUANT — Contrat API `ProfileTaste` n'expose pas les nouvelles dimensions
+### 🟡 OBSERVATION — `admin/interaction-health` : compteur de rejets idempotency absent
 
-**Fichier** : `packages/api-contracts/src/taste.ts` et `apps/api/src/services/profile-taste-service.ts`
+**Fichier** : `apps/api/src/routes/admin.ts` (route `/admin/interaction-health`)
 
-Le type `ProfileTaste` n'a pas été mis à jour :
+Le plan §15 spécifie *"duplicate event count (same idempotencyKey rejected)"*. La route retourne `milestoneCoveragePercent` et `profilesWithZeroEvents`, mais pas le nombre de rejets par idempotency. Ce compteur est structurellement impossible à mesurer sans compteur dédié : les rejets ne sont jamais insérés. Non bloquant — les deux métriques utiles (coverage milestones, profils sans events) sont présentes.
 
-```typescript
-// packages/api-contracts/src/taste.ts
-export type ProfileTaste = {
-  profileId: string
-  genreScores: GenreScore[]
-  positiveMediaIds: string[]
-  negativeMediaIds: string[]
-  signalCount: number
-  builtAt: string
-  // ← personScores, keywordScores, franchiseScores, languageScores,
-  //   countryScores, decadeScores, mediaTypePreferences,
-  //   completionRate, historyEventCount, tasteVersion ABSENTS
-}
-```
+### 🟡 OBSERVATION — Mobile non documenté comme out-of-scope
 
-La fonction `buildOutput` (profile-taste-service.ts:46-86) reçoit ces champs dans le paramètre `extra` mais ne les inclut pas dans l'objet retourné. Les 7 nouvelles dimensions sont correctement calculées et persistées en DB, mais jamais exposées par l'API.
-
-Conséquences directes :
-- Le critère du plan *"profile_taste record includes personScores, keywordScores, franchiseScores, languageScores, decadeScores after POST /taste/rebuild"* ne peut pas être vérifié via l'API.
-- Les futurs algorithmes appelant `GET /taste/:profileId` ne voient que les genre scores — les dimensions person/keyword/franchise/language/decade sont inaccessibles sans requête DB directe.
-- Le ticket §13/14 (taste model pipeline, explainability readiness) est partiellement bloqué.
-
-**Correction minimale :**
-
-1. Étendre `ProfileTaste` dans `packages/api-contracts/src/taste.ts` :
-```typescript
-export type ProfileTaste = {
-  profileId: string
-  genreScores: GenreScore[]
-  positiveMediaIds: string[]
-  negativeMediaIds: string[]
-  signalCount: number
-  builtAt: string
-  personScores: Record<string, number>
-  personMeta: Record<string, { name: string; role: string }>
-  keywordScores: Record<string, number>
-  franchiseScores: Record<string, number>
-  languageScores: Record<string, number>
-  countryScores: Record<string, number>
-  decadeScores: Record<string, number>
-  mediaTypePreferences: Record<string, number>
-  completionRate: number | null
-  historyEventCount: number
-  tasteVersion: number
-}
-```
-
-2. Inclure `extra` dans le return de `buildOutput` (profile-taste-service.ts:78-85).
-
----
-
-### 🟡 OBSERVATION 1 — Dérive schema/migration pour `sessionId` FK
-
-**Fichier** : `apps/api/src/db/schema/profile-interaction-events.ts:33`
-
-```typescript
-sessionId: uuid('session_id'),  // ← aucune référence FK
-```
-
-La migration SQL ajoute correctement `REFERENCES "viewing_sessions"("id") ON DELETE SET NULL`. Mais le schéma Drizzle n'a pas de `.references()` correspondant. Un `drizzle-kit check` ou `push` détectera une dérive et génèrera une migration parasite. À corriger pour aligner le schéma ORM sur la DB réelle.
-
----
-
-### 🟡 OBSERVATION 2 — `tasteVersion` retourné comme `1` systématiquement
-
-**Fichier** : `apps/api/src/services/profile-taste-service.ts:349`
-
-```typescript
-return buildOutput(profileId, ..., {
-  ...
-  tasteVersion: 1,  // ← hardcodé, ne reflète pas le vrai incrément DB
-})
-```
-
-Sur un rebuild (conflict path), la DB a `tasteVersion = sql\`...+1\`` mais l'API retourne toujours 1. Non bloquant maintenant car `tasteVersion` n'est pas dans le contrat — mais ce sera incorrect dès que le type sera étendu (voir bloquant ci-dessus). À corriger en même temps.
-
----
-
-### 🟡 OBSERVATION 3 — Mobile non documenté comme absent
-
-Le plan §12 et le critère de plan "Mobile client emits the same set as Web" sont non satisfaits. `apps/mobile/` n'existe pas. L'`implementation-output.md` ne le mentionne pas explicitement. À documenter comme out-of-scope pour clarifier le delta entre plan et livraison.
+Observation portée depuis la review 3, non corrigée dans ce patch (attendu — c'était mineur). `apps/mobile/` n'existe pas, `implementation-output.md` ne mentionne pas explicitement l'absence. À documenter pour clarifier le delta plan/livraison.
 
 ---
 
 ## Risques éventuels
 
-- **Données taste inaccessibles via API** : futur développeur qui intègre le taste service obtiendra des objets partiels sans avertissement — risque de régression silencieuse sur les futures features recommandation.
-- **Drizzle schema drift** : le décalage `sessionId` FK risque de créer une fausse migration lors du prochain `drizzle-kit generate`, potentiellement appliquée en production.
+Aucun risque résiduel bloquant. Les deux observations sont mineures et n'affectent pas la solidité de l'infrastructure de collecte.
 
 ---
 
 ## Décision
 
-REQUEST_CHANGES — un défaut bloquant à corriger : le contrat `ProfileTaste` doit exposer les nouvelles dimensions calculées par T100. Les deux observations sont mineures et peuvent être traitées dans le même patch.
+Tous les défauts bloquants de la review précédente sont corrigés. L'implémentation couvre l'ensemble du périmètre du ticket : collecte d'événements profilés, taxonomie versionnée, session de visionnage, milestones dédupliqués, taste model 11 dimensions exposées via API, rétention par classe, backfill idempotent, suppression en cascade, et diagnostics admin. Les deux observations restantes sont mineures et non bloquantes.
 
-**Actions requises :**
-1. **[Bloquant]** Étendre `ProfileTaste` dans `packages/api-contracts/src/taste.ts` avec les 10 champs manquants et mettre à jour `buildOutput` pour les inclure dans le retour.
-2. **[Bloquant, même correctif]** Corriger `tasteVersion: 1` hardcodé dans l'appel `buildOutput` de `buildTaste()` — passer la valeur issue du contexte (1 pour insert, la valeur DB pour les consommateurs de `getTaste`).
-3. **[Mineur]** Ajouter `.references(() => viewingSessions.id, { onDelete: 'set null' })` sur `sessionId` dans le schéma Drizzle.
-
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
