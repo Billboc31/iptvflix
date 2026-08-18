@@ -23,6 +23,8 @@ export type PlaybackProbeResult = {
 
 export type PlaybackResolveRequest = {
   availabilityId?: string
+  /** When true, ignore stored progress and start at 0 (Recommencer). */
+  restart?: boolean
 }
 
 export type PlaybackSessionResponse = {

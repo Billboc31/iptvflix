@@ -71,7 +71,7 @@ export default function PlayerPage() {
   const [subtitleTracks, setSubtitleTracks] = useState<SubtitleTrack[]>([])
   const [currentSubtitleTrack, setCurrentSubtitleTrack] = useState<number | null>(null)
 
-  const { gatewayUrl, deliveryMode, containerExtension, startPositionSeconds, alternatives, availabilityId, probeDurationSeconds, status, error, switchVariant } = usePlayback(
+  const { gatewayUrl, deliveryMode, containerExtension, startPositionSeconds, alternatives, availabilityId, probeDurationSeconds, status, error, switchVariant, restartPlayback } = usePlayback(
     resolvedMediaType as 'movie' | 'episode',
     mediaId!,
     initialAvailabilityId,
@@ -85,6 +85,8 @@ export default function PlayerPage() {
 
   const startPositionRef = useRef<number>(0)
   startPositionRef.current = startPositionSeconds
+  const deliveryModeRef = useRef(deliveryMode)
+  deliveryModeRef.current = deliveryMode
   const skipResumeDialogRef = useRef(skipResumeDialog)
   skipResumeDialogRef.current = skipResumeDialog
   const resumeHandledRef = useRef(false)
@@ -123,6 +125,9 @@ export default function PlayerPage() {
     stableDurationSeconds,
     sessionIdRef.current,
     progressFloorSeconds,
+    deliveryMode != null && deliveryMode !== 'DIRECT' && startPositionSeconds > 30
+      ? startPositionSeconds
+      : 0,
   )
   const { emit: emitEvent, emitBatch } = useInteractionEvents()
 
@@ -344,6 +349,12 @@ export default function PlayerPage() {
               maxMaxBufferLength: 180,
               lowLatencyMode: false,
               progressive: true,
+              // DIRECT HLS can seek in-playlist. Remux sessions already start at
+              // the resume offset via ffmpeg -ss — seeking again would skip twice.
+              startPosition:
+                deliveryMode === 'DIRECT' && startPositionRef.current > RESUME_THRESHOLD_START_S
+                  ? startPositionRef.current
+                  : -1,
               xhrSetup(xhr, requestUrl) {
                 const apiBase = import.meta.env.VITE_API_BASE ?? ''
                 let sameOrigin = !apiBase
@@ -404,7 +415,11 @@ export default function PlayerPage() {
             hlsInstance.loadSource(mediaUrl)
             hlsInstance.attachMedia(video)
             hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-              if (startPositionRef.current <= RESUME_THRESHOLD_START_S) {
+              const start = startPositionRef.current
+              if (deliveryMode === 'DIRECT' && start > RESUME_THRESHOLD_START_S) {
+                video.currentTime = start
+              }
+              if (start <= RESUME_THRESHOLD_START_S) {
                 void video.play().catch(() => {
                   video.muted = true
                   void video.play()
@@ -539,7 +554,12 @@ export default function PlayerPage() {
       if (!video || resumeHandledRef.current) return
       const start = startPositionRef.current
       const skip = skipResumeDialogRef.current
-      const dur = stableDurationRef.current ?? (Number.isFinite(video.duration) ? video.duration : 0)
+      const remuxed = deliveryModeRef.current != null && deliveryModeRef.current !== 'DIRECT'
+      const videoDur = Number.isFinite(video.duration) ? video.duration : 0
+      const fullDur = stableDurationRef.current
+      // Remux playlists are the *remaining* duration after ffmpeg -ss. Near-end
+      // must use the title length (probe), not the playlist length.
+      const dur = remuxed && fullDur && fullDur > 0 ? fullDur : (fullDur ?? videoDur)
       const nearEnd = Number.isFinite(dur) && dur > 0 && start >= dur - RESUME_THRESHOLD_END_S
       const shouldAsk = !skip && start > RESUME_THRESHOLD_START_S && !nearEnd
 
@@ -552,7 +572,8 @@ export default function PlayerPage() {
 
       if (skip || start === 0 || (Number.isFinite(dur) && dur > 0) || video.readyState >= 1) {
         resumeHandledRef.current = true
-        if (start > 0 && !nearEnd) video.currentTime = start
+        const remuxed = deliveryModeRef.current != null && deliveryModeRef.current !== 'DIRECT'
+        if (start > 0 && !nearEnd && !remuxed) video.currentTime = start
         void video.play()?.catch(() => undefined)
         setProgressFloorSeconds(start > 0 && !nearEnd ? start : 0)
         setProgressSyncReady(true)
@@ -567,7 +588,8 @@ export default function PlayerPage() {
   function handleResumeConfirm() {
     const video = videoRef.current
     if (!video) return
-    video.currentTime = startPositionSeconds
+    const remuxed = deliveryModeRef.current != null && deliveryModeRef.current !== 'DIRECT'
+    if (!remuxed) video.currentTime = startPositionSeconds
     void video.play()?.catch(() => undefined)
     setProgressFloorSeconds(startPositionSeconds)
     setProgressSyncReady(true)
@@ -577,8 +599,13 @@ export default function PlayerPage() {
   function handleRestart() {
     const video = videoRef.current
     if (!video) return
-    video.currentTime = 0
-    void video.play()?.catch(() => undefined)
+    const remuxed = deliveryModeRef.current != null && deliveryModeRef.current !== 'DIRECT'
+    if (remuxed) {
+      restartPlayback()
+    } else {
+      video.currentTime = 0
+      void video.play()?.catch(() => undefined)
+    }
     setProgressFloorSeconds(0)
     setProgressSyncReady(true)
     setShowResumeDialog(false)

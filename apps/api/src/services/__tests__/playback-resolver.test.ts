@@ -498,6 +498,18 @@ describe('resume position', () => {
     expect(session.startPositionSeconds).toBe(420)
   })
 
+  it('returns 0 when restart is requested even if progress exists', async () => {
+    const av = makeAvailability({ id: 'av-1' })
+    const src = makeSource({ id: 'source-uuid-1' })
+
+    dbResultQueue.push([av])
+    dbResultQueue.push([src])
+
+    const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1', undefined, 'corr', { restart: true })
+
+    expect(session.startPositionSeconds).toBe(0)
+  })
+
   it('returns 0 when no progress row exists', async () => {
     const av = makeAvailability({ id: 'av-1' })
     const src = makeSource({ id: 'source-uuid-1' })

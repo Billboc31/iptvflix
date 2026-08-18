@@ -20,6 +20,22 @@ describe('media-relay-ticket', () => {
     const payload = JSON.parse(Buffer.from(body!, 'base64url').toString('utf8'))
     expect(payload.e).toBe('mp4')
     expect(payload.u).toContain('/1.mp4')
+    expect(payload.s).toBeUndefined()
+  })
+
+  it('embeds resume offset on the ticket when start is past 30 seconds', () => {
+    const url = buildMediaRelayPlayUrl({
+      relayBaseUrl: 'https://relay.example',
+      secret: 's3cret',
+      providerStreamUrl: 'http://cf.example/movie/u/p/1.mkv',
+      containerExtension: 'mkv',
+      ttlSeconds: 120,
+      startPositionSeconds: 600,
+    })
+    const ticket = decodeURIComponent(url.split('ticket=')[1]!)
+    const body = ticket.split('.')[0]!
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'))
+    expect(payload.s).toBe(600)
   })
 
   it('signRelayTicket is deterministic for same payload', () => {

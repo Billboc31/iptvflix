@@ -29,6 +29,15 @@ export function classifyDelivery(mediaInfo: MediaInfo): DeliveryMode {
   return 'HLS_TRANSCODE_FULL'
 }
 
+/** Insert ffmpeg `-ss` immediately before `-i` so remux/transcode starts at resume time. */
+export function insertSeekBeforeInput(args: string[], startPositionSeconds: number): string[] {
+  const start = Math.floor(startPositionSeconds)
+  if (start <= 30) return args
+  const i = args.indexOf('-i')
+  if (i < 0) return ['-ss', String(start), ...args]
+  return [...args.slice(0, i), '-ss', String(start), ...args.slice(i)]
+}
+
 export function buildFfmpegArgs(mode: DeliveryMode, tempDir: string): string[] {
   const segmentPath = `${tempDir}/seg%05d.ts`
   const playlistPath = `${tempDir}/master.m3u8`

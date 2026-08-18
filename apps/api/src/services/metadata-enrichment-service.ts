@@ -347,7 +347,7 @@ export class MetadataEnrichmentService {
                 airDate: sql`EXCLUDED.air_date`,
                 durationMinutes: sql`EXCLUDED.duration_minutes`,
                 tmdbId: sql`EXCLUDED.tmdb_id`,
-                posterPath: sql`EXCLUDED.poster_path`,
+                posterPath: sql`COALESCE(EXCLUDED.poster_path, ${episodes.posterPath})`,
                 voteAverage: sql`EXCLUDED.vote_average`,
                 voteCount: sql`EXCLUDED.vote_count`,
                 updatedAt: sql`now()`,

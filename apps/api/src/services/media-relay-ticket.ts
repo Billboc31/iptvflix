@@ -4,6 +4,8 @@ export type RelayTicketPayload = {
   u: string
   e: string
   exp: number
+  /** Resume offset in seconds for remux (-ss). */
+  s?: number
 }
 
 function b64url(buf: Buffer): string {
@@ -23,14 +25,17 @@ export function buildMediaRelayPlayUrl(opts: {
   providerStreamUrl: string
   containerExtension: string | null | undefined
   ttlSeconds?: number
+  startPositionSeconds?: number
 }): string {
   const base = opts.relayBaseUrl.replace(/\/$/, '')
   const exp = Math.floor(Date.now() / 1000) + (opts.ttlSeconds ?? 2 * 60 * 60)
+  const start = Math.floor(opts.startPositionSeconds ?? 0)
   const ticket = signRelayTicket(
     {
       u: opts.providerStreamUrl,
       e: (opts.containerExtension || 'mp4').replace(/^\./, ''),
       exp,
+      ...(start > 30 ? { s: start } : {}),
     },
     opts.secret,
   )

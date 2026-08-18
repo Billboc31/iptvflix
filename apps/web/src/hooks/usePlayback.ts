@@ -15,6 +15,7 @@ export type UsePlaybackState = {
   status: Status
   error: string | null
   switchVariant: (id: string) => void
+  restartPlayback: () => void
 }
 
 export function usePlayback(
@@ -33,14 +34,17 @@ export function usePlayback(
   const [error, setError] = useState<string | null>(null)
 
   const resolve = useCallback(
-    async (explicitId?: string) => {
+    async (explicitId?: string, restart = false) => {
       setStatus('loading')
       setError(null)
       try {
         const session = await resolvePlayback(
           mediaType,
           mediaId,
-          explicitId ? { availabilityId: explicitId } : {},
+          {
+            ...(explicitId ? { availabilityId: explicitId } : {}),
+            ...(restart ? { restart: true } : {}),
+          },
         )
         setGatewayUrl(session.gatewayUrl)
         setDeliveryMode(session.deliveryMode)
@@ -70,5 +74,9 @@ export function usePlayback(
     [resolve],
   )
 
-  return { gatewayUrl, deliveryMode, containerExtension, startPositionSeconds, alternatives, availabilityId, probeDurationSeconds, status, error, switchVariant }
+  const restartPlayback = useCallback(() => {
+    resolve(availabilityId ?? undefined, true)
+  }, [resolve, availabilityId])
+
+  return { gatewayUrl, deliveryMode, containerExtension, startPositionSeconds, alternatives, availabilityId, probeDurationSeconds, status, error, switchVariant, restartPlayback }
 }

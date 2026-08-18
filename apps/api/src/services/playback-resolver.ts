@@ -111,6 +111,7 @@ export async function resolvePlayback(
   mediaId: string,
   explicitAvailabilityId?: string,
   correlationId = 'unknown',
+  opts?: { restart?: boolean },
 ): Promise<PlaybackSessionResponse> {
   const t0 = Date.now()
   console.info({ correlationId, step: 'resolve_start', mediaType, mediaId }, 'playback-resolver: resolve_start')
@@ -178,7 +179,7 @@ export async function resolvePlayback(
     durationMs: Date.now() - t0,
   }, 'playback-resolver: availability_fetched')
 
-  const startPositionSeconds = await fetchProgress(profileId, mediaType, mediaId)
+  const startPositionSeconds = opts?.restart ? 0 : await fetchProgress(profileId, mediaType, mediaId)
 
   let providerStreamUrl: string
   // Use the catalog extension. Forcing .m3u8 broke this panel (HTTP 551);
@@ -378,7 +379,7 @@ export async function resolvePlayback(
   // still gets a usable gateway instead of a 410 "session expired".
   if (deliveryMode !== 'DIRECT') {
     try {
-      await createHlsSession(sessionId, providerStreamUrl, deliveryMode)
+      await createHlsSession(sessionId, providerStreamUrl, deliveryMode, startPositionSeconds)
       const playlistReady = await waitForPlaylist(sessionId, 15_000)
       if (playlistReady) {
         const gatewayUrl = `/playback/session/${sessionId}/master.m3u8`
@@ -434,6 +435,7 @@ export async function resolvePlayback(
           secret: MEDIA_RELAY_SECRET,
           providerStreamUrl,
           containerExtension,
+          startPositionSeconds,
         })
       : `/playback/stream/${sessionId}`
 

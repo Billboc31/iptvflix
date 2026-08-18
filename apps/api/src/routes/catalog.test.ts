@@ -583,6 +583,31 @@ describe('GET /series/:id/seasons/:seasonNumber/episodes', () => {
     expect(body[0]).toHaveProperty('selectedVariantId')
   })
 
+  it('replaces provider codes like S01E01 with a null title and falls back to the series poster', async () => {
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{
+        id: SEASON_DB_ROW.id,
+        posterPath: null,
+        seriesPosterPath: '/series-cover.jpg',
+      }]))
+      .mockReturnValueOnce(selectChain([{
+        ...EPISODE_ROW,
+        title: 'S01E01',
+        posterPath: null,
+      }]))
+      .mockReturnValueOnce(selectChain([{ episodeId: EPISODE_ROW.id, cnt: 1 }]))
+      .mockReturnValueOnce(selectChain([]))
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/series/${SERIES_ROW.id}/seasons/1/episodes`,
+    })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body[0].title).toBeNull()
+    expect(body[0].posterUrl).toBe('https://image.tmdb.org/t/p/w500/series-cover.jpg')
+  })
+
   it('returns empty array when season has no episodes', async () => {
     mockDb.select
       .mockReturnValueOnce(selectChain([SEASON_DB_ROW]))

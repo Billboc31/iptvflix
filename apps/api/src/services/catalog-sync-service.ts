@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, lt } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, lt } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import { db } from '../db/client.js'
 import { movies } from '../db/schema/movies.js'
@@ -91,6 +91,7 @@ interface NormalizedEpisodeItem {
   synopsis?: string | null
   durationMinutes?: number | null
   airDate?: string | null
+  posterPath?: string | null
   rawTitle?: string | null
   audioLanguage?: string | null
   subtitleLanguage?: string | null
@@ -333,7 +334,7 @@ async function resolveEpisodeId(
   seriesId: string,
   seasonNumber: number,
   episodeNumber: number,
-  meta?: { title?: string | null; synopsis?: string | null; durationMinutes?: number | null; airDate?: string | null },
+  meta?: { title?: string | null; synopsis?: string | null; durationMinutes?: number | null; airDate?: string | null; posterPath?: string | null },
 ): Promise<string> {
   let seasonId: string
   const [existingSeason] = await tx
@@ -370,6 +371,12 @@ async function resolveEpisodeId(
     .limit(1)
 
   if (existingEpisode) {
+    if (meta?.posterPath) {
+      await tx
+        .update(episodes)
+        .set({ posterPath: meta.posterPath, updatedAt: new Date() })
+        .where(and(eq(episodes.id, existingEpisode.id), isNull(episodes.posterPath)))
+    }
     return existingEpisode.id
   }
 
@@ -383,6 +390,7 @@ async function resolveEpisodeId(
       synopsis: meta?.synopsis ?? null,
       durationMinutes: meta?.durationMinutes ?? null,
       airDate: meta?.airDate ?? null,
+      posterPath: meta?.posterPath ?? null,
     })
     .onConflictDoNothing()
     .returning({ id: episodes.id })
@@ -1076,14 +1084,14 @@ async function syncNormalized(
                 seriesId: seriesAv.seriesId,
                 seasonNumber: ep.seasonNumber,
                 episodeNumber: ep.episodeNumber,
-                episodeMeta: { title: ep.title, synopsis: ep.synopsis, durationMinutes: ep.durationMinutes, airDate: ep.airDate },
+                episodeMeta: { title: ep.title, synopsis: ep.synopsis, durationMinutes: ep.durationMinutes, airDate: ep.airDate, posterPath: ep.posterPath },
               })
             : await resolveEpisodeId(
                 tx,
                 seriesAv.seriesId,
                 ep.seasonNumber,
                 ep.episodeNumber,
-                { title: ep.title, synopsis: ep.synopsis, durationMinutes: ep.durationMinutes, airDate: ep.airDate },
+                { title: ep.title, synopsis: ep.synopsis, durationMinutes: ep.durationMinutes, airDate: ep.airDate, posterPath: ep.posterPath },
               ).then((id) => ({ id }))
           if (!episodeCanonical) continue
           const episodeId = episodeCanonical.id
@@ -1287,10 +1295,12 @@ export const CatalogSyncService = {
                 seasonNumber,
                 episodeNumber: ep.episode_num,
                 title: ep.title ?? null,
+                synopsis: ep.info.plot ?? null,
                 durationMinutes: ep.info.duration_secs
                   ? Math.round(ep.info.duration_secs / 60)
                   : null,
                 airDate: ep.info.releasedate ?? null,
+                posterPath: ep.info.movie_image || ep.info.cover_big || null,
                 rawTitle: ep.title ?? null,
                 containerExtension: ep.container_extension ?? null,
                 audioLanguage: variantAttributes.audioLanguage,

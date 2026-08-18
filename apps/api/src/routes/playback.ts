@@ -65,7 +65,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: 'Invalid mediaId', errorCategory: 'STREAM_URL_INVALID' as PlaybackErrorCategory, correlationId })
       }
 
-      const { availabilityId } = request.body ?? {}
+      const { availabilityId, restart } = request.body ?? {}
 
       try {
         const session = await resolvePlayback(
@@ -74,6 +74,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
           mediaId,
           availabilityId,
           correlationId,
+          { restart: restart === true },
         )
         return reply.status(200).send(session)
       } catch (err) {

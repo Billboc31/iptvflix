@@ -75,6 +75,18 @@ function computeWatchState(
   return 'in_progress'
 }
 
+/** Drop provider labels like S01E01 so the UI falls back to "Épisode N". */
+function displayEpisodeTitle(title: string | null | undefined): string | null {
+  if (title == null) return null
+  const t = title.trim()
+  if (!t) return null
+  const compact = t.replace(/[\s._-]+/g, '')
+  if (/^s\d{1,2}e\d{1,3}$/i.test(compact)) return null
+  if (/^e(p(isode)?)?\d{1,3}$/i.test(compact)) return null
+  if (/^\d{1,2}x\d{1,3}$/i.test(compact)) return null
+  return t
+}
+
 function mapCreditsToCast(
   creditRows: { role: string; name: string; character: string | null; creditOrder: number; profilePath: string | null }[],
 ): { cast: CastMemberResponse[]; director: string | null } {
@@ -391,8 +403,13 @@ export async function catalogRoutes(app: FastifyInstance, opts: CatalogRoutesOpt
       }
 
       const [season] = await db
-        .select({ id: seasons.id })
+        .select({
+          id: seasons.id,
+          posterPath: seasons.posterPath,
+          seriesPosterPath: seriesTable.posterPath,
+        })
         .from(seasons)
+        .innerJoin(seriesTable, eq(seriesTable.id, seasons.seriesId))
         .where(and(eq(seasons.seriesId, id), eq(seasons.seasonNumber, seasonNum)))
 
       if (!season) return reply.status(404).send({ error: 'Season not found' })
@@ -474,11 +491,11 @@ export async function catalogRoutes(app: FastifyInstance, opts: CatalogRoutesOpt
         return {
           id: e.id,
           episodeNumber: e.episodeNumber,
-          title: e.title,
+          title: displayEpisodeTitle(e.title),
           synopsis: e.synopsis,
           durationMinutes: e.durationMinutes,
           airDate: e.airDate,
-          posterUrl: resolveMediaImageUrl(e.posterPath),
+          posterUrl: resolveMediaImageUrl(e.posterPath ?? season.posterPath ?? season.seriesPosterPath),
           availabilityCount,
           availabilityStatus: availabilityCount > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
           selectedVariantId,

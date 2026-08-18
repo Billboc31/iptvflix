@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { classifyDelivery, buildFfmpegArgs } from '../services/playback-compat.js'
+import { classifyDelivery, buildFfmpegArgs, insertSeekBeforeInput } from '../services/playback-compat.js'
 import type { DeliveryMode } from '../services/playback-compat.js'
 
 describe('classifyDelivery', () => {
@@ -123,5 +123,20 @@ describe('buildFfmpegArgs', () => {
     // Segment filename contains %05d.ts pattern
     const segArg = args[args.indexOf('-hls_segment_filename') + 1]
     expect(segArg).toMatch(/seg%05d\.ts$/)
+  })
+})
+
+describe('insertSeekBeforeInput', () => {
+  it('inserts -ss immediately before -i when resuming past 30s', () => {
+    const args = ['-hide_banner', '-i', 'http://example/video.ts', '-c', 'copy']
+    expect(insertSeekBeforeInput(args, 600)).toEqual([
+      '-hide_banner', '-ss', '600', '-i', 'http://example/video.ts', '-c', 'copy',
+    ])
+  })
+
+  it('does not seek for a start position at or below 30s', () => {
+    const args = ['-i', 'http://example/video.ts']
+    expect(insertSeekBeforeInput(args, 20)).toEqual(args)
+    expect(insertSeekBeforeInput(args, 0)).toEqual(args)
   })
 })

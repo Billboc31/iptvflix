@@ -119,18 +119,18 @@ describe('useProgressSync', () => {
     expect(upsertProgress).not.toHaveBeenCalled()
   })
 
-  it('saves progress at or above the resume floor', () => {
-    const video = makeVideo(1850, 7200)
+  it('adds positionBaseSeconds to saved progress (remux already seeked server-side)', () => {
+    const video = makeVideo(90, 7200)
     const videoRef = { current: video }
 
-    renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true, 7200, null, 1800))
+    renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true, 7200, null, 600, 600))
 
     act(() => {
       video.dispatchEvent(new Event('pause'))
     })
 
     expect(upsertProgress).toHaveBeenCalledWith('MOVIE', 'movie-1', {
-      progressSeconds: 1850,
+      progressSeconds: 690,
       durationSeconds: 7200,
     })
   })

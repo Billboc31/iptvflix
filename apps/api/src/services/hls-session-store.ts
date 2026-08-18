@@ -3,7 +3,7 @@ import type { ChildProcess } from 'node:child_process'
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { buildFfmpegArgs } from './playback-compat.js'
+import { buildFfmpegArgs, insertSeekBeforeInput } from './playback-compat.js'
 import type { DeliveryMode } from './playback-compat.js'
 import { ffmpegInputArgs } from '../providers/xtream/playback.js'
 
@@ -53,11 +53,12 @@ export async function createHlsSession(
   sessionId: string,
   providerUrl: string,
   mode: DeliveryMode,
+  startPositionSeconds = 0,
 ): Promise<void> {
   const tempDir = await mkdtemp(join(tmpdir(), 'iptvflix-hls-'))
 
   const codecArgs = buildFfmpegArgs(mode, tempDir)
-  const inputArgs = await ffmpegInputArgs(providerUrl)
+  const inputArgs = insertSeekBeforeInput(await ffmpegInputArgs(providerUrl), startPositionSeconds)
   const fullArgs = [
     ...inputArgs,
     ...codecArgs,

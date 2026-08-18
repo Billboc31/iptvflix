@@ -13,6 +13,15 @@ describe('relay ticket', () => {
     expect(payload.u).toContain('/1.mp4')
   })
 
+  it('round-trips an optional resume offset', () => {
+    const secret = 'test-secret'
+    const ticket = signRelayTicket(
+      { u: 'https://provider.example/x.mkv', e: 'mkv', exp: Math.floor(Date.now() / 1000) + 60, s: 600 },
+      secret,
+    )
+    expect(verifyRelayTicket(ticket, secret).s).toBe(600)
+  })
+
   it('rejects tampered tickets', () => {
     const secret = 'test-secret'
     const ticket = signRelayTicket(

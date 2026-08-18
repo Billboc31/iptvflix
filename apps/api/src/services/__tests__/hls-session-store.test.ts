@@ -100,6 +100,19 @@ describe('createHlsSession', () => {
     expect(args).toContain('hls')
   })
 
+  it('passes -ss before -i when resuming past 30 seconds', async () => {
+    const proc = makeFakeProcess()
+    mockSpawn.mockReturnValue(proc)
+
+    const { createHlsSession } = await import('../hls-session-store.js')
+    await createHlsSession(SESSION_ID, PROVIDER_URL, 'HLS_REMUX', 600)
+
+    const [, args] = mockSpawn.mock.calls[0]! as [string, string[]]
+    const i = args.indexOf('-i')
+    expect(args[i - 2]).toBe('-ss')
+    expect(args[i - 1]).toBe('600')
+  })
+
   it('includes the temp dir in ffmpeg segment and playlist paths', async () => {
     const proc = makeFakeProcess()
     mockSpawn.mockReturnValue(proc)

@@ -32,6 +32,7 @@ export function useProgressSync(
   stableDurationSeconds: number | null,
   sessionId?: string | null,
   progressFloorSeconds = 0,
+  positionBaseSeconds = 0,
 ): { flushProgress: () => void } {
   const lastSentRef = useRef<number>(0)
   const mediaTypeRef = useRef(mediaType)
@@ -43,9 +44,11 @@ export function useProgressSync(
   stableDurationRef.current = stableDurationSeconds
   const floorRef = useRef(progressFloorSeconds)
   floorRef.current = progressFloorSeconds
+  const baseRef = useRef(positionBaseSeconds)
+  baseRef.current = positionBaseSeconds
 
   function clampedProgress(video: HTMLVideoElement, duration: number): number | null {
-    const progress = Math.floor(video.currentTime)
+    const progress = Math.floor(video.currentTime) + baseRef.current
     const floor = floorRef.current
     if (floor > 0 && progress < floor - FLOOR_SLACK_S) return null
     return Math.min(Math.max(progress, 0), duration)
@@ -62,7 +65,7 @@ export function useProgressSync(
   function checkMilestones(video: HTMLVideoElement) {
     const duration = resolveDuration(video, stableDurationRef.current)
     if (!duration || duration <= 0) return
-    const percent = Math.floor((video.currentTime / duration) * 100)
+    const percent = Math.floor(((video.currentTime + baseRef.current) / duration) * 100)
     for (const threshold of MILESTONES) {
       if (percent >= threshold && !emittedMilestonesRef.current.has(threshold)) {
         emittedMilestonesRef.current.add(threshold)
@@ -117,7 +120,7 @@ export function useProgressSync(
     function sendFinal() {
       if (!video) return
       const effectiveDuration = resolveDuration(video, stableDurationRef.current)
-      if (!effectiveDuration || !isNearEnd(video.currentTime, effectiveDuration)) return
+      if (!effectiveDuration || !isNearEnd(video.currentTime + baseRef.current, effectiveDuration)) return
       lastSentRef.current = Date.now()
       upsertProgress(mediaTypeRef.current, mediaIdRef.current, {
         progressSeconds: effectiveDuration,

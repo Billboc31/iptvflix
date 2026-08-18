@@ -29,6 +29,7 @@ export interface ResolveEpisodeInput {
     synopsis?: string | null
     durationMinutes?: number | null
     airDate?: string | null
+    posterPath?: string | null
   }
 }
 
@@ -128,12 +129,21 @@ export class CanonicalResolver {
     }
 
     const [existingEpisode] = await db
-      .select({ id: episodes.id })
+      .select({ id: episodes.id, posterPath: episodes.posterPath })
       .from(episodes)
       .where(and(eq(episodes.seasonId, seasonId), eq(episodes.episodeNumber, input.episodeNumber)))
       .limit(1)
 
-    if (existingEpisode) return existingEpisode
+    if (existingEpisode) {
+      const poster = input.episodeMeta?.posterPath
+      if (poster && !existingEpisode.posterPath) {
+        await db
+          .update(episodes)
+          .set({ posterPath: poster })
+          .where(eq(episodes.id, existingEpisode.id))
+      }
+      return { id: existingEpisode.id }
+    }
 
     const { episodeMeta: m } = input
     const inserted = await db
@@ -146,6 +156,7 @@ export class CanonicalResolver {
         synopsis: m?.synopsis ?? null,
         durationMinutes: m?.durationMinutes ?? null,
         airDate: m?.airDate ?? null,
+        posterPath: m?.posterPath ?? null,
       })
       .onConflictDoNothing()
       .returning({ id: episodes.id })

@@ -110,11 +110,13 @@ async function resolveWorkingUpstream(url: string, hintedExt: string): Promise<{
   return { url, ext: hintedExt }
 }
 
-function startRemux(sessionId: string, upstreamUrl: string): RemuxSession {
+function startRemux(sessionId: string, upstreamUrl: string, startPositionSeconds = 0): RemuxSession {
   const dir = join(ROOT, sessionId)
   mkdirSync(dir, { recursive: true })
   const playlist = join(dir, 'index.m3u8')
   const segmentPattern = join(dir, 'seg_%03d.m4s')
+
+  const seekArgs: string[] = startPositionSeconds > 30 ? ['-ss', String(Math.floor(startPositionSeconds))] : []
 
   // Phone browsers (Chrome Android, Safari) cannot play HEVC-in-MPEG-TS.
   // Transcode to H.264 + AAC fMP4 HLS so iOS/Android can play natively / via hls.js.
@@ -128,6 +130,7 @@ function startRemux(sessionId: string, upstreamUrl: string): RemuxSession {
       UA,
       '-hwaccel',
       'videotoolbox',
+      ...seekArgs,
       '-i',
       upstreamUrl,
       '-map',
@@ -265,7 +268,8 @@ app.get<{ Querystring: { ticket?: string } }>('/v1/play', async (request, reply)
 
   // MKV / TS / etc.: remux to HLS on this host (IP not blocked by Cloudflare).
   const sessionId = `r_${createId()}`
-  const session = startRemux(sessionId, upstreamUrl)
+  const startPositionSeconds = typeof payload.s === 'number' && Number.isFinite(payload.s) ? payload.s : 0
+  const session = startRemux(sessionId, upstreamUrl, startPositionSeconds)
   const playlistPath = join(session.dir, 'index.m3u8')
   const ready = await waitForFile(playlistPath, 90_000)
   if (!ready) {

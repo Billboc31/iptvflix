@@ -7,6 +7,8 @@ export type RelayTicketPayload = {
   e: string
   /** Expiry unix seconds */
   exp: number
+  /** Resume offset in seconds for remux (-ss). */
+  s?: number
 }
 
 function b64url(buf: Buffer): string {
