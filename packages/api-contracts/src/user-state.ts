@@ -46,4 +46,8 @@ export type ViewingProgressRow = {
 export type ContinueWatchingItem = ViewingProgressRow & {
   title: string
   posterUrl: string | null
+  seriesId: string | null
+  seasonNumber: number | null
+  episodeNumber: number | null
+  episodeTitle: string | null
 }

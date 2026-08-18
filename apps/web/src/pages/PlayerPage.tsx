@@ -59,6 +59,8 @@ export default function PlayerPage() {
   const seriesId = searchParams.get('seriesId') ?? null
   const seasonNumber = searchParams.get('seasonNumber') ? Number(searchParams.get('seasonNumber')) : null
   const resolvedMediaType = mediaType === 'movie' ? 'movie' : 'episode'
+  // When coming from Continue Watching, resume directly without showing the Reprendre/Recommencer dialog.
+  const skipResumeDialog = searchParams.get('source') === 'continue_watching'
 
   const [videoError, setVideoError] = useState<string | null>(null)
   const [showResumeDialog, setShowResumeDialog] = useState(false)
@@ -517,6 +519,7 @@ export default function PlayerPage() {
       // Prefer probe-based stable duration; fall back to what the video element reports
       const dur = stableDurationRef.current ?? (isFinite(video.duration) ? video.duration : 0)
       if (
+        !skipResumeDialog &&
         startPositionSeconds > RESUME_THRESHOLD_START_S &&
         isFinite(dur) && dur > 0 &&
         startPositionSeconds < dur - RESUME_THRESHOLD_END_S
@@ -532,7 +535,7 @@ export default function PlayerPage() {
     }
     video.addEventListener('loadedmetadata', onMetadata)
     return () => video.removeEventListener('loadedmetadata', onMetadata)
-  }, [startPositionSeconds])
+  }, [startPositionSeconds, skipResumeDialog])
 
   function handleResumeConfirm() {
     const video = videoRef.current

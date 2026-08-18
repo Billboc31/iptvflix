@@ -1,7 +1,7 @@
 import { resolveMediaImageUrl } from '../lib/tmdb-image.js'
-import { and, eq, desc, inArray, sql } from 'drizzle-orm'
+import { and, eq, desc, inArray, sql, isNull } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { viewingProgress, movies, episodes, series } from '../db/schema/index.js'
+import { viewingProgress, movies, episodes, seasons, series, continueWatchingDismissals } from '../db/schema/index.js'
 import { NotFoundError } from '../errors.js'
 import type { ProgressMediaType, ViewingProgressRow, ContinueWatchingItem } from '@iptvflix/api-contracts'
 
@@ -54,18 +54,63 @@ export async function upsertProgress(
     })
     .returning()
 
+  // Clear dismissal when the item reaches meaningful progress (≥5%), allowing re-entry into CW.
+  if (progressSeconds >= durationSeconds * 0.05) {
+    await db
+      .delete(continueWatchingDismissals)
+      .where(
+        and(
+          eq(continueWatchingDismissals.profileId, profileId),
+          eq(continueWatchingDismissals.mediaType, mediaType),
+          eq(continueWatchingDismissals.mediaId, mediaId),
+        ),
+      )
+  }
+
   return toRow(row)
+}
+
+export async function dismissContinueWatching(
+  profileId: string,
+  mediaType: ProgressMediaType,
+  mediaId: string,
+): Promise<void> {
+  await db
+    .insert(continueWatchingDismissals)
+    .values({ profileId, mediaType, mediaId })
+    .onConflictDoUpdate({
+      target: [continueWatchingDismissals.profileId, continueWatchingDismissals.mediaType, continueWatchingDismissals.mediaId],
+      set: { dismissedAt: new Date() },
+    })
 }
 
 export async function listContinueWatching(profileId: string): Promise<ContinueWatchingItem[]> {
   const rows = await db
-    .select()
+    .select({
+      id: viewingProgress.id,
+      profileId: viewingProgress.profileId,
+      mediaType: viewingProgress.mediaType,
+      mediaId: viewingProgress.mediaId,
+      progressSeconds: viewingProgress.progressSeconds,
+      durationSeconds: viewingProgress.durationSeconds,
+      lastWatchedAt: viewingProgress.lastWatchedAt,
+      updatedAt: viewingProgress.updatedAt,
+    })
     .from(viewingProgress)
+    .leftJoin(
+      continueWatchingDismissals,
+      and(
+        eq(continueWatchingDismissals.profileId, viewingProgress.profileId),
+        eq(continueWatchingDismissals.mediaType, viewingProgress.mediaType),
+        eq(continueWatchingDismissals.mediaId, viewingProgress.mediaId),
+      ),
+    )
     .where(
       and(
         eq(viewingProgress.profileId, profileId),
         sql`${viewingProgress.progressSeconds} >= ${viewingProgress.durationSeconds} * 0.05`,
         sql`${viewingProgress.progressSeconds} < ${viewingProgress.durationSeconds} * 0.90`,
+        isNull(continueWatchingDismissals.id),
       ),
     )
     .orderBy(desc(viewingProgress.lastWatchedAt))
@@ -84,8 +129,15 @@ export async function listContinueWatching(profileId: string): Promise<ContinueW
       : Promise.resolve([]),
     episodeIds.length > 0
       ? db
-          .select({ id: episodes.id, seriesId: episodes.seriesId })
+          .select({
+            id: episodes.id,
+            seriesId: episodes.seriesId,
+            episodeNumber: episodes.episodeNumber,
+            title: episodes.title,
+            seasonNumber: seasons.seasonNumber,
+          })
           .from(episodes)
+          .innerJoin(seasons, eq(episodes.seasonId, seasons.id))
           .where(inArray(episodes.id, episodeIds))
       : Promise.resolve([]),
   ])
@@ -101,16 +153,41 @@ export async function listContinueWatching(profileId: string): Promise<ContinueW
         .where(inArray(series.id, seriesIds))
     : []
   const seriesMap = new Map(seriesMeta.map((s) => [s.id, s]))
-  const episodeSeriesMap = new Map(episodeRows.map((e) => [e.id, seriesMap.get(e.seriesId)]))
+  const episodeMap = new Map(episodeRows.map((e) => [e.id, e]))
 
   return rows.map((row) => {
-    const base = toRow(row)
+    const base: ViewingProgressRow = {
+      id: row.id,
+      profileId: row.profileId,
+      mediaType: row.mediaType as ProgressMediaType,
+      mediaId: row.mediaId,
+      progressSeconds: row.progressSeconds,
+      durationSeconds: row.durationSeconds,
+      lastWatchedAt: row.lastWatchedAt.toISOString(),
+    }
     if (row.mediaType === 'MOVIE') {
       const meta = movieMap.get(row.mediaId)
-      return { ...base, title: meta?.title ?? row.mediaId, posterUrl: resolveMediaImageUrl(meta?.posterPath) }
+      return {
+        ...base,
+        title: meta?.title ?? row.mediaId,
+        posterUrl: resolveMediaImageUrl(meta?.posterPath),
+        seriesId: null,
+        seasonNumber: null,
+        episodeNumber: null,
+        episodeTitle: null,
+      }
     } else {
-      const meta = episodeSeriesMap.get(row.mediaId)
-      return { ...base, title: meta?.title ?? row.mediaId, posterUrl: resolveMediaImageUrl(meta?.posterPath) }
+      const ep = episodeMap.get(row.mediaId)
+      const ser = ep ? seriesMap.get(ep.seriesId) : undefined
+      return {
+        ...base,
+        title: ser?.title ?? row.mediaId,
+        posterUrl: resolveMediaImageUrl(ser?.posterPath),
+        seriesId: ep?.seriesId ?? null,
+        seasonNumber: ep?.seasonNumber ?? null,
+        episodeNumber: ep?.episodeNumber ?? null,
+        episodeTitle: ep?.title ?? null,
+      }
     }
   })
 }

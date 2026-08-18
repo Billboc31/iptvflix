@@ -230,6 +230,26 @@ export const MOCK_CONTINUE_WATCHING: ContinueWatchingItem = {
   lastWatchedAt: '2024-01-01T10:00:00Z',
   title: 'The Test Movie',
   posterUrl: null,
+  seriesId: null,
+  seasonNumber: null,
+  episodeNumber: null,
+  episodeTitle: null,
+}
+
+export const MOCK_CONTINUE_WATCHING_EPISODE: ContinueWatchingItem = {
+  id: 'cw-2',
+  profileId: '00000000-0000-0000-0000-000000000001',
+  mediaType: 'EPISODE',
+  mediaId: 'ep-2',
+  progressSeconds: 60,
+  durationSeconds: 120,
+  lastWatchedAt: '2024-01-02T10:00:00Z',
+  title: 'The Test Series',
+  posterUrl: null,
+  seriesId: 'series-1',
+  seasonNumber: 1,
+  episodeNumber: 2,
+  episodeTitle: 'Second Episode',
 }
 
 export const MOCK_SHELF_SUMMARY: ShelfSummaryResponse = {
@@ -405,6 +425,7 @@ export const handlers = [
   http.delete('/api/watchlist/:mediaType/:mediaId', () => new HttpResponse(null, { status: 204 })),
   http.put('/api/progress/:mediaType/:mediaId', () => HttpResponse.json(MOCK_CONTINUE_WATCHING)),
   http.get('/api/continue-watching', () => HttpResponse.json([MOCK_CONTINUE_WATCHING])),
+  http.delete('/api/continue-watching/:mediaType/:mediaId', () => new HttpResponse(null, { status: 204 })),
   http.get('/api/devices', () => HttpResponse.json([MOCK_DEVICE_ONLINE])),
   http.get('/api/pairing/codes/:code', ({ params }) => {
     const { code } = params as { code: string }

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import type { UpsertProgressBody, ProgressMediaType } from '@iptvflix/api-contracts'
-import { upsertProgress, listContinueWatching } from '../services/viewing-progress-service.js'
+import { upsertProgress, listContinueWatching, dismissContinueWatching } from '../services/viewing-progress-service.js'
 import { NotFoundError } from '../errors.js'
 
 export async function viewingProgressRoutes(app: FastifyInstance): Promise<void> {
@@ -42,4 +42,16 @@ export async function viewingProgressRoutes(app: FastifyInstance): Promise<void>
   app.get('/continue-watching', async (request) => {
     return listContinueWatching(request.profileId!)
   })
+
+  app.delete<{ Params: { mediaType: string; mediaId: string } }>(
+    '/continue-watching/:mediaType/:mediaId',
+    async (request, reply) => {
+      const { mediaType, mediaId } = request.params
+      if (mediaType !== 'MOVIE' && mediaType !== 'EPISODE') {
+        return reply.status(400).send({ error: 'mediaType must be MOVIE or EPISODE' })
+      }
+      await dismissContinueWatching(request.profileId!, mediaType as ProgressMediaType, mediaId)
+      return reply.status(204).send()
+    },
+  )
 }

@@ -1,0 +1,128 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T095/reviews/implementation-review.md
+- generated at: 2026-08-18T13:35:59Z
+
+---
+
+I now have all the information needed to write a complete review.
+
+---
+
+# PR Review — T095 Continue Watching: direct resume, details, overflow actions
+
+## Résumé
+
+L'implémentation couvre correctement l'essentiel du ticket : nouveau composant `ContinueWatchingCard` avec trois zones d'interaction, table de dismissal persistée avec contrainte unique, règle de ré-entrée sur `upsertProgress`, enrichissement des métadonnées épisode, UI optimiste avec rollback par carte, et guard `skipResumeDialog` dans `PlayerPage`. Le code est propre, les responsabilités bien séparées, et l'accessibilité ARIA est solide. Deux lacunes de tests couverts par les critères d'acceptance du ticket empêchent l'approbation.
+
+## Vérifications effectuées
+
+- Ticket complet (10 requirements + acceptance criteria)
+- Plan (16 points)
+- `continue-watching-dismissals.ts` schema + migration SQL
+- `viewing-progress-service.ts` (listContinueWatching, dismissContinueWatching, upsertProgress)
+- `viewing-progress.ts` routes
+- `ContinueWatchingCard.tsx`, `ContinueWatchingOverflowMenu.tsx`, `ContinueWatchingRow.tsx`
+- `useContinueWatching.ts`
+- `PlayerPage.tsx` (skipResumeDialog guard)
+- `user-state.ts` (ContinueWatchingItem type)
+- `ContinueWatchingCard.test.tsx`, `ContinueWatchingRow.test.tsx`, `viewing-progress.test.ts`
+
+## Points validés
+
+**Backend**
+- Schema `continue_watching_dismissals` : contrainte unique `(profileId, mediaType, mediaId)`, FK cascade vers `profiles`, `dismissedAt` timestamptz. Conforme au plan.
+- Migration SQL cohérente avec le schéma Drizzle.
+- `listContinueWatching` : LEFT JOIN + `IS NULL` pour exclure les dismissals — idiome SQL correct, exécuté en base et non en mémoire applicative.
+- Filtre de progression 5 %–90 % appliqué en SQL.
+- `dismissContinueWatching` : UPSERT idempotent, `dismissedAt` mis à jour à chaque appel.
+- Règle de ré-entrée dans `upsertProgress` : dismissal supprimé dès que `progressSeconds >= durationSeconds * 0.05`. Tests couvrent les deux seuils (≥5 % → delete déclenché ; <5 % → aucun delete).
+- Enrichissement épisodes : JOIN `seasons` pour `seasonNumber`, lookup séries pour titre et poster. Résolution en deux batches parallèles — efficace.
+- Pas de touche aux lignes `viewing_progress` lors du dismissal. Historique préservé.
+- Route `DELETE /continue-watching/:mediaType/:mediaId` : validation `mediaType`, 204 No Content.
+- Tests backend couvrent : persistence, épisode-isolation, re-entry, champs episode vs movie null.
+
+**Frontend**
+- Progress bar : `(progressSeconds / durationSeconds) * 100`, clampé à 100, stable à l'ouverture, indépendant du buffer.
+- Play button `aria-label="Reprendre"`, plein poster, navigue vers `/player/{mediaType}/{mediaId}?source=continue_watching`.
+- `skipResumeDialog = searchParams.get('source') === 'continue_watching'` dans `PlayerPage` : guard correctement placé dans l'effet `loadedmetadata`, supprime le dialog #194.
+- Bouton ⓘ `aria-label="Voir les détails"`, ⋮ `aria-label="Plus d'options"` avec `aria-haspopup="menu"` et `aria-expanded`.
+- `ContinueWatchingOverflowMenu` : `role="menu"`, `role="menuitem"`, focus auto sur le premier item, navigation ArrowUp/Down avec wrapping, Escape ferme, focus retourne sur le trigger. Viewport protection `max-w-[min(208px,90vw)]`.
+- Label épisode `S{n}E{n} · {titre}` affiché au bas du poster, titre omis si null.
+- `useContinueWatching` : suppression optimiste, rollback sur échec API, erreur scopée par `mediaId` via `dismissErrorFor`.
+- `ContinueWatchingRow` : passe `dismissError` par carte, aucune régression sur le rendu de la shelf.
+
+## Problèmes détectés
+
+### P1 — Bloquant : test d'action ⓘ (navigation détails) absent
+
+Le ticket exige explicitement : *"Tests cover… details action"*. Le fichier `ContinueWatchingCard.test.tsx` ne contient aucun test vérifiant que cliquer sur ⓘ déclenche la navigation correcte :
+
+- MOVIE → `/movies/${item.mediaId}` avec background state
+- EPISODE → `/series/${item.seriesId}` avec background state
+
+Seule l'existence du bouton (aria-label) est vérifiée. `handleDetails` n'est pas exercé.
+
+**Correction attendue** : ajouter dans `ContinueWatchingCard.test.tsx` deux tests (un MOVIE, un EPISODE) qui cliquent sur ⓘ et vérifient la route atteinte via MemoryRouter.
+
+---
+
+### P2 — Bloquant : aucun test unitaire pour `useContinueWatching` (optimistic + rollback)
+
+Le ticket exige un comportement d'UI optimiste avec rollback. Le hook `useContinueWatching.ts` n'a aucun fichier de test dédié. Le plan liste explicitement :
+
+> *"Optimistic removal: item disappears immediately; reappears on API failure with error feedback."*
+
+`ContinueWatchingCard.test.tsx` vérifie que la prop `dismissError` est affichée, mais ne vérifie pas que `useContinueWatching` supprime l'item optimistement ni qu'il le restaure sur échec API.
+
+**Correction attendue** : créer `useContinueWatching.test.ts` (ou équivalent) avec au moins :
+1. `dismissItem` supprime l'item de `items` avant la résolution API
+2. En cas d'erreur API, `items` est restauré et `dismissError` est positionné
+
+---
+
+### P3 — Observation non-bloquante : absence de bottom sheet mobile
+
+Le plan (point 13) indique : *"Mobile: bottom sheet (fixed overlay, tap-outside or swipe to dismiss)"*. L'implémentation utilise un dropdown positionné `bottom-full right-0` identique sur desktop et mobile. Le ticket accepte *"ou equivalent touch-friendly menu"*, donc la déviation est défendable, mais elle doit être documentée ou assumée.
+
+Pas de blocage si le dropdown se comporte correctement sur touch (ce qui est le cas avec click-outside et Escape), mais à mentionner lors du QA manuel mobile.
+
+---
+
+### P4 — Observation non-bloquante : taille des touch targets ⓘ et ⋮
+
+Les boutons info et overflow font `w-6 h-6` (24 px). La cible WCAG mobile recommandée est 44 px. Dans une card de 144 px de large avec trois zones, c'est une contrainte de layout réelle, mais le ticket mentionne "separate info target" et "separate ⋮ target" touch-friendly. Envisager `min-w-[44px] min-h-[44px]` via `p-2` ou un wrapper étendu pour compenser sans agrandir visuellement le bouton.
+
+---
+
+### P5 — Observation : silence silencieux si EPISODE sans seriesId
+
+`handleDetails` pour EPISODE ne navigue pas si `item.seriesId` est null (cas improbable mais typiquement possible). Aucun fallback, aucun log. Le type autorise `null`. Trivial à corriger :
+
+```ts
+} else if (item.seriesId) {
+  navigate(...)
+} else {
+  // fallback: open episode or log warning
+}
+```
+
+## Risques éventuels
+
+- Le guard `skipResumeDialog` dépend du query param URL : un lien externe ou une URL copiée avec `?source=continue_watching` bypasserait également le dialog. Comportement acceptable dans le contexte actuel (le dialog #194 n'est pas encore livré).
+- Le `beforeEach` dans `viewing-progress.test.ts` initialise un mock `setupDelete()` qui est consommé par `upsertProgress`. Le test "does not clear dismissal" fait `mockDb.delete.mockClear()` pour réinitialiser — pattern fragile si l'ordre des appels mock change. Non-bloquant mais à surveiller.
+
+## Décision
+
+- REQUEST_CHANGES
+
+## Actions demandées
+
+1. **[Bloquant]** Ajouter dans `ContinueWatchingCard.test.tsx` les tests de click ⓘ : navigation `/movies/:id` (MOVIE) et `/series/:seriesId` (EPISODE).
+2. **[Bloquant]** Créer des tests pour `useContinueWatching` couvrant la suppression optimiste et le rollback sur échec API.
+3. **[Optionnel]** Documenter dans le plan ou une note le choix dropdown vs bottom sheet mobile.
+4. **[Optionnel]** Augmenter la zone tactile de ⓘ et ⋮ ou ajouter une note de QA mobile.
+5. **[Optionnel]** Ajouter un fallback dans `handleDetails` pour EPISODE sans `seriesId`.
+
+IMPLEMENTATION_FIX_REQUIRED
