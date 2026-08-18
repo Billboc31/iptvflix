@@ -487,3 +487,254 @@ describe('scenario 10 — availabilityPolicy', () => {
     expect(ids).toContain(MOVIE_ID_B)
   })
 })
+
+// ============================================================================
+// rankHybrid — pure-function tests (no DB mocking required)
+// ============================================================================
+
+import { rankHybrid } from '../recommendation-ranking-service.js'
+import type {
+  HybridCandidate,
+  TasteSignals,
+} from '../recommendation-ranking-service.js'
+
+const GENRE_ACTION_ID = 'genre-action-0000-0000-000000000001'
+const GENRE_DRAMA_ID = 'genre-drama-0000-0000-000000000001'
+const GENRE_FAMILY_ID = 'genre-family-0000-0000-000000000001'
+const GENRE_THRILLER_ID = 'genre-thriller-000-0000-000000000001'
+
+function makeCandidate(
+  id: string,
+  overrides: Partial<HybridCandidate> = {},
+): HybridCandidate {
+  return {
+    mediaId: id,
+    mediaType: 'MOVIE',
+    title: `Title ${id}`,
+    year: 2020,
+    posterPath: null,
+    source: 'LOCAL',
+    similarity: 0.6,
+    genreIds: [],
+    genreNames: [],
+    popularity: 50,
+    voteAverage: 7,
+    available: true,
+    status: null,
+    collectionId: null,
+    directors: [],
+    keywords: [],
+    durationMinutes: null,
+    originalLanguage: null,
+    completionRatio: null,
+    ...overrides,
+  }
+}
+
+const EMPTY_QUERY_PLAN = {
+  schemaVersion: '1' as const,
+  rawQuery: 'test',
+  displayTitle: 'test',
+  semanticIntent: 'test',
+  desiredThemes: [],
+  desiredTone: [],
+  avoidSignals: [],
+  mediaTypes: [] as ('MOVIE' | 'SERIES')[],
+  hardFilters: {},
+  softPreferences: {},
+  userConstraints: [],
+  plannerFallback: true,
+  plannerMeta: null,
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 11 — Profile A vs Profile B produce different orderings
+// ---------------------------------------------------------------------------
+
+describe('scenario 11 — profile taste separates results', () => {
+  it('Profile A (action) and Profile B (family/drama) top-5 overlap ≤ 3 on same pool', () => {
+    const actionCandidates = Array.from({ length: 10 }, (_, i) =>
+      makeCandidate(`action-${i}`, {
+        genreIds: [GENRE_ACTION_ID, GENRE_THRILLER_ID],
+        genreNames: ['Action', 'Thriller'],
+        similarity: 0.6,
+      }),
+    )
+    const familyCandidates = Array.from({ length: 10 }, (_, i) =>
+      makeCandidate(`family-${i}`, {
+        genreIds: [GENRE_FAMILY_ID, GENRE_DRAMA_ID],
+        genreNames: ['Family', 'Drama'],
+        similarity: 0.6,
+      }),
+    )
+    const pool = [...actionCandidates, ...familyCandidates]
+
+    const tasteA: TasteSignals = {
+      genreScores: { [GENRE_ACTION_ID]: 5, [GENRE_THRILLER_ID]: 4, [GENRE_DRAMA_ID]: 1, [GENRE_FAMILY_ID]: 0 },
+      genreNames: { [GENRE_ACTION_ID]: 'Action', [GENRE_THRILLER_ID]: 'Thriller' },
+      positiveMediaIds: new Set(),
+      negativeMediaIds: new Set(),
+      signalCount: 10,
+    }
+
+    const tasteB: TasteSignals = {
+      genreScores: { [GENRE_FAMILY_ID]: 5, [GENRE_DRAMA_ID]: 4, [GENRE_ACTION_ID]: 1, [GENRE_THRILLER_ID]: 0 },
+      genreNames: { [GENRE_FAMILY_ID]: 'Family', [GENRE_DRAMA_ID]: 'Drama' },
+      positiveMediaIds: new Set(),
+      negativeMediaIds: new Set(),
+      signalCount: 10,
+    }
+
+    const opts = { limit: 10, diversityEnabled: false, explorationLevel: 'exploit' as const }
+    const topA = rankHybrid(pool, EMPTY_QUERY_PLAN, tasteA, opts).slice(0, 5).map((c) => c.mediaId)
+    const topB = rankHybrid(pool, EMPTY_QUERY_PLAN, tasteB, opts).slice(0, 5).map((c) => c.mediaId)
+
+    const setA = new Set(topA)
+    const overlap = topB.filter((id) => setA.has(id)).length
+    expect(overlap).toBeLessThanOrEqual(3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Scenario 12 — hardFilters.maxRuntimeMinutes removes violating candidates
+// ---------------------------------------------------------------------------
+
+describe('scenario 12 — hard filter maxRuntimeMinutes', () => {
+  it('candidate exceeding maxRuntimeMinutes is absent regardless of similarity', () => {
+    const longMovie = makeCandidate('long-movie', { durationMinutes: 200, similarity: 0.99 })
+    const shortMovie = makeCandidate('short-movie', { durationMinutes: 90, similarity: 0.50 })
+
+    const plan = {
+      ...EMPTY_QUERY_PLAN,
+      hardFilters: { maxRuntimeMinutes: 120 },
+    }
+
+    const result = rankHybrid([longMovie, shortMovie], plan, null, { diversityEnabled: false })
+    const ids = result.map((c) => c.mediaId)
+
+    expect(ids).not.toContain('long-movie')
+    expect(ids).toContain('short-movie')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Scenario 13 — negativeMediaIds never in top-10 when 10+ alternatives exist
+// ---------------------------------------------------------------------------
+
+describe('scenario 13 — negative media penalty', () => {
+  it('disliked item does not appear in top-10 when 10+ other candidates exist', () => {
+    const dislikedId = 'disliked-media-id'
+    const others = Array.from({ length: 12 }, (_, i) => makeCandidate(`other-${i}`))
+    const disliked = makeCandidate(dislikedId, { similarity: 0.99 })
+
+    const taste: TasteSignals = {
+      genreScores: {},
+      genreNames: {},
+      positiveMediaIds: new Set(),
+      negativeMediaIds: new Set([dislikedId]),
+      signalCount: 5,
+    }
+
+    const result = rankHybrid([disliked, ...others], EMPTY_QUERY_PLAN, taste, {
+      limit: 24,
+      diversityEnabled: false,
+    })
+
+    const top10Ids = result.slice(0, 10).map((c) => c.mediaId)
+    expect(top10Ids).not.toContain(dislikedId)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Scenario 14 — franchise diversity cap
+// ---------------------------------------------------------------------------
+
+describe('scenario 14 — franchise diversity cap', () => {
+  it('same collection capped at maxPerCollection in output', () => {
+    const COLL = 'franchise-coll-id'
+    const franchiseCandidates = Array.from({ length: 5 }, (_, i) =>
+      makeCandidate(`franchise-${i}`, { collectionId: COLL, similarity: 0.9 - i * 0.01 }),
+    )
+    const others = Array.from({ length: 15 }, (_, i) =>
+      makeCandidate(`other-${i}`, { similarity: 0.5 }),
+    )
+
+    const result = rankHybrid([...franchiseCandidates, ...others], EMPTY_QUERY_PLAN, null, {
+      limit: 10,
+      diversityEnabled: true,
+      maxPerCollection: 2,
+    })
+
+    const franchiseCount = result.filter((c) => c.collectionId === COLL).length
+    expect(franchiseCount).toBeLessThanOrEqual(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Scenario 15 — explorationLevel "discover" promotes high-quality item
+// ---------------------------------------------------------------------------
+
+describe('scenario 15 — explorationLevel discover', () => {
+  it('discover mode promotes high qualityPrior item above taste-aligned obscure item', () => {
+    // Taste-aligned but obscure: good genre match, low popularity
+    const tasteAligned = makeCandidate('taste-aligned', {
+      genreIds: [GENRE_ACTION_ID],
+      genreNames: ['Action'],
+      popularity: 5,
+      voteAverage: 6,
+      similarity: 0.3,
+    })
+    // High quality but no genre affinity, popular
+    const highQuality = makeCandidate('high-quality', {
+      genreIds: [GENRE_DRAMA_ID],
+      genreNames: ['Drama'],
+      popularity: 90,
+      voteAverage: 9,
+      similarity: 0.3,
+    })
+
+    const taste: TasteSignals = {
+      genreScores: { [GENRE_ACTION_ID]: 5 },
+      genreNames: { [GENRE_ACTION_ID]: 'Action' },
+      positiveMediaIds: new Set(),
+      negativeMediaIds: new Set(),
+      signalCount: 10,
+    }
+
+    const result = rankHybrid(
+      [tasteAligned, highQuality],
+      EMPTY_QUERY_PLAN,
+      taste,
+      { explorationLevel: 'discover', diversityEnabled: false },
+    )
+
+    expect(result[0].mediaId).toBe('high-quality')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Scenario 16 — debug mode populates scoreBreakdown.reasons
+// ---------------------------------------------------------------------------
+
+describe('scenario 16 — debug scoreBreakdown', () => {
+  it('debug:true gives every result a scoreBreakdown with at least one reason', () => {
+    const candidates = Array.from({ length: 5 }, (_, i) => makeCandidate(`m-${i}`))
+
+    const result = rankHybrid(candidates, EMPTY_QUERY_PLAN, null, {
+      debug: true,
+      diversityEnabled: false,
+    })
+
+    for (const c of result) {
+      expect(c.scoreBreakdown).toBeDefined()
+      expect(c.scoreBreakdown!.reasons.length).toBeGreaterThanOrEqual(1)
+      expect(c.scoreBreakdown!.modelVersion).toBe('v1')
+    }
+  })
+
+  it('debug:false gives no scoreBreakdown', () => {
+    const candidates = [makeCandidate('m-1')]
+    const result = rankHybrid(candidates, EMPTY_QUERY_PLAN, null, { debug: false })
+    expect(result[0].scoreBreakdown).toBeUndefined()
+  })
+})

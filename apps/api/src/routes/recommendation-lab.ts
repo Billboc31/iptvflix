@@ -1,13 +1,38 @@
 import { createHash } from 'node:crypto'
+import { eq, and, inArray } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import { db } from '../db/client.js'
+import {
+  profileTaste,
+  movieGenres,
+  seriesGenres,
+  movieAvailabilities,
+  seriesAvailabilities,
+  genres,
+} from '../db/schema/index.js'
 import { EmbeddingService } from '../services/embedding-service.js'
 import { SemanticRetrievalService } from '../services/semantic-retrieval-service.js'
+import type { SemanticResult } from '../services/semantic-retrieval-service.js'
 import { createDefaultProvider } from '../services/embedding-provider.js'
 import { LlmQueryPlannerService } from '../services/llm-query-planner-service.js'
 import { createOpenAiPlannerProvider } from '../services/openai-llm-planner-provider.js'
 import { OPENAI_API_KEY, LLM_PLANNER_MODEL } from '../config/env.js'
-import type { CompactTasteContext, RecommendationQueryPlan } from '@iptvflix/api-contracts'
+import {
+  rankHybrid,
+  SCORE_MODEL_V1,
+} from '../services/recommendation-ranking-service.js'
+import type {
+  HybridCandidate,
+  TasteSignals,
+  RankingOptions,
+  ExplorationLevel,
+} from '../services/recommendation-ranking-service.js'
+import type {
+  CompactTasteContext,
+  RecommendationQueryPlan,
+  RecommendationCandidate,
+} from '@iptvflix/api-contracts'
+import { rawQueryFallbackPlan } from '@iptvflix/api-contracts'
 
 // ---------------------------------------------------------------------------
 // profileContext sanitisation — validate shape and bound string lengths
@@ -95,6 +120,155 @@ const plannerService = new LlmQueryPlannerService(
 )
 
 // ---------------------------------------------------------------------------
+// Hybrid enrichment helpers
+// ---------------------------------------------------------------------------
+
+async function loadTasteSignals(profileId: string): Promise<TasteSignals | null> {
+  const rows = await db
+    .select()
+    .from(profileTaste)
+    .where(eq(profileTaste.profileId, profileId))
+
+  const row = rows[0]
+  if (!row) return null
+
+  const genreScores = (row.genreScores ?? {}) as Record<string, number>
+  const genreMeta = (row.genreMeta ?? {}) as Record<string, { name: string }>
+  const genreNames: Record<string, string> = {}
+  for (const [id, meta] of Object.entries(genreMeta)) {
+    genreNames[id] = meta.name
+  }
+
+  return {
+    genreScores,
+    genreNames,
+    positiveMediaIds: new Set<string>(row.positiveMediaIds ?? []),
+    negativeMediaIds: new Set<string>(row.negativeMediaIds ?? []),
+    signalCount: row.signalCount ?? 0,
+  }
+}
+
+async function enrichAsHybridCandidates(results: SemanticResult[]): Promise<HybridCandidate[]> {
+  if (results.length === 0) return []
+
+  const movieIds = results.filter((r) => r.mediaType === 'MOVIE').map((r) => r.mediaId)
+  const seriesIds = results.filter((r) => r.mediaType === 'SERIES').map((r) => r.mediaId)
+
+  const [
+    movieGenreRows,
+    seriesGenreRows,
+    allGenreRows,
+    availMovieRows,
+    availSeriesRows,
+  ] = await Promise.all([
+    movieIds.length > 0
+      ? db
+          .select({ movieId: movieGenres.movieId, genreId: movieGenres.genreId })
+          .from(movieGenres)
+          .where(inArray(movieGenres.movieId, movieIds))
+      : Promise.resolve([] as { movieId: string; genreId: string }[]),
+    seriesIds.length > 0
+      ? db
+          .select({ seriesId: seriesGenres.seriesId, genreId: seriesGenres.genreId })
+          .from(seriesGenres)
+          .where(inArray(seriesGenres.seriesId, seriesIds))
+      : Promise.resolve([] as { seriesId: string; genreId: string }[]),
+    db.select({ id: genres.id, name: genres.name }).from(genres),
+    movieIds.length > 0
+      ? db
+          .select({ movieId: movieAvailabilities.movieId })
+          .from(movieAvailabilities)
+          .where(
+            and(
+              inArray(movieAvailabilities.movieId, movieIds),
+              eq(movieAvailabilities.status, 'AVAILABLE'),
+            ),
+          )
+      : Promise.resolve([] as { movieId: string }[]),
+    seriesIds.length > 0
+      ? db
+          .select({ seriesId: seriesAvailabilities.seriesId })
+          .from(seriesAvailabilities)
+          .where(
+            and(
+              inArray(seriesAvailabilities.seriesId, seriesIds),
+              eq(seriesAvailabilities.status, 'AVAILABLE'),
+            ),
+          )
+      : Promise.resolve([] as { seriesId: string }[]),
+  ])
+
+  const genreNameMap = new Map(allGenreRows.map((g) => [g.id, g.name]))
+
+  const movieGenreMap = new Map<string, string[]>()
+  for (const { movieId, genreId } of movieGenreRows) {
+    const list = movieGenreMap.get(movieId) ?? []
+    list.push(genreId)
+    movieGenreMap.set(movieId, list)
+  }
+
+  const seriesGenreMap = new Map<string, string[]>()
+  for (const { seriesId, genreId } of seriesGenreRows) {
+    const list = seriesGenreMap.get(seriesId) ?? []
+    list.push(genreId)
+    seriesGenreMap.set(seriesId, list)
+  }
+
+  const availMovieSet = new Set(availMovieRows.map((r) => r.movieId))
+  const availSeriesSet = new Set(availSeriesRows.map((r) => r.seriesId))
+
+  return results.map((r) => {
+    const genreIds =
+      r.mediaType === 'MOVIE'
+        ? (movieGenreMap.get(r.mediaId) ?? [])
+        : (seriesGenreMap.get(r.mediaId) ?? [])
+
+    const genreNames = genreIds.map((id) => genreNameMap.get(id) ?? '').filter(Boolean)
+    const available =
+      r.mediaType === 'MOVIE' ? availMovieSet.has(r.mediaId) : availSeriesSet.has(r.mediaId)
+
+    return {
+      mediaId: r.mediaId,
+      mediaType: r.mediaType as 'MOVIE' | 'SERIES',
+      title: r.title,
+      year: r.year,
+      posterPath: r.posterPath,
+      source: 'LOCAL' as const,
+      similarity: r.similarity,
+      genreIds,
+      genreNames,
+      popularity: null,
+      voteAverage: null,
+      available,
+      status: null,
+      collectionId: null,
+      directors: [],
+      keywords: [],
+      durationMinutes: null,
+      originalLanguage: null,
+      completionRatio: null,
+    }
+  })
+}
+
+function mapScoredToCandidate(
+  c: ReturnType<typeof rankHybrid>[number],
+): RecommendationCandidate {
+  return {
+    mediaType: c.mediaType,
+    mediaId: c.mediaId,
+    title: c.title,
+    year: c.year,
+    posterPath: c.posterPath,
+    score: c.score,
+    reasons: c.reasons,
+    source: c.source,
+    available: c.available,
+    scoreBreakdown: c.scoreBreakdown,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
 
@@ -110,6 +284,14 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
       compareQuery?: string
       expandWithLlm?: boolean
       profileContext?: CompactTasteContext
+      // Hybrid ranking extensions
+      useHybridRanking?: boolean
+      profileId?: string
+      compareProfileId?: string
+      explorationLevel?: ExplorationLevel
+      diversityEnabled?: boolean
+      modelVersion?: string
+      debug?: boolean
     }
 
     const query = body?.query
@@ -125,9 +307,21 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
     const expandWithLlm = body?.expandWithLlm === true
     const profileContext = sanitizeProfileContext(body?.profileContext)
 
-    const compareQuery = body?.compareQuery && typeof body.compareQuery === 'string'
-      ? body.compareQuery.trim()
-      : undefined
+    const compareQuery =
+      body?.compareQuery && typeof body.compareQuery === 'string'
+        ? body.compareQuery.trim()
+        : undefined
+
+    const useHybridRanking = body?.useHybridRanking === true
+    const profileId = typeof body?.profileId === 'string' ? body.profileId : undefined
+    const compareProfileId =
+      typeof body?.compareProfileId === 'string' ? body.compareProfileId : undefined
+    const explorationLevel: ExplorationLevel =
+      body?.explorationLevel === 'explore' || body?.explorationLevel === 'discover'
+        ? body.explorationLevel
+        : 'exploit'
+    const diversityEnabled = body?.diversityEnabled !== false
+    const debugMode = body?.debug === true
 
     const provider = createDefaultProvider(OPENAI_API_KEY)
     const embeddingService = new EmbeddingService(db, provider)
@@ -156,9 +350,10 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
       // Enforced: mediaTypes, minReleaseYear, maxReleaseYear (year field present after enrichWithMetadata).
       // NOT enforced (no genre/audio data in SemanticResult): excludeGenres, includeGenres,
       // audioLanguages, maxRuntimeMinutes — shown in QueryPlanPanel as unenforced.
-      const filteredTypes = plan.mediaTypes.length > 0 && plan.mediaTypes.length < 2
-        ? new Set(plan.mediaTypes)
-        : null
+      const filteredTypes =
+        plan.mediaTypes.length > 0 && plan.mediaTypes.length < 2
+          ? new Set(plan.mediaTypes)
+          : null
 
       const { minReleaseYear, maxReleaseYear } = plan.hardFilters
 
@@ -181,6 +376,33 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
         modelName: r.modelName,
       })
 
+      // Hybrid ranking block
+      let hybridResults: RecommendationCandidate[] | undefined
+      let compareProfileHybridResults: RecommendationCandidate[] | undefined
+
+      if (useHybridRanking) {
+        const rankingOpts: RankingOptions = {
+          limit: topK,
+          explorationLevel,
+          diversityEnabled,
+          debug: debugMode,
+        }
+
+        const [enriched, taste1, taste2] = await Promise.all([
+          enrichAsHybridCandidates(filteredResults),
+          profileId ? loadTasteSignals(profileId) : Promise.resolve(null),
+          compareProfileId ? loadTasteSignals(compareProfileId) : Promise.resolve(null),
+        ])
+
+        hybridResults = rankHybrid(enriched, plan, taste1, rankingOpts).map(mapScoredToCandidate)
+
+        if (compareProfileId && taste2 !== undefined) {
+          compareProfileHybridResults = rankHybrid(enriched, plan, taste2, rankingOpts).map(
+            mapScoredToCandidate,
+          )
+        }
+      }
+
       return reply.send({
         query: rawQuery,
         topK,
@@ -190,6 +412,11 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
         compareQuery: effectiveCompareQuery,
         compareResults: rawResults.map(mapResult),
         queryPlan: plan,
+        ...(hybridResults !== undefined ? { hybridResults } : {}),
+        ...(compareProfileHybridResults !== undefined
+          ? { compareProfileHybridResults }
+          : {}),
+        ...(debugMode ? { scoreModel: SCORE_MODEL_V1 } : {}),
       })
     }
 
@@ -211,6 +438,36 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
       modelName: r.modelName,
     })
 
+    // Hybrid ranking on default (no LLM) path
+    let hybridResults: RecommendationCandidate[] | undefined
+    let compareProfileHybridResults: RecommendationCandidate[] | undefined
+
+    if (useHybridRanking) {
+      const fallbackPlan = rawQueryFallbackPlan(rawQuery)
+      const rankingOpts: RankingOptions = {
+        limit: topK,
+        explorationLevel,
+        diversityEnabled,
+        debug: debugMode,
+      }
+
+      const [enriched, taste1, taste2] = await Promise.all([
+        enrichAsHybridCandidates(primary),
+        profileId ? loadTasteSignals(profileId) : Promise.resolve(null),
+        compareProfileId ? loadTasteSignals(compareProfileId) : Promise.resolve(null),
+      ])
+
+      hybridResults = rankHybrid(enriched, fallbackPlan, taste1, rankingOpts).map(
+        mapScoredToCandidate,
+      )
+
+      if (compareProfileId && taste2 !== undefined) {
+        compareProfileHybridResults = rankHybrid(enriched, fallbackPlan, taste2, rankingOpts).map(
+          mapScoredToCandidate,
+        )
+      }
+    }
+
     return reply.send({
       query: rawQuery,
       topK,
@@ -223,6 +480,9 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
             compareResults: comparison.map(mapResult),
           }
         : {}),
+      ...(hybridResults !== undefined ? { hybridResults } : {}),
+      ...(compareProfileHybridResults !== undefined ? { compareProfileHybridResults } : {}),
+      ...(debugMode ? { scoreModel: SCORE_MODEL_V1 } : {}),
     })
   })
 }
