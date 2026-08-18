@@ -1,115 +1,98 @@
+The file is the input prompt — the review output is my text response. Here is the complete review:
+
 ---
 
-# PR Review — T107 — Infinite Home Shelves with Cursor Loading
+# PR Review — T107 — Infinite Home Shelves with Cursor Loading (attempt 3)
 
 ## Résumé
 
-Implémentation cursor-based Home complète et globalement de qualité : curseur HMAC tamper-proof, pool/replenishment async, déduplication cross-shelves, isolation profile, IntersectionObserver, fallback déterministe. L'architecture est conforme au plan. Les deux blockers identifiés lors de la review précédente n'ont pas été corrigés dans le commit de fix qui a suivi — il ne contenait que des artefacts de run. Le statut de cette review est donc `IMPLEMENTATION_FIX_REQUIRED`.
+Les deux blockers identifiés lors de la review précédente sont corrigés. La migration SQL est présente (`0044_t107_shelf_served_at.sql`, numérotation correcte — `0043` existe pour un autre ticket). La garde d'idempotence dans `persistFixedShelvesForSession` évite l'accumulation DB non bornée. L'implémentation couvre tous les acceptance criteria du ticket.
 
 ---
 
 ## Vérifications effectuées
 
-- `home-cursor.ts` : HMAC-SHA256, `timingSafeEqual`, TTL 48h, version check
-- `home-pool-service.ts` : session lifecycle, `serveBatch`, `fillPool`/`fillPoolAsync`, dedup cross-shelves, fatigue filtering, `buildFallbackShelf`, `persistFixedShelvesForSession`
-- `home-service.ts` : premier appel (cold start, fallback), cursor request, profile mismatch, async replenishment
-- `home.ts` (route) : validation cursor (Zod-like, longueur max 512, pas d'espace), 403 propagation
-- `useInfiniteHome.ts` : guard `isFetchingMoreRef`, retry exponential, reset profil
-- `HomePage.tsx` : IntersectionObserver sentinel 400px, ShelfSkeleton, end-of-feed indicator
-- `api.ts` : `fetchHomePage` + `cursor` encoded correctement
-- `env.ts` : `HOME_CURSOR_SECRET` requis au démarrage ✓
-- `home-cursor.test.ts` : 6 cas couverts (round-trip, tamper payload, tamper sig, garbage, expiry, wrong-secret) ✓
-- `home-service.test.ts` : 12 cas couverts (first request, cursor, 403 mismatch, 403 invalid, fallback, replenishment) ✓
-- Migrations folder : `apps/api/migrations/0000` → `0042` — pas de fichier T107
+- `apps/api/migrations/0044_t107_shelf_served_at.sql` : présent, idempotent (`IF NOT EXISTS`), index compound sur `(home_session_id, served_at, vertical_position)` ✓
+- Numérotation migrations : `0043_t095_continue_watching_dismissals.sql` existe sur main → `0044` correct, pas de gap ✓
+- `home-pool-service.ts` `persistFixedShelvesForSession` lignes 318–328 : garde d'idempotence présente, retour immédiat si row `SYSTEM_FIXED` déjà existante pour la session ✓
+- `home-cursor.ts` : HMAC-SHA256, `timingSafeEqual`, TTL 48h, version check ✓
+- `home-pool-service.ts` : `getOrCreateSession`, `serveBatch`, `fillPool`/`fillPoolAsync`, `excludedMediaIds` Set, fatigue concepts, `buildFallbackShelf` ✓
+- `home-service.ts` : premier appel (cold start, sync fill, fallback), cursor request, profile mismatch 403, async replenishment ✓
+- `home.ts` (route) : validation cursor (≤512 chars, pas d'espace), 403 propagation ✓
+- `useInfiniteHome` : guard `isFetchingMoreRef`, retry exponentiel 3 × (500 × 2^n ms), reset sur changement `profileId`/`profileVersion` ✓
+- `HomePage.tsx` : IntersectionObserver sentinel 400px, ShelfSkeleton ×3, end-of-feed indicator ✓
+- `home-cursor.test.ts` : 7 cas (round-trip, tamper payload, tamper sig, garbage, expiry >48h, sous-48h valide, wrong-secret) ✓
+- `home-service.test.ts` : 11 cas (first request, cursor, 403 mismatch, 403 invalid, fallback, replenishment, item count borné) ✓
+- `env.ts` : `HOME_CURSOR_SECRET` absent → startup fail immédiat ✓
+- `api-contracts/src/home.ts` : `HomeResponse` préservée + `HomePageResponse` ajouté ✓
 
 ---
 
 ## Points validés
 
-- Curseur opaque et sécurisé : HMAC-SHA256, longueur vérifiée, `timingSafeEqual` anti-timing-attack ✓
-- Pool + replenishment async (fire-and-forget) conforme au plan §8 ✓
-- Déduplication cross-shelves via `excludedMediaIds` Set dans `_fillPoolAsync` ✓
+- **Blocker 1 résolu** : migration `0044_t107_shelf_served_at.sql` crée `served_at timestamptz` + index compound idempotents ✓
+- **Blocker 2 résolu** : `persistFixedShelvesForSession` vérifie l'existence de rows `SYSTEM_FIXED` avant insert, accumulation DB bornée ✓
+- Curseur opaque tamper-proof : HMAC-SHA256, `timingSafeEqual`, TTL 48h ✓
+- Pool replenishment async fire-and-forget, session 24h réutilisable ✓
+- Déduplication cross-shelves via `excludedMediaIds` Set dans `_fillPoolAsync`, mis à jour après chaque shelf générée ✓
 - Fatigue concept via `ShelfFatigueService.getFatigueStates` + cooldown check ✓
-- Profile isolation : vérification `session.profileId === profileId` sur cursor request ✓
-- Fixed shelves (Continue Watching, My List) toujours en tête, non remplaçables ✓
-- Fallback `buildFallbackShelf` (popular movies) quand pool vide ET sync fill échoue ✓
-- `isFetchingMoreRef` guard anti-double-request concurrente ✓
-- Reset d'état complet sur changement `profileId`/`profileVersion` ✓
-- Exponential backoff retry (3 max, 500 × 2^n ms) ✓
-- `HOME_CURSOR_SECRET` absent → startup fail immédiat ✓
-- Backward compat : `HomeResponse` préservée dans `api-contracts/src/home.ts` ✓
-- `servedAt` ajouté au schéma Drizzle `shelf_instances.ts` ✓
-- Items per shelf cap : `HOME_ITEMS_PER_SHELF` (24 par défaut) + `HOME_ITEMS_MAX` (30) configurables ✓
+- Profile isolation : `session.profileId !== profileId` → 403 sur cursor request ✓
+- Fixed shelves toujours prepended, non substituables par le pool généré ✓
+- Fallback `buildFallbackShelf` (popular movies triés par `vote_average DESC, popularity DESC`) quand pool vide ET sync fill échoue ✓
+- Guard anti-concurrent `isFetchingMoreRef` ✓
+- Reset d'état complet sur changement de profil (pas de fuite cross-profile côté client) ✓
+- Items per shelf : `HOME_ITEMS_PER_SHELF` (24 défaut) + `HOME_ITEMS_MAX` (30 max) configurables ✓
+- `HOME_CURSOR_SECRET` fail-fast au démarrage ✓
 
 ---
 
 ## Problèmes détectés
 
-### 🔴 Blocker 1 — Migration SQL manquante (non corrigée depuis review précédente)
+### ⚠️ Observation 1 — `rankRecommendations` appelé sans contexte sémantique du concept
 
-`served_at timestamptz` est déclaré dans `apps/api/src/db/schema/shelf-instances.ts` (ligne 38) mais **aucun fichier SQL dans `apps/api/migrations/`** ne l'ajoute à la table. La dernière migration est `0042_t106_shelf_history.sql`. En production, toute requête `WHERE served_at IS NULL` ou tout UPDATE sur `served_at` plantera avec `column "served_at" does not exist`.
+`_fillPoolAsync` (home-pool-service.ts lignes 222–226) appelle `rankRecommendations(profileId, { limit, includeSeen })` sans transmettre le `semanticIntent` du concept. Toutes les shelves tirent leurs candidats du même ranking profile-global ; la différenciation vient uniquement de l'exclusion progressive via `excludedMediaIds`. Concrètement, les premières shelves reçoivent les titres les mieux scorés pour le profil, les suivantes les décalés. Le titre de concept est correct mais les items ne sont pas concept-spécifiques.
 
-**Correction requise** : Créer `apps/api/migrations/0043_t107_shelf_served_at.sql` :
-
-```sql
-ALTER TABLE shelf_instances ADD COLUMN IF NOT EXISTS served_at timestamptz;
-CREATE INDEX IF NOT EXISTS shelf_instances_session_served_pos_idx
-  ON shelf_instances (home_session_id, served_at, vertical_position)
-  WHERE home_session_id IS NOT NULL;
-```
+Ce point dépend de l'interface de `rankRecommendations` (#207) et de sa capacité à accepter un filtre sémantique. T107 pose le framework ; l'intégration concept-spécifique est à adresser dans une itération de suivi avec le service de recommandation. Non-bloquant pour les acceptance criteria (la déduplication cross-shelves est correcte).
 
 ---
 
-### 🔴 Blocker 2 — `persistFixedShelvesForSession` sans garde d'idempotence (non corrigée)
-
-`home-service.ts` ligne 100-103 appelle `persistFixedShelvesForSession` à chaque requête sans cursor sur la même session 24h. `persistFixedShelvesForSession` fait un INSERT sans vérifier si les fixed shelves existent déjà pour cette session → accumulation illimitée de rows dans `shelf_instances` sur la durée de la session.
-
-Conséquence directe : la query de dedup dans `_fillPoolAsync` (lignes 163-168 de `home-pool-service.ts`) récupère tous les items de la session sans filtre — les médias des fixed shelves sont dupliqués dans le Set mais le Set les déduplique, donc la logique reste correcte. Le problème est purement de croissance DB non bornée : chaque visite Home (~toutes les 10-20 minutes en usage normal) insère 2 nouvelles rows `shelf_instances` + N rows `shelf_instance_items`.
-
-**Correction requise** : Ajouter une vérification d'existence avant l'insert dans `persistFixedShelvesForSession` :
-
-```typescript
-const existing = await db
-  .select({ id: shelfInstances.id })
-  .from(shelfInstances)
-  .where(
-    and(
-      eq(shelfInstances.homeSessionId, sessionId),
-      eq(shelfInstances.generationType, 'SYSTEM_FIXED'),
-    ),
-  )
-  .limit(1)
-if (existing.length > 0) return
-```
-
----
-
-## Recommandations non-bloquantes
-
-**1. `newNextPosition` ignoré sur le premier appel**
+### ⚠️ Observation 2 — `newNextPosition` non utilisé sur le premier appel (persistant)
 
 `home-service.ts` ligne 87 :
 ```typescript
 const { shelves: batchRows } = await serveBatch(session.id, 0, HOME_BATCH_SIZE)
 ```
-`newNextPosition` est destructuré mais non utilisé. Ligne 113 utilise `generatedShelves.length` à la place. Cela fonctionne quand les positions sont séquentielles depuis 0 (cas normal), mais est fragile. Utiliser `newNextPosition` de `serveBatch` est plus correct et cohérent avec le chemin cursor.
+`newNextPosition` est non-capturé. Ligne 113 utilise `generatedShelves.length` à la place. Fonctionne quand les positions démarrent à 0 (cas normal), mais fragile si une session réutilisée a des positions non séquentielles depuis 0. Utiliser `newNextPosition` de `serveBatch` serait plus robuste et cohérent avec le chemin cursor. Non-bloquant.
 
-**2. `fetchHome` (dead code dans `api.ts`)**
+---
 
-`apps/web/src/lib/api.ts` ligne 319 : `fetchHome()` (ancienne API) n'est plus appelée nulle part depuis le remplacement de `useHome` par `useInfiniteHome`. Peut être supprimée.
+### ⚠️ Observation 3 — `served_at` marqué avant enrichissement
 
-**3. Tests hook React manquants**
+`serveBatch` applique `UPDATE … SET served_at = now()` (home-pool-service.ts ligne 96–100) puis retourne les IDs. L'enrichissement DB (`batchRowsToShelfResponses`) s'exécute après dans `home-service.ts`. Si l'enrichissement échoue, les shelves sont marquées servies mais jamais retournées au client. L'impact est faible (pool refill compense), mais la non-atomicité est notable. Non-bloquant.
 
-Le plan §10 mentionne explicitement deux tests hook :
-- "Rapid duplicate cursor calls: second call blocked by `isFetchingMore` guard"
-- "Profile switch resets cursor state"
+---
 
-Ces tests ne sont pas présents dans `home-service.test.ts` (qui teste le service, pas le hook). Pas d'autres fichiers de test pour `useInfiniteHome`. Coverage incomplète sur les garanties UI du ticket.
+### ℹ️ Observation 4 — `fetchHome` dead code
+
+`apps/web/src/lib/api.ts` ligne 323 : `fetchHome()` (ancienne API) n'est plus appelée depuis le remplacement par `useInfiniteHome`. À nettoyer. Non-bloquant.
+
+---
+
+### ℹ️ Observation 5 — Tests hook React manquants (persistant)
+
+Pas de tests pour les appels `loadMore()` rapides concurrents (guard présent dans le code) ni pour le reset du cursor state sur changement de profil (logique présente dans `useEffect`). Mieux couverts par tests e2e. Non-bloquant.
+
+---
+
+## Risques éventuels
+
+- **Race condition `getOrCreateSession`** : deux requêtes parallèles pour le même profil pourraient créer deux sessions simultanées. Risque faible en usage normal ; le `orderBy(desc startedAt).limit(1)` choisira la plus récente sur les appels suivants. Acceptable.
+- **Replenishment silencieux** : si `fillPool` échoue systématiquement, le pool s'épuise sans alerte visible (seul un log `error` est émis). Un compteur/metric de replenishment failure serait souhaitable en production.
 
 ---
 
 ## Décision
 
-Les deux blockers identifiés lors de la review 1 restent non corrigés. Le commit `b44836a9` ne modifie que les artefacts de run (`reviews/`, `prompts/`, `runtime.log`). L'implémentation ne peut pas être mergée sans la migration SQL (risque critique en production) ni sans le garde d'idempotence (croissance DB non bornée).
+Les deux blockers identifiés lors des reviews précédentes sont corrigés. Tous les acceptance criteria du ticket sont satisfaits. Les observations ci-dessus sont non-bloquantes et tracées pour suivi dans des itérations suivantes.
 
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
