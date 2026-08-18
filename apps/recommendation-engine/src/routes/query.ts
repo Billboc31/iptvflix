@@ -9,13 +9,6 @@ const queryBodySchema = z.object({
   mediaTypes: z.array(z.enum(['movie', 'series'])).optional().default(['movie', 'series']),
   limit: z.number().int().min(1).max(100).optional().default(24),
   debug: z.boolean().optional().default(false),
-  stages: z
-    .object({
-      textSearch: z.boolean().optional(),
-      semanticSearch: z.boolean().optional(),
-      llmPlanner: z.boolean().optional(),
-    })
-    .optional(),
 })
 
 export async function queryRoutes(app: FastifyInstance) {
@@ -33,7 +26,7 @@ export async function queryRoutes(app: FastifyInstance) {
         SELECT id FROM profiles WHERE id = ${body.profileId} LIMIT 1
       `
       if (rows.length === 0) {
-        return reply.status(404).send({ error: `Profile ${body.profileId} not found` })
+        return reply.status(404).send({ error: 'Profile not found' })
       }
     }
 

@@ -28,7 +28,7 @@ The service starts on `http://localhost:3001` by default.
 
 ### `GET /health`
 
-Returns `{ status: "ok", version, timestamp }`. Used by Railway for health checks.
+Returns `{ status: "ok", version, timestamp }` when the service and its DB connection are healthy. Returns HTTP 503 with `{ status: "error", reason: "database unavailable" }` if the DB probe fails. Used by Railway for health checks.
 
 ### `POST /v1/query`
 
@@ -44,6 +44,8 @@ Run a recommendation pipeline query against the catalog.
   "debug": true
 }
 ```
+
+> **Note:** Per-stage toggles (`stages.textSearch`, etc.) are not yet wired — all available stages run unconditionally. The field is not accepted by the API until the pipeline supports it.
 
 **Response:**
 ```json

@@ -92,15 +92,16 @@ export async function runTextSearch(ctx: PipelineContext): Promise<StageResult> 
     candidates.sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
     const limited = candidates.slice(0, limit)
 
+    const durationMs = Date.now() - start
     ctx.log.info(
-      { requestId: ctx.requestId, stage: 'text-search', durationMs: Date.now() - start, candidateCount: limited.length },
+      { requestId: ctx.requestId, stage: 'text-search', durationMs, candidateCount: limited.length },
       'stage complete',
     )
 
     return {
       stage: 'text-search',
       available: true,
-      durationMs: Date.now() - start,
+      durationMs,
       inputCount: 0,
       outputCount: limited.length,
       candidates: limited,
@@ -111,7 +112,7 @@ export async function runTextSearch(ctx: PipelineContext): Promise<StageResult> 
     return {
       stage: 'text-search',
       available: false,
-      reason: `DB error: ${err instanceof Error ? err.message : String(err)}`,
+      reason: 'Database query error',
       durationMs,
       inputCount: 0,
       outputCount: 0,
