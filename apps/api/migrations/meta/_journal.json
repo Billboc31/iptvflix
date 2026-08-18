@@ -288,6 +288,13 @@
             "when": 1786399500000,
             "tag": "0040_t102_pgvector_hnsw",
             "breakpoints": true
+        },
+        {
+            "idx": 41,
+            "version": "7",
+            "when": 1786399600000,
+            "tag": "0041_t100_profile_interaction_events_v2",
+            "breakpoints": true
         }
     ]
 }
