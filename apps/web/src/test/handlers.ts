@@ -162,6 +162,7 @@ export const MOCK_EPISODES: EpisodeResponse[] = [
     selectedVariantId: null,
     variants: [],
     watchState: 'watched',
+    posterUrl: null,
   },
   {
     id: 'ep-2',
@@ -175,6 +176,7 @@ export const MOCK_EPISODES: EpisodeResponse[] = [
     selectedVariantId: null,
     variants: [],
     watchState: 'in_progress',
+    posterUrl: null,
   },
   {
     id: 'ep-3',
@@ -188,6 +190,7 @@ export const MOCK_EPISODES: EpisodeResponse[] = [
     selectedVariantId: null,
     variants: [],
     watchState: null,
+    posterUrl: null,
   },
 ]
 

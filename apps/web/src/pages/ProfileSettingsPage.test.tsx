@@ -6,7 +6,7 @@ import { http, HttpResponse } from 'msw'
 import { server } from '../test/handlers.js'
 import ProfileSettingsPage from './ProfileSettingsPage.js'
 import { ProfileProvider } from '../context/ProfileContext.js'
-import type { ProfileResponse, SourceResponse } from '@iptvflix/api-contracts'
+import type { NestedProfileResponse, SourceResponse } from '@iptvflix/api-contracts'
 
 const MOCK_SOURCES: SourceResponse[] = [
   {
@@ -31,7 +31,7 @@ const MOCK_SOURCES: SourceResponse[] = [
   },
 ]
 
-const MOCK_PROFILE: ProfileResponse = {
+const MOCK_PROFILE: NestedProfileResponse = {
   id: 'profile-1',
   name: 'Default',
   preferences: {

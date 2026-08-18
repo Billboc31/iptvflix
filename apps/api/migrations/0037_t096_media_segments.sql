@@ -1,7 +1,6 @@
--- Create segment_type enum
-CREATE TYPE IF NOT EXISTS "segment_type" AS ENUM ('RECAP', 'INTRO', 'OUTRO', 'CREDITS', 'PREVIEW');--> statement-breakpoint
+-- CREATE TYPE IF NOT EXISTS is not valid Postgres syntax (would abort migrate-safe).
+CREATE TYPE "segment_type" AS ENUM ('RECAP', 'INTRO', 'OUTRO', 'CREDITS', 'PREVIEW');--> statement-breakpoint
 
--- Create media_segments table
 CREATE TABLE IF NOT EXISTS "media_segments" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "episode_id" uuid NOT NULL REFERENCES "episodes"("id") ON DELETE CASCADE,

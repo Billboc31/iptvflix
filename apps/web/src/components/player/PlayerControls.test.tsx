@@ -290,14 +290,14 @@ describe('PlayerControls', () => {
   })
 
   it('shows next episode button when nextEpisode provided', () => {
-    const ep: EpisodeResponse = { id: 'ep-2', title: 'Ep 2', episodeNumber: 2, synopsis: null, durationMinutes: null, airDate: null, availabilityCount: 1, availabilityStatus: 'AVAILABLE', selectedVariantId: null, variants: [], watchState: null }
+    const ep: EpisodeResponse = { id: 'ep-2', title: 'Ep 2', episodeNumber: 2, synopsis: null, durationMinutes: null, airDate: null, availabilityCount: 1, availabilityStatus: 'AVAILABLE', selectedVariantId: null, variants: [], watchState: null, posterUrl: null }
     render(<Wrapper video={video} nextEpisode={ep} />)
     expect(screen.getAllByText(/Épisode suivant/)[0]).toBeInTheDocument()
   })
 
   it('calls onNextEpisode when next episode button clicked', () => {
     const onNextEpisode = vi.fn()
-    const ep: EpisodeResponse = { id: 'ep-2', title: 'Ep 2', episodeNumber: 2, synopsis: null, durationMinutes: null, airDate: null, availabilityCount: 1, availabilityStatus: 'AVAILABLE', selectedVariantId: null, variants: [], watchState: null }
+    const ep: EpisodeResponse = { id: 'ep-2', title: 'Ep 2', episodeNumber: 2, synopsis: null, durationMinutes: null, airDate: null, availabilityCount: 1, availabilityStatus: 'AVAILABLE', selectedVariantId: null, variants: [], watchState: null, posterUrl: null }
     render(<Wrapper video={video} nextEpisode={ep} onNextEpisode={onNextEpisode} />)
     fireEvent.click(screen.getAllByText(/Épisode suivant/)[0])
     expect(onNextEpisode).toHaveBeenCalled()

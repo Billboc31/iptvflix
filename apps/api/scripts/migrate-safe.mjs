@@ -21,6 +21,8 @@ const migrationsFolder = path.resolve(__dirname, '../migrations')
 
 /** Postgres: duplicate_column, duplicate_table, duplicate_object, duplicate_schema */
 const ALREADY_EXISTS_CODES = new Set(['42701', '42P07', '42710', '42P06'])
+/** Missing extension on stock Postgres (e.g. pgvector on Railway). */
+const OPTIONAL_EXTENSION_CODES = new Set(['58P01', '0A000', '42704'])
 
 function loadPending(appliedHashes) {
   const journal = JSON.parse(
@@ -50,6 +52,13 @@ async function applyStatement(tx, stmt) {
     if (code && ALREADY_EXISTS_CODES.has(code)) {
       console.warn(
         `[migrate-safe] already exists (${code}), continuing: ${stmt.replace(/\s+/g, ' ').slice(0, 100)}`,
+      )
+      return
+    }
+    const isExtensionStmt = /^\s*CREATE\s+EXTENSION\b/i.test(stmt)
+    if (isExtensionStmt && code && OPTIONAL_EXTENSION_CODES.has(code)) {
+      console.warn(
+        `[migrate-safe] optional extension unavailable (${code}), continuing: ${stmt.replace(/\s+/g, ' ').slice(0, 100)}`,
       )
       return
     }

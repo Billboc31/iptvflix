@@ -37,6 +37,13 @@ export type ProfileResponse = {
   lastUsedAt: string | null
 }
 
+/** GET /profile and PATCH /profile/preferences still return nested preferences. */
+export type NestedProfileResponse = {
+  id: string
+  name: string
+  preferences: ProfilePreferences
+}
+
 export type CreateProfileBody = {
   name: string
   avatarKey?: string

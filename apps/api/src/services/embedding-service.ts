@@ -95,7 +95,7 @@ export class EmbeddingService {
 
   async semanticSearch(queryText: string, topK: number): Promise<SemanticCandidate[]> {
     const queryVector = await this.provider.embed(queryText)
-    const vectorLiteral = `[${queryVector.join(',')}]`
+    const arrayLiteral = `ARRAY[${queryVector.map(Number).join(',')}]::double precision[]`
 
     const rows = await this.db
       .select({
@@ -105,7 +105,16 @@ export class EmbeddingService {
         modelName: mediaEmbeddings.modelName,
         docHash: mediaEmbeddings.docHash,
         generatedAt: mediaEmbeddings.generatedAt,
-        distance: sql<number>`${mediaEmbeddings.embedding} <=> ${sql.raw(`'${vectorLiteral}'::vector`)}`,
+        distance: sql<number>`(
+          1.0 - (
+            (SELECT COALESCE(SUM(x * y), 0) FROM unnest(${mediaEmbeddings.embedding}, ${sql.raw(arrayLiteral)}) AS t(x, y))
+            / NULLIF(
+              sqrt((SELECT COALESCE(SUM(x * x), 0) FROM unnest(${mediaEmbeddings.embedding}) AS u(x)))
+              * sqrt((SELECT COALESCE(SUM(y * y), 0) FROM unnest(${sql.raw(arrayLiteral)}) AS v(y))),
+              0
+            )
+          )
+        )`,
       })
       .from(mediaEmbeddings)
       .where(
@@ -114,7 +123,16 @@ export class EmbeddingService {
           eq(mediaEmbeddings.modelName, this.provider.modelName),
         ),
       )
-      .orderBy(sql`${mediaEmbeddings.embedding} <=> ${sql.raw(`'${vectorLiteral}'::vector`)}`)
+      .orderBy(sql`(
+        1.0 - (
+          (SELECT COALESCE(SUM(x * y), 0) FROM unnest(${mediaEmbeddings.embedding}, ${sql.raw(arrayLiteral)}) AS t(x, y))
+          / NULLIF(
+            sqrt((SELECT COALESCE(SUM(x * x), 0) FROM unnest(${mediaEmbeddings.embedding}) AS u(x)))
+            * sqrt((SELECT COALESCE(SUM(y * y), 0) FROM unnest(${sql.raw(arrayLiteral)}) AS v(y))),
+            0
+          )
+        )
+      )`)
       .limit(topK)
 
     return rows.map((row, i) => ({

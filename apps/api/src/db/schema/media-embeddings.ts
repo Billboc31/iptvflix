@@ -1,15 +1,19 @@
 import { pgTable, uuid, text, integer, timestamp, uniqueIndex, customType } from 'drizzle-orm/pg-core'
 
-// pgvector column type — stores as [x,y,z,...] string on the wire
-const vector = customType<{ data: number[]; driverData: string; config: { dimensions: number } }>({
-  dataType(config) {
-    return `vector(${config?.dimensions ?? 1536})`
+/** float8[] — works on stock Postgres (Railway) without pgvector. */
+const float8Array = customType<{ data: number[]; driverData: number[] | string }>({
+  dataType() {
+    return 'double precision[]'
   },
-  fromDriver(value: string): number[] {
-    return value.slice(1, -1).split(',').map(Number)
+  fromDriver(value: number[] | string): number[] {
+    if (Array.isArray(value)) return value.map(Number)
+    if (typeof value === 'string') {
+      return value.replace(/[{}]/g, '').split(',').filter(Boolean).map(Number)
+    }
+    return []
   },
-  toDriver(value: number[]): string {
-    return `[${value.join(',')}]`
+  toDriver(value: number[]): number[] {
+    return value
   },
 })
 
@@ -19,7 +23,7 @@ export const mediaEmbeddings = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     mediaId: uuid('media_id').notNull(),
     mediaType: text('media_type').notNull(),
-    embedding: vector('embedding', { dimensions: 1536 }),
+    embedding: float8Array('embedding').notNull(),
     modelProvider: text('model_provider').notNull(),
     modelName: text('model_name').notNull(),
     embeddingDimension: integer('embedding_dimension').notNull(),

@@ -33,6 +33,7 @@ import type {
   GenerateShelfBody,
   GenerateShelfResponse,
   ProfileResponse,
+  NestedProfileResponse,
   UpdateProfilePreferencesBody,
   CreateProfileBody,
   UpdateProfileBody,
@@ -270,11 +271,11 @@ export function refreshShelf(id: string): Promise<GenerateShelfResponse> {
   return request(`/shelves/${id}/refresh`, { method: 'POST' })
 }
 
-export function getProfile(): Promise<ProfileResponse> {
+export function getProfile(): Promise<NestedProfileResponse> {
   return request('/profile')
 }
 
-export function updateProfilePreferences(body: UpdateProfilePreferencesBody): Promise<ProfileResponse> {
+export function updateProfilePreferences(body: UpdateProfilePreferencesBody): Promise<NestedProfileResponse> {
   return request('/profile/preferences', { method: 'PATCH', body: JSON.stringify(body) })
 }
 

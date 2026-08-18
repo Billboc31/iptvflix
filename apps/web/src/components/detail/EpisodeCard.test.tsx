@@ -16,6 +16,7 @@ const BASE_EPISODE: EpisodeResponse = {
   selectedVariantId: null,
   variants: [],
   watchState: null,
+  posterUrl: null,
 }
 
 function renderCard(episode: EpisodeResponse = BASE_EPISODE) {
