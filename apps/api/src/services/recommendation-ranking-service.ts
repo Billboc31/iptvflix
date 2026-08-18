@@ -493,7 +493,9 @@ function buildReasons(
     freshness: number
     availabilityBonus: number
     alreadyWatchedPenalty: number
+    abandonPenalty: number
     dislikedPenalty: number
+    avoidPenalty: number
     repetitionPenalty: number
   },
   genreNames: string[],
@@ -519,7 +521,9 @@ function buildReasons(
   if (components.qualityPrior > 0.8) reasons.push('highly rated')
   if (components.availabilityBonus > 0) reasons.push('available now')
   if (components.alreadyWatchedPenalty > 0) reasons.push('already watched recently')
+  if (components.abandonPenalty > 0) reasons.push('quick abandon penalty')
   if (components.dislikedPenalty > 0) reasons.push('disliked content')
+  if (components.avoidPenalty > 0) reasons.push('theme avoid match')
 
   if (reasons.length === 0) reasons.push('discovery')
 
@@ -638,7 +642,9 @@ export function rankHybrid(
         freshness: fresh,
         availabilityBonus: availBonus,
         alreadyWatchedPenalty: watchedPenalty,
+        abandonPenalty,
         dislikedPenalty: dislikePenalty,
+        avoidPenalty,
         repetitionPenalty,
       },
       c.genreNames,
@@ -656,7 +662,9 @@ export function rankHybrid(
           freshness: fresh,
           availabilityBonus: availBonus,
           alreadyWatchedPenalty: watchedPenalty,
+          abandonPenalty,
           dislikedPenalty: dislikePenalty,
+          avoidPenalty,
           repetitionPenalty,
           final: finalScore,
           reasons,

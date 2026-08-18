@@ -1,24 +1,23 @@
-All tasks complete. Here's a summary of what was implemented:
+Both ranking test files pass:
+- `recommendation-ranking-service.test.ts` — 23 tests ✓
+- `recommendation-ranking-benchmark.test.ts` — **7 tests** ✓ (was 6, now 7 with the new math consistency test)
 
----
+All pre-existing failures are in unrelated test files (auth, shelves, integration, title-matching) — unchanged from before.
 
-## Files modified/created
+Here's a summary of all changes made:
 
-**`packages/api-contracts/src/recommendations.ts`** — Added `ScoreBreakdown` interface; extended `RecommendationCandidate` with optional `scoreBreakdown?: ScoreBreakdown`.
+**`packages/api-contracts/src/recommendations.ts`**
+- Added `abandonPenalty: number` and `avoidPenalty: number` to `ScoreBreakdown` interface.
 
-**`apps/api/src/services/recommendation-ranking-service.ts`** — Added ~400 lines of new hybrid ranking code:
-- `SCORE_MODEL_V1` — versioned weight constants (wSemantic=0.35, wGenre=0.25, wTheme=0.15, wPeople=0.10, wFreshness=0.05, wPrior=0.10, wAvailability=0.05)
-- `HybridCandidate`, `TasteSignals`, `RankingOptions`, `ScoredHybridCandidate` — exported types
-- `rankHybrid(candidates, queryPlan, taste, opts)` — pure function with: eligibility hard filters, normalized component scores, exploration level weight blending, diversity capping (franchise/director), explainable debug output
-- Existing `rankRecommendations` is fully unchanged
+**`apps/api/src/services/recommendation-ranking-service.ts`**
+- Added `abandonPenalty` and `avoidPenalty` to the `buildReasons` component parameter.
+- Added `"quick abandon penalty"` and `"theme avoid match"` reason strings when those penalties are non-zero.
+- Populated `abandonPenalty` and `avoidPenalty` in the debug `scoreBreakdown` object so `final` is now fully reconstructible from the exposed fields.
 
-**`apps/api/src/routes/recommendation-lab.ts`** — Added hybrid ranking support to `POST /recommendation-lab/semantic-query`:
-- New request fields: `useHybridRanking`, `profileId`, `compareProfileId`, `explorationLevel`, `diversityEnabled`, `debug`
-- New response fields: `hybridResults`, `compareProfileHybridResults`, `scoreModel`
-- `loadTasteSignals()` and `enrichAsHybridCandidates()` DB helpers
+**`apps/api/src/services/__tests__/recommendation-ranking-benchmark.test.ts`**
+- Imported `SCORE_MODEL_V1`.
+- Added `"scoreBreakdown.final is mathematically reconstructible from its component fields"` test that verifies `bd.final ≈ weighted_sum - all_penalties` for every result in a debug run.
 
-**`apps/api/src/services/__tests__/recommendation-ranking-service.test.ts`** — Extended with 6 new scenarios (11–16) testing `rankHybrid` directly as a pure function: profile differentiation, runtime hard filter, negative penalty, franchise cap, discover exploration mode, debug breakdowns.
-
-**`apps/api/src/services/__tests__/recommendation-ranking-benchmark.test.ts`** _(new)_ — Deterministic benchmark with 20 fixed candidates, fixed similarity/taste objects. Asserts: hybrid differs from vector-only, Profile A vs B overlap ≤ 3, hard filters apply identically across pipelines, diversity caps franchise, debug attaches model version.
-
-**Test results**: 29/29 new tests pass. All 10 pre-existing ranking scenarios (23 tests) continue passing without modification. Pre-existing failures in unrelated test files (auth, shelves, integration) are unchanged.
+**`apps/api/src/routes/recommendation-lab.ts`**
+- Removed unused `modelVersion?: string` from the body parser (silent no-op removed).
+- Added `alreadyShownIds?: string[]` body field with string-array sanitisation, wired into both `rankingOpts` blocks.

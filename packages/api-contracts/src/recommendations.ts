@@ -10,7 +10,9 @@ export interface ScoreBreakdown {
   freshness: number
   availabilityBonus: number
   alreadyWatchedPenalty: number
+  abandonPenalty: number
   dislikedPenalty: number
+  avoidPenalty: number
   repetitionPenalty: number
   final: number
   reasons: string[]

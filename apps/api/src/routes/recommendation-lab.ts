@@ -290,7 +290,7 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
       compareProfileId?: string
       explorationLevel?: ExplorationLevel
       diversityEnabled?: boolean
-      modelVersion?: string
+      alreadyShownIds?: string[]
       debug?: boolean
     }
 
@@ -321,6 +321,9 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
         ? body.explorationLevel
         : 'exploit'
     const diversityEnabled = body?.diversityEnabled !== false
+    const alreadyShownIds = Array.isArray(body?.alreadyShownIds)
+      ? (body.alreadyShownIds as unknown[]).filter((x): x is string => typeof x === 'string')
+      : []
     const debugMode = body?.debug === true
 
     const provider = createDefaultProvider(OPENAI_API_KEY)
@@ -385,6 +388,7 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
           limit: topK,
           explorationLevel,
           diversityEnabled,
+          alreadyShownIds,
           debug: debugMode,
         }
 
@@ -448,6 +452,7 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
         limit: topK,
         explorationLevel,
         diversityEnabled,
+        alreadyShownIds,
         debug: debugMode,
       }
 

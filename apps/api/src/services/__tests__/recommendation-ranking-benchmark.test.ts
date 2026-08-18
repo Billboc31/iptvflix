@@ -7,7 +7,7 @@ import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('../../db/client.js', () => ({ db: {} }))
 
-import { rankHybrid } from '../recommendation-ranking-service.js'
+import { rankHybrid, SCORE_MODEL_V1 } from '../recommendation-ranking-service.js'
 import type { HybridCandidate, TasteSignals } from '../recommendation-ranking-service.js'
 
 // ─── fixture data ────────────────────────────────────────────────────────────
@@ -315,6 +315,33 @@ describe('benchmark — vector-only vs hybrid vs hybrid-with-diversity', () => {
       expect(c.scoreBreakdown).toBeDefined()
       expect(c.scoreBreakdown!.modelVersion).toBe('v1')
       expect(c.scoreBreakdown!.reasons.length).toBeGreaterThanOrEqual(1)
+    }
+  })
+
+  it('scoreBreakdown.final is mathematically reconstructible from its component fields', () => {
+    const w = SCORE_MODEL_V1
+    const result = rankHybrid(CANDIDATES, QUERY_PLAN_SCIFI, TASTE_A, {
+      debug: true,
+      diversityEnabled: false,
+      limit: 20,
+    })
+
+    for (const c of result) {
+      const bd = c.scoreBreakdown!
+      const reconstructed =
+        bd.semantic * w.wSemantic +
+        bd.genreAffinity * w.wGenre +
+        bd.themeAffinity * w.wTheme +
+        bd.peopleAffinity * w.wPeople +
+        bd.freshness * w.wFreshness +
+        bd.qualityPrior * w.wPrior +
+        bd.availabilityBonus * w.wAvailability -
+        bd.alreadyWatchedPenalty -
+        bd.abandonPenalty -
+        bd.dislikedPenalty -
+        bd.avoidPenalty -
+        bd.repetitionPenalty
+      expect(bd.final).toBeCloseTo(reconstructed, 10)
     }
   })
 })
