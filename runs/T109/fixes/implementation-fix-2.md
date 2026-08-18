@@ -1,3 +1,11 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T109/reviews/implementation-review.md
+- generated at: 2026-08-18T17:19:35Z
+
+---
+
 ---
 
 # PR Review — T109 (Attempt 2)
