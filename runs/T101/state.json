@@ -3,5 +3,8 @@
   "state": "PLAN_APPROVED",
   "branch": "ticket/T101-create-standalone-recommendation-lab-service-and-s",
   "issue_number": 204,
-  "updated_at": "2026-08-18T12:47:27Z"
+  "updated_at": "2026-08-18T12:51:18Z",
+  "pre_conflict_state": "PLAN_APPROVED",
+  "conflict_detected_at": "2026-08-18T12:49:45Z",
+  "conflicted_files": []
 }
