@@ -138,6 +138,7 @@ export interface TmdbVideosResponse {
 }
 
 export interface TmdbCastMember {
+  id?: number
   name: string
   character: string
   order: number
@@ -145,6 +146,7 @@ export interface TmdbCastMember {
 }
 
 export interface TmdbCrewMember {
+  id?: number
   name: string
   job: string
   profile_path: string | null
@@ -156,6 +158,7 @@ export interface TmdbCreditsResponse {
 }
 
 export interface TmdbAggregateCastMember {
+  id?: number
   name: string
   roles: { character: string; episode_count: number }[]
   order: number

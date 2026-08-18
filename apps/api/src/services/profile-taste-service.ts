@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { count, eq, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import {
   profileTaste,
@@ -9,6 +9,10 @@ import {
   movieGenres,
   seriesGenres,
   genres,
+  movies,
+  series,
+  mediaCredits,
+  profileInteractionEvents,
 } from '../db/schema/index.js'
 import type { ProfileTaste, GenreScore } from '@iptvflix/api-contracts'
 
@@ -47,6 +51,19 @@ function buildOutput(
   negativeMediaIds: string[],
   signalCount: number,
   builtAt: Date,
+  extra: {
+    personScores: Record<string, number>
+    personMeta: Record<string, { name: string; role: string }>
+    keywordScores: Record<string, number>
+    franchiseScores: Record<string, number>
+    languageScores: Record<string, number>
+    countryScores: Record<string, number>
+    decadeScores: Record<string, number>
+    mediaTypePreferences: Record<string, number>
+    completionRate: number | null
+    historyEventCount: number
+    tasteVersion: number
+  },
 ): ProfileTaste {
   const genreScores: GenreScore[] = Object.entries(genreScoresMap)
     .filter(([, score]) => score !== 0)
@@ -65,7 +82,23 @@ function buildOutput(
     negativeMediaIds,
     signalCount,
     builtAt: builtAt.toISOString(),
+    personScores: extra.personScores,
+    personMeta: extra.personMeta,
+    keywordScores: extra.keywordScores,
+    franchiseScores: extra.franchiseScores,
+    languageScores: extra.languageScores,
+    countryScores: extra.countryScores,
+    decadeScores: extra.decadeScores,
+    mediaTypePreferences: extra.mediaTypePreferences,
+    completionRate: extra.completionRate,
+    historyEventCount: extra.historyEventCount,
+    tasteVersion: extra.tasteVersion,
   }
+}
+
+function decadeKey(year: number | null): string | null {
+  if (!year) return null
+  return `${Math.floor(year / 10) * 10}s`
 }
 
 export async function buildTaste(profileId: string): Promise<ProfileTaste> {
@@ -81,6 +114,14 @@ export async function buildTaste(profileId: string): Promise<ProfileTaste> {
   const genreMetaMap: Record<string, { slug: string; name: string }> = {}
   const positiveSet = new Set<string>()
   const negativeSet = new Set<string>()
+  const personScores: Record<string, number> = {}
+  const personMeta: Record<string, { name: string; role: string }> = {}
+  const keywordScores: Record<string, number> = {}
+  const franchiseScores: Record<string, number> = {}
+  const languageScores: Record<string, number> = {}
+  const countryScores: Record<string, number> = {}
+  const decadeScores: Record<string, number> = {}
+  const mediaTypeCounts: Record<string, number> = {}
   let signalCount = 0
 
   function accumulate(genreRows: Array<{ id: string; slug: string; name: string }>, weight: number): void {
@@ -90,10 +131,102 @@ export async function buildTaste(profileId: string): Promise<ProfileTaste> {
     }
   }
 
+  async function accumulateMediaFeatures(
+    mediaType: 'MOVIE' | 'SERIES',
+    mediaId: string,
+    weight: number,
+  ): Promise<void> {
+    // genre
+    accumulate(await loadGenres(mediaType, mediaId), weight)
+
+    // media type preference
+    mediaTypeCounts[mediaType] = (mediaTypeCounts[mediaType] ?? 0) + weight
+
+    if (mediaType === 'MOVIE') {
+      const [movie] = await db
+        .select({
+          keywords: movies.keywords,
+          originalLanguage: movies.originalLanguage,
+          productionCountries: movies.productionCountries,
+          year: movies.year,
+          collectionId: movies.collectionId,
+        })
+        .from(movies)
+        .where(eq(movies.id, mediaId))
+      if (movie) {
+        // keywords
+        if (Array.isArray(movie.keywords)) {
+          for (const kw of movie.keywords as string[]) {
+            keywordScores[kw] = (keywordScores[kw] ?? 0) + weight
+          }
+        }
+        // language
+        if (movie.originalLanguage) {
+          languageScores[movie.originalLanguage] = (languageScores[movie.originalLanguage] ?? 0) + weight
+        }
+        // countries
+        if (Array.isArray(movie.productionCountries)) {
+          for (const c of movie.productionCountries as string[]) {
+            countryScores[c] = (countryScores[c] ?? 0) + weight
+          }
+        }
+        // decade
+        const dk = decadeKey(movie.year)
+        if (dk) decadeScores[dk] = (decadeScores[dk] ?? 0) + weight
+        // franchise
+        if (movie.collectionId) {
+          franchiseScores[movie.collectionId] = (franchiseScores[movie.collectionId] ?? 0) + weight
+        }
+      }
+    } else {
+      const [s] = await db
+        .select({
+          keywords: series.keywords,
+          originalLanguage: series.originalLanguage,
+          productionCountries: series.productionCountries,
+          firstAirYear: series.firstAirYear,
+        })
+        .from(series)
+        .where(eq(series.id, mediaId))
+      if (s) {
+        if (Array.isArray(s.keywords)) {
+          for (const kw of s.keywords as string[]) {
+            keywordScores[kw] = (keywordScores[kw] ?? 0) + weight
+          }
+        }
+        if (s.originalLanguage) {
+          languageScores[s.originalLanguage] = (languageScores[s.originalLanguage] ?? 0) + weight
+        }
+        if (Array.isArray(s.productionCountries)) {
+          for (const c of s.productionCountries as string[]) {
+            countryScores[c] = (countryScores[c] ?? 0) + weight
+          }
+        }
+        const dk = decadeKey(s.firstAirYear)
+        if (dk) decadeScores[dk] = (decadeScores[dk] ?? 0) + weight
+      }
+    }
+
+    // credits — persons
+    const credits = await db
+      .select({
+        personId: mediaCredits.personId,
+        name: mediaCredits.name,
+        role: mediaCredits.role,
+      })
+      .from(mediaCredits)
+      .where(eq(mediaCredits.mediaId, mediaId))
+    for (const c of credits) {
+      if (!c.personId) continue
+      personScores[c.personId] = (personScores[c.personId] ?? 0) + weight
+      personMeta[c.personId] = { name: c.name, role: c.role }
+    }
+  }
+
   for (const fb of feedbackRows) {
     const weight = SIGNAL_WEIGHTS[fb.feedback as keyof typeof SIGNAL_WEIGHTS]
     const mediaType = fb.mediaType as 'MOVIE' | 'SERIES'
-    accumulate(await loadGenres(mediaType, fb.mediaId), weight)
+    await accumulateMediaFeatures(mediaType, fb.mediaId, weight)
     if (fb.feedback === 'LIKE') {
       positiveSet.add(fb.mediaId)
     } else {
@@ -126,21 +259,50 @@ export async function buildTaste(profileId: string): Promise<ProfileTaste> {
       resolvedId = ep.seriesId
     }
 
-    accumulate(await loadGenres(resolvedType, resolvedId), weight)
+    await accumulateMediaFeatures(resolvedType, resolvedId, weight)
     if (isCompleted) positiveSet.add(resolvedId)
     signalCount++
   }
 
   for (const wl of watchlistRows) {
     const mediaType = wl.mediaType as 'MOVIE' | 'SERIES'
-    accumulate(await loadGenres(mediaType, wl.mediaId), SIGNAL_WEIGHTS.WATCHLIST)
+    await accumulateMediaFeatures(mediaType, wl.mediaId, SIGNAL_WEIGHTS.WATCHLIST)
     signalCount++
+  }
+
+  // compute completionRate from event history
+  const [[startedRow], [completedRow], [eventCountRow]] = await Promise.all([
+    db
+      .select({ c: count() })
+      .from(profileInteractionEvents)
+      .where(
+        sql`${profileInteractionEvents.profileId} = ${profileId} AND ${profileInteractionEvents.eventType} = 'PLAY_STARTED'`,
+      ),
+    db
+      .select({ c: count() })
+      .from(profileInteractionEvents)
+      .where(
+        sql`${profileInteractionEvents.profileId} = ${profileId} AND ${profileInteractionEvents.eventType} = 'PLAY_COMPLETED'`,
+      ),
+    db
+      .select({ c: count() })
+      .from(profileInteractionEvents)
+      .where(eq(profileInteractionEvents.profileId, profileId)),
+  ])
+  const startedCount = Number(startedRow?.c ?? 0)
+  const completedCount = Number(completedRow?.c ?? 0)
+  const historyEventCount = Number(eventCountRow?.c ?? 0)
+  const completionRate = startedCount > 0 ? completedCount / startedCount : null
+
+  const mediaTypePreferences: Record<string, number> = {}
+  for (const [mt, w] of Object.entries(mediaTypeCounts)) {
+    mediaTypePreferences[mt.toLowerCase()] = w
   }
 
   const sortedPositive = [...positiveSet].sort()
   const sortedNegative = [...negativeSet].sort()
 
-  await db
+  const [upserted] = await db
     .insert(profileTaste)
     .values({
       profileId,
@@ -150,6 +312,17 @@ export async function buildTaste(profileId: string): Promise<ProfileTaste> {
       negativeMediaIds: sortedNegative,
       signalCount,
       builtAt: now,
+      personScores,
+      personMeta,
+      keywordScores,
+      franchiseScores,
+      languageScores,
+      countryScores,
+      decadeScores,
+      mediaTypePreferences,
+      completionRate: completionRate !== null ? String(completionRate) : null,
+      historyEventCount,
+      tasteVersion: 1,
     })
     .onConflictDoUpdate({
       target: profileTaste.profileId,
@@ -160,10 +333,34 @@ export async function buildTaste(profileId: string): Promise<ProfileTaste> {
         negativeMediaIds: sortedNegative,
         signalCount,
         builtAt: now,
+        personScores,
+        personMeta,
+        keywordScores,
+        franchiseScores,
+        languageScores,
+        countryScores,
+        decadeScores,
+        mediaTypePreferences,
+        completionRate: completionRate !== null ? String(completionRate) : null,
+        historyEventCount,
+        tasteVersion: sql`${profileTaste.tasteVersion} + 1`,
       },
     })
+    .returning({ tasteVersion: profileTaste.tasteVersion })
 
-  return buildOutput(profileId, genreScoresMap, genreMetaMap, sortedPositive, sortedNegative, signalCount, now)
+  return buildOutput(profileId, genreScoresMap, genreMetaMap, sortedPositive, sortedNegative, signalCount, now, {
+    personScores,
+    personMeta,
+    keywordScores,
+    franchiseScores,
+    languageScores,
+    countryScores,
+    decadeScores,
+    mediaTypePreferences,
+    completionRate,
+    historyEventCount,
+    tasteVersion: upserted?.tasteVersion ?? 1,
+  })
 }
 
 export async function getTaste(profileId: string): Promise<ProfileTaste> {
@@ -184,5 +381,18 @@ export async function getTaste(profileId: string): Promise<ProfileTaste> {
     row.negativeMediaIds,
     row.signalCount,
     row.builtAt,
+    {
+      personScores: (row.personScores as Record<string, number>) ?? {},
+      personMeta: (row.personMeta as Record<string, { name: string; role: string }>) ?? {},
+      keywordScores: (row.keywordScores as Record<string, number>) ?? {},
+      franchiseScores: (row.franchiseScores as Record<string, number>) ?? {},
+      languageScores: (row.languageScores as Record<string, number>) ?? {},
+      countryScores: (row.countryScores as Record<string, number>) ?? {},
+      decadeScores: (row.decadeScores as Record<string, number>) ?? {},
+      mediaTypePreferences: (row.mediaTypePreferences as Record<string, number>) ?? {},
+      completionRate: row.completionRate ? Number(row.completionRate) : null,
+      historyEventCount: row.historyEventCount,
+      tasteVersion: row.tasteVersion,
+    },
   )
 }

@@ -2,9 +2,11 @@ import { useEffect, useRef, useCallback } from 'react'
 import type { RefObject } from 'react'
 import type { ProgressMediaType } from '@iptvflix/api-contracts'
 import { upsertProgress, getStoredAuthToken } from '../lib/api.js'
+import { useInteractionEvents } from './useInteractionEvents.js'
 
 const DEBOUNCE_MS = 10_000
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api'
+const MILESTONES = [10, 25, 50, 75, 90] as const
 
 export function useProgressSync(
   videoRef: RefObject<HTMLVideoElement | null>,
@@ -12,6 +14,7 @@ export function useProgressSync(
   mediaId: string,
   enabled: boolean,
   stableDurationSeconds: number | null,
+  sessionId?: string | null,
 ): { flushProgress: () => void } {
   const lastSentRef = useRef<number>(0)
   const mediaTypeRef = useRef(mediaType)
@@ -21,6 +24,34 @@ export function useProgressSync(
 
   const stableDurationRef = useRef<number | null>(stableDurationSeconds)
   stableDurationRef.current = stableDurationSeconds
+
+  const { emit: emitEvent } = useInteractionEvents()
+  const emittedMilestonesRef = useRef<Set<number>>(new Set())
+
+  // Reset milestones when media changes
+  useEffect(() => {
+    emittedMilestonesRef.current = new Set()
+  }, [mediaId])
+
+  function checkMilestones(video: HTMLVideoElement) {
+    const duration = stableDurationRef.current ?? (isFinite(video.duration) ? video.duration : 0)
+    if (!duration || duration <= 0) return
+    const percent = Math.floor((video.currentTime / duration) * 100)
+    for (const threshold of MILESTONES) {
+      if (percent >= threshold && !emittedMilestonesRef.current.has(threshold)) {
+        emittedMilestonesRef.current.add(threshold)
+        emitEvent({
+          eventType: `WATCHED_${threshold}_PERCENT`,
+          mediaType: mediaTypeRef.current,
+          mediaId: mediaIdRef.current,
+          sessionId: sessionId ?? undefined,
+          progressPercent: threshold,
+          positionMs: Math.floor(video.currentTime * 1000),
+          clientType: 'web',
+        })
+      }
+    }
+  }
 
   const flushProgress = useCallback(() => {
     const video = videoRef.current
@@ -43,6 +74,7 @@ export function useProgressSync(
       if (!video) return
       const effectiveDuration = stableDurationRef.current ?? Math.floor(video.duration)
       if (!effectiveDuration || !isFinite(effectiveDuration)) return
+      checkMilestones(video)
       const now = Date.now()
       if (now - lastSentRef.current < DEBOUNCE_MS) return
       lastSentRef.current = now

@@ -4,6 +4,7 @@ import type { ProgressMediaType } from '@iptvflix/api-contracts'
 import { usePlayback } from '../hooks/usePlayback.js'
 import { useProgressSync } from '../hooks/useProgressSync.js'
 import { useEpisodeNavigation } from '../hooks/useEpisodeNavigation.js'
+import { useInteractionEvents } from '../hooks/useInteractionEvents.js'
 import PlayerControls from '../components/player/PlayerControls.js'
 import type { AudioTrack, SubtitleTrack } from '../components/player/PlayerControls.js'
 import ErrorState from '../components/ui/ErrorState.js'
@@ -96,7 +97,113 @@ export default function PlayerPage() {
   }, [])
 
   const progressMediaType: ProgressMediaType = mediaType === 'movie' ? 'MOVIE' : 'EPISODE'
-  const { flushProgress } = useProgressSync(videoRef, progressMediaType, mediaId!, status === 'ready', stableDurationSeconds)
+  const interactionMediaType = mediaType === 'movie' ? 'MOVIE' : 'EPISODE'
+
+  // Track viewing session and first-play state per media load (declared early for useProgressSync)
+  const sessionIdRef = useRef<string | null>(null)
+  const hasPlayedRef = useRef(false)
+
+  const { flushProgress } = useProgressSync(videoRef, progressMediaType, mediaId!, status === 'ready', stableDurationSeconds, sessionIdRef.current)
+  const { emit: emitEvent, emitBatch } = useInteractionEvents()
+
+  // Reset play tracking when media changes
+  useEffect(() => {
+    sessionIdRef.current = null
+    hasPlayedRef.current = false
+  }, [mediaId])
+
+  // Emit PLAY_STARTED on first play, PLAY_RESUMED on subsequent plays
+  useEffect(() => {
+    if (status !== 'ready') return
+    const video = videoRef.current
+    if (!video) return
+
+    function onPlay() {
+      if (!mediaId) return
+      if (!hasPlayedRef.current) {
+        hasPlayedRef.current = true
+        emitBatch([{
+          eventType: 'PLAY_STARTED',
+          mediaType: interactionMediaType,
+          mediaId,
+          episodeId: resolvedMediaType === 'episode' ? mediaId : null,
+          seriesId: seriesId ?? null,
+          positionMs: Math.floor((video?.currentTime ?? 0) * 1000),
+          durationMs: stableDurationRef.current ? Math.floor(stableDurationRef.current * 1000) : null,
+          availabilityId: availabilityId ?? null,
+          clientType: 'web',
+        }]).then((res) => {
+          if (res.sessionId) sessionIdRef.current = res.sessionId
+        }).catch(() => undefined)
+      } else {
+        emitEvent({
+          eventType: 'PLAY_RESUMED',
+          mediaType: interactionMediaType,
+          mediaId,
+          sessionId: sessionIdRef.current ?? undefined,
+          positionMs: Math.floor((video?.currentTime ?? 0) * 1000),
+          clientType: 'web',
+        })
+      }
+    }
+
+    function onPause() {
+      if (!mediaId || video?.ended) return
+      emitEvent({
+        eventType: 'PLAY_PAUSED',
+        mediaType: interactionMediaType,
+        mediaId,
+        sessionId: sessionIdRef.current ?? undefined,
+        positionMs: Math.floor((video?.currentTime ?? 0) * 1000),
+        clientType: 'web',
+      })
+    }
+
+    function onEnded() {
+      if (!mediaId) return
+      emitEvent({
+        eventType: 'PLAY_COMPLETED',
+        mediaType: interactionMediaType,
+        mediaId,
+        sessionId: sessionIdRef.current ?? undefined,
+        positionMs: Math.floor((video?.currentTime ?? 0) * 1000),
+        durationMs: stableDurationRef.current ? Math.floor(stableDurationRef.current * 1000) : null,
+        clientType: 'web',
+      })
+    }
+
+    video.addEventListener('play', onPlay)
+    video.addEventListener('pause', onPause)
+    video.addEventListener('ended', onEnded)
+    return () => {
+      video.removeEventListener('play', onPlay)
+      video.removeEventListener('pause', onPause)
+      video.removeEventListener('ended', onEnded)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, mediaId])
+
+  // Emit PLAY_ABANDONED on unmount if player was active
+  useEffect(() => {
+    return () => {
+      const video = videoRef.current
+      if (!video || !mediaId || !hasPlayedRef.current || video.ended) return
+      const progress = stableDurationRef.current && stableDurationRef.current > 0
+        ? video.currentTime / stableDurationRef.current
+        : 0
+      if (progress >= 0.05) {
+        emitEvent({
+          eventType: 'PLAY_ABANDONED',
+          mediaType: interactionMediaType,
+          mediaId,
+          sessionId: sessionIdRef.current ?? undefined,
+          positionMs: Math.floor(video.currentTime * 1000),
+          clientType: 'web',
+        })
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaId])
 
   // Episode navigation
   const { episodeLabel, nextEpisode } = useEpisodeNavigation(
@@ -107,6 +214,13 @@ export default function PlayerPage() {
 
   function handleNextEpisode() {
     if (!nextEpisode) return
+    emitEvent({
+      eventType: 'NEXT_EPISODE_MANUAL',
+      mediaType: interactionMediaType,
+      mediaId: mediaId ?? undefined,
+      sessionId: sessionIdRef.current ?? undefined,
+      clientType: 'web',
+    })
     flushProgress()
     const params = new URLSearchParams()
     if (nextEpisode.selectedVariantId) params.set('availabilityId', nextEpisode.selectedVariantId)
@@ -117,17 +231,32 @@ export default function PlayerPage() {
   }
 
   const handleVariantSwitch = useCallback((id: string) => {
+    emitEvent({
+      eventType: 'SOURCE_SELECTED',
+      mediaType: interactionMediaType,
+      mediaId: mediaId ?? undefined,
+      sessionId: sessionIdRef.current ?? undefined,
+      availabilityId: id,
+      clientType: 'web',
+    })
     flushProgress()
     switchVariant(id)
-  }, [flushProgress, switchVariant])
+  }, [flushProgress, switchVariant, mediaId, interactionMediaType, emitEvent])
 
   // Audio track change handler
   function handleAudioTrack(id: number) {
     const hls = hlsRef.current
     if (hls) hls.audioTrack = id
     setCurrentAudioTrack(id)
-    // Persist language preference
     const track = audioTracks.find((t) => t.id === id)
+    emitEvent({
+      eventType: 'AUDIO_TRACK_SELECTED',
+      mediaType: interactionMediaType,
+      mediaId: mediaId ?? undefined,
+      sessionId: sessionIdRef.current ?? undefined,
+      metadataJson: track ? { lang: track.lang } : null,
+      clientType: 'web',
+    })
     if (track?.lang) {
       updateProfilePreferences({ preferredAudioLanguages: [track.lang] }).catch(() => undefined)
     }
@@ -141,12 +270,17 @@ export default function PlayerPage() {
       hls.subtitleDisplay = id !== null
     }
     setCurrentSubtitleTrack(id)
-    // Persist language preference
-    if (id !== null) {
-      const track = subtitleTracks.find((t) => t.id === id)
-      if (track?.lang) {
-        updateProfilePreferences({ preferredSubtitleLanguages: [track.lang] }).catch(() => undefined)
-      }
+    const track = id !== null ? subtitleTracks.find((t) => t.id === id) : null
+    emitEvent({
+      eventType: 'SUBTITLE_TRACK_SELECTED',
+      mediaType: interactionMediaType,
+      mediaId: mediaId ?? undefined,
+      sessionId: sessionIdRef.current ?? undefined,
+      metadataJson: track ? { lang: track.lang } : { disabled: true },
+      clientType: 'web',
+    })
+    if (id !== null && track?.lang) {
+      updateProfilePreferences({ preferredSubtitleLanguages: [track.lang] }).catch(() => undefined)
     }
   }
 

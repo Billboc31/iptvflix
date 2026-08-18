@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { fetchFeedback, setFeedback, clearFeedback } from '../lib/api.js'
+import { useInteractionEvents } from './useInteractionEvents.js'
 import type { FeedbackItem, FeedbackType, WatchlistMediaType } from '@iptvflix/api-contracts'
 
 export type UseFeedbackResult = {
@@ -13,6 +14,7 @@ export type UseFeedbackResult = {
 export function useFeedback(): UseFeedbackResult {
   const [entries, setEntries] = useState<FeedbackItem[]>([])
   const [loading, setLoading] = useState(true)
+  const { emit: emitEvent } = useInteractionEvents()
 
   useEffect(() => {
     fetchFeedback()
@@ -29,10 +31,15 @@ export function useFeedback(): UseFeedbackResult {
     try {
       const updated = await setFeedback(mediaType, mediaId, { feedback })
       setEntries((prev) => prev.map((e) => (e.mediaType === mediaType && e.mediaId === mediaId ? updated : e)))
+      if (feedback === 'LIKE') {
+        emitEvent({ eventType: 'LIKED', mediaType, mediaId, clientType: 'web' })
+      } else if (feedback === 'DISLIKE') {
+        emitEvent({ eventType: 'DISLIKED', mediaType, mediaId, clientType: 'web' })
+      }
     } catch {
       fetchFeedback().then(setEntries).catch(() => {})
     }
-  }, [])
+  }, [emitEvent])
 
   const clear = useCallback(async (mediaType: WatchlistMediaType, mediaId: string) => {
     setEntries((prev) => prev.filter((e) => !(e.mediaType === mediaType && e.mediaId === mediaId)))

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProfile } from '../context/ProfileContext.js'
+import { useInteractionEvents } from '../hooks/useInteractionEvents.js'
 import ProfileAvatar from '../components/ProfileAvatar.js'
 import Spinner from '../components/ui/Spinner.js'
 
@@ -9,12 +10,14 @@ export default function ProfileChoosePage() {
   const [selecting, setSelecting] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
+  const { emit: emitEvent } = useInteractionEvents()
 
   async function handleSelect(profileId: string) {
     setSelecting(profileId)
     setError(null)
     try {
       await selectProfile(profileId)
+      emitEvent({ eventType: 'PROFILE_SELECTED', clientType: 'web' })
       navigate('/', { replace: true })
     } catch {
       setError('Impossible de sélectionner ce profil. Veuillez réessayer.')

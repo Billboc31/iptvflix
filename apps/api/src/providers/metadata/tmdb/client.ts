@@ -274,6 +274,9 @@ export class TmdbClient implements MetadataProvider {
           role: 'cast' as const,
           order: c.order,
           profilePath: c.profile_path,
+          tmdbPersonId: c.id ?? null,
+          department: 'Acting',
+          job: null,
         }))
       const directors: ExternalCreditPerson[] = (raw.crew ?? [])
         .filter((c) => c.job === 'Director')
@@ -283,6 +286,9 @@ export class TmdbClient implements MetadataProvider {
           role: 'director' as const,
           order: i,
           profilePath: c.profile_path,
+          tmdbPersonId: c.id ?? null,
+          department: 'Directing',
+          job: 'Director',
         }))
       return [...cast, ...directors]
     } catch {
@@ -303,6 +309,9 @@ export class TmdbClient implements MetadataProvider {
           role: 'cast' as const,
           order: c.order,
           profilePath: c.profile_path,
+          tmdbPersonId: c.id ?? null,
+          department: 'Acting',
+          job: null,
         }))
       const creators: ExternalCreditPerson[] = (raw.crew ?? [])
         .filter((c) => c.job === 'Creator' || c.job === 'Executive Producer')
@@ -310,9 +319,12 @@ export class TmdbClient implements MetadataProvider {
         .map((c, i) => ({
           name: c.name,
           character: null,
-          role: 'director' as const,
+          role: 'creator' as const,
           order: i,
           profilePath: c.profile_path,
+          tmdbPersonId: c.id ?? null,
+          department: 'Writing',
+          job: c.job ?? null,
         }))
       return [...cast, ...creators]
     } catch {

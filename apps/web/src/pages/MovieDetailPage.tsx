@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import type { Location } from 'react-router-dom'
 import type { MovieDetailResponse } from '@iptvflix/api-contracts'
 import { getMovie, fetchContinueWatching, ApiError } from '../lib/api.js'
+import { useInteractionEvents } from '../hooks/useInteractionEvents.js'
 import { useDevices } from '../hooks/useDevices.js'
 import { useToast } from '../components/ui/Toast.js'
 import Badge from '../components/ui/Badge.js'
@@ -50,6 +51,7 @@ export default function MovieDetailPage() {
   const location = useLocation()
   const toast = useToast()
   const { devices } = useDevices()
+  const { emit: emitEvent } = useInteractionEvents()
   const [movie, setMovie] = useState<MovieDetailResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
@@ -87,6 +89,7 @@ export default function MovieDetailPage() {
       if (cancelled) return m
       setMovie(m)
       setSelectedVariantId(m.selectedVariantId)
+      emitEvent({ eventType: 'DETAIL_OPENED', mediaType: 'MOVIE', mediaId: id!, clientType: 'web' })
       return m
     }
 

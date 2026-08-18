@@ -79,9 +79,12 @@ export interface ExternalVideo {
 export interface ExternalCreditPerson {
   name: string
   character: string | null
-  role: 'cast' | 'director'
+  role: 'cast' | 'director' | 'creator'
   order: number
   profilePath: string | null
+  tmdbPersonId?: number | null
+  department?: string | null
+  job?: string | null
 }
 
 export interface ExternalSeasonEpisode {
