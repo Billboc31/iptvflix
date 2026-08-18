@@ -59,3 +59,8 @@
 [2026-08-18T12:55:26Z] push: pushing branch=ticket/T100-capture-and-persist-comprehensive-profile-interact
 [2026-08-18T12:55:28Z] push: done branch=ticket/T100-capture-and-persist-comprehensive-profile-interact
 [2026-08-18T12:55:28Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-18T13:02:56Z] conflict-resolver: [pass 2/3] conflicted=['apps/api/src/services/profile-taste-service.ts'] | staged=['apps/api/src/services/profile-taste-service.ts'] | unresolved=[] | continue_rc=0
+[2026-08-18T13:02:56Z] conflict-resolver: all conflicts resolved after 2 pass(es)
+[2026-08-18T13:02:56Z] conflict-resolver: running tests
+[2026-08-18T13:02:56Z] conflict-resolver: test-report written: runs/T100/conflict/test-report.md
+[2026-08-18T13:02:56Z] conflict-resolver: staging and committing resolution artifacts
