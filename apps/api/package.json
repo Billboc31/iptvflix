@@ -21,6 +21,7 @@
     "backfill:segments": "tsx src/scripts/backfill-segments.ts"
   },
   "dependencies": {
+    "@iptvflix/api-contracts": "workspace:*",
     "@fastify/cookie": "^9.4.0",
     "@fastify/cors": "^9.0.0",
     "@fastify/jwt": "^8.0.1",
@@ -32,7 +33,6 @@
     "postgres": "^3.4.9"
   },
   "devDependencies": {
-    "@iptvflix/api-contracts": "workspace:*",
     "@types/bcrypt": "^6.0.0",
     "@types/node": "^20.0.0",
     "@vitest/coverage-v8": "^2.0.0",

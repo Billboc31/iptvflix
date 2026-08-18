@@ -5,7 +5,7 @@ builder = "NIXPACKS"
 # If the dashboard Builder is Railpack instead, set RAILPACK_DEPLOY_APT_PACKAGES=ffmpeg
 # (and optionally RAILPACK_BUILD_APT_PACKAGES=ffmpeg) then Redeploy.
 nixpacksConfigPath = "apps/api/nixpacks.toml"
-buildCommand = "pnpm install --frozen-lockfile && pnpm --filter api build"
+buildCommand = "pnpm install --frozen-lockfile && pnpm --filter @iptvflix/api-contracts build && pnpm --filter api build"
 
 [deploy]
 startCommand = "pnpm --filter api start:railway"
