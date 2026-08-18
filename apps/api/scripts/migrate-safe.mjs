@@ -76,12 +76,9 @@ function describeUrl(url) {
 }
 
 function openSql(url) {
-  const forcePlain =
-    /localhost|127\.0\.0\.1|railway\.internal|proxy\.rlwy\.net/i.test(url)
   return postgres(url, {
     max: 1,
-    connect_timeout: 10,
-    ssl: forcePlain ? false : undefined,
+    connect_timeout: 30,
   })
 }
 
@@ -94,12 +91,6 @@ async function main() {
 
   const target = describeUrl(url)
   console.log(`[migrate-safe] postgres host=${target.host} port=${target.port}`)
-  if (target.port === '14740') {
-    console.error(
-      '[migrate-safe] DATABASE_URL points at the embeddings/pgvector instance (port 14740), which is empty. Use the catalog Postgres (original plugin / port 29385), not this URL.',
-    )
-    process.exit(1)
-  }
 
   const sql = openSql(url)
   try {

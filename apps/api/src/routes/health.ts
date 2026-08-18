@@ -12,9 +12,6 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
     } catch {
       dbStatus = 'unavailable'
     }
-    if (dbStatus === 'unavailable') {
-      return reply.status(503).send({ status: 'ok', db: dbStatus })
-    }
     return reply.send({ status: 'ok', db: dbStatus })
   })
 }

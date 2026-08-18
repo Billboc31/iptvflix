@@ -106,25 +106,6 @@ await app.register(jwt, { secret: JWT_SECRET })
 await app.register(cookie)
 await app.register(healthRoutes)
 
-// Run idempotent boot-time seed (account + default profile) before accepting requests
-try {
-  await runSeed()
-  app.log.info('startup: account/profile seed completed')
-} catch (err) {
-  app.log.error(err, 'startup: seed failed — login may not work until DB is healthy')
-}
-
-const embeddingIndexMode = await ensurePgvectorEmbeddings()
-app.log.info(
-  { embeddingIndexMode, openaiEmbeddings: Boolean(OPENAI_API_KEY) },
-  'startup: recommendation embeddings ready',
-)
-if (!OPENAI_API_KEY) {
-  app.log.warn(
-    'startup: OPENAI_API_KEY is unset — catalog embeddings will not be generated until it is set',
-  )
-}
-
 const similarTitlesService = TMDB_API_KEY
   ? new SimilarTitlesService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
   : undefined
@@ -300,17 +281,14 @@ const scheduler = new SchedulerService(
   catalogRefreshServiceRef,
   segmentSyncService,
 )
+
 try {
-  const cleared = await failInterruptedRuns(db)
-  app.log.info(cleared, 'cleared interrupted RUNNING jobs')
+  await app.listen({ port: PORT, host: '0.0.0.0' })
 } catch (err) {
-  app.log.error(err, 'failed to clear interrupted RUNNING jobs')
+  app.log.error(err)
+  process.exit(1)
 }
 
-scheduler.start()
-
-// Best-effort ffmpeg/ffprobe check — never block API boot (auth/catalog must stay up).
-// Missing binaries only degrade HLS playback; DIRECT mode and login still work.
 async function checkBinary(binary: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn(binary, ['-version'], { stdio: ['ignore', 'ignore', 'ignore'] })
@@ -322,26 +300,53 @@ async function checkBinary(binary: string): Promise<void> {
   })
 }
 
-try {
-  await Promise.all([checkBinary('ffmpeg'), checkBinary('ffprobe')])
-  app.log.info('startup: ffmpeg and ffprobe available')
-} catch (err) {
-  app.log.warn({ err }, 'startup: ffmpeg/ffprobe unavailable — HLS playback will fail until binaries are provisioned')
+async function bootBackground(): Promise<void> {
+  try {
+    await runSeed()
+    app.log.info('startup: account/profile seed completed')
+  } catch (err) {
+    app.log.error(err, 'startup: seed failed — login may not work until DB is healthy')
+  }
+
+  try {
+    const embeddingIndexMode = await ensurePgvectorEmbeddings()
+    app.log.info(
+      { embeddingIndexMode, openaiEmbeddings: Boolean(OPENAI_API_KEY) },
+      'startup: recommendation embeddings ready',
+    )
+    if (!OPENAI_API_KEY) {
+      app.log.warn(
+        'startup: OPENAI_API_KEY is unset — catalog embeddings will not be generated until it is set',
+      )
+    }
+  } catch (err) {
+    app.log.error(err, 'startup: pgvector setup failed')
+  }
+
+  try {
+    const cleared = await failInterruptedRuns(db)
+    app.log.info(cleared, 'cleared interrupted RUNNING jobs')
+  } catch (err) {
+    app.log.error(err, 'failed to clear interrupted RUNNING jobs')
+  }
+
+  scheduler.start()
+
+  try {
+    await Promise.all([checkBinary('ffmpeg'), checkBinary('ffprobe')])
+    app.log.info('startup: ffmpeg and ffprobe available')
+  } catch (err) {
+    app.log.warn({ err }, 'startup: ffmpeg/ffprobe unavailable — HLS playback will fail until binaries are provisioned')
+  }
+
+  try {
+    const testPath = join(tmpdir(), `.iptvflix-startup-check-${Date.now()}`)
+    await writeFile(testPath, '')
+    await unlink(testPath)
+    app.log.info({ tmpdir: tmpdir() }, 'startup: temp directory is writable')
+  } catch (err) {
+    app.log.warn({ err }, 'startup: temp directory not writable — HLS segment writes may fail')
+  }
 }
 
-// Best-effort temp-dir check for HLS segment writes.
-try {
-  const testPath = join(tmpdir(), `.iptvflix-startup-check-${Date.now()}`)
-  await writeFile(testPath, '')
-  await unlink(testPath)
-  app.log.info({ tmpdir: tmpdir() }, 'startup: temp directory is writable')
-} catch (err) {
-  app.log.warn({ err }, 'startup: temp directory not writable — HLS segment writes may fail')
-}
-
-try {
-  await app.listen({ port: PORT, host: '0.0.0.0' })
-} catch (err) {
-  app.log.error(err)
-  process.exit(1)
-}
+void bootBackground()
