@@ -356,8 +356,9 @@ function getBlendedWeights(model: typeof SCORE_MODEL_V1, level: ExplorationLevel
     }
   }
   if (level === 'discover') {
+    // weights sum to 1.0: 0.64+0.02+0.02+0.02+0.05+0.20+0.05
     return {
-      wSemantic: 0.70,
+      wSemantic: 0.64,
       wGenre: 0.02,
       wTheme: 0.02,
       wPeople: 0.02,

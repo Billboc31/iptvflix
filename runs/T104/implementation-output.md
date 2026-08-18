@@ -1,23 +1,23 @@
-Both ranking test files pass:
-- `recommendation-ranking-service.test.ts` — 23 tests ✓
-- `recommendation-ranking-benchmark.test.ts` — **7 tests** ✓ (was 6, now 7 with the new math consistency test)
+Good. The implementation is complete and correct. Here's a summary of all changes made:
 
-All pre-existing failures are in unrelated test files (auth, shelves, integration, title-matching) — unchanged from before.
+---
 
-Here's a summary of all changes made:
+**Files modified:**
 
-**`packages/api-contracts/src/recommendations.ts`**
-- Added `abandonPenalty: number` and `avoidPenalty: number` to `ScoreBreakdown` interface.
+**`apps/api/src/routes/recommendation-lab.ts`** (bloquant + mineur)
+- Added imports: `movies`, `series as seriesTbl`, `mediaCredits`, `viewingProgress`
+- `enrichAsHybridCandidates` now accepts `profileId?: string` and runs 4 additional parallel DB queries:
+  - `movies` → `durationMinutes`, `originalLanguage`, `collectionId`, `popularity`, `voteAverage`, `keywords`
+  - `series` → `originalLanguage`, `popularity`, `voteAverage`, `keywords`
+  - `mediaCredits` (role=`'director'`) → `directors[]` for all candidates
+  - `viewingProgress` (when profileId present) → `completionRatio` for watched movies
+- Both call sites updated to pass `profileId`
+- `alreadyShownIds` capped at 500 with `.slice(0, 500)`
 
-**`apps/api/src/services/recommendation-ranking-service.ts`**
-- Added `abandonPenalty` and `avoidPenalty` to the `buildReasons` component parameter.
-- Added `"quick abandon penalty"` and `"theme avoid match"` reason strings when those penalties are non-zero.
-- Populated `abandonPenalty` and `avoidPenalty` in the debug `scoreBreakdown` object so `final` is now fully reconstructible from the exposed fields.
+**`apps/api/src/services/recommendation-ranking-service.ts`** (mineur)
+- `discover` mode `wSemantic` reduced from `0.70` to `0.64` — weights now sum to exactly 1.0
 
-**`apps/api/src/services/__tests__/recommendation-ranking-benchmark.test.ts`**
-- Imported `SCORE_MODEL_V1`.
-- Added `"scoreBreakdown.final is mathematically reconstructible from its component fields"` test that verifies `bd.final ≈ weighted_sum - all_penalties` for every result in a debug run.
+**`packages/api-contracts/src/query-plan.ts`** (optionnel)
+- Added `maxMaturityRating?: string` and `kidsOnly?: boolean` to `QueryPlanHardFilters` with a TODO comment marking them as not yet enforced
 
-**`apps/api/src/routes/recommendation-lab.ts`**
-- Removed unused `modelVersion?: string` from the body parser (silent no-op removed).
-- Added `alreadyShownIds?: string[]` body field with string-array sanitisation, wired into both `rankingOpts` blocks.
+All 30 existing tests continue to pass.

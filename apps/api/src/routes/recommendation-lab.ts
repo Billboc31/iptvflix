@@ -4,11 +4,15 @@ import type { FastifyInstance } from 'fastify'
 import { db } from '../db/client.js'
 import {
   profileTaste,
+  movies,
+  series as seriesTbl,
   movieGenres,
   seriesGenres,
   movieAvailabilities,
   seriesAvailabilities,
   genres,
+  mediaCredits,
+  viewingProgress,
 } from '../db/schema/index.js'
 import { EmbeddingService } from '../services/embedding-service.js'
 import { SemanticRetrievalService } from '../services/semantic-retrieval-service.js'
@@ -148,11 +152,32 @@ async function loadTasteSignals(profileId: string): Promise<TasteSignals | null>
   }
 }
 
-async function enrichAsHybridCandidates(results: SemanticResult[]): Promise<HybridCandidate[]> {
+async function enrichAsHybridCandidates(
+  results: SemanticResult[],
+  profileId?: string,
+): Promise<HybridCandidate[]> {
   if (results.length === 0) return []
 
   const movieIds = results.filter((r) => r.mediaType === 'MOVIE').map((r) => r.mediaId)
   const seriesIds = results.filter((r) => r.mediaType === 'SERIES').map((r) => r.mediaId)
+  const allIds = [...movieIds, ...seriesIds]
+
+  type MovieMeta = {
+    id: string
+    durationMinutes: number | null
+    originalLanguage: string | null
+    collectionId: string | null
+    popularity: number | null
+    voteAverage: number | null
+    keywords: string[] | null
+  }
+  type SeriesMeta = {
+    id: string
+    originalLanguage: string | null
+    popularity: number | null
+    voteAverage: number | null
+    keywords: string[] | null
+  }
 
   const [
     movieGenreRows,
@@ -160,6 +185,10 @@ async function enrichAsHybridCandidates(results: SemanticResult[]): Promise<Hybr
     allGenreRows,
     availMovieRows,
     availSeriesRows,
+    movieMetaRows,
+    seriesMetaRows,
+    directorRows,
+    progressRows,
   ] = await Promise.all([
     movieIds.length > 0
       ? db
@@ -196,6 +225,59 @@ async function enrichAsHybridCandidates(results: SemanticResult[]): Promise<Hybr
             ),
           )
       : Promise.resolve([] as { seriesId: string }[]),
+    movieIds.length > 0
+      ? db
+          .select({
+            id: movies.id,
+            durationMinutes: movies.durationMinutes,
+            originalLanguage: movies.originalLanguage,
+            collectionId: movies.collectionId,
+            popularity: movies.popularity,
+            voteAverage: movies.voteAverage,
+            keywords: movies.keywords,
+          })
+          .from(movies)
+          .where(inArray(movies.id, movieIds))
+      : Promise.resolve([] as MovieMeta[]),
+    seriesIds.length > 0
+      ? db
+          .select({
+            id: seriesTbl.id,
+            originalLanguage: seriesTbl.originalLanguage,
+            popularity: seriesTbl.popularity,
+            voteAverage: seriesTbl.voteAverage,
+            keywords: seriesTbl.keywords,
+          })
+          .from(seriesTbl)
+          .where(inArray(seriesTbl.id, seriesIds))
+      : Promise.resolve([] as SeriesMeta[]),
+    allIds.length > 0
+      ? db
+          .select({ mediaId: mediaCredits.mediaId, name: mediaCredits.name })
+          .from(mediaCredits)
+          .where(
+            and(
+              inArray(mediaCredits.mediaId, allIds),
+              eq(mediaCredits.role, 'director'),
+            ),
+          )
+      : Promise.resolve([] as { mediaId: string; name: string }[]),
+    profileId && movieIds.length > 0
+      ? db
+          .select({
+            mediaId: viewingProgress.mediaId,
+            progressSeconds: viewingProgress.progressSeconds,
+            durationSeconds: viewingProgress.durationSeconds,
+          })
+          .from(viewingProgress)
+          .where(
+            and(
+              eq(viewingProgress.profileId, profileId),
+              eq(viewingProgress.mediaType, 'MOVIE'),
+              inArray(viewingProgress.mediaId, movieIds),
+            ),
+          )
+      : Promise.resolve([] as { mediaId: string; progressSeconds: number; durationSeconds: number }[]),
   ])
 
   const genreNameMap = new Map(allGenreRows.map((g) => [g.id, g.name]))
@@ -217,6 +299,23 @@ async function enrichAsHybridCandidates(results: SemanticResult[]): Promise<Hybr
   const availMovieSet = new Set(availMovieRows.map((r) => r.movieId))
   const availSeriesSet = new Set(availSeriesRows.map((r) => r.seriesId))
 
+  const movieMetaMap = new Map(movieMetaRows.map((m) => [m.id, m]))
+  const seriesMetaMap = new Map(seriesMetaRows.map((s) => [s.id, s]))
+
+  const directorMap = new Map<string, string[]>()
+  for (const { mediaId, name } of directorRows) {
+    const list = directorMap.get(mediaId) ?? []
+    list.push(name)
+    directorMap.set(mediaId, list)
+  }
+
+  const completionRatioMap = new Map<string, number>()
+  for (const { mediaId, progressSeconds, durationSeconds } of progressRows) {
+    if (durationSeconds > 0) {
+      completionRatioMap.set(mediaId, progressSeconds / durationSeconds)
+    }
+  }
+
   return results.map((r) => {
     const genreIds =
       r.mediaType === 'MOVIE'
@@ -226,6 +325,9 @@ async function enrichAsHybridCandidates(results: SemanticResult[]): Promise<Hybr
     const genreNames = genreIds.map((id) => genreNameMap.get(id) ?? '').filter(Boolean)
     const available =
       r.mediaType === 'MOVIE' ? availMovieSet.has(r.mediaId) : availSeriesSet.has(r.mediaId)
+
+    const movieMeta = r.mediaType === 'MOVIE' ? (movieMetaMap.get(r.mediaId) ?? null) : null
+    const seriesMeta = r.mediaType === 'SERIES' ? (seriesMetaMap.get(r.mediaId) ?? null) : null
 
     return {
       mediaId: r.mediaId,
@@ -237,16 +339,16 @@ async function enrichAsHybridCandidates(results: SemanticResult[]): Promise<Hybr
       similarity: r.similarity,
       genreIds,
       genreNames,
-      popularity: null,
-      voteAverage: null,
+      popularity: movieMeta?.popularity ?? seriesMeta?.popularity ?? null,
+      voteAverage: movieMeta?.voteAverage ?? seriesMeta?.voteAverage ?? null,
       available,
       status: null,
-      collectionId: null,
-      directors: [],
-      keywords: [],
-      durationMinutes: null,
-      originalLanguage: null,
-      completionRatio: null,
+      collectionId: movieMeta?.collectionId ?? null,
+      directors: directorMap.get(r.mediaId) ?? [],
+      keywords: movieMeta?.keywords ?? seriesMeta?.keywords ?? [],
+      durationMinutes: movieMeta?.durationMinutes ?? null,
+      originalLanguage: movieMeta?.originalLanguage ?? seriesMeta?.originalLanguage ?? null,
+      completionRatio: completionRatioMap.get(r.mediaId) ?? null,
     }
   })
 }
@@ -322,7 +424,9 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
         : 'exploit'
     const diversityEnabled = body?.diversityEnabled !== false
     const alreadyShownIds = Array.isArray(body?.alreadyShownIds)
-      ? (body.alreadyShownIds as unknown[]).filter((x): x is string => typeof x === 'string')
+      ? (body.alreadyShownIds as unknown[])
+          .filter((x): x is string => typeof x === 'string')
+          .slice(0, 500)
       : []
     const debugMode = body?.debug === true
 
@@ -393,7 +497,7 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
         }
 
         const [enriched, taste1, taste2] = await Promise.all([
-          enrichAsHybridCandidates(filteredResults),
+          enrichAsHybridCandidates(filteredResults, profileId),
           profileId ? loadTasteSignals(profileId) : Promise.resolve(null),
           compareProfileId ? loadTasteSignals(compareProfileId) : Promise.resolve(null),
         ])
@@ -457,7 +561,7 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
       }
 
       const [enriched, taste1, taste2] = await Promise.all([
-        enrichAsHybridCandidates(primary),
+        enrichAsHybridCandidates(primary, profileId),
         profileId ? loadTasteSignals(profileId) : Promise.resolve(null),
         compareProfileId ? loadTasteSignals(compareProfileId) : Promise.resolve(null),
       ])
