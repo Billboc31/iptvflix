@@ -43,6 +43,7 @@ import type {
   FeedbackItem,
   SetFeedbackBody,
   HomeResponse,
+  HomePageResponse,
   LoginRequest,
   LoginResponse,
   MeResponse,
@@ -321,6 +322,11 @@ export function clearFeedback(mediaType: WatchlistMediaType, mediaId: string): P
 
 export function fetchHome(profileId: string): Promise<HomeResponse> {
   return request(`/profiles/${profileId}/home`)
+}
+
+export function fetchHomePage(profileId: string, cursor?: string): Promise<HomePageResponse> {
+  const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''
+  return request(`/profiles/${profileId}/home${qs}`)
 }
 
 export async function login(username: string, password: string): Promise<LoginResponse> {
