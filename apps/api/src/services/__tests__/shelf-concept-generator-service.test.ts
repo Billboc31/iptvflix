@@ -26,6 +26,20 @@ vi.mock('../../config/env.js', () => ({
 const PROFILE_ID = '00000000-0000-0000-0000-000000000001'
 const PROFILE_ID_2 = '00000000-0000-0000-0000-000000000002'
 
+const T100_TASTE_FIELDS = {
+  personScores: {},
+  personMeta: {},
+  keywordScores: {},
+  franchiseScores: {},
+  languageScores: {},
+  countryScores: {},
+  decadeScores: {},
+  mediaTypePreferences: {},
+  completionRate: null,
+  historyEventCount: 0,
+  tasteVersion: 1,
+}
+
 const WARM_TASTE: ProfileTaste = {
   profileId: PROFILE_ID,
   genreScores: [
@@ -36,6 +50,7 @@ const WARM_TASTE: ProfileTaste = {
   negativeMediaIds: ['m4'],
   signalCount: 15,
   builtAt: new Date('2026-01-01T00:00:00Z').toISOString(),
+  ...T100_TASTE_FIELDS,
 }
 
 const COLD_TASTE: ProfileTaste = {
@@ -45,6 +60,7 @@ const COLD_TASTE: ProfileTaste = {
   negativeMediaIds: [],
   signalCount: 0,
   builtAt: new Date('2026-01-01T00:00:00Z').toISOString(),
+  ...T100_TASTE_FIELDS,
 }
 
 // ---------------------------------------------------------------------------
@@ -366,6 +382,7 @@ describe('ShelfConceptGeneratorService.generateConcepts', () => {
     negativeMediaIds: [],
     signalCount: 20,
     builtAt: new Date('2026-01-01T00:00:00Z').toISOString(),
+    ...T100_TASTE_FIELDS,
   }
 
   function makeLlmResponse(concepts: object[]) {

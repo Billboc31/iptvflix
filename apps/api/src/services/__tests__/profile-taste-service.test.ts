@@ -45,13 +45,34 @@ function setupSelectJoinWhere(rows: unknown[]) {
   })
 }
 
-// db.insert(X).values({...}).onConflictDoUpdate({...}) → resolves
+// db.insert(X).values({...}).onConflictDoUpdate({...}).returning({...}) → resolves
 function setupUpsert() {
   mockDb.insert.mockReturnValueOnce({
     values: vi.fn().mockReturnValue({
-      onConflictDoUpdate: vi.fn().mockResolvedValue([]),
+      onConflictDoUpdate: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ tasteVersion: 1 }]),
+      }),
     }),
   })
+}
+
+// 3 profileInteractionEvents count queries (always called at end of buildTaste)
+function setupInteractionCounts() {
+  setupSelectWhere([{ c: '0' }]) // PLAY_STARTED count
+  setupSelectWhere([{ c: '0' }]) // PLAY_COMPLETED count
+  setupSelectWhere([{ c: '0' }]) // total event count
+}
+
+// For each MOVIE signal: movie details + credits
+function setupMovieFeatureMocks() {
+  setupSelectWhere([{}]) // movie details (keywords/lang/countries/etc. all undefined → skipped)
+  setupSelectWhere([]) // credits
+}
+
+// For each SERIES signal: series details + credits
+function setupSeriesFeatureMocks() {
+  setupSelectWhere([{}]) // series details
+  setupSelectWhere([]) // credits
 }
 
 // Standard setup for buildTaste with no signals (cold-start)
@@ -59,10 +80,12 @@ function setupColdStart() {
   setupSelectWhere([]) // feedback
   setupSelectWhere([]) // progress
   setupSelectWhere([]) // watchlist
+  setupInteractionCounts()
   setupUpsert()
 }
 
-// Setup the three initial fetches then genre lookups + upsert
+// Setup the three initial fetches then genre lookups + upsert.
+// Assumes all signals are MOVIE type (covers the majority of test cases).
 function setupBuildTaste({
   feedback = [] as object[],
   progress = [] as object[],
@@ -74,9 +97,19 @@ function setupBuildTaste({
   setupSelectWhere(feedback)
   setupSelectWhere(progress)
   setupSelectWhere(watchlistRows)
-  for (const genres of feedbackGenres.map((g) => [g])) setupSelectJoinWhere(genres)
-  for (const genres of progressGenres.map((g) => [g])) setupSelectJoinWhere(genres)
-  for (const genres of watchlistGenres.map((g) => [g])) setupSelectJoinWhere(genres)
+  for (const genres of feedbackGenres.map((g) => [g])) {
+    setupSelectJoinWhere(genres)
+    setupMovieFeatureMocks()
+  }
+  for (const genres of progressGenres.map((g) => [g])) {
+    setupSelectJoinWhere(genres)
+    setupMovieFeatureMocks()
+  }
+  for (const genres of watchlistGenres.map((g) => [g])) {
+    setupSelectJoinWhere(genres)
+    setupMovieFeatureMocks()
+  }
+  setupInteractionCounts()
   setupUpsert()
 }
 
@@ -181,7 +214,10 @@ describe('mixed signals (same genre)', () => {
     setupSelectWhere([]) // progress
     setupSelectWhere([]) // watchlist
     setupSelectJoinWhere([GENRE_ACTION]) // genres for LIKE row
+    setupMovieFeatureMocks() // movie details + credits for LIKE row
     setupSelectJoinWhere([GENRE_ACTION]) // genres for DISLIKE row
+    setupMovieFeatureMocks() // movie details + credits for DISLIKE row
+    setupInteractionCounts()
     setupUpsert()
 
     const taste = await buildTaste(PROFILE_ID)
@@ -211,6 +247,8 @@ describe('weak signals vs explicit LIKE', () => {
     setupSelectWhere([progressRow]) // progress
     setupSelectWhere([]) // watchlist
     setupSelectJoinWhere([GENRE_ACTION]) // genres for completed view
+    setupMovieFeatureMocks() // movie details + credits
+    setupInteractionCounts()
     setupUpsert()
 
     const tasteWeak = await buildTaste(PROFILE_ID)
@@ -239,6 +277,8 @@ describe('weak signals vs explicit LIKE', () => {
     setupSelectWhere([inProgressRow]) // progress
     setupSelectWhere([]) // watchlist
     setupSelectJoinWhere([GENRE_ACTION])
+    setupMovieFeatureMocks()
+    setupInteractionCounts()
     setupUpsert()
 
     const taste = await buildTaste(PROFILE_ID)
@@ -257,6 +297,8 @@ describe('weak signals vs explicit LIKE', () => {
     setupSelectWhere([]) // feedback
     setupSelectWhere([tinyProgressRow]) // progress
     setupSelectWhere([]) // watchlist
+    // signal skipped (ratio < 0.05) — no genre/feature queries
+    setupInteractionCounts()
     setupUpsert()
 
     const taste = await buildTaste(PROFILE_ID)
@@ -285,6 +327,8 @@ describe('episode progress → parent series', () => {
     setupSelectWhere([{ seriesId: SERIES_ID }])
     // Genre load for resolved series
     setupSelectJoinWhere([GENRE_DRAMA])
+    setupSeriesFeatureMocks() // series details + credits
+    setupInteractionCounts()
     setupUpsert()
 
     const taste = await buildTaste(PROFILE_ID)
@@ -306,7 +350,9 @@ describe('episode progress → parent series', () => {
     setupSelectWhere([]) // feedback
     setupSelectWhere([progressRow]) // progress
     setupSelectWhere([]) // watchlist
-    setupSelectWhere([]) // episode not found
+    setupSelectWhere([]) // episode not found → signal skipped
+    // no accumulateMediaFeatures calls since episode wasn't found
+    setupInteractionCounts()
     setupUpsert()
 
     const taste = await buildTaste(PROFILE_ID)
@@ -351,6 +397,8 @@ describe('watchlist signal', () => {
     setupSelectWhere([]) // progress
     setupSelectWhere([wlRow]) // watchlist
     setupSelectJoinWhere([GENRE_ACTION])
+    setupMovieFeatureMocks()
+    setupInteractionCounts()
     setupUpsert()
 
     const taste = await buildTaste(PROFILE_ID)
@@ -412,8 +460,11 @@ describe('genre sort order', () => {
     setupSelectWhere([]) // watchlist
     // MOVIE_ID genres: GENRE_DRAMA only
     setupSelectJoinWhere([GENRE_DRAMA])
+    setupMovieFeatureMocks()
     // MOVIE_ID_2 genres: GENRE_ACTION + GENRE_DRAMA (drama gets +3 more)
     setupSelectJoinWhere([GENRE_ACTION, GENRE_DRAMA])
+    setupMovieFeatureMocks()
+    setupInteractionCounts()
     setupUpsert()
 
     const taste = await buildTaste(PROFILE_ID)
