@@ -54,6 +54,7 @@ export class MetadataEnrichmentService {
     private readonly db: Db,
     private readonly provider: MetadataProvider,
     private readonly staleDays: number = DEFAULT_STALE_DAYS,
+    private readonly onEnriched?: (mediaId: string, mediaType: 'MOVIE' | 'SERIES') => void,
   ) {}
 
   async enrichMovie(
@@ -158,6 +159,7 @@ export class MetadataEnrichmentService {
     await this.persistCredits('movie', movieId, credits)
     await this.persistFrenchLocalization('movie', movieId, movie.tmdbId, metadata.title, metadata.synopsis ?? null, metadata.tagline ?? null)
 
+    this.onEnriched?.(movieId, 'MOVIE')
     return 'enriched'
   }
 
@@ -276,6 +278,7 @@ export class MetadataEnrichmentService {
       console.warn(`[enrichment] enrichSeriesSeasons(${seriesId}) failed:`, err)
     }
 
+    this.onEnriched?.(seriesId, 'SERIES')
     return 'enriched'
   }
 

@@ -18,6 +18,7 @@ import DeviceSettingsPage from './pages/DeviceSettingsPage.js'
 import LoginPage from './pages/LoginPage.js'
 import PlayerPage from './pages/PlayerPage.js'
 import ArrivalsPage from './pages/ArrivalsPage.js'
+import RecommendationLabPage from './pages/RecommendationLabPage.js'
 import { AuthProvider } from './context/AuthContext.js'
 import ProtectedRoute from './components/ProtectedRoute.js'
 
@@ -53,6 +54,7 @@ function AppRoutes() {
             <Route path="/settings/playback" element={<ProfileSettingsPage />} />
             <Route path="/settings/devices" element={<DeviceSettingsPage />} />
             <Route path="/arrivals" element={<ArrivalsPage />} />
+            <Route path="/lab" element={<RecommendationLabPage />} />
           </Route>
         </Route>
       </Routes>
