@@ -1,7 +1,7 @@
 {
   "ticket_id": "T107",
-  "state": "IMPLEMENTATION_REVIEW_NEEDED",
+  "state": "IMPLEMENTATION_FIX_REQUIRED",
   "branch": "ticket/T107-build-infinite-personalized-home-shelves-with-curs",
   "issue_number": 210,
-  "updated_at": "2026-08-18T14:01:19Z"
+  "updated_at": "2026-08-18T14:14:11Z"
 }

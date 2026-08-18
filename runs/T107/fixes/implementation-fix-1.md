@@ -1,3 +1,11 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T107/reviews/implementation-review.md
+- generated at: 2026-08-18T14:14:11Z
+
+---
+
 ---
 
 # PR Review — T107 — Infinite Home Shelves with Cursor Loading
