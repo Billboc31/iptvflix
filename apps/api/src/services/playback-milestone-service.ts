@@ -17,6 +17,14 @@ export const MILESTONE_THRESHOLDS: Record<PlaybackMilestone, number> = {
   WATCHED_90_PERCENT: 90,
 }
 
+export const MILESTONE_TYPES = new Set<string>([
+  'WATCHED_10_PERCENT',
+  'WATCHED_25_PERCENT',
+  'WATCHED_50_PERCENT',
+  'WATCHED_75_PERCENT',
+  'WATCHED_90_PERCENT',
+])
+
 export function milestoneForPercent(percent: number): PlaybackMilestone | null {
   if (percent >= 90) return 'WATCHED_90_PERCENT'
   if (percent >= 75) return 'WATCHED_75_PERCENT'
@@ -29,11 +37,16 @@ export function milestoneForPercent(percent: number): PlaybackMilestone | null {
 export async function emitMilestoneIfNew(
   profileId: string,
   mediaId: string,
-  sessionId: string,
+  sessionId: string | null,
   milestone: PlaybackMilestone,
+  mediaType: string,
   positionMs?: number,
 ): Promise<void> {
-  const idempotencyKey = `${profileId}:${mediaId}:${sessionId}:${milestone}`
+  // Include sessionId in the key when available; fall back to per-profile+media key
+  // so reloads within the same session don't re-insert a milestone.
+  const idempotencyKey = sessionId
+    ? `${profileId}:${mediaId}:${sessionId}:${milestone}`
+    : `${profileId}:${mediaId}:${milestone}`
 
   const [existing] = await db
     .select({ id: profileInteractionEvents.id })
@@ -45,10 +58,10 @@ export async function emitMilestoneIfNew(
   await db.insert(profileInteractionEvents).values({
     profileId,
     mediaId,
-    mediaType: 'MOVIE',
+    mediaType,
     eventType: milestone,
     occurredAt: new Date(),
-    sessionId,
+    sessionId: sessionId ?? null,
     positionMs: positionMs ?? null,
     progressPercent: MILESTONE_THRESHOLDS[milestone],
     schemaVersion: 1,

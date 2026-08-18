@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify'
 import type { InteractionEventBody, InteractionEventBatch } from '@iptvflix/api-contracts'
-import { recordEvent, recordEventBatch, ALLOWED_EVENT_TYPES } from '../services/interaction-event-service.js'
+import { recordEvent, ALLOWED_EVENT_TYPES } from '../services/interaction-event-service.js'
 import { openSession, closeSession } from '../services/viewing-session-service.js'
+import { emitMilestoneIfNew, MILESTONE_TYPES } from '../services/playback-milestone-service.js'
+import type { PlaybackMilestone } from '../services/playback-milestone-service.js'
 
 export async function interactionEventsRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: InteractionEventBody }>('/interaction-events', async (request, reply) => {
@@ -24,6 +26,7 @@ export async function interactionEventsRoutes(app: FastifyInstance): Promise<voi
 
   // Batch endpoint — processes up to 50 events best-effort, never returns 5xx for analytics failures.
   // On PLAY_STARTED, opens a viewing session and returns sessionId.
+  // WATCHED_*_PERCENT events are deduplicated server-side via emitMilestoneIfNew.
   app.post<{ Body: InteractionEventBatch }>('/interaction-events/batch', async (request, reply) => {
     const body = request.body ?? {}
     const events: InteractionEventBody[] = Array.isArray(body.events) ? body.events.slice(0, 50) : []
@@ -61,6 +64,19 @@ export async function interactionEventsRoutes(app: FastifyInstance): Promise<voi
           } catch (err) {
             console.warn('[interaction-events] closeSession failed:', err)
           }
+        }
+
+        // Milestone events: use server-side deduplication instead of recordEvent
+        if (MILESTONE_TYPES.has(event.eventType) && event.mediaId) {
+          await emitMilestoneIfNew(
+            request.profileId!,
+            event.mediaId,
+            event.sessionId ?? null,
+            event.eventType as PlaybackMilestone,
+            event.mediaType ?? 'UNKNOWN',
+            event.positionMs ?? undefined,
+          )
+          continue
         }
 
         await recordEvent(request.profileId!, event)
