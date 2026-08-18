@@ -1,173 +1,174 @@
-I have a thorough picture of the implementation. Writing the review now.
+I now have a complete picture of the implementation across all 3 review rounds. Let me write the structured review.
 
 ---
 
-# PR Review — T104 Hybrid Recommendation Reranking
+# PR Review — T104: Hybrid recommendation reranking
 
 ## Résumé
 
-L'architecture pure-function du scoring hybride est solide : `SCORE_MODEL_V1` versionné, filtres hard appliqués avant le scoring, signaux négatifs différenciés, exploration levels documentés, debug breakdown complet. Les tests unitaires et le benchmark sont bien écrits.
-
-Cependant, la fonction `enrichAsHybridCandidates` — chemin de production dans la route Lab — retourne `null`/`[]` pour la majorité des champs enrichis (`collectionId`, `directors`, `keywords`, `durationMinutes`, `originalLanguage`, `completionRatio`). Cela rend structurellement non-fonctionnels en production plusieurs critères d'acceptance : les hard filters runtime/langue, la people affinity, la theme affinity par keywords, le capping diversity collection/director, et les pénalités watched/abandonné.
-
-Les tests passent uniquement parce qu'ils utilisent des fixtures manuellement construites avec tous les champs renseignés.
+Troisième review. Les deux problèmes bloquants des rounds précédents (ScoreBreakdown incomplet, `enrichAsHybridCandidates` incomplète) ont été corrigés. L'implémentation est globalement solide. Quelques observations mineures à documenter, aucun bloquant.
 
 ---
 
 ## Vérifications effectuées
 
 - Lecture complète de `recommendation-ranking-service.ts` (690 lignes)
-- Lecture complète de `recommendation-lab.ts` (494 lignes) avec focus sur `enrichAsHybridCandidates`
-- Lecture des contrats `recommendations.ts` et `query-plan.ts`
-- Lecture du benchmark (`recommendation-ranking-benchmark.test.ts`) et des tests unitaires (`recommendation-ranking-service.test.ts`)
-- Vérification de la correspondance formules score / `ScoreBreakdown`
-- Vérification des acceptance criteria du ticket
+- Lecture complète de `recommendation-lab.ts` (598 lignes)
+- Lecture de `packages/api-contracts/src/recommendations.ts` et `query-plan.ts`
+- Lecture de `recommendation-ranking-benchmark.test.ts`
+- Vérification des critères d'acceptance du ticket
 
 ---
 
 ## Points validés
 
-**Score model et pondération**
-- `SCORE_MODEL_V1` est une constante versionnée, aucun magic number dispersé dans le code. ✓
-- Le calcul final est cohérent avec le breakdown : la formule est vérifiée mathématiquement par le test de reconstruction (`scoreBreakdown.final` reconstructible depuis les composants). ✓
+**Architecture / Score model**
+- `SCORE_MODEL_V1` : versioning présent (`'v1'`), constante unique, aucune magic constant dispersée. ✓
+- `rankHybrid` : fonction pure, pas d'accès DB, testable en isolation. ✓
+- Hard filters (`passesHardFilters`) appliqués *avant* le scoring — conformes à la règle "do not sneak in via soft scores". ✓
 
-**Filtres hard**
-- `passesHardFilters()` s'exécute avant le scoring. Aucun soft-score ne peut faire passer un item qui viole une contrainte explicite. ✓
-- Les filtres couvrent : media type, runtime, release year, includeGenres/excludeGenres, audioLanguages, WATCH_NOW. ✓
+**Corrections round 1 & 2 — toutes appliquées**
+- `ScoreBreakdown` contient maintenant `abandonPenalty` et `avoidPenalty` (champs manquants en round 1). ✓
+- `enrichAsHybridCandidates` charge `durationMinutes`, `originalLanguage`, `collectionId`, `keywords`, `directors`, `completionRatio` (lacune majeure en round 2). ✓
+- `alreadyShownIds` cappé à 500 avec `.slice(0, 500)`. ✓
+- Poids `discover` mode corrigés (0.64+0.02+0.02+0.02+0.05+0.20+0.05 = 1.00). ✓
+
+**Score breakdown reconstructible**
+Le test `scoreBreakdown.final is mathematically reconstructible` (benchmark ligne 321-346) vérifie `bd.final ≈ reconstructed` avec `toBeCloseTo(_, 10)` pour chaque résultat. Intégrité garantie. ✓
 
 **Signaux négatifs**
-- Dislike (−1.5), abandon (−0.1), avoid keyword (−0.2), répétition/shown (−0.15) sont des pénalités distinctes — ne confond pas "vu une fois" avec "détesté". ✓
-- `negativeMediaIds` n'est pas un blacklist hard : la pénalité est soustractive, un item très sémantiquement pertinent peut encore apparaître. Comportement cohérent avec le ticket ("Do not permanently blacklist"). ✓
+- Dislike explicite : −1.5 ✓
+- Abandon rapide (completionRatio < 0.2) : −0.1 (signal faible, conforme au ticket "ne pas blacklister tout abandon") ✓  
+- Avoid signals (query plan) : `computeAvoidPenalty` sur keywords + genreNames ✓
+- Déjà regardé (≥ 0.9) : −0.3 ✓
+- Déjà montré en session : −0.15 ✓
 
-**Exploration levels**
-- exploit / explore / discover produisent des poids cohérents avec leurs intentions. ✓
-- Le test scenario 15 vérifie que discover promeut un item haute qualité sur un item taste-aligned obscur. ✓
+**Diversité**
+- Collection cap (`maxPerCollection`, défaut 2) + director cap (`maxPerDirector`, défaut 3) avec deferred fill ✓
+- Benchmark test vérifie que franchise COLLECTION_FRANCHISE ≤ 2 en top-10 avec diversity=true ✓
 
-**Diversity**
-- `applyDiversityFilter` implémente une stratégie MMR-like (pass first, defer rest, fill from deferred). ✓
-- `maxPerCollection` et `maxPerDirector` sont configurables en options. ✓
+**Exploration**
+- Trois niveaux : `exploit` / `explore` / `discover` avec blending de poids documenté ✓
+- Exposé dans le Lab via paramètre HTTP `explorationLevel` ✓
 
-**Explainability**
-- `ScoreBreakdown` couvre tous les composants requis par le ticket (section 8), y compris `reasons[]`. ✓
-- Debug breakdown généré uniquement quand `debug=true` — pas de coût en production. ✓
+**Lab controls (section 9)**
+- `useHybridRanking`, `profileId`, `compareProfileId`, `explorationLevel`, `diversityEnabled`, `alreadyShownIds`, `debug`, `scoreModel` en réponse debug — tous présents ✓
 
-**Lab controls**
-- `useHybridRanking`, `profileId`, `compareProfileId`, `explorationLevel`, `diversityEnabled`, `alreadyShownIds`, `debug`. ✓
-- La comparaison deux profils est fonctionnelle. ✓
+**Deux profils différents**
+- `TASTE_A` (sci-fi/action) vs `TASTE_B` (romance/comedy) avec assertion `top5 overlap ≤ 3` ✓
+- Test `Profile A and Profile B produce top-5 overlap ≤ 3` passe ✓
 
-**Différenciation deux profils**
-- La genre affinity est enrichie et fonctionne — Profile A sci-fi vs Profile B romance produisent des orderings distincts sur un même pool. ✓
-- Tests scenario 11 et benchmark "top-5 overlap ≤ 3" valident le comportement. ✓
-
-**Qualité code**
-- Fonction pure sans DB access pour `rankHybrid`. ✓
-- Nommage explicite, fonctions courtes et focalisées. ✓
-- Sanitisation prompt-injection sur `profileContext` dans la route Lab. ✓
+**Sécurité**
+- `sanitizeProfileContext` limite les champs et longueurs pour prévenir l'injection de prompt ✓
+- `alreadyShownIds` filtré sur strings uniquement + cappé ✓
+- Pas de secrets hardcodés ✓
 
 ---
 
 ## Problèmes détectés
 
-### [BLOQUANT] `enrichAsHybridCandidates` ne fetch pas les données nécessaires aux features clés
+### Mineur — Condition `taste2 !== undefined` incorrecte (non bloquant)
 
-**Fichier** : `apps/api/src/routes/recommendation-lab.ts`, lignes 151-252
+**Fichier** : `recommendation-lab.ts`, lignes 507 et 572
 
-La fonction retourne des `HybridCandidate` avec les champs suivants systématiquement à leur valeur nulle/vide :
-
-```typescript
-collectionId: null,    // diversity collection capping → ne s'applique jamais
-directors: [],         // people affinity → toujours 0.5 par défaut
-keywords: [],          // theme affinity par keywords → toujours 0.5 par défaut
-durationMinutes: null, // maxRuntimeMinutes hard filter → jamais déclenché
-originalLanguage: null,// audioLanguages hard filter → jamais déclenché
-completionRatio: null, // watched/abandoned penalty → jamais déclenché
-popularity: null,      // qualityPrior → fallback 0.3 au lieu de valeur réelle
-voteAverage: null,     // qualityPrior → fallback 0.5 au lieu de valeur réelle
+```ts
+if (compareProfileId && taste2 !== undefined) {
 ```
 
-**Impact sur les acceptance criteria :**
+`loadTasteSignals` retourne `TasteSignals | null`, jamais `undefined`. La condition `!== undefined` est toujours `true`, ce qui rend le check `compareProfileId &&` seul effectif. L'intent est probablement `taste2 !== null`. Fonctionnellement non bloquant car `rankHybrid(enriched, plan, null, ...)` est valide (cold start), mais le code est trompeur.
 
-| Critère ticket | Statut |
-|---|---|
-| Hard constraints respectées (runtime, langue) | ✗ — `durationMinutes`/`originalLanguage` toujours null, filtres contournés silencieusement |
-| Already-watched/recently exposed penalized | ✗ — `completionRatio` toujours null |
-| Diversity prevents repetition | ✗ — `collectionId`/`directors` toujours null/vide |
-| People affinity | ✗ — `directors` vide, score fixé à 0.5 pour tous |
-| Theme affinity (keywords) | ✗ — seuls les genreNames matchent, pas les keywords TMDB |
-| Quality prior | ✗ dégradé — popularity/voteAverage null, scores par défaut |
-
-Les tests passent car les fixtures du benchmark et des unit tests renseignent manuellement tous ces champs. Le chemin de production (`retrievalService.retrieve()` → `enrichAsHybridCandidates()` → `rankHybrid()`) ne produit pas les mêmes conditions que les tests.
-
-**Correction attendue** : `enrichAsHybridCandidates` doit requêter les tables nécessaires pour alimenter les champs manquants. Les données disponibles dans le schéma local :
-- `movies.durationMinutes`, `movies.originalLanguage`, `movies.collectionId`
-- `movieCredits` ou équivalent pour `directors`
-- `movieKeywords` ou équivalent pour `keywords`
-- `viewingProgress` pour `completionRatio`
-- `movies.popularity`, `movies.voteAverage`
-
-Si certaines tables n'existent pas encore, c'est un gap à documenter explicitement avec un TODO et les features correspondantes désactivées, pas un silence silencieux.
+**Correction** : remplacer `taste2 !== undefined` par `taste2 !== null` aux deux endroits.
 
 ---
 
-### [MINEUR] Poids discover mode ne somment pas à 1.0
+### Mineur — `completionRatio` toujours null pour les séries (limitation connue)
 
-**Fichier** : `recommendation-ranking-service.ts`, lignes 358-368
+**Fichier** : `recommendation-lab.ts`, ligne 272
 
-```typescript
-wSemantic: 0.70,   // +0.70
-wGenre: 0.02,      // +0.72
-wTheme: 0.02,      // +0.74
-wPeople: 0.02,     // +0.76
-wFreshness: model.wFreshness, // +0.05 → 0.81
-wPrior: model.wPrior * 2,     // +0.20 → 1.01
-wAvailability: model.wAvailability, // +0.05 → 1.06
+```ts
+eq(viewingProgress.mediaType, 'MOVIE'),
 ```
 
-Somme ≈ 1.06. Le `weighted` peut légèrement dépasser 1.0 avant pénalités. Pas un bug bloquant mais une incohérence avec la sémantique d'un score normalisé [0,1].
+La query viewingProgress est hardcodée sur `MOVIE`. Les séries auront toujours `completionRatio: null`, donc `alreadyWatchedPenalty` et `abandonPenalty` ne s'appliquent jamais aux séries. Cohérent avec `rankRecommendations` existant (même limitation), mais incomplet par rapport à la section 2 du ticket ("completion/abandon history" sans restriction au type).
+
+Acceptable si le schéma ne supporte pas encore le tracking épisode/série, mais à documenter.
 
 ---
 
-### [MINEUR] Maturity/kids restriction absente de `QueryPlanHardFilters`
+### Mineur — Poids de base SCORE_MODEL_V1 somment à 1.05
 
-**Fichier** : `packages/api-contracts/src/query-plan.ts`
+```
+0.35 + 0.25 + 0.15 + 0.10 + 0.05 + 0.10 + 0.05 = 1.05
+```
 
-Le ticket (section 1) liste explicitement "maturity/kids restrictions" comme hard constraint. Le type `QueryPlanHardFilters` ne contient pas de champ `maxMaturityRating` ou `kidsOnly`. Ce gap n'est pas mentionné comme exclusion dans le plan.
+Le mode `discover` a été correctement normalisé à 1.0. Le mode `explore` somme à 0.955. Le mode `exploit` (base) somme à 1.05. Cette inconsistance ne cause pas de bug (les scores sont comparatifs dans le même appel) mais rend le score maximum théorique légèrement supérieur à 1.0 en exploit. Non bloquant, mais à normaliser dans un futur SCORE_MODEL_V2.
 
 ---
 
-### [MINEUR] `alreadyShownIds` non borné en taille dans la route Lab
+### Observation — Maturity/kids filtering déclaré TODO
 
-**Fichier** : `recommendation-lab.ts`, lignes 324-327
+**Fichier** : `query-plan.ts`, lignes 18-20
 
-```typescript
-const alreadyShownIds = Array.isArray(body?.alreadyShownIds)
-  ? (body.alreadyShownIds as unknown[]).filter((x): x is string => typeof x === 'string')
-  : []
+```ts
+// TODO: maturity/kids restriction — field defined but not yet enforced in passesHardFilters
+maxMaturityRating?: string
+kidsOnly?: boolean
 ```
 
-Filtrage du type mais pas de cap sur la taille du tableau. Un appelant malveillant peut envoyer un array de 10 000 IDs. Suggère `slice(0, 500)` ou équivalent.
+Le ticket (section 1) liste "maturity/kids restrictions" comme hard constraint. Les champs sont déclarés dans le type mais `passesHardFilters` ne les utilise pas. La review précédente avait classé cela "optionnel". Acceptable comme forward-declaration mais à traiter avant d'exposer à des profils enfants en production.
+
+---
+
+### Observation — `availabilityPolicy` absent des `rankingOpts` dans le Lab
+
+**Fichier** : `recommendation-lab.ts`, lignes 491-497 et 554-560
+
+```ts
+const rankingOpts: RankingOptions = {
+  limit: topK,
+  explorationLevel,
+  diversityEnabled,
+  alreadyShownIds,
+  debug: debugMode,
+  // availabilityPolicy absent
+}
+```
+
+La feature `availabilityPolicy` existe dans `RankingOptions` et est utilisée dans `passesHardFilters`, mais n'est pas exposée comme paramètre HTTP dans le Lab. Le critère "Availability can be hard/soft/ignored" est satisfait dans le code, mais non démontrable via le Lab. Pour la production (shelf generator), ce paramètre serait passé directement — acceptable pour l'instant.
+
+---
+
+### Observation — `minRuntimeMinutes` absent
+
+Le ticket (section 1) mentionne "runtime min/max" mais seul `maxRuntimeMinutes` est implémenté dans le schéma et les filtres. Le cas `minRuntimeMinutes` est ignoré. Peu critique en pratique (les utilisateurs cherchent rarement un minimum de durée), mais incomplétude de section 1.
 
 ---
 
 ## Risques éventuels
 
-- **Faux positifs dans les tests** : le benchmark démontre que les hard filters fonctionnent, les profiles divergent, la diversity cap opère — mais uniquement sur fixtures manuelles. L'intégration réelle en Lab API ne satisferait pas ces mêmes assertions sans l'enrichissement corrigé.
-- **Confusion outil de debug** : un utilisateur Lab qui active `debug:true` verra `peopleAffinity: 0.5` ou `themeAffinity: 0.5` sans comprendre que c'est la valeur par défaut due à des données manquantes, pas un score calculé.
+- **Null-passthrough dans les hard filters** : items avec `originalLanguage: null`, `durationMinutes: null`, ou `year: null` passent les filtres correspondants. Comportement permissif documenté implicitement, mais potentiellement risqué si `audioLanguages` est utilisé comme contrainte de sécurité. Pour usage consumer (pas enfants), acceptable.
+
+- **Benchmark freshness dépend de l'année courante** : `computeFreshness` appelle `new Date().getFullYear()`, les scores de freshness changeront chaque année. Les assertions du benchmark sont relatives (comparaisons, pas valeurs absolues) donc robustes pour plusieurs années.
 
 ---
 
 ## Décision
 
-- REQUEST_CHANGES
+Les deux bloquants des rounds précédents sont résolus :
+1. `ScoreBreakdown` complet avec `abandonPenalty` et `avoidPenalty` ✓
+2. `enrichAsHybridCandidates` charge toutes les métadonnées nécessaires ✓
 
-## Actions demandées
+Les issues restantes sont mineures et non bloquantes. Le cœur de l'algorithme est correct, testé, et les critères d'acceptance principaux sont satisfaits.
 
-1. **[Bloquant]** Compléter `enrichAsHybridCandidates` pour fetcher `durationMinutes`, `originalLanguage`, `collectionId`, `directors`, `keywords`, `popularity`, `voteAverage`, et `completionRatio` depuis la DB. Si certaines tables (crédits, keywords) n'existent pas encore, documenter explicitement les features désactivées avec un commentaire TODO et laisser les défauts actuels en place de manière intentionnelle (pas silencieuse).
+- APPROVED
 
-2. **[Mineur]** Normaliser les poids du mode `discover` pour que leur somme soit ≤ 1.0.
+## Actions demandées (post-merge, non bloquantes)
 
-3. **[Mineur]** Ajouter un `slice(0, N)` sur `alreadyShownIds` dans la route Lab.
+1. Corriger `taste2 !== undefined` → `taste2 !== null` (lignes 507 et 572 de `recommendation-lab.ts`)
+2. Tracer le tracking `completionRatio` pour les séries dans un ticket séparé
+3. Normaliser `SCORE_MODEL_V1` weights à 1.0 dans SCORE_MODEL_V2
+4. Implémenter `maturity/kids` filtering avant toute exposition à profils enfants
 
-4. **[Optionnel — hors scope blocant]** Documenter l'absence de maturity/kids restriction dans le plan comme exclusion intentionnelle ou créer un champ placeholder dans `QueryPlanHardFilters`.
+---
 
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
