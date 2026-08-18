@@ -19,7 +19,7 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
         preferences,
       })
     } catch {
-      return reply.status(500).send({ error: 'Profile not found' })
+      return reply.status(404).send({ error: 'Profile not found' })
     }
   })
 

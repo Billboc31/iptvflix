@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { rankRecommendations } from '../services/recommendation-ranking-service.js'
 import type { AvailabilityPolicy } from '../services/recommendation-ranking-service.js'
+import { getCurrentProfile } from '../services/profile-service.js'
 import { NotFoundError } from '../errors.js'
 
 const VALID_POLICIES = new Set<string>(['ALL', 'WATCH_NOW', 'DISCOVERY', 'UPCOMING'])
@@ -18,6 +19,12 @@ export async function recommendationRoutes(app: FastifyInstance): Promise<void> 
   }>('/profiles/:profileId/recommendations', async (request, reply) => {
     const { profileId } = request.params
     const { mediaType, availableToMe, policy, includeSeen, limit } = request.query
+
+    try {
+      await getCurrentProfile(request.account!.id, profileId)
+    } catch {
+      return reply.status(403).send({ error: 'Profile does not belong to this account' })
+    }
 
     if (mediaType !== undefined && mediaType !== 'MOVIE' && mediaType !== 'SERIES') {
       return reply.status(400).send({ error: 'mediaType must be MOVIE or SERIES' })
