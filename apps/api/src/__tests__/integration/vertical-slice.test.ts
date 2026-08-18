@@ -9,12 +9,16 @@ import {
   sources,
   movies,
   series as seriesTable,
+  seasons,
+  episodes,
   movieAvailabilities,
   seriesAvailabilities,
+  episodeAvailabilities,
   syncRuns,
   profiles,
   watchlist,
   viewingProgress,
+  titleMatchResults,
 } from '../../db/schema/index.js'
 import { sourcesRoutes } from '../../routes/sources.js'
 import { moviesRoutes } from '../../routes/movies.js'
@@ -25,6 +29,8 @@ import { searchRoutes } from '../../routes/search.js'
 import { discoveryRoutes } from '../../routes/discovery.js'
 import { TmdbClient } from '../../providers/metadata/tmdb/client.js'
 import { ExternalDiscoveryService } from '../../services/external-discovery-service.js'
+import { resolvePlayback } from '../../services/playback-resolver.js'
+import { upsertProgress } from '../../services/viewing-progress-service.js'
 
 // ---------------------------------------------------------------------------
 // Fake Xtream fixture data
@@ -125,13 +131,55 @@ function happyHandlers() {
 const mswServer = setupServer()
 
 // ---------------------------------------------------------------------------
+// Poll the DB until a sync run reaches a terminal state
+// ---------------------------------------------------------------------------
+
+async function waitForSyncRunId(runId: string, timeoutMs = 15_000): Promise<typeof syncRuns.$inferSelect> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const [row] = await db
+      .select()
+      .from(syncRuns)
+      .where(and(eq(syncRuns.id, runId), inArray(syncRuns.status, ['COMPLETED', 'FAILED'])))
+    if (row) return row
+    await new Promise<void>((resolve) => setTimeout(resolve, 100))
+  }
+  throw new Error(`Sync run ${runId} did not complete within ${timeoutMs}ms`)
+}
+
+// ---------------------------------------------------------------------------
 // Fastify app
 // ---------------------------------------------------------------------------
 
 const app = Fastify({ logger: false })
 
+// Pre-seeded canonical IDs (cleared and re-seeded in beforeAll)
+let preSeededMovieIds: string[] = []
+let preSeededSeriesId: string | null = null
+
 beforeAll(async () => {
   mswServer.listen({ onUnhandledRequest: 'bypass' })
+
+  // Fetch series info so episode data is captured during sync
+  process.env.XTREAM_FETCH_SERIES_INFO = 'true'
+
+  // Remove any stale pre-seeded rows from previous crashed runs, then re-seed.
+  // Local title-matching will resolve these exact titles with confidence=1.0 (no live TMDB calls).
+  await db.delete(movies).where(inArray(movies.title, ['Integration Movie One', 'Integration Movie Two']))
+  await db.delete(seriesTable).where(eq(seriesTable.title, 'Integration Series One'))
+
+  const seededMovies = await db
+    .insert(movies)
+    .values([{ title: 'Integration Movie One' }, { title: 'Integration Movie Two' }])
+    .returning({ id: movies.id })
+  preSeededMovieIds = seededMovies.map((r) => r.id)
+
+  const [seededSeries] = await db
+    .insert(seriesTable)
+    .values([{ title: 'Integration Series One' }])
+    .returning({ id: seriesTable.id })
+  preSeededSeriesId = seededSeries?.id ?? null
+
   await app.register(sourcesRoutes)
   await app.register(moviesRoutes)
   await app.register(seriesRoutes)
@@ -143,36 +191,41 @@ beforeAll(async () => {
 afterAll(async () => {
   await app.close()
   mswServer.close()
+  delete process.env.XTREAM_FETCH_SERIES_INFO
+
+  if (preSeededMovieIds.length > 0) {
+    await db.delete(movies).where(inArray(movies.id, preSeededMovieIds))
+    preSeededMovieIds = []
+  }
+  if (preSeededSeriesId) {
+    await db.delete(seriesTable).where(eq(seriesTable.id, preSeededSeriesId))
+    preSeededSeriesId = null
+  }
 })
 
-// Per-test cleanup: delete movies/series created via the test source, then the source itself
+// Per-test cleanup: delete source-specific records; canonical movies/series persist for reuse
 let cleanupSourceId: string | null = null
+let cleanupProfileId: string | null = null
 
 afterEach(async () => {
   mswServer.resetHandlers()
+
+  if (cleanupProfileId) {
+    await db.delete(profiles).where(eq(profiles.id, cleanupProfileId))
+    cleanupProfileId = null
+  }
+
   if (!cleanupSourceId) return
 
   const sourceId = cleanupSourceId
   cleanupSourceId = null
 
-  const movieRows = await db
-    .select({ movieId: movieAvailabilities.movieId })
-    .from(movieAvailabilities)
-    .where(eq(movieAvailabilities.providerId, sourceId))
-
-  if (movieRows.length > 0) {
-    await db.delete(movies).where(inArray(movies.id, movieRows.map((r) => r.movieId)))
-  }
-
-  const seriesRows = await db
-    .select({ seriesId: seriesAvailabilities.seriesId })
-    .from(seriesAvailabilities)
-    .where(eq(seriesAvailabilities.providerId, sourceId))
-
-  if (seriesRows.length > 0) {
-    await db.delete(seriesTable).where(inArray(seriesTable.id, seriesRows.map((r) => r.seriesId)))
-  }
-
+  // Delete source-scoped records. Canonical movies/series are pre-seeded in beforeAll and
+  // shared across all tests — only afterAll removes them.
+  await db.delete(movieAvailabilities).where(eq(movieAvailabilities.providerId, sourceId))
+  await db.delete(seriesAvailabilities).where(eq(seriesAvailabilities.providerId, sourceId))
+  await db.delete(episodeAvailabilities).where(eq(episodeAvailabilities.providerId, sourceId))
+  await db.delete(titleMatchResults).where(eq(titleMatchResults.providerId, sourceId))
   await db.delete(syncRuns).where(eq(syncRuns.sourceId, sourceId))
   await db.delete(sources).where(eq(sources.id, sourceId))
 })
@@ -207,10 +260,9 @@ describe('Vertical slice integration — source config → sync → catalog quer
       body: { sourceId: source.id },
     })
     expect(syncRes.statusCode).toBe(201)
-    const run = syncRes.json<{ status: string; moviesAdded: number; seriesAdded: number }>()
-    expect(run.status).toBe('DONE')
-    expect(run.moviesAdded).toBe(2)
-    expect(run.seriesAdded).toBe(1)
+    const { id: syncRunId } = syncRes.json<{ id: string }>()
+    const completedRun = await waitForSyncRunId(syncRunId)
+    expect(completedRun.status).toBe('COMPLETED')
 
     // 4. GET /movies/:id — resolve movie via availability record to avoid pagination issues
     const [movieAvailRow] = await db
@@ -275,7 +327,11 @@ describe('Vertical slice integration — source config → sync → catalog quer
       body: { sourceId: source.id },
     })
     expect(syncRes.statusCode).toBe(201)
-    expect(syncRes.json()).toMatchObject({ status: 'DONE', moviesAdded: 0, seriesAdded: 0 })
+    const { id: emptySyncRunId } = syncRes.json<{ id: string }>()
+    const emptyCompletedRun = await waitForSyncRunId(emptySyncRunId)
+    expect(emptyCompletedRun.status).toBe('COMPLETED')
+    expect(emptyCompletedRun.moviesCreated).toBe(0)
+    expect(emptyCompletedRun.seriesCreated).toBe(0)
 
     // Verify no availability records were created for this source
     const movieAvails = await db
@@ -331,14 +387,11 @@ describe('Vertical slice integration — source config → sync → catalog quer
       url: '/sync-runs',
       body: { sourceId: source.id },
     })
-    // Main sync service surfaces fetch failures as HTTP errors (or FAILED run).
-    if (syncRes.statusCode === 201) {
-      const run = syncRes.json<{ status: string; error: string | null }>()
-      expect(run.status).toBe('FAILED')
-      expect(run.error).toBeTruthy()
-    } else {
-      expect(syncRes.statusCode).toBeGreaterThanOrEqual(400)
-    }
+    expect(syncRes.statusCode).toBe(201)
+    const { id: errSyncRunId } = syncRes.json<{ id: string }>()
+    const failedRun = await waitForSyncRunId(errSyncRunId)
+    expect(failedRun.status).toBe('FAILED')
+    expect(failedRun.errorMessage).toBeTruthy()
   })
 
   it('GET /search returns only movies and series (no external fields); GET /search/remote returns empty arrays when no discovery service', async () => {
@@ -364,6 +417,113 @@ describe('Vertical slice integration — source config → sync → catalog quer
     await bareApp.close()
   })
 
+  it('episode slice: sync creates canonical episode rows; resolvePlayback uses episodeId; progress persists as startPositionSeconds', async () => {
+    mswServer.use(
+      http.get(`${FAKE_BASE}/player_api.php`, ({ request }) => {
+        const url = new URL(request.url)
+        const action = url.searchParams.get('action') ?? ''
+        if (action === 'get_server_info' || action === 'get_account_info') {
+          return HttpResponse.json(FAKE_ACCOUNT_INFO)
+        }
+        if (action === 'get_vod_categories' || action === 'get_series_categories') {
+          return HttpResponse.json([{ category_id: '10', category_name: 'Drama', parent_id: 0 }])
+        }
+        if (action === 'get_vod_streams') return HttpResponse.json([])
+        if (action === 'get_series') return HttpResponse.json(FAKE_SERIES_LIST)
+        if (action === 'get_series_info') {
+          return HttpResponse.json({
+            info: {
+              name: 'Integration Series One', cover: '', plot: 'A drama.', cast: '',
+              director: '', genre: 'Drama', releaseDate: '2022-01-01', last_modified: '1640000000',
+              rating: '8.5', rating_5based: 4.25, backdrop_path: [], youtube_trailer: '',
+              episode_run_time: '45', category_id: '10', category_name: 'Drama',
+            },
+            episodes: {
+              '1': [
+                {
+                  id: '7001', episode_num: 1, title: 'Pilot FR 1080p', container_extension: 'mkv',
+                  info: { duration_secs: 2700, duration: '45:00', releasedate: '2022-01-10' },
+                },
+              ],
+            },
+          })
+        }
+        return HttpResponse.json([])
+      }),
+    )
+
+    // 1. Create source and sync
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/sources',
+      body: { name: 'Episode Slice Source', type: 'XTREAM', baseUrl: FAKE_BASE, username: 'testuser', password: 'testpass' },
+    })
+    expect(createRes.statusCode).toBe(201)
+    const source = createRes.json<{ id: string }>()
+    cleanupSourceId = source.id
+
+    const syncRes = await app.inject({ method: 'POST', url: '/sync-runs', body: { sourceId: source.id } })
+    expect(syncRes.statusCode).toBe(201)
+    const { id: epSyncRunId } = syncRes.json<{ id: string }>()
+    const epCompletedRun = await waitForSyncRunId(epSyncRunId)
+    expect(epCompletedRun.status).toBe('COMPLETED')
+
+    // 2. Verify canonical series → season → episode chain in DB
+    const [seriesAvailRow] = await db
+      .select({ seriesId: seriesAvailabilities.seriesId })
+      .from(seriesAvailabilities)
+      .where(and(
+        eq(seriesAvailabilities.providerId, source.id),
+        eq(seriesAvailabilities.providerItemId, '6001'),
+      ))
+    expect(seriesAvailRow).toBeDefined()
+
+    const [seasonRow] = await db
+      .select({ id: seasons.id, seasonNumber: seasons.seasonNumber })
+      .from(seasons)
+      .where(eq(seasons.seriesId, seriesAvailRow.seriesId))
+    expect(seasonRow).toBeDefined()
+    expect(seasonRow.seasonNumber).toBe(1)
+
+    const [episodeRow] = await db
+      .select({ id: episodes.id, seriesId: episodes.seriesId })
+      .from(episodes)
+      .where(and(eq(episodes.seasonId, seasonRow.id), eq(episodes.episodeNumber, 1)))
+    expect(episodeRow).toBeDefined()
+    expect(episodeRow.seriesId).toBe(seriesAvailRow.seriesId)
+
+    // 3. Verify episodeAvailabilities is keyed on canonical episodeId (not seriesId)
+    const [epAvailRow] = await db
+      .select({
+        status: episodeAvailabilities.status,
+        episodeId: episodeAvailabilities.episodeId,
+        providerItemId: episodeAvailabilities.providerItemId,
+      })
+      .from(episodeAvailabilities)
+      .where(eq(episodeAvailabilities.episodeId, episodeRow.id))
+    expect(epAvailRow).toBeDefined()
+    expect(epAvailRow.status).toBe('AVAILABLE')
+    expect(epAvailRow.episodeId).toBe(episodeRow.id)
+    expect(epAvailRow.providerItemId).toBe('7001')
+
+    // 4. Create a profile (needed by resolvePlayback → getProfilePreferences)
+    const [profile] = await db.insert(profiles).values({ name: 'Episode Slice Viewer' }).returning()
+    cleanupProfileId = profile.id
+
+    // 5. resolvePlayback for the episode returns gatewayUrl and DIRECT deliveryMode (XTREAM always DIRECT)
+    const session = await resolvePlayback(profile.id, 'episode', episodeRow.id)
+    expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
+    expect(session.deliveryMode).toBe('DIRECT')
+    expect(session.startPositionSeconds).toBe(0)
+
+    // 6. Persist progress against the episodeId (not the seriesId)
+    await upsertProgress(profile.id, 'EPISODE', episodeRow.id, 300, 2700)
+
+    // 7. Subsequent resolvePlayback must return stored progress as startPositionSeconds
+    const session2 = await resolvePlayback(profile.id, 'episode', episodeRow.id)
+    expect(session2.startPositionSeconds).toBe(300)
+  })
+
   it('source disappearance: canonical movie and user-state survive when availability is removed', async () => {
     mswServer.use(...happyHandlers())
 
@@ -384,7 +544,9 @@ describe('Vertical slice integration — source config → sync → catalog quer
       body: { sourceId: source.id },
     })
     expect(sync1Res.statusCode).toBe(201)
-    expect(sync1Res.json()).toMatchObject({ status: 'DONE', moviesAdded: 2 })
+    const { id: sync1RunId } = sync1Res.json<{ id: string }>()
+    const completed1 = await waitForSyncRunId(sync1RunId)
+    expect(completed1.status).toBe('COMPLETED')
 
     // 3. Resolve canonical ID for stream 5001 directly from the availability record
     const [availRow] = await db
@@ -449,7 +611,9 @@ describe('Vertical slice integration — source config → sync → catalog quer
       body: { sourceId: source.id },
     })
     expect(sync2Res.statusCode).toBe(201)
-    expect(sync2Res.json()).toMatchObject({ status: 'DONE' })
+    const { id: sync2RunId } = sync2Res.json<{ id: string }>()
+    const completed2 = await waitForSyncRunId(sync2RunId)
+    expect(completed2.status).toBe('COMPLETED')
 
     // 6. Movie is now UNAVAILABLE with availabilityCount: 0
     const movieAfterRes = await app.inject({ method: 'GET', url: `/movies/${canonicalMovieId}` })
