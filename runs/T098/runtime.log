@@ -44,3 +44,10 @@
 [2026-08-18T08:36:27Z] conflict-resolver: running tests
 [2026-08-18T08:36:27Z] conflict-resolver: test-report written: runs/T098/conflict/test-report.md
 [2026-08-18T08:36:27Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-18T08:36:27Z] conflict-resolver: commit: sha=261e2a3
+[2026-08-18T08:36:27Z] conflict-resolver: git push --force-with-lease origin ticket/T098-introduce-account-profile-foundation-and-move-all
+[2026-08-18T08:36:29Z] conflict-resolver: push succeeded
+[2026-08-18T08:36:29Z] conflict-resolver: state → CONFLICT_RESOLVED_REVIEW_NEEDED
+[2026-08-18T08:36:29Z] auto-finalize-conflict: gate disabled for project='iptvflix'
+[2026-08-18T08:36:29Z] conflict-resolver: transition CONFLICT_RESOLVED_REVIEW_NEEDED → TEST_COMPLETE (auto, PROJECT_SETTING)
+[2026-08-18T08:36:30Z] auto-run: TEST_COMPLETE — running PR lifecycle
