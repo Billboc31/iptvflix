@@ -15,6 +15,9 @@ export type QueryPlanHardFilters = {
   audioLanguages?: string[]
   includeGenres?: string[]
   excludeGenres?: string[]
+  // TODO: maturity/kids restriction — field defined but not yet enforced in passesHardFilters
+  maxMaturityRating?: string
+  kidsOnly?: boolean
 }
 
 export type QueryPlanSoftPreferences = {
