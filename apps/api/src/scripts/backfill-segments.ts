@@ -2,8 +2,9 @@ import 'dotenv/config'
 import { db } from '../db/client.js'
 import { TmdbClient } from '../providers/metadata/tmdb/client.js'
 import { IntroDbClient } from '../providers/segments/introdb/client.js'
+import { TheIntroDbClient } from '../providers/segments/theintrodb/client.js'
 import { SegmentSyncService } from '../services/segment-sync-service.js'
-import { TMDB_API_KEY } from '../config/env.js'
+import { TMDB_API_KEY, INTRODB_BASE_URL, THEINTRODB_BASE_URL } from '../config/env.js'
 
 const args = process.argv.slice(2)
 
@@ -23,8 +24,12 @@ if (!TMDB_API_KEY) {
 }
 
 const tmdbClient = new TmdbClient({ apiKey: TMDB_API_KEY })
-const introDbClient = new IntroDbClient()
-const service = new SegmentSyncService(db, tmdbClient, [introDbClient])
+const providers = [
+  new IntroDbClient({ baseUrl: INTRODB_BASE_URL }),
+  new TheIntroDbClient({ baseUrl: THEINTRODB_BASE_URL }),
+]
+const providerPriority = ['introdb', 'theintrodb']
+const service = new SegmentSyncService(db, tmdbClient, providers, providerPriority)
 
 console.log(JSON.stringify({ event: 'segment_backfill_start', concurrency, force, dryRun }))
 

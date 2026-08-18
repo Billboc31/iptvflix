@@ -67,6 +67,7 @@ import {
   SEGMENT_REFRESH_CADENCE_HOURS,
   SEGMENT_REFRESH_RECENT_DAYS,
   INTRODB_BASE_URL,
+  THEINTRODB_BASE_URL,
 } from './config/env.js'
 
 import { db } from './db/client.js'
@@ -85,6 +86,7 @@ import { EmbeddingService } from './services/embedding-service.js'
 import { createDefaultProvider } from './services/embedding-provider.js'
 import { triggerSync, setOnNewEpisodeHook } from './services/sync-runs-service.js'
 import { IntroDbClient } from './providers/segments/introdb/client.js'
+import { TheIntroDbClient } from './providers/segments/theintrodb/client.js'
 import { SegmentSyncService } from './services/segment-sync-service.js'
 
 const app = Fastify({ logger: true })
@@ -240,11 +242,18 @@ const discoveryPoolService =
       )
     : null
 
+const segmentProviders = [
+  new IntroDbClient({ baseUrl: INTRODB_BASE_URL }),
+  new TheIntroDbClient({ baseUrl: THEINTRODB_BASE_URL }),
+]
+const segmentProviderPriority = ['introdb', 'theintrodb']
+
 const segmentSyncService = TMDB_API_KEY
   ? new SegmentSyncService(
       db,
       new TmdbClient({ apiKey: TMDB_API_KEY }),
-      [new IntroDbClient({ baseUrl: INTRODB_BASE_URL })],
+      segmentProviders,
+      segmentProviderPriority,
     )
   : null
 

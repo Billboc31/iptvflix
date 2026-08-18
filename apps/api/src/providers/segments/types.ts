@@ -1,6 +1,7 @@
 export interface CanonicalEpisodeRef {
   episodeId: string
   seriesImdbId: string | null
+  seriesTmdbId?: number | null
   seasonNumber: number
   episodeNumber: number
 }

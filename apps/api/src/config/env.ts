@@ -109,3 +109,4 @@ export const SEGMENT_REFRESH_ENABLED =
 export const SEGMENT_REFRESH_CADENCE_HOURS = Number(process.env.SEGMENT_REFRESH_CADENCE_HOURS ?? 24)
 export const SEGMENT_REFRESH_RECENT_DAYS = Number(process.env.SEGMENT_REFRESH_RECENT_DAYS ?? 30)
 export const INTRODB_BASE_URL: string | undefined = process.env.INTRODB_BASE_URL || undefined
+export const THEINTRODB_BASE_URL: string | undefined = process.env.THEINTRODB_BASE_URL || undefined

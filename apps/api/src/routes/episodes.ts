@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { mediaSegments } from '../db/schema/media-segments.js'
+import { segmentSelections } from '../db/schema/segment-selections.js'
 import type { EpisodeSegmentsResponse } from '@iptvflix/api-contracts'
 
 export async function episodeSegmentsRoutes(app: FastifyInstance): Promise<void> {
@@ -10,13 +10,13 @@ export async function episodeSegmentsRoutes(app: FastifyInstance): Promise<void>
 
     const rows = await db
       .select({
-        type: mediaSegments.type,
-        startMs: mediaSegments.startMs,
-        endMs: mediaSegments.endMs,
+        type: segmentSelections.type,
+        startMs: segmentSelections.startMs,
+        endMs: segmentSelections.endMs,
       })
-      .from(mediaSegments)
-      .where(eq(mediaSegments.episodeId, id))
-      .orderBy(mediaSegments.startMs)
+      .from(segmentSelections)
+      .where(eq(segmentSelections.episodeId, id))
+      .orderBy(segmentSelections.startMs)
 
     const response: EpisodeSegmentsResponse = {
       episodeId: id,
