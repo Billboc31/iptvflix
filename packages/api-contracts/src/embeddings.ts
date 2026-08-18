@@ -1,3 +1,6 @@
+import type { CompactTasteContext, RecommendationQueryPlan } from './query-plan.js'
+export type { CompactTasteContext } from './query-plan.js'
+
 export interface SemanticCandidate {
   mediaId: string
   mediaType: 'MOVIE' | 'SERIES'
@@ -14,6 +17,8 @@ export interface SemanticQueryRequest {
   query: string
   topK?: number
   compareQuery?: string
+  expandWithLlm?: boolean
+  profileContext?: CompactTasteContext
 }
 
 export interface SemanticQueryResponse {
@@ -24,4 +29,5 @@ export interface SemanticQueryResponse {
   results: SemanticCandidate[]
   compareQuery?: string
   compareResults?: SemanticCandidate[]
+  queryPlan?: RecommendationQueryPlan
 }

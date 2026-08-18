@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import type { SemanticQueryResponse, SemanticCandidate } from '@iptvflix/api-contracts'
+import type { SemanticQueryResponse, SemanticCandidate, RecommendationQueryPlan } from '@iptvflix/api-contracts'
 import { semanticQuery } from '../lib/api.js'
 import Spinner from '../components/ui/Spinner.js'
 import { useToast } from '../components/ui/Toast.js'
@@ -8,10 +8,10 @@ const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
 
 const BENCHMARK_QUERIES = [
   'SF qui fait réfléchir',
-  'thriller en huis clos où personne n\'est fiable',
+  "thriller en huis clos où personne n'est fiable",
   'anime à binge-watcher',
   'comédie légère familiale',
-  'film sombre sur l\'intelligence artificielle',
+  "film sombre sur l'intelligence artificielle",
 ]
 
 function SimilarityBadge({ similarity }: { similarity: number }) {
@@ -50,16 +50,122 @@ function ResultCard({ candidate, rank }: { candidate: SemanticCandidate; rank: n
   )
 }
 
-function ResultList({ results, model }: { results: SemanticCandidate[]; model: string }) {
+function ResultList({ results, model, label }: { results: SemanticCandidate[]; model: string; label?: string }) {
   if (results.length === 0) {
     return <p className="text-sm text-gray-500 italic">Aucun résultat — lancez d'abord le backfill d'embeddings.</p>
   }
   return (
     <div className="space-y-2">
+      {label && <p className="text-xs font-semibold text-[#e50914] uppercase tracking-wide mb-2">{label}</p>}
       <p className="text-xs text-gray-500">Modèle : {model}</p>
       {results.map((r) => (
         <ResultCard key={r.mediaId} candidate={r} rank={r.rank} />
       ))}
+    </div>
+  )
+}
+
+function TagList({ tags, color = 'bg-white/10 text-gray-300' }: { tags: string[]; color?: string }) {
+  if (tags.length === 0) return <span className="text-xs text-gray-600 italic">—</span>
+  return (
+    <div className="flex flex-wrap gap-1 mt-1">
+      {tags.map((t) => (
+        <span key={t} className={`px-2 py-0.5 rounded-full text-xs ${color}`}>{t}</span>
+      ))}
+    </div>
+  )
+}
+
+function QueryPlanPanel({ plan }: { plan: RecommendationQueryPlan }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/3 p-5 space-y-4">
+      <div className="flex items-center gap-3">
+        <h3 className="text-sm font-bold text-white">{plan.displayTitle}</h3>
+        {plan.plannerFallback && (
+          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+            fallback
+          </span>
+        )}
+      </div>
+
+      <div>
+        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Intent sémantique (texte envoyé à l'embedding)</p>
+        <p className="text-xs text-blue-300 bg-blue-900/20 rounded p-2 leading-relaxed">{plan.semanticIntent}</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 text-xs">
+        <div>
+          <p className="text-gray-500 uppercase tracking-wide mb-1">Thèmes</p>
+          <TagList tags={plan.desiredThemes} color="bg-blue-900/40 text-blue-300" />
+        </div>
+        <div>
+          <p className="text-gray-500 uppercase tracking-wide mb-1">Tonalité</p>
+          <TagList tags={plan.desiredTone} color="bg-purple-900/40 text-purple-300" />
+        </div>
+        <div>
+          <p className="text-gray-500 uppercase tracking-wide mb-1">À éviter</p>
+          <TagList tags={plan.avoidSignals} color="bg-red-900/40 text-red-400" />
+        </div>
+        <div>
+          <p className="text-gray-500 uppercase tracking-wide mb-1">Types médias</p>
+          <TagList tags={plan.mediaTypes} />
+        </div>
+      </div>
+
+      {(Object.keys(plan.hardFilters).length > 0 || plan.userConstraints.length > 0) && (
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Filtres durs</p>
+          <div className="text-xs space-y-0.5">
+            {plan.hardFilters.maxRuntimeMinutes !== undefined && (
+              <div className="text-gray-300">Durée max : {plan.hardFilters.maxRuntimeMinutes} min</div>
+            )}
+            {plan.hardFilters.minReleaseYear !== undefined && (
+              <div className="text-gray-300">Année min : {plan.hardFilters.minReleaseYear}</div>
+            )}
+            {plan.hardFilters.maxReleaseYear !== undefined && (
+              <div className="text-gray-300">Année max : {plan.hardFilters.maxReleaseYear}</div>
+            )}
+            {plan.hardFilters.audioLanguages && plan.hardFilters.audioLanguages.length > 0 && (
+              <div className="text-gray-300">Langues audio : {plan.hardFilters.audioLanguages.join(', ')}</div>
+            )}
+            {plan.hardFilters.excludeGenres && plan.hardFilters.excludeGenres.length > 0 && (
+              <div className="text-red-400">Genres exclus : {plan.hardFilters.excludeGenres.join(', ')}</div>
+            )}
+          </div>
+          {plan.userConstraints.length > 0 && (
+            <div className="mt-2">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Contraintes utilisateur (verbatim)</p>
+              <TagList tags={plan.userConstraints} color="bg-orange-900/40 text-orange-300" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {plan.softPreferences && Object.keys(plan.softPreferences).length > 0 && (
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Préférences souples</p>
+          <div className="text-xs space-y-1">
+            {plan.softPreferences.preferredDecades && (
+              <div className="text-gray-300">Décennies : {plan.softPreferences.preferredDecades.join(', ')}</div>
+            )}
+            {plan.softPreferences.preferredDirectors && (
+              <div className="text-gray-300">Réalisateurs : {plan.softPreferences.preferredDirectors.join(', ')}</div>
+            )}
+            {plan.softPreferences.preferredLanguages && (
+              <div className="text-gray-300">Langues : {plan.softPreferences.preferredLanguages.join(', ')}</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {plan.plannerMeta && (
+        <div className="pt-2 border-t border-white/5 flex flex-wrap gap-4 text-xs text-gray-600">
+          <span>provider: {plan.plannerMeta.provider}</span>
+          <span>model: {plan.plannerMeta.model}</span>
+          <span>prompt: {plan.plannerMeta.promptVersion}</span>
+          <span>latency: {plan.plannerMeta.latencyMs}ms</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -72,6 +178,7 @@ export default function RecommendationLabPage() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<SemanticQueryResponse | null>(null)
   const [showCompare, setShowCompare] = useState(false)
+  const [expandWithLlm, setExpandWithLlm] = useState(false)
 
   const runQuery = useCallback(async (q?: string, cq?: string) => {
     const mainQuery = (q ?? query).trim()
@@ -79,23 +186,36 @@ export default function RecommendationLabPage() {
     setLoading(true)
     setResult(null)
     try {
-      const res = await semanticQuery({
-        query: mainQuery,
-        topK,
-        compareQuery: showCompare && (cq ?? compareQuery).trim() ? (cq ?? compareQuery).trim() : undefined,
-      })
-      setResult(res)
+      if (expandWithLlm) {
+        // LLM expansion path: results = LLM-expanded, compareResults = raw
+        const res = await semanticQuery({
+          query: mainQuery,
+          topK,
+          expandWithLlm: true,
+          compareQuery: mainQuery,
+        })
+        setResult(res)
+      } else {
+        const res = await semanticQuery({
+          query: mainQuery,
+          topK,
+          compareQuery: showCompare && (cq ?? compareQuery).trim() ? (cq ?? compareQuery).trim() : undefined,
+        })
+        setResult(res)
+      }
     } catch (err) {
       toast.show(err instanceof Error ? err.message : 'Erreur lors de la requête', 'error')
     } finally {
       setLoading(false)
     }
-  }, [query, compareQuery, topK, showCompare, toast])
+  }, [query, compareQuery, topK, showCompare, expandWithLlm, toast])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     runQuery()
   }
+
+  const modelLabel = result ? `${result.modelProvider}/${result.modelName}` : ''
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
@@ -133,16 +253,29 @@ export default function RecommendationLabPage() {
           />
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
-              checked={showCompare}
-              onChange={(e) => setShowCompare(e.target.checked)}
+              checked={expandWithLlm}
+              onChange={(e) => setExpandWithLlm(e.target.checked)}
               className="rounded"
             />
-            <span className="text-sm text-gray-400">Comparer deux formulations</span>
+            <span className="text-sm text-gray-400">LLM query expansion</span>
           </label>
+
+          {!expandWithLlm && (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showCompare}
+                onChange={(e) => setShowCompare(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-sm text-gray-400">Comparer deux formulations</span>
+            </label>
+          )}
+
           <div className="ml-auto flex items-center gap-2">
             <label className="text-xs text-gray-400">Top-K</label>
             <select
@@ -155,7 +288,7 @@ export default function RecommendationLabPage() {
           </div>
         </div>
 
-        {showCompare && (
+        {!expandWithLlm && showCompare && (
           <div>
             <label className="block text-xs text-gray-400 mb-1">Requête de comparaison</label>
             <input
@@ -184,23 +317,40 @@ export default function RecommendationLabPage() {
       )}
 
       {result && !loading && (
-        <div className={showCompare && result.compareResults ? 'grid grid-cols-2 gap-6' : ''}>
-          <div>
-            {showCompare && result.compareResults && (
-              <p className="text-xs text-gray-400 mb-3 font-medium truncate">"{result.query}"</p>
-            )}
-            <ResultList
-              results={result.results}
-              model={`${result.modelProvider}/${result.modelName}`}
-            />
-          </div>
-          {showCompare && result.compareResults && (
-            <div>
-              <p className="text-xs text-gray-400 mb-3 font-medium truncate">"{result.compareQuery}"</p>
+        <div className="space-y-6">
+          {/* QueryPlan panel (LLM expansion mode only) */}
+          {result.queryPlan && (
+            <QueryPlanPanel plan={result.queryPlan} />
+          )}
+
+          {/* Results: A/B columns in LLM expansion mode, or single/compare otherwise */}
+          {expandWithLlm && result.compareResults ? (
+            <div className="grid grid-cols-2 gap-6">
               <ResultList
                 results={result.compareResults}
-                model={`${result.modelProvider}/${result.modelName}`}
+                model={modelLabel}
+                label="A — Requête brute"
               />
+              <ResultList
+                results={result.results}
+                model={modelLabel}
+                label="B — Intent LLM expansé"
+              />
+            </div>
+          ) : (
+            <div className={showCompare && result.compareResults ? 'grid grid-cols-2 gap-6' : ''}>
+              <div>
+                {showCompare && result.compareResults && (
+                  <p className="text-xs text-gray-400 mb-3 font-medium truncate">"{result.query}"</p>
+                )}
+                <ResultList results={result.results} model={modelLabel} />
+              </div>
+              {showCompare && result.compareResults && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-3 font-medium truncate">"{result.compareQuery}"</p>
+                  <ResultList results={result.compareResults} model={modelLabel} />
+                </div>
+              )}
             </div>
           )}
         </div>
