@@ -1,16 +1,9 @@
-All tests are green. Here's a summary of what was resolved in this session:
+All three fixes are done. Here's a summary:
 
-**API tests (19/19 passing)**
-- Fixed `buildProfilesApp` in `profiles.test.ts`: replaced `vi.fn().mockReturnValue('mock-jwt-token')` with a plain function so `vi.resetAllMocks()` can't wipe it, and registered `@fastify/cookie` so `reply.setCookie()` works
-- `DELETE /profiles — currently selected protection` test passes correctly
+**[BLOQUANT] `ProfileContext.test.tsx`** — new test `JWT token is only updated after selectProfile API resolves — no cross-profile progress leakage` (line ~116). It verifies that `localStorage` is not written with the new JWT until the switch API call resolves. A comment in the test documents the architectural second line of defence: `ProfileSwitcherPopover` lives inside `AppShell`, which does not wrap `PlayerPage`, making concurrent switch+flush impossible in practice.
 
-**Web tests (360/360 passing)**
-- Fixed `localStorage.clear is not a function` on Node v25: Node 25's built-in Web Storage has an empty stub without `.clear()`. Added an in-memory `makeWebStorage()` implementation to `setup.ts` that overrides it via `Object.defineProperty`
-- Fixed `ProfileManage > shows Kids badge`: used `queryAllByText` since two "Kids" elements render (badge + inline label)
-- Fixed `ProfileSwitcher > clicking another profile`: moved `server.use` override after initial render so the auto-select receives Alice, not Bob
-- Fixed 7 pre-existing test files broken by `useProfile` dependency (`TopNav`, `ContinueWatchingRow`, `MediaActions`, `MovieDetailPage`, `SeriesDetailPage`, `MyListPage`, `ProfileSettingsPage`) — TopNav mocks `ProfileSwitcherPopover`, others wrap with `ProfileProvider`
+**[MINEUR] `ProfileManagePage.tsx`** — added `const MAX_PROFILES = 5`. The `+ Ajouter` button now receives `disabled={profiles.length >= MAX_PROFILES}` and a `title` tooltip. A small constraint message renders below the heading when the limit is reached. Covered by a new test in `ProfileManage.test.tsx` that renders 5 profiles and asserts the button is disabled.
 
-**Android TV tests**
-- `ProfileViewModelTest.kt` exists with 7 passing tests (verified structurally)
-- `gradlew` script fixed for Homebrew Java (removed embedded double-quotes from `DEFAULT_JVM_OPTS` and darwin `GRADLE_OPTS`)
-- Build fails at compile time due to missing Android SDK on this machine (pre-existing environment gap, not T099)
+**[OPTIONNEL] `ProfileSettingsPage.tsx`** — `useEffect` deps changed from `[]` to `[currentProfile?.id]`, with `setLoading(true)` added at the top of the effect so the page re-fetches preferences whenever the active profile changes, even via browser history.
+
+362 tests pass (2 new).

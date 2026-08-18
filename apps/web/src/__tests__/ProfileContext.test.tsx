@@ -111,4 +111,39 @@ describe('ProfileContext', () => {
 
     expect(result.current.currentProfile?.id).toBe(prevProfile?.id)
   })
+
+  it('JWT token is only updated after selectProfile API resolves — no cross-profile progress leakage', async () => {
+    // Safety: flushProgress() in PlayerPage reads the stored token at request time.
+    // The token is written only after selectProfile API resolves (api.ts:selectProfile).
+    // Additionally, ProfileSwitcherPopover lives inside AppShell which does NOT wrap
+    // PlayerPage — making concurrent switch+flush architecturally impossible.
+    // This test verifies the token-timing invariant (the second line of defence).
+    let resolveSelect!: () => void
+    const selectPending = new Promise<void>((r) => { resolveSelect = r })
+
+    server.use(
+      http.post('/api/profiles/:id/select', async () => {
+        await selectPending
+        return HttpResponse.json({ token: 'switched-token', profile: MOCK_PROFILE_B })
+      }),
+    )
+
+    const { result } = renderHook(() => useProfile(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    const tokenBefore = localStorage.getItem(AUTH_TOKEN_KEY)
+
+    // Fire the switch without awaiting — the API call is now in-flight
+    const switchPromise = result.current.selectProfile(MOCK_PROFILE_B.id)
+
+    // Token must not have changed yet (API hasn't resolved)
+    expect(localStorage.getItem(AUTH_TOKEN_KEY)).toBe(tokenBefore)
+
+    // Allow the server to respond and wait for all state to settle
+    resolveSelect()
+    await act(async () => { await switchPromise })
+
+    expect(localStorage.getItem(AUTH_TOKEN_KEY)).toBe('switched-token')
+    expect(result.current.currentProfile?.id).toBe(MOCK_PROFILE_B.id)
+  })
 })

@@ -76,4 +76,20 @@ describe('ProfileManagePage', () => {
     await waitFor(() => expect(screen.queryByText(MOCK_PROFILE_A.name)).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /ajouter/i })).toBeInTheDocument()
   })
+
+  it('Ajouter button is disabled and limit message shown when at 5 profiles', async () => {
+    const profiles = Array.from({ length: 5 }, (_, i) => ({
+      ...MOCK_PROFILE_A,
+      id: `profile-${i}`,
+      name: `Profile ${i + 1}`,
+    }))
+    server.use(
+      http.get('/api/profiles', () => HttpResponse.json(profiles)),
+    )
+    renderManage()
+    await waitFor(() => expect(screen.queryByText('Profile 1')).toBeInTheDocument())
+
+    expect(screen.getByRole('button', { name: /ajouter/i })).toBeDisabled()
+    expect(screen.getByText(/limite de 5 profils/i)).toBeInTheDocument()
+  })
 })

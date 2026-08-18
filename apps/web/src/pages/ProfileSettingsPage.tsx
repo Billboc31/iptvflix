@@ -229,6 +229,8 @@ export default function ProfileSettingsPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    setLoading(true)
+    setError(null)
     Promise.all([getProfile(), listSources()])
       .then(([p, s]) => {
         setPrefs(p.preferences)
@@ -236,7 +238,7 @@ export default function ProfileSettingsPage() {
       })
       .catch(() => setError('Impossible de charger les préférences.'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [currentProfile?.id])
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()

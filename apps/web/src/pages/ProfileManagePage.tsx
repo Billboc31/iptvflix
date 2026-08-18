@@ -7,6 +7,8 @@ import ProfileAvatar from '../components/ProfileAvatar.js'
 import Button from '../components/ui/Button.js'
 import Spinner from '../components/ui/Spinner.js'
 
+const MAX_PROFILES = 5
+
 export default function ProfileManagePage() {
   const { profiles, currentProfile, isLoading, refreshProfiles } = useProfile()
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -46,10 +48,18 @@ export default function ProfileManagePage() {
         <Button
           variant="secondary"
           onClick={() => navigate('/profiles/create')}
+          disabled={profiles.length >= MAX_PROFILES}
+          title={profiles.length >= MAX_PROFILES ? `Limite de ${MAX_PROFILES} profils atteinte` : undefined}
         >
           + Ajouter
         </Button>
       </div>
+
+      {profiles.length >= MAX_PROFILES && (
+        <p className="text-sm text-gray-400 mb-4">
+          Vous avez atteint la limite de {MAX_PROFILES} profils.
+        </p>
+      )}
 
       {deleteError && (
         <p className="text-red-400 text-sm mb-4 bg-red-400/10 border border-red-400/20 rounded-lg px-4 py-3" role="alert">
