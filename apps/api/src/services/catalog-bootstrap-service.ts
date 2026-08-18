@@ -11,9 +11,12 @@ import {
   CATALOG_BOOTSTRAP_MAX_PAGES_TOP_RATED,
   CATALOG_BOOTSTRAP_MAX_PAGES_PER_GENRE,
   CATALOG_BOOTSTRAP_MAX_PAGES_FRENCH,
+  CATALOG_BOOTSTRAP_MAX_PAGES_NOW_PLAYING,
   CATALOG_BOOTSTRAP_GENRE_IDS_MOVIE,
   CATALOG_BOOTSTRAP_GENRE_IDS_TV,
   CATALOG_BOOTSTRAP_HIERARCHY_PRIORITY_COUNT,
+  CATALOG_BOOTSTRAP_QUALITY_MIN_VOTE_COUNT,
+  CATALOG_BOOTSTRAP_QUALITY_MIN_POPULARITY,
 } from '../config/env.js'
 
 type Db = PostgresJsDatabase<typeof schema>
@@ -37,9 +40,14 @@ export interface BootstrapConfig {
   maxPagesTopRated: number
   maxPagesPerGenre: number
   maxPagesFrench: number
+  maxPagesNowPlaying: number
   movieGenreIds: number[]
   tvGenreIds: number[]
   hierarchyPriorityCount: number
+  /** Minimum vote count applied as quality gate on genre/discover steps. */
+  qualityMinVoteCount: number
+  /** Minimum popularity score applied as quality gate on genre/discover steps. */
+  qualityMinPopularity: number
 }
 
 type Checkpoint = Record<string, { done: boolean; lastPage: number }>
@@ -76,9 +84,12 @@ export class CatalogBootstrapService {
       maxPagesTopRated: CATALOG_BOOTSTRAP_MAX_PAGES_TOP_RATED,
       maxPagesPerGenre: CATALOG_BOOTSTRAP_MAX_PAGES_PER_GENRE,
       maxPagesFrench: CATALOG_BOOTSTRAP_MAX_PAGES_FRENCH,
+      maxPagesNowPlaying: CATALOG_BOOTSTRAP_MAX_PAGES_NOW_PLAYING,
       movieGenreIds: CATALOG_BOOTSTRAP_GENRE_IDS_MOVIE,
       tvGenreIds: CATALOG_BOOTSTRAP_GENRE_IDS_TV,
       hierarchyPriorityCount: CATALOG_BOOTSTRAP_HIERARCHY_PRIORITY_COUNT,
+      qualityMinVoteCount: CATALOG_BOOTSTRAP_QUALITY_MIN_VOTE_COUNT,
+      qualityMinPopularity: CATALOG_BOOTSTRAP_QUALITY_MIN_POPULARITY,
       ...config,
     }
   }
@@ -89,11 +100,13 @@ export class CatalogBootstrapService {
     for (const feed of ['popular', 'trending', 'upcoming'] as DiscoveryFeed[]) {
       steps.push({ kind: 'feed', mediaType: 'MOVIE', feed, maxPages: config.maxPagesPerFeed })
     }
+    steps.push({ kind: 'feed', mediaType: 'MOVIE', feed: 'now_playing', maxPages: config.maxPagesNowPlaying })
     steps.push({ kind: 'feed', mediaType: 'MOVIE', feed: 'top_rated', maxPages: config.maxPagesTopRated })
 
-    for (const feed of ['popular', 'upcoming'] as DiscoveryFeed[]) {
+    for (const feed of ['popular', 'trending', 'upcoming'] as DiscoveryFeed[]) {
       steps.push({ kind: 'feed', mediaType: 'SERIES', feed, maxPages: config.maxPagesPerFeed })
     }
+    steps.push({ kind: 'feed', mediaType: 'SERIES', feed: 'airing_today', maxPages: config.maxPagesNowPlaying })
     steps.push({ kind: 'feed', mediaType: 'SERIES', feed: 'top_rated', maxPages: config.maxPagesTopRated })
 
     for (const genreId of config.movieGenreIds) {
@@ -169,13 +182,24 @@ export class CatalogBootstrapService {
 
           if (candidates.length === 0) break
 
+          // Quality floor: skip low-signal results on deep discover/genre/language pages.
+          // Feed steps are exempt because their results are already curated by TMDB.
+          const batch =
+            step.kind !== 'feed'
+              ? candidates.filter(
+                  (c) =>
+                    (c.voteCount ?? 0) >= this.config.qualityMinVoteCount &&
+                    (c.popularity ?? 0) >= this.config.qualityMinPopularity,
+                )
+              : candidates
+
           try {
             if (step.mediaType === 'MOVIE') {
-              const { created, updated } = await this.upsertMovieBatch(candidates)
+              const { created, updated } = await this.upsertMovieBatch(batch)
               counts.moviesCreated += created
               counts.moviesUpdated += updated
             } else {
-              const { created, updated } = await this.upsertSeriesBatch(candidates)
+              const { created, updated } = await this.upsertSeriesBatch(batch)
               counts.seriesCreated += created
               counts.seriesUpdated += updated
             }

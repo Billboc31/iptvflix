@@ -33,16 +33,31 @@ export const DISCOVERY_CADENCE_MINUTES = Number(process.env.DISCOVERY_CADENCE_MI
 export const SOURCE_SYNC_CONCURRENCY = Number(process.env.SOURCE_SYNC_CONCURRENCY ?? 2)
 export const SCHEDULER_STARTUP_DELAY_MS = Number(process.env.SCHEDULER_STARTUP_DELAY_MS ?? 30000)
 export const CATALOG_BOOTSTRAP_MAX_PAGES_PER_FEED = Number(
-  process.env.CATALOG_BOOTSTRAP_MAX_PAGES_PER_FEED ?? 20,
+  process.env.CATALOG_BOOTSTRAP_MAX_PAGES_PER_FEED ?? 50,
 )
 export const CATALOG_BOOTSTRAP_MAX_PAGES_TOP_RATED = Number(
   process.env.CATALOG_BOOTSTRAP_MAX_PAGES_TOP_RATED ?? 20,
 )
 export const CATALOG_BOOTSTRAP_MAX_PAGES_PER_GENRE = Number(
-  process.env.CATALOG_BOOTSTRAP_MAX_PAGES_PER_GENRE ?? 10,
+  process.env.CATALOG_BOOTSTRAP_MAX_PAGES_PER_GENRE ?? 20,
 )
 export const CATALOG_BOOTSTRAP_MAX_PAGES_FRENCH = Number(
   process.env.CATALOG_BOOTSTRAP_MAX_PAGES_FRENCH ?? 10,
+)
+export const CATALOG_BOOTSTRAP_MAX_PAGES_NOW_PLAYING = Number(
+  process.env.CATALOG_BOOTSTRAP_MAX_PAGES_NOW_PLAYING ?? 10,
+)
+/** Minimum vote count for genre/discover deep-page quality gate (feed steps are exempt). */
+export const CATALOG_BOOTSTRAP_QUALITY_MIN_VOTE_COUNT = Number(
+  process.env.CATALOG_BOOTSTRAP_QUALITY_MIN_VOTE_COUNT ?? 50,
+)
+/** Minimum popularity score for genre/discover deep-page quality gate (feed steps are exempt). */
+export const CATALOG_BOOTSTRAP_QUALITY_MIN_POPULARITY = Number(
+  process.env.CATALOG_BOOTSTRAP_QUALITY_MIN_POPULARITY ?? 5.0,
+)
+/** Max pages per feed for the discovery candidate pool refresher. */
+export const DISCOVERY_POOL_MAX_PAGES_PER_FEED = Number(
+  process.env.DISCOVERY_POOL_MAX_PAGES_PER_FEED ?? 5,
 )
 export const CATALOG_BOOTSTRAP_GENRE_IDS_MOVIE = (
   process.env.CATALOG_BOOTSTRAP_GENRE_IDS_MOVIE ?? '28,35,18,27,878,12,14,10749'

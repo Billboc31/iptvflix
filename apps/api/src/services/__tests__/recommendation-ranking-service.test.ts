@@ -420,3 +420,70 @@ describe('scenario 9 — mediaType filter', () => {
     expect(result.candidates.find((c) => c.mediaId === SERIES_ID_A)).toBeUndefined()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Scenario 10: availabilityPolicy
+// ---------------------------------------------------------------------------
+
+describe('scenario 10 — availabilityPolicy', () => {
+  it('WATCH_NOW policy excludes movie with no availability', async () => {
+    setupQueries({
+      movieRows: [
+        { id: MOVIE_ID_A, title: 'Available Movie', year: 2021, posterPath: null, status: null },
+        { id: MOVIE_ID_B, title: 'Unavailable Movie', year: 2022, posterPath: null, status: null },
+      ],
+      availableMovieRows: [{ movieId: MOVIE_ID_A }],
+    })
+
+    const result = await rankRecommendations(PROFILE_ID, { availabilityPolicy: 'WATCH_NOW' })
+
+    expect(result.candidates).toHaveLength(1)
+    expect(result.candidates[0].mediaId).toBe(MOVIE_ID_A)
+  })
+
+  it('DISCOVERY policy includes movie with no availability', async () => {
+    setupQueries({
+      movieRows: [
+        { id: MOVIE_ID_A, title: 'Available Movie', year: 2021, posterPath: null, status: null },
+        { id: MOVIE_ID_B, title: 'Unavailable Movie', year: 2022, posterPath: null, status: null },
+      ],
+      availableMovieRows: [{ movieId: MOVIE_ID_A }],
+    })
+
+    const result = await rankRecommendations(PROFILE_ID, { availabilityPolicy: 'DISCOVERY' })
+
+    const ids = result.candidates.map((c) => c.mediaId)
+    expect(ids).toContain(MOVIE_ID_A)
+    expect(ids).toContain(MOVIE_ID_B)
+  })
+
+  it('UPCOMING policy returns only movies with upcoming status', async () => {
+    setupQueries({
+      movieRows: [
+        { id: MOVIE_ID_A, title: 'Released Movie', year: 2021, posterPath: null, status: 'Released' },
+        { id: MOVIE_ID_B, title: 'Upcoming Movie', year: 2025, posterPath: null, status: 'In Production' },
+      ],
+    })
+
+    const result = await rankRecommendations(PROFILE_ID, { availabilityPolicy: 'UPCOMING' })
+
+    expect(result.candidates).toHaveLength(1)
+    expect(result.candidates[0].mediaId).toBe(MOVIE_ID_B)
+  })
+
+  it('ALL policy includes unavailable titles (same as DISCOVERY)', async () => {
+    setupQueries({
+      movieRows: [
+        { id: MOVIE_ID_A, title: 'Available Movie', year: 2021, posterPath: null, status: null },
+        { id: MOVIE_ID_B, title: 'Unavailable Movie', year: 2022, posterPath: null, status: null },
+      ],
+      availableMovieRows: [{ movieId: MOVIE_ID_A }],
+    })
+
+    const result = await rankRecommendations(PROFILE_ID, { availabilityPolicy: 'ALL' })
+
+    const ids = result.candidates.map((c) => c.mediaId)
+    expect(ids).toContain(MOVIE_ID_A)
+    expect(ids).toContain(MOVIE_ID_B)
+  })
+})

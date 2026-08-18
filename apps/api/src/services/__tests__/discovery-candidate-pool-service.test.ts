@@ -1,4 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+vi.mock('../../config/env.js', () => ({
+  DATABASE_URL: 'postgres://test',
+  JWT_SECRET: 'test-secret',
+  AUTH_PASSWORD_HASH: 'test-hash',
+  DISCOVERY_POOL_MAX_PAGES_PER_FEED: 3,
+}))
+
 import { DiscoveryCandidatePoolService } from '../discovery-candidate-pool-service.js'
 import type { MetadataProvider, MetadataCandidate } from '../../providers/metadata/types.js'
 import { TmdbRateLimitError } from '../../providers/metadata/tmdb/errors.js'

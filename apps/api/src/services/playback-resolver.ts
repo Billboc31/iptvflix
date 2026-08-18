@@ -33,6 +33,10 @@ type AvailabilityRow = {
   videoQuality: string | null
   rawTitle: string | null
   containerExtension: string | null
+  codecName: string | null
+  hdrFormat: string | null
+  releaseHint: string | null
+  audioFormat: string | null
 }
 
 async function fetchAvailabilities(mediaType: PlaybackMediaType, mediaId: string): Promise<AvailabilityRow[]> {
@@ -48,6 +52,10 @@ async function fetchAvailabilities(mediaType: PlaybackMediaType, mediaId: string
         videoQuality: movieAvailabilities.videoQuality,
         rawTitle: movieAvailabilities.rawTitle,
         containerExtension: movieAvailabilities.containerExtension,
+        codecName: movieAvailabilities.codecName,
+        hdrFormat: movieAvailabilities.hdrFormat,
+        releaseHint: movieAvailabilities.releaseHint,
+        audioFormat: movieAvailabilities.audioFormat,
       })
       .from(movieAvailabilities)
       .where(eq(movieAvailabilities.movieId, mediaId))
@@ -63,6 +71,10 @@ async function fetchAvailabilities(mediaType: PlaybackMediaType, mediaId: string
       videoQuality: episodeAvailabilities.videoQuality,
       rawTitle: episodeAvailabilities.rawTitle,
       containerExtension: episodeAvailabilities.containerExtension,
+      codecName: episodeAvailabilities.codecName,
+      hdrFormat: episodeAvailabilities.hdrFormat,
+      releaseHint: episodeAvailabilities.releaseHint,
+      audioFormat: episodeAvailabilities.audioFormat,
     })
     .from(episodeAvailabilities)
     .where(eq(episodeAvailabilities.episodeId, mediaId))
@@ -354,6 +366,11 @@ export async function resolvePlayback(
       subtitleLanguage: r.subtitleLanguage,
       videoQuality: r.videoQuality,
       rawTitle: r.rawTitle,
+      sourceDisplayName: sourceMap.get(r.providerId)?.name ?? null,
+      codecName: r.codecName,
+      hdrFormat: r.hdrFormat,
+      releaseHint: r.releaseHint,
+      audioFormat: r.audioFormat,
     }))
 
   // HLS modes: spawn ffmpeg pipeline and return playlist URL.
