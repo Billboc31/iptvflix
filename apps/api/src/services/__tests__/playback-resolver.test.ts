@@ -388,7 +388,7 @@ describe('Xtream movie URL construction', () => {
     )
   })
 
-  it('falls back to ts when containerExtension is null', async () => {
+  it('uses mkv when containerExtension is null (XTREAM ts→mkv override)', async () => {
     const av = makeAvailability({ id: 'av-1', providerItemId: '102', containerExtension: null })
     const src = makeSource({ id: 'source-uuid-1' })
 
@@ -399,8 +399,9 @@ describe('Xtream movie URL construction', () => {
     const session = await resolvePlayback('profile-1', 'movie', 'movie-uuid-1')
 
     expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
+    // XTREAM sources convert null/ts to mkv to avoid buffering issues with .ts streams
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
-      expect.objectContaining({ containerExtension: 'ts' }),
+      expect.objectContaining({ containerExtension: 'mkv' }),
     )
   })
 })
@@ -422,7 +423,7 @@ describe('Xtream episode URL construction', () => {
     )
   })
 
-  it('falls back to ts when episode containerExtension is null', async () => {
+  it('uses mkv when episode containerExtension is null (XTREAM ts→mkv override)', async () => {
     const av = makeAvailability({ id: 'av-1', providerItemId: '201', containerExtension: null })
     const src = makeSource({ id: 'source-uuid-1' })
 
@@ -433,8 +434,48 @@ describe('Xtream episode URL construction', () => {
     const session = await resolvePlayback('profile-1', 'episode', 'episode-uuid-1')
 
     expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
+    // XTREAM sources convert null/ts to mkv to avoid buffering issues with .ts streams
     expect(vi.mocked(createSession)).toHaveBeenCalledWith(
-      expect.objectContaining({ containerExtension: 'ts', mediaType: 'episode' }),
+      expect.objectContaining({ containerExtension: 'mkv', mediaType: 'episode' }),
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Episode variant selection and resume position
+// ---------------------------------------------------------------------------
+
+describe('episode variant selection and resume', () => {
+  it('selects the explicitly chosen availability when multiple episode variants exist', async () => {
+    const av1 = makeAvailability({ id: 'ep-av-1', providerItemId: '7001', audioLanguage: 'fr', videoQuality: '1080p' })
+    const av2 = makeAvailability({ id: 'ep-av-2', providerItemId: '7002', audioLanguage: 'en', videoQuality: '720p' })
+    const src = makeSource({ id: 'source-uuid-1' })
+
+    dbResultQueue.push([av1, av2]) // fetchAvailabilities(episode, episodeId) — episode-scoped query
+    dbResultQueue.push([src])
+    dbResultQueue.push([])
+
+    const session = await resolvePlayback('profile-1', 'episode', 'episode-uuid-1', 'ep-av-2')
+
+    expect(session.availabilityId).toBe('ep-av-2')
+    expect(session.alternatives).toHaveLength(1)
+    expect(session.alternatives[0]?.id).toBe('ep-av-1')
+    expect(session.gatewayUrl).toMatch(/^\/playback\/stream\//)
+  })
+
+  it('returns stored progress as startPositionSeconds for episodes', async () => {
+    const av = makeAvailability({ id: 'ep-av-1', providerItemId: '7001' })
+    const src = makeSource({ id: 'source-uuid-1' })
+
+    dbResultQueue.push([av])
+    dbResultQueue.push([src])
+    dbResultQueue.push([{ progressSeconds: 840 }]) // ~14 min into episode
+
+    const session = await resolvePlayback('profile-1', 'episode', 'episode-uuid-1')
+
+    expect(session.startPositionSeconds).toBe(840)
+    expect(vi.mocked(createSession)).toHaveBeenCalledWith(
+      expect.objectContaining({ mediaType: 'episode', mediaId: 'episode-uuid-1' }),
     )
   })
 })
