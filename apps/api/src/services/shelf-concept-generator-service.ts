@@ -1,5 +1,5 @@
 import OpenAI from 'openai'
-import { eq, desc, and, gte, sql, inArray } from 'drizzle-orm'
+import { eq, desc, and, gte, sql, inArray, or, isNull } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import type * as schema from '../db/schema/index.js'
 import {
@@ -343,7 +343,7 @@ export class ShelfConceptGeneratorService {
       model: this.model,
       response_format: { type: 'json_object' },
       temperature: 0.7,
-      max_tokens: 4000,
+      max_tokens: Math.max(4000, count * 350),
       messages,
     })
 
@@ -357,8 +357,8 @@ export class ShelfConceptGeneratorService {
     try {
       parsed = JSON.parse(content)
     } catch {
-      console.warn(
-        '[ShelfConceptGeneratorService] LLM response not valid JSON:',
+      console.error(
+        '[ShelfConceptGeneratorService] LLM response not valid JSON (possibly truncated — check max_tokens):',
         content.slice(0, 200),
       )
       return []
@@ -381,6 +381,18 @@ export class ShelfConceptGeneratorService {
 
     const persisted: ShelfConcept[] = []
     const sessionEmbeddings: number[][] = []
+
+    // Pre-load embeddings for existing DB pool concepts so dedup extends across batches (§4, §8)
+    if (this.embeddingProvider && existingConcepts.length > 0) {
+      const existingEmbeddings = await Promise.all(
+        existingConcepts.map((c) =>
+          this.embeddingProvider!.embed(c.semanticIntent.trim()).catch(() => null),
+        ),
+      )
+      for (const emb of existingEmbeddings) {
+        if (emb) sessionEmbeddings.push(emb)
+      }
+    }
 
     for (const raw of rawConcepts) {
       const validationResult = this.validateConcept(raw, existingConcepts)
@@ -459,10 +471,17 @@ export class ShelfConceptGeneratorService {
   }
 
   async getActivePool(profileId: string): Promise<ShelfConcept[]> {
+    const now = new Date()
     const rows = await this.db
       .select()
       .from(shelfConcepts)
-      .where(and(eq(shelfConcepts.profileId, profileId), eq(shelfConcepts.active, true)))
+      .where(
+        and(
+          eq(shelfConcepts.profileId, profileId),
+          eq(shelfConcepts.active, true),
+          or(isNull(shelfConcepts.expiresAt), gte(shelfConcepts.expiresAt, now)),
+        ),
+      )
       .orderBy(desc(shelfConcepts.createdAt))
 
     return rows.map((r) => this.toApiModel(r))
