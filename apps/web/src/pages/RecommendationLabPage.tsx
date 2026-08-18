@@ -1,6 +1,19 @@
-import { useState, useCallback } from 'react'
-import type { SemanticQueryResponse, SemanticCandidate, RecommendationQueryPlan } from '@iptvflix/api-contracts'
-import { semanticQuery } from '../lib/api.js'
+import { useState, useCallback, useEffect } from 'react'
+import type {
+  SemanticQueryResponse,
+  SemanticCandidate,
+  RecommendationQueryPlan,
+  ShelfConcept,
+  ShelfConceptProfileContext,
+  ShelfConceptGenerationType,
+} from '@iptvflix/api-contracts'
+import {
+  semanticQuery,
+  generateShelfConcepts,
+  sendShelfConceptFeedback,
+  listProfiles,
+} from '../lib/api.js'
+import type { ProfileResponse } from '@iptvflix/api-contracts'
 import Spinner from '../components/ui/Spinner.js'
 import { useToast } from '../components/ui/Toast.js'
 
@@ -13,6 +26,10 @@ const BENCHMARK_QUERIES = [
   'comédie légère familiale',
   "film sombre sur l'intelligence artificielle",
 ]
+
+// ---------------------------------------------------------------------------
+// Shared UI components
+// ---------------------------------------------------------------------------
 
 function SimilarityBadge({ similarity }: { similarity: number }) {
   const pct = Math.round(similarity * 100)
@@ -185,7 +202,286 @@ function QueryPlanPanel({ plan }: { plan: RecommendationQueryPlan }) {
   )
 }
 
-export default function RecommendationLabPage() {
+// ---------------------------------------------------------------------------
+// Shelf Concepts tab
+// ---------------------------------------------------------------------------
+
+const GENERATION_TYPE_COLORS: Record<ShelfConceptGenerationType, string> = {
+  PERSONALIZED: 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
+  EXPLORATION: 'bg-purple-500/20 text-purple-300 border border-purple-500/30',
+  DISCOVERY: 'bg-green-500/20 text-green-300 border border-green-500/30',
+  FIXED: 'bg-gray-500/20 text-gray-300 border border-gray-500/30',
+  EDITORIAL: 'bg-orange-500/20 text-orange-300 border border-orange-500/30',
+}
+
+function GenerationTypeBadge({ type }: { type: ShelfConceptGenerationType }) {
+  const color = GENERATION_TYPE_COLORS[type] ?? 'bg-gray-500/20 text-gray-300'
+  return (
+    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${color}`}>{type}</span>
+  )
+}
+
+function ConceptCard({
+  concept,
+  onFeedback,
+  onPreview,
+}: {
+  concept: ShelfConcept
+  onFeedback: (id: string, signal: 'good' | 'bad') => void
+  onPreview: (concept: ShelfConcept) => void
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/3 p-4 space-y-3">
+      <div className="flex items-start gap-2 flex-wrap">
+        <h3 className="text-sm font-bold text-white flex-1 min-w-0">{concept.title}</h3>
+        <GenerationTypeBadge type={concept.generationType} />
+      </div>
+
+      <p className="text-xs text-gray-400 leading-relaxed">{concept.rawIntent}</p>
+
+      <div>
+        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Intent sémantique</p>
+        <p className="text-xs text-blue-300/80 bg-blue-900/10 rounded p-2 leading-relaxed">
+          {concept.semanticIntent}
+        </p>
+      </div>
+
+      {concept.reasonCodes.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {concept.reasonCodes.map((r) => (
+            <span key={r} className="px-2 py-0.5 rounded-full text-xs bg-white/5 text-gray-400">
+              {r}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500">
+        {concept.desiredMediaTypes.length > 0 && (
+          <span>{concept.desiredMediaTypes.join(' + ')}</span>
+        )}
+        {concept.freshnessPolicy && (
+          <span className="text-yellow-500/80">{concept.freshnessPolicy}</span>
+        )}
+        <span className="ml-auto text-gray-600">
+          {concept.sourceModel} · {concept.promptVersion}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-2 pt-1 border-t border-white/5">
+        <button
+          onClick={() => onPreview(concept)}
+          className="px-3 py-1 text-xs rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-colors"
+        >
+          Prévisualiser
+        </button>
+        <div className="ml-auto flex gap-2">
+          <button
+            onClick={() => onFeedback(concept.id, 'good')}
+            className="px-3 py-1 text-xs rounded bg-green-500/10 hover:bg-green-500/20 text-green-400 transition-colors"
+          >
+            Bon
+          </button>
+          <button
+            onClick={() => onFeedback(concept.id, 'bad')}
+            className="px-3 py-1 text-xs rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
+          >
+            Mauvais
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ProfileContextPanel({ context }: { context: ShelfConceptProfileContext }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/3 p-4">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-2 text-sm font-semibold text-white w-full text-left"
+      >
+        <span>Contexte profil</span>
+        {context.coldStart && (
+          <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+            cold-start
+          </span>
+        )}
+        {context.isKids && (
+          <span className="px-2 py-0.5 rounded-full text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30">
+            kids
+          </span>
+        )}
+        <span className="ml-auto text-gray-500 text-xs">{expanded ? '▲' : '▼'}</span>
+      </button>
+      {expanded && (
+        <pre className="mt-3 text-xs text-gray-400 overflow-auto max-h-64 bg-black/20 rounded p-3">
+          {JSON.stringify(context, null, 2)}
+        </pre>
+      )}
+    </div>
+  )
+}
+
+function ShelfConceptsTab() {
+  const toast = useToast()
+  const [profiles, setProfiles] = useState<ProfileResponse[]>([])
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('')
+  const [count, setCount] = useState(20)
+  const [loading, setLoading] = useState(false)
+  const [concepts, setConcepts] = useState<ShelfConcept[]>([])
+  const [profileContext, setProfileContext] = useState<ShelfConceptProfileContext | null>(null)
+  const [previewConcept, setPreviewConcept] = useState<ShelfConcept | null>(null)
+  const [previewResults, setPreviewResults] = useState<SemanticCandidate[] | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+
+  useEffect(() => {
+    listProfiles()
+      .then(setProfiles)
+      .catch((err) => toast.show(err instanceof Error ? err.message : 'Erreur profiles', 'error'))
+  }, [toast])
+
+  const handleGenerate = useCallback(async () => {
+    if (!selectedProfileId) return
+    setLoading(true)
+    setConcepts([])
+    setProfileContext(null)
+    try {
+      const res = await generateShelfConcepts({ profileId: selectedProfileId, count })
+      setConcepts(res.concepts)
+      setProfileContext(res.profileContext)
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : 'Erreur génération', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }, [selectedProfileId, count, toast])
+
+  const handleFeedback = useCallback(
+    async (id: string, signal: 'good' | 'bad') => {
+      try {
+        await sendShelfConceptFeedback(id, { signal })
+        toast.show(`Signal "${signal}" envoyé`, 'success')
+      } catch (err) {
+        toast.show(err instanceof Error ? err.message : 'Erreur feedback', 'error')
+      }
+    },
+    [toast],
+  )
+
+  const handlePreview = useCallback(
+    async (concept: ShelfConcept) => {
+      setPreviewConcept(concept)
+      setPreviewResults(null)
+      setPreviewLoading(true)
+      try {
+        const res = await semanticQuery({ query: concept.semanticIntent, topK: 5 })
+        setPreviewResults(res.results)
+      } catch (err) {
+        toast.show(err instanceof Error ? err.message : 'Erreur prévisualisation', 'error')
+      } finally {
+        setPreviewLoading(false)
+      }
+    },
+    [toast],
+  )
+
+  return (
+    <div className="space-y-6">
+      {/* Profile picker + generate controls */}
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="flex-1 min-w-48">
+          <label className="block text-xs text-gray-400 mb-1">Profil</label>
+          <select
+            value={selectedProfileId}
+            onChange={(e) => setSelectedProfileId(e.target.value)}
+            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+          >
+            <option value="">— Choisir un profil —</option>
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Nombre</label>
+          <select
+            value={count}
+            onChange={(e) => setCount(Number(e.target.value))}
+            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+          >
+            {[5, 10, 20, 30].map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        </div>
+
+        <button
+          onClick={handleGenerate}
+          disabled={loading || !selectedProfileId}
+          className="px-5 py-2 rounded-lg bg-[#e50914] hover:bg-[#c0070f] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
+        >
+          {loading ? 'Génération…' : 'Générer les concepts'}
+        </button>
+      </div>
+
+      {loading && (
+        <div className="flex justify-center py-8">
+          <Spinner />
+        </div>
+      )}
+
+      {/* Profile context panel */}
+      {profileContext && !loading && <ProfileContextPanel context={profileContext} />}
+
+      {/* Concept list + preview */}
+      {concepts.length > 0 && !loading && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <p className="text-xs text-gray-500 uppercase tracking-wide">
+              {concepts.length} concept{concepts.length > 1 ? 's' : ''} générés
+            </p>
+            {concepts.map((c) => (
+              <ConceptCard
+                key={c.id}
+                concept={c}
+                onFeedback={handleFeedback}
+                onPreview={handlePreview}
+              />
+            ))}
+          </div>
+
+          {/* Preview panel */}
+          {previewConcept && (
+            <div className="space-y-4">
+              <p className="text-xs text-gray-500 uppercase tracking-wide">
+                Prévisualisation — {previewConcept.title}
+              </p>
+              {previewLoading && (
+                <div className="flex justify-center py-4">
+                  <Spinner />
+                </div>
+              )}
+              {previewResults && !previewLoading && (
+                <ResultList results={previewResults} model="openai" label="Top 5 résultats" />
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Semantic Search tab (original content)
+// ---------------------------------------------------------------------------
+
+function SemanticSearchTab() {
   const toast = useToast()
   const [query, setQuery] = useState('')
   const [compareQuery, setCompareQuery] = useState('')
@@ -202,7 +498,6 @@ export default function RecommendationLabPage() {
     setResult(null)
     try {
       if (expandWithLlm) {
-        // LLM expansion path: results = LLM-expanded, compareResults = raw
         const res = await semanticQuery({
           query: mainQuery,
           topK,
@@ -233,12 +528,7 @@ export default function RecommendationLabPage() {
   const modelLabel = result ? `${result.modelProvider}/${result.modelName}` : ''
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Recommendation Lab</h1>
-        <p className="text-sm text-gray-400 mt-1">Requêtes sémantiques sur le catalogue IPTVFlix via embeddings vectoriels</p>
-      </div>
-
+    <div className="space-y-8">
       {/* Quick benchmark queries */}
       <div>
         <p className="text-xs text-gray-500 mb-2 uppercase tracking-wide">Requêtes de référence</p>
@@ -333,24 +623,12 @@ export default function RecommendationLabPage() {
 
       {result && !loading && (
         <div className="space-y-6">
-          {/* QueryPlan panel (LLM expansion mode only) */}
-          {result.queryPlan && (
-            <QueryPlanPanel plan={result.queryPlan} />
-          )}
+          {result.queryPlan && <QueryPlanPanel plan={result.queryPlan} />}
 
-          {/* Results: A/B columns in LLM expansion mode, or single/compare otherwise */}
           {expandWithLlm && result.compareResults ? (
             <div className="grid grid-cols-2 gap-6">
-              <ResultList
-                results={result.compareResults}
-                model={modelLabel}
-                label="A — Requête brute"
-              />
-              <ResultList
-                results={result.results}
-                model={modelLabel}
-                label="B — Intent LLM expansé"
-              />
+              <ResultList results={result.compareResults} model={modelLabel} label="A — Requête brute" />
+              <ResultList results={result.results} model={modelLabel} label="B — Intent LLM expansé" />
             </div>
           ) : (
             <div className={showCompare && result.compareResults ? 'grid grid-cols-2 gap-6' : ''}>
@@ -370,6 +648,52 @@ export default function RecommendationLabPage() {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Page root with tabs
+// ---------------------------------------------------------------------------
+
+type Tab = 'search' | 'concepts'
+
+export default function RecommendationLabPage() {
+  const [activeTab, setActiveTab] = useState<Tab>('search')
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold text-white">Recommendation Lab</h1>
+        <p className="text-sm text-gray-400 mt-1">
+          Outils de développement pour le moteur de recommandation IPTVFlix
+        </p>
+      </div>
+
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b border-white/10">
+        {(
+          [
+            { id: 'search', label: 'Recherche sémantique' },
+            { id: 'concepts', label: 'Concepts de rayons' },
+          ] as { id: Tab; label: string }[]
+        ).map(({ id, label }) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id)}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              activeTab === id
+                ? 'text-white border-[#e50914]'
+                : 'text-gray-400 hover:text-white border-transparent'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'search' && <SemanticSearchTab />}
+      {activeTab === 'concepts' && <ShelfConceptsTab />}
     </div>
   )
 }

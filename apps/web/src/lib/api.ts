@@ -388,3 +388,22 @@ export function revokeDevice(deviceId: string): Promise<void> {
 export function semanticQuery(body: import('@iptvflix/api-contracts').SemanticQueryRequest): Promise<import('@iptvflix/api-contracts').SemanticQueryResponse> {
   return request('/recommendation-lab/semantic-query', { method: 'POST', body: JSON.stringify(body) })
 }
+
+export function generateShelfConcepts(
+  body: import('@iptvflix/api-contracts').GenerateShelfConceptsBody,
+): Promise<import('@iptvflix/api-contracts').GenerateShelfConceptsResponse> {
+  return request('/shelf-concepts/generate', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function getShelfConceptPool(
+  profileId: string,
+): Promise<import('@iptvflix/api-contracts').ShelfConcept[]> {
+  return request(`/shelf-concepts${toQuery({ profileId })}`)
+}
+
+export function sendShelfConceptFeedback(
+  id: string,
+  body: import('@iptvflix/api-contracts').ShelfConceptFeedbackBody,
+): Promise<void> {
+  return request(`/shelf-concepts/${id}/feedback`, { method: 'POST', body: JSON.stringify(body) })
+}
