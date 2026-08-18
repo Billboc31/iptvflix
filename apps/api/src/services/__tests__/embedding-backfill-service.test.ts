@@ -104,6 +104,32 @@ describe('runBackfill', () => {
     expect(mockEmbeddingService.upsertEmbedding).toHaveBeenCalledOnce()
   })
 
+  it('paginates correctly — all items processed when catalog exceeds batchSize', async () => {
+    const MOVIE_ID_3 = 'aaaaaaaa-0000-0000-0000-000000000003'
+    const T1 = new Date('2024-01-01T00:00:00Z')
+    const T2 = new Date('2024-01-02T00:00:00Z')
+
+    // Promise.all([MOVIE, SERIES]) starts both synchronously before any await resolves:
+    // call 0 → MOVIE batch 1 (2 items), call 1 → SERIES batch 1 (done),
+    // call 2 → MOVIE batch 2 (1 item), call 3 → MOVIE batch 3 (done)
+    makeSelectChain([
+      [{ id: MOVIE_ID_1, createdAt: T1 }, { id: MOVIE_ID_2, createdAt: T1 }],
+      [],
+      [{ id: MOVIE_ID_3, createdAt: T2 }],
+      [],
+    ])
+
+    const mockEmbeddingService = {
+      upsertEmbedding: vi.fn().mockResolvedValue({ action: 'embedded' }),
+    } as unknown as EmbeddingService
+
+    const result = await runBackfill(mockDb as any, mockEmbeddingService, { batchSize: 2, concurrency: 1 })
+
+    expect(result.movies.processed).toBe(3)
+    expect(result.movies.embedded).toBe(3)
+    expect(result.series.processed).toBe(0)
+  })
+
   it('retries on transient provider error and marks failed after max retries', async () => {
     const movies = [{ id: MOVIE_ID_1, createdAt: NOW }]
 

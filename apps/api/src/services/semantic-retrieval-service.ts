@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import type * as schema from '../db/schema/index.js'
 import { movies } from '../db/schema/movies.js'
@@ -36,6 +36,7 @@ export class SemanticRetrievalService {
         ? this.db
             .select({ id: movies.id, title: movies.title, year: movies.year, posterPath: movies.posterPath })
             .from(movies)
+            .where(inArray(movies.id, movieIds))
         : Promise.resolve([] as { id: string; title: string; year: number | null; posterPath: string | null }[]),
       seriesIds.length > 0
         ? this.db
@@ -46,6 +47,7 @@ export class SemanticRetrievalService {
               posterPath: series.posterPath,
             })
             .from(series)
+            .where(inArray(series.id, seriesIds))
         : Promise.resolve([] as { id: string; title: string; year: number | null; posterPath: string | null }[]),
     ])
 

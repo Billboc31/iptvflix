@@ -1,4 +1,4 @@
-import { isNotNull, asc, and, lt, or, eq, sql } from 'drizzle-orm'
+import { isNotNull, asc, and, gt, or, eq, sql } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import type * as schema from '../db/schema/index.js'
 import { movies } from '../db/schema/movies.js'
@@ -124,7 +124,7 @@ async function backfillMediaType(
             and(
               isNotNull(table.metadataEnrichedAt),
               or(
-                lt(table.createdAt, cursor.createdAt),
+                gt(table.createdAt, cursor.createdAt),
                 and(eq(table.createdAt, cursor.createdAt), sql`${table.id} > ${cursor.id}`),
               ),
             ),
