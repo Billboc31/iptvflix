@@ -607,6 +607,16 @@ export class TmdbClient implements MetadataProvider {
     }
   }
 
+  async getSeriesExternalIds(tmdbSeriesId: number): Promise<{ imdb_id?: string | null }> {
+    const response = await this.fetchWithRetry(`${BASE_URL}/tv/${tmdbSeriesId}/external_ids`)
+    if (!response.ok) return {}
+    try {
+      return (await response.json()) as { imdb_id?: string | null }
+    } catch {
+      return {}
+    }
+  }
+
   async fetchSeriesDiscover(discoverParams: DiscoverParams, page: number): Promise<MetadataCandidate[]> {
     const params = new URLSearchParams({ sort_by: 'popularity.desc', page: String(page) })
     if (discoverParams.genreId != null) params.set('with_genres', String(discoverParams.genreId))

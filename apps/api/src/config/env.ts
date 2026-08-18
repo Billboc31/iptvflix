@@ -102,3 +102,10 @@ export const MEDIA_RELAY_ENABLED = Boolean(MEDIA_RELAY_URL && MEDIA_RELAY_SECRET
 
 export const OPENAI_API_KEY: string | undefined = process.env.OPENAI_API_KEY || undefined
 export const LLM_PLANNER_MODEL: string = process.env.LLM_PLANNER_MODEL ?? 'gpt-4o-mini'
+export const SEGMENT_REFRESH_ENABLED =
+  process.env.SEGMENT_REFRESH_ENABLED !== undefined
+    ? process.env.SEGMENT_REFRESH_ENABLED === 'true'
+    : false
+export const SEGMENT_REFRESH_CADENCE_HOURS = Number(process.env.SEGMENT_REFRESH_CADENCE_HOURS ?? 24)
+export const SEGMENT_REFRESH_RECENT_DAYS = Number(process.env.SEGMENT_REFRESH_RECENT_DAYS ?? 30)
+export const INTRODB_BASE_URL: string | undefined = process.env.INTRODB_BASE_URL || undefined

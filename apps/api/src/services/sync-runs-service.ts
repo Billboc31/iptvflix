@@ -29,9 +29,18 @@ function createOptionalTitleMatchingService(): TitleMatchingService | undefined 
   return new TitleMatchingService(new TmdbClient({ apiKey: TMDB_API_KEY }))
 }
 
+let _onNewEpisodeHook: ((episodeId: string) => void) | undefined
+
+export function setOnNewEpisodeHook(fn: (episodeId: string) => void): void {
+  _onNewEpisodeHook = fn
+}
+
 function createOptionalCanonicalResolver(): CanonicalResolver | undefined {
   if (!TMDB_API_KEY) return undefined
-  return new CanonicalResolver(new MetadataEnrichmentService(db, new TmdbClient({ apiKey: TMDB_API_KEY })))
+  return new CanonicalResolver(
+    new MetadataEnrichmentService(db, new TmdbClient({ apiKey: TMDB_API_KEY })),
+    _onNewEpisodeHook,
+  )
 }
 
 type SyncRunRow = typeof syncRuns.$inferSelect
