@@ -12,3 +12,25 @@
 [2026-08-18T07:37:15Z] snapshot: runtime-prompt=runs/T094/prompts/planner-attempt-1.md
 [2026-08-18T07:43:41Z] compose: preferring on-disk runs/T094/plan.md over chatty stdout (agent Write beat meta-report)
 [2026-08-18T07:43:41Z] auto-run: step=planner done rc=0
+[2026-08-18T07:58:27Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-18T07:58:27Z] auto-run: running step=tester
+[2026-08-18T07:58:28Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-18T07:58:28Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-18T07:58:28Z] prompt: generic fallback — injecting runs/T094/ticket.md
+[2026-08-18T07:58:28Z] compose: global-context=docs/ai/global-context.md
+[2026-08-18T07:58:28Z] compose: role=ai/roles/tester.md
+[2026-08-18T07:58:28Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-18T07:58:28Z] compose: skill=ai/skills/testing.md
+[2026-08-18T07:58:28Z] compose: skill=ai/skills/debugging.md
+[2026-08-18T07:58:28Z] compose: task (canonical prompt)
+[2026-08-18T07:58:28Z] snapshot: runtime-prompt=runs/T094/prompts/tester-attempt-1.md
+[2026-08-18T08:02:13Z] auto-run: step=tester done rc=0
+[2026-08-18T08:02:13Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-18T08:02:13Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-18T08:02:13Z] commit-checkpoint: unstaged runtime garbage: ['apps/web/node_modules/.vite/vitest/results.json', 'runs/T094/daemon.lock', 'runs/T094/runtime.log', 'runs/T094/workflow-status.md']
+[2026-08-18T08:02:13Z] commit-checkpoint: sha=51f74b7 files=4 title='test(T094/workflow): tester — update 4 file(s)'
+[2026-08-18T08:02:13Z] auto-run: auto-push triggered
+[2026-08-18T08:02:13Z] push: tolerating runtime dirty files (not blocking): ['apps/web/node_modules/.vite/vitest/results.json', 'runs/T094/daemon.lock', 'runs/T094/runtime.log', 'runs/T094/workflow-status.md']
+[2026-08-18T08:02:13Z] push: pushing branch=ticket/T094-prompt-to-resume-or-restart-when-starting-partiall
+[2026-08-18T08:02:15Z] push: done branch=ticket/T094-prompt-to-resume-or-restart-when-starting-partiall
+[2026-08-18T08:02:16Z] auto-run: TEST_COMPLETE — running PR lifecycle
