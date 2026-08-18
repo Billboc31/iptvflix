@@ -1,6 +1,6 @@
 import { pgTable, uuid, text, integer, timestamp, uniqueIndex, customType } from 'drizzle-orm/pg-core'
 
-/** float8[] — works on stock Postgres (Railway) without pgvector. */
+/** float8[] by default (Railway stock Postgres). Upgraded in-place to vector(1536)+HNSW when pgvector is available. */
 const float8Array = customType<{ data: number[]; driverData: number[] | string }>({
   dataType() {
     return 'double precision[]'

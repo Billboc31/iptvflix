@@ -100,6 +100,7 @@ export const MEDIA_RELAY_URL: string | undefined = process.env.MEDIA_RELAY_URL?.
 export const MEDIA_RELAY_SECRET: string | undefined = process.env.MEDIA_RELAY_SECRET || undefined
 export const MEDIA_RELAY_ENABLED = Boolean(MEDIA_RELAY_URL && MEDIA_RELAY_SECRET)
 
+/** Required to generate catalog embeddings (text-embedding-3-small) for recommendations. */
 export const OPENAI_API_KEY: string | undefined = process.env.OPENAI_API_KEY || undefined
 export const LLM_PLANNER_MODEL: string = process.env.LLM_PLANNER_MODEL ?? 'gpt-4o-mini'
 

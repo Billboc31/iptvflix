@@ -281,6 +281,13 @@
             "when": 1786399400000,
             "tag": "0039_t105_shelf_concepts",
             "breakpoints": true
+        },
+        {
+            "idx": 40,
+            "version": "7",
+            "when": 1786399500000,
+            "tag": "0040_t102_pgvector_hnsw",
+            "breakpoints": true
         }
     ]
 }

@@ -14,6 +14,7 @@ import {
   type MediaType,
 } from './embedding-document-builder.js'
 import type { EmbeddingProvider } from './embedding-provider.js'
+import { getEmbeddingIndexMode } from '../db/embedding-index-mode.js'
 
 type Db = PostgresJsDatabase<typeof schema>
 
@@ -95,7 +96,21 @@ export class EmbeddingService {
 
   async semanticSearch(queryText: string, topK: number): Promise<SemanticCandidate[]> {
     const queryVector = await this.provider.embed(queryText)
+    const usePgvector = getEmbeddingIndexMode() === 'pgvector'
+    const vectorLiteral = `'[${queryVector.map(Number).join(',')}]'::vector`
     const arrayLiteral = `ARRAY[${queryVector.map(Number).join(',')}]::double precision[]`
+    const distanceExpr = usePgvector
+      ? sql<number>`${mediaEmbeddings.embedding} <=> ${sql.raw(vectorLiteral)}`
+      : sql<number>`(
+          1.0 - (
+            (SELECT COALESCE(SUM(x * y), 0) FROM unnest(${mediaEmbeddings.embedding}, ${sql.raw(arrayLiteral)}) AS t(x, y))
+            / NULLIF(
+              sqrt((SELECT COALESCE(SUM(x * x), 0) FROM unnest(${mediaEmbeddings.embedding}) AS u(x)))
+              * sqrt((SELECT COALESCE(SUM(y * y), 0) FROM unnest(${sql.raw(arrayLiteral)}) AS v(y))),
+              0
+            )
+          )
+        )`
 
     const rows = await this.db
       .select({
@@ -105,16 +120,7 @@ export class EmbeddingService {
         modelName: mediaEmbeddings.modelName,
         docHash: mediaEmbeddings.docHash,
         generatedAt: mediaEmbeddings.generatedAt,
-        distance: sql<number>`(
-          1.0 - (
-            (SELECT COALESCE(SUM(x * y), 0) FROM unnest(${mediaEmbeddings.embedding}, ${sql.raw(arrayLiteral)}) AS t(x, y))
-            / NULLIF(
-              sqrt((SELECT COALESCE(SUM(x * x), 0) FROM unnest(${mediaEmbeddings.embedding}) AS u(x)))
-              * sqrt((SELECT COALESCE(SUM(y * y), 0) FROM unnest(${sql.raw(arrayLiteral)}) AS v(y))),
-              0
-            )
-          )
-        )`,
+        distance: distanceExpr,
       })
       .from(mediaEmbeddings)
       .where(
@@ -123,16 +129,7 @@ export class EmbeddingService {
           eq(mediaEmbeddings.modelName, this.provider.modelName),
         ),
       )
-      .orderBy(sql`(
-        1.0 - (
-          (SELECT COALESCE(SUM(x * y), 0) FROM unnest(${mediaEmbeddings.embedding}, ${sql.raw(arrayLiteral)}) AS t(x, y))
-          / NULLIF(
-            sqrt((SELECT COALESCE(SUM(x * x), 0) FROM unnest(${mediaEmbeddings.embedding}) AS u(x)))
-            * sqrt((SELECT COALESCE(SUM(y * y), 0) FROM unnest(${sql.raw(arrayLiteral)}) AS v(y))),
-            0
-          )
-        )
-      )`)
+      .orderBy(distanceExpr)
       .limit(topK)
 
     return rows.map((row, i) => ({

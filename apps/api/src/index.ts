@@ -51,6 +51,7 @@ import { segmentAdminRoutes } from './routes/segment-admin.js'
 import { authenticate, requireProfile } from './plugins/auth.js'
 import { failInterruptedRuns } from './services/fail-interrupted-runs.js'
 import { runSeed } from './db/seed.js'
+import { ensurePgvectorEmbeddings } from './db/ensure-pgvector.js'
 import {
   PORT,
   CORS_ORIGIN,
@@ -108,6 +109,17 @@ try {
   app.log.info('startup: account/profile seed completed')
 } catch (err) {
   app.log.error(err, 'startup: seed failed — login may not work until DB is healthy')
+}
+
+const embeddingIndexMode = await ensurePgvectorEmbeddings()
+app.log.info(
+  { embeddingIndexMode, openaiEmbeddings: Boolean(OPENAI_API_KEY) },
+  'startup: recommendation embeddings ready',
+)
+if (!OPENAI_API_KEY) {
+  app.log.warn(
+    'startup: OPENAI_API_KEY is unset — catalog embeddings will not be generated until it is set',
+  )
 }
 
 const similarTitlesService = TMDB_API_KEY
