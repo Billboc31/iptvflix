@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import HeroSection from '../components/content/HeroSection.js'
 import ShelfRow from '../components/content/ShelfRow.js'
@@ -6,33 +6,68 @@ import GenerateShelfDialog from '../components/content/GenerateShelfDialog.js'
 import ArrivalCard from '../components/content/ArrivalCard.js'
 import HorizontalRow from '../components/content/HorizontalRow.js'
 import EmptyState from '../components/ui/EmptyState.js'
+import Skeleton from '../components/ui/Skeleton.js'
 import Spinner from '../components/ui/Spinner.js'
 import Button from '../components/ui/Button.js'
 import { useMovies } from '../hooks/useMovies.js'
-import { useHome } from '../hooks/useHome.js'
+import { useInfiniteHome } from '../hooks/useHome.js'
 import { useArrivals } from '../hooks/useArrivals.js'
 import { useOpenDetail } from '../hooks/useOpenDetail.js'
 import { useProfile } from '../context/ProfileContext.js'
 import { useInteractionEvents } from '../hooks/useInteractionEvents.js'
+
+function ShelfSkeleton() {
+  return (
+    <div className="px-8 mt-6">
+      <Skeleton className="w-48 h-5 mb-3" />
+      <div className="flex gap-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className="w-36 h-52 flex-shrink-0" />
+        ))}
+      </div>
+    </div>
+  )
+}
 
 export default function HomePage() {
   const navigate = useNavigate()
   const openDetail = useOpenDetail()
   const { currentProfile, profileVersion } = useProfile()
   const { data: movies, loading: moviesLoading } = useMovies({ pageSize: 1 })
-  const { data: homeData, isLoading: homeLoading } = useHome(currentProfile?.id ?? '', profileVersion)
+  const {
+    allShelves,
+    isLoading: homeLoading,
+    isFetchingMore,
+    hasMore,
+    loadMore,
+  } = useInfiniteHome(currentProfile?.id ?? '', profileVersion)
   const { arrivals, refresh: refreshArrivals } = useArrivals('unread')
   const { emit: emitEvent } = useInteractionEvents()
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     emitEvent({ eventType: 'HOME_OPENED', clientType: 'web' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileVersion])
 
-  const shelves = homeData?.shelves ?? []
+  // IntersectionObserver: call loadMore when sentinel enters viewport.
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel || !hasMore) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore()
+      },
+      { rootMargin: '400px' },
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [hasMore, loadMore])
+
   const isLoading = moviesLoading || homeLoading
-  const hasContent = (movies?.items.length ?? 0) > 0 || shelves.length > 0
+  const hasContent = (movies?.items.length ?? 0) > 0 || allShelves.length > 0
 
   if (!isLoading && !hasContent) {
     return (
@@ -48,7 +83,6 @@ export default function HomePage() {
   }
 
   const hero = movies?.items[0]
-  const isColdStart = homeData?.coldStart === true && shelves.length === 0
 
   return (
     <div>
@@ -96,15 +130,27 @@ export default function HomePage() {
               + Créer une sélection
             </Button>
           </div>
-          {isColdStart && (
-            <p className="px-4 py-2 text-sm text-gray-400">
-              Commencez à regarder des contenus pour recevoir des recommandations personnalisées.
-            </p>
-          )}
-          {shelves.map((shelf) => (
+          {allShelves.map((shelf) => (
             <ShelfRow key={shelf.id} shelf={shelf} />
           ))}
         </>
+      )}
+
+      {/* Loading skeleton for next batch */}
+      {isFetchingMore && (
+        <>
+          <ShelfSkeleton />
+          <ShelfSkeleton />
+          <ShelfSkeleton />
+        </>
+      )}
+
+      {/* Sentinel for IntersectionObserver */}
+      {hasMore && !isFetchingMore && <div ref={sentinelRef} aria-hidden="true" />}
+
+      {/* End-of-feed indicator */}
+      {!hasMore && allShelves.length > 0 && (
+        <p className="text-center text-sm text-gray-600 py-8">— Fin des recommandations —</p>
       )}
 
       <GenerateShelfDialog

@@ -1,26 +1,38 @@
 import type { FastifyInstance } from 'fastify'
 import { buildHome } from '../services/home-service.js'
 import { getCurrentProfile } from '../services/profile-service.js'
-import { NotFoundError } from '../errors.js'
+
+function isValidCursor(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 512 && !/\s/.test(value)
+}
 
 export async function homeRoutes(app: FastifyInstance): Promise<void> {
-  app.get<{ Params: { profileId: string } }>('/profiles/:profileId/home', async (request, reply) => {
-    const { profileId } = request.params
+  app.get<{ Params: { profileId: string }; Querystring: { cursor?: string } }>(
+    '/profiles/:profileId/home',
+    async (request, reply) => {
+      const { profileId } = request.params
 
-    try {
-      await getCurrentProfile(request.account!.id, profileId)
-    } catch {
-      return reply.status(403).send({ error: 'Profile does not belong to this account' })
-    }
-
-    try {
-      const result = await buildHome(profileId)
-      return reply.status(200).send(result)
-    } catch (err) {
-      if (err instanceof NotFoundError) {
-        return reply.status(404).send({ error: err.message })
+      try {
+        await getCurrentProfile(request.account!.id, profileId)
+      } catch {
+        return reply.status(403).send({ error: 'Profile does not belong to this account' })
       }
-      throw err
-    }
-  })
+
+      const rawCursor = request.query.cursor
+      if (rawCursor !== undefined && !isValidCursor(rawCursor)) {
+        return reply.status(400).send({ error: 'Invalid cursor' })
+      }
+
+      try {
+        const result = await buildHome(profileId, rawCursor)
+        return reply.status(200).send(result)
+      } catch (err) {
+        const e = err as { status?: number; message?: string }
+        if (e.status === 403) {
+          return reply.status(403).send({ error: e.message ?? 'Forbidden' })
+        }
+        throw err
+      }
+    },
+  )
 }

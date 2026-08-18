@@ -34,6 +34,7 @@ export class ShelfInstanceService {
           latencyMs: params.latencyMs ?? null,
           cacheHit: params.cacheHit ?? false,
           expiresAt: params.expiresAt ?? null,
+          servedAt: params.servedAt ?? null,
         })
         .returning({ id: shelfInstances.id })
 

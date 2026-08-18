@@ -124,5 +124,6 @@ export type PersistShelfInstanceParams = {
   latencyMs?: number | null
   cacheHit?: boolean
   expiresAt?: Date | null
+  servedAt?: Date | null
   items: PersistShelfInstanceItemParams[]
 }

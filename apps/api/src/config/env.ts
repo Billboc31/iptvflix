@@ -125,6 +125,18 @@ if (Math.abs(_ratioSum - 1.0) > 0.01) {
     `[shelf-concept] SHELF_CONCEPT_*_RATIO values sum to ${_ratioSum.toFixed(3)}, not 1.0 — they will be normalized at runtime`,
   )
 }
+const homeCursorSecret = process.env.HOME_CURSOR_SECRET
+if (!homeCursorSecret) {
+  throw new Error('HOME_CURSOR_SECRET is not configured')
+}
+export const HOME_CURSOR_SECRET: string = homeCursorSecret
+export const HOME_BATCH_SIZE = Number(process.env.HOME_BATCH_SIZE ?? 6)
+export const HOME_ITEMS_PER_SHELF = Number(process.env.HOME_ITEMS_PER_SHELF ?? 24)
+export const HOME_ITEMS_MAX = Number(process.env.HOME_ITEMS_MAX ?? 30)
+export const HOME_POOL_MIN = Number(process.env.HOME_POOL_MIN ?? 10)
+export const HOME_POOL_TARGET = Number(process.env.HOME_POOL_TARGET ?? 25)
+export const HOME_SESSION_TTL_HOURS = Number(process.env.HOME_SESSION_TTL_HOURS ?? 24)
+
 export const SEGMENT_REFRESH_ENABLED =
   process.env.SEGMENT_REFRESH_ENABLED !== undefined
     ? process.env.SEGMENT_REFRESH_ENABLED === 'true'

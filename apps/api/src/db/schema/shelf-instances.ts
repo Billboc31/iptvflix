@@ -35,6 +35,7 @@ export const shelfInstances = pgTable(
     firstDisplayedAt: timestamp('first_displayed_at', { withTimezone: true }),
     lastDisplayedAt: timestamp('last_displayed_at', { withTimezone: true }),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
+    servedAt: timestamp('served_at', { withTimezone: true }),
   },
   (t) => [
     index('shelf_instances_profile_created_idx').on(t.profileId, t.createdAt),
