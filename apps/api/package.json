@@ -7,7 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
-    "start:railway": "node scripts/migrate-safe.mjs && node dist/index.js",
+    "start:railway": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vitest run",

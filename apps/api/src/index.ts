@@ -1,7 +1,8 @@
 import 'dotenv/config'
 import { spawn } from 'node:child_process'
 import { writeFile, unlink } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
@@ -289,6 +290,32 @@ try {
   process.exit(1)
 }
 
+const apiRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
+
+function runMigrateSafe(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const script = join(apiRoot, 'scripts/migrate-safe.mjs')
+    const proc = spawn(process.execPath, [script], {
+      stdio: 'inherit',
+      cwd: apiRoot,
+      env: process.env,
+    })
+    const timer = setTimeout(() => {
+      proc.kill('SIGKILL')
+      reject(new Error('migrate-safe timed out after 60s'))
+    }, 60_000)
+    proc.on('error', (err) => {
+      clearTimeout(timer)
+      reject(err)
+    })
+    proc.on('close', (code) => {
+      clearTimeout(timer)
+      if (code === 0) resolve()
+      else reject(new Error(`migrate-safe exited ${code}`))
+    })
+  })
+}
+
 async function checkBinary(binary: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn(binary, ['-version'], { stdio: ['ignore', 'ignore', 'ignore'] })
@@ -301,6 +328,13 @@ async function checkBinary(binary: string): Promise<void> {
 }
 
 async function bootBackground(): Promise<void> {
+  try {
+    await runMigrateSafe()
+    app.log.info('startup: migrations complete')
+  } catch (err) {
+    app.log.error(err, 'startup: migrate-safe failed — schema may be behind')
+  }
+
   try {
     await runSeed()
     app.log.info('startup: account/profile seed completed')
