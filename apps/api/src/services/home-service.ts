@@ -4,6 +4,7 @@ import { db } from '../db/client.js'
 import { mediaVideos } from '../db/schema/media-videos.js'
 import { getShelf } from './shelf-service.js'
 import { rankRecommendations } from './recommendation-ranking-service.js'
+import { ShelfInstanceService } from './shelf-instance-service.js'
 import type { HomeResponse, ShelfResponse, ShelfItem, RecommendationCandidate } from '@iptvflix/api-contracts'
 
 // Dedup strategy: a single rankRecommendations call is partitioned into shelves;
@@ -11,6 +12,8 @@ import type { HomeResponse, ShelfResponse, ShelfItem, RecommendationCandidate } 
 // In-progress media from Continue Watching is excluded from rec shelves via post-filter.
 
 export async function buildHome(profileId: string): Promise<HomeResponse> {
+  const startedAt = Date.now()
+
   const [continueWatching, myList] = await Promise.all([
     getShelf('sys_continue_watching', profileId),
     getShelf('sys_my_list', profileId),
@@ -32,20 +35,83 @@ export async function buildHome(profileId: string): Promise<HomeResponse> {
   const movieCandidateIds = allCandidates.filter((c) => c.mediaType === 'MOVIE').map((c) => c.mediaId)
   const seriesCandidateIds = allCandidates.filter((c) => c.mediaType === 'SERIES').map((c) => c.mediaId)
 
-  const [movieTrailerRows, seriesTrailerRows] = await Promise.all([
-    movieCandidateIds.length > 0
-      ? db
-          .select({ mediaId: mediaVideos.mediaId, youtubeKey: mediaVideos.youtubeKey })
-          .from(mediaVideos)
-          .where(and(eq(mediaVideos.mediaType, 'movie'), inArray(mediaVideos.mediaId, movieCandidateIds)))
-      : Promise.resolve([]),
-    seriesCandidateIds.length > 0
-      ? db
-          .select({ mediaId: mediaVideos.mediaId, youtubeKey: mediaVideos.youtubeKey })
-          .from(mediaVideos)
-          .where(and(eq(mediaVideos.mediaType, 'series'), inArray(mediaVideos.mediaId, seriesCandidateIds)))
-      : Promise.resolve([]),
-  ])
+  const shelfInstanceService = new ShelfInstanceService(db)
+  const elapsed = Date.now() - startedAt
+  const forYouPosition = continueWatching.items.length > 0 ? 1 : 0
+  const upcomingPosition = forYouPosition + 1 + (myList.items.length > 0 ? 1 : 0)
+
+  const [[movieTrailerRows, seriesTrailerRows], [forYouShelfInstanceId, upcomingShelfInstanceId]] =
+    await Promise.all([
+      Promise.all([
+        movieCandidateIds.length > 0
+          ? db
+              .select({ mediaId: mediaVideos.mediaId, youtubeKey: mediaVideos.youtubeKey })
+              .from(mediaVideos)
+              .where(and(eq(mediaVideos.mediaType, 'movie'), inArray(mediaVideos.mediaId, movieCandidateIds)))
+          : Promise.resolve([]),
+        seriesCandidateIds.length > 0
+          ? db
+              .select({ mediaId: mediaVideos.mediaId, youtubeKey: mediaVideos.youtubeKey })
+              .from(mediaVideos)
+              .where(and(eq(mediaVideos.mediaType, 'series'), inArray(mediaVideos.mediaId, seriesCandidateIds)))
+          : Promise.resolve([]),
+      ]),
+      Promise.all([
+        forYouCandidates.length > 0
+          ? shelfInstanceService.persistShelfInstance({
+              profileId,
+              shelfConceptId: null,
+              title: 'Recommandé pour toi',
+              generationType: 'SYSTEM_REC',
+              generationReasonCodes: ['home_rec'],
+              verticalPosition: forYouPosition,
+              rankerVersion: 'v1',
+              queryPlannerVersion: 'v1',
+              embeddingModelVersion: 'none',
+              candidateCount: filtered.length,
+              latencyMs: elapsed,
+              cacheHit: false,
+              items: forYouCandidates.map((c, i) => ({
+                mediaType: c.mediaType,
+                mediaId: c.mediaId,
+                rankPosition: i,
+                finalScore: c.score,
+                reasonCodes: c.reasons,
+                availabilityStatus: 'available',
+                wasEligibleAtGeneration: true,
+              })),
+            })
+          : Promise.resolve(null),
+        upcomingCandidates.length >= 3
+          ? shelfInstanceService.persistShelfInstance({
+              profileId,
+              shelfConceptId: null,
+              title: 'À découvrir',
+              generationType: 'SYSTEM_REC',
+              generationReasonCodes: ['home_upcoming'],
+              verticalPosition: upcomingPosition,
+              rankerVersion: 'v1',
+              queryPlannerVersion: 'v1',
+              embeddingModelVersion: 'none',
+              candidateCount: upcoming.length,
+              latencyMs: elapsed,
+              cacheHit: false,
+              items: upcomingCandidates.map((c, i) => ({
+                mediaType: c.mediaType,
+                mediaId: c.mediaId,
+                rankPosition: i,
+                finalScore: c.score,
+                reasonCodes: c.reasons,
+                availabilityStatus: 'upcoming',
+                wasEligibleAtGeneration: true,
+              })),
+            })
+          : Promise.resolve(null),
+      ]).catch((err) => {
+        console.error('[home-service] persistShelfInstance failed', err)
+        return [null, null] as [null, null]
+      }),
+    ])
 
   const trailerKeyMap = new Map<string, string>()
   for (const r of movieTrailerRows) {
@@ -70,6 +136,7 @@ export async function buildHome(profileId: string): Promise<HomeResponse> {
     type: 'SYSTEM',
     layoutHint: 'ROW',
     items: forYouItems,
+    shelfInstanceId: forYouShelfInstanceId,
   })
 
   if (myList.items.length > 0) {
@@ -83,6 +150,7 @@ export async function buildHome(profileId: string): Promise<HomeResponse> {
       type: 'SYSTEM',
       layoutHint: 'ROW',
       items: upcomingItems,
+      shelfInstanceId: upcomingShelfInstanceId,
     })
   }
 

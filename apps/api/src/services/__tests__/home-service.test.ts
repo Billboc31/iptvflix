@@ -12,6 +12,14 @@ vi.mock('../recommendation-ranking-service.js', () => ({
   rankRecommendations: vi.fn(),
 }))
 
+vi.mock('../shelf-instance-service.js', () => ({
+  ShelfInstanceService: class {
+    persistShelfInstance() {
+      return Promise.resolve('00000000-0000-0000-0000-000000000099')
+    }
+  },
+}))
+
 import { buildHome } from '../home-service.js'
 import { getShelf } from '../shelf-service.js'
 import { rankRecommendations } from '../recommendation-ranking-service.js'

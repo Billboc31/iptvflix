@@ -18,6 +18,7 @@ export type ShelfResponse = {
   layoutHint: LayoutHint
   items: ShelfItem[]
   generatedAt?: string
+  shelfInstanceId?: string | null
 }
 
 export type ShelfSummaryResponse = {

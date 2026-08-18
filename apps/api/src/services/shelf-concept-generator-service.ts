@@ -11,6 +11,7 @@ import {
   series as seriesTable,
 } from '../db/schema/index.js'
 import { getTaste } from './profile-taste-service.js'
+import { ShelfFatigueService } from './shelf-fatigue-service.js'
 import type { EmbeddingProvider } from './embedding-provider.js'
 import type { SemanticRetrievalService } from './semantic-retrieval-service.js'
 import { buildShelfConceptPrompt } from '../prompts/shelf-concept-generator-v1.js'
@@ -484,7 +485,19 @@ export class ShelfConceptGeneratorService {
       )
       .orderBy(desc(shelfConcepts.createdAt))
 
-    return rows.map((r) => this.toApiModel(r))
+    if (rows.length === 0) return []
+
+    const conceptIds = rows.map((r) => r.id)
+    const fatigueSvc = new ShelfFatigueService(this.db)
+    const fatigueStates = await fatigueSvc.getFatigueStates(profileId, conceptIds)
+
+    const active = rows.filter((r) => {
+      const fatigue = fatigueStates.get(r.id)
+      if (!fatigue?.cooldownUntil) return true
+      return new Date(fatigue.cooldownUntil) <= now
+    })
+
+    return active.map((r) => this.toApiModel(r))
   }
 
   async needsRefresh(profileId: string): Promise<boolean> {

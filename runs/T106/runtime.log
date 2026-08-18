@@ -1,0 +1,46 @@
+[2026-08-18T12:07:16Z] auto-run start: state=INIT
+[2026-08-18T12:07:17Z] auto-run: running step=planner
+[2026-08-18T12:07:22Z] auto-run: pre-planner rebase onto integration ok
+[2026-08-18T12:07:22Z] prompt: resolved=prompts/generic/planner.md source=generic
+[2026-08-18T12:07:22Z] prompt: generic fallback — injecting runs/T106/ticket.md
+[2026-08-18T12:07:22Z] compose: global-context=docs/ai/global-context.md
+[2026-08-18T12:07:22Z] compose: role=ai/roles/planner.md
+[2026-08-18T12:07:22Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-18T12:07:22Z] compose: skill=ai/skills/architecture-discipline.md
+[2026-08-18T12:07:22Z] compose: skill=ai/skills/documentation.md
+[2026-08-18T12:07:22Z] compose: task (canonical prompt)
+[2026-08-18T12:07:22Z] snapshot: runtime-prompt=runs/T106/prompts/planner-attempt-1.md
+[2026-08-18T12:14:18Z] compose: preferring on-disk runs/T106/plan.md over chatty stdout (agent Write beat meta-report)
+[2026-08-18T12:14:19Z] auto-run: step=planner done rc=0
+[2026-08-18T12:54:39Z] conflict-resolver: [pass 1/3] conflicted=['apps/api/src/db/schema/index.ts', 'apps/api/src/services/interaction-event-service.ts', 'packages/api-contracts/src/interaction-events.ts'] | staged=['apps/api/src/db/schema/index.ts', 'apps/api/src/services/interaction-event-service.ts', 'packages/api-contracts/src/interaction-events.ts'] | unresolved=[] | continue_rc=1 | next_source=[]
+[2026-08-18T12:54:39Z] conflict-resolver: all conflicts resolved after 1 pass(es)
+[2026-08-18T12:54:39Z] conflict-resolver: running tests
+[2026-08-18T12:54:39Z] conflict-resolver: test-report written: runs/T106/conflict/test-report.md
+[2026-08-18T12:54:39Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-18T13:07:51Z] conflict-resolver: git rebase origin/main exit=0
+[2026-08-18T13:07:51Z] conflict-resolver: rebase clean — no conflicts
+[2026-08-18T13:07:51Z] conflict-resolver: running tests
+[2026-08-18T13:07:51Z] conflict-resolver: test-report written: runs/T106/conflict/test-report.md
+[2026-08-18T13:07:51Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-18T13:09:14Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-18T13:09:14Z] auto-run: running step=tester
+[2026-08-18T13:09:15Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-18T13:09:15Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-18T13:09:15Z] prompt: generic fallback — injecting runs/T106/ticket.md
+[2026-08-18T13:09:15Z] compose: global-context=docs/ai/global-context.md
+[2026-08-18T13:09:15Z] compose: role=ai/roles/tester.md
+[2026-08-18T13:09:15Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-18T13:09:15Z] compose: skill=ai/skills/testing.md
+[2026-08-18T13:09:15Z] compose: skill=ai/skills/debugging.md
+[2026-08-18T13:09:15Z] compose: task (canonical prompt)
+[2026-08-18T13:09:15Z] snapshot: runtime-prompt=runs/T106/prompts/tester-attempt-1.md
+[2026-08-18T13:29:45Z] auto-run: step=tester done rc=0
+[2026-08-18T13:29:45Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-18T13:29:45Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-18T13:29:46Z] commit-checkpoint: unstaged runtime garbage: ['runs/T106/daemon.lock', 'runs/T106/runtime.log', 'runs/T106/workflow-status.md']
+[2026-08-18T13:29:46Z] commit-checkpoint: sha=d7b1fa3d files=6 title='test(T106/dashboard,workflow): tester — update 6 file(s)'
+[2026-08-18T13:29:46Z] auto-run: auto-push triggered
+[2026-08-18T13:29:46Z] push: tolerating runtime dirty files (not blocking): ['runs/T106/daemon.lock', 'runs/T106/runtime.log', 'runs/T106/workflow-status.md']
+[2026-08-18T13:29:46Z] push: pushing branch=ticket/T106-persist-shelfconcept-shelfinstance-history-and-ite
+[2026-08-18T13:29:48Z] push: done branch=ticket/T106-persist-shelfconcept-shelfinstance-history-and-ite
+[2026-08-18T13:29:48Z] auto-run: TEST_COMPLETE — running PR lifecycle

@@ -2,6 +2,10 @@ import { createHash } from 'node:crypto'
 import { eq, and, inArray } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import { db } from '../db/client.js'
+import { ShelfInstanceService } from '../services/shelf-instance-service.js'
+import { ShelfPerformanceService } from '../services/shelf-performance-service.js'
+import { ShelfFatigueService } from '../services/shelf-fatigue-service.js'
+import { shelfConcepts } from '../db/schema/index.js'
 import {
   profileTaste,
   movies,
@@ -24,7 +28,9 @@ import { OPENAI_API_KEY, LLM_PLANNER_MODEL } from '../config/env.js'
 import {
   rankHybrid,
   SCORE_MODEL_V1,
+  resolveImplicitShownIds,
 } from '../services/recommendation-ranking-service.js'
+import { EXPOSURE_MEMORY_HOURS } from '../config/env.js'
 import type {
   HybridCandidate,
   TasteSignals,
@@ -423,11 +429,17 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
         ? body.explorationLevel
         : 'exploit'
     const diversityEnabled = body?.diversityEnabled !== false
-    const alreadyShownIds = Array.isArray(body?.alreadyShownIds)
+    const bodyShownIds = Array.isArray(body?.alreadyShownIds)
       ? (body.alreadyShownIds as unknown[])
           .filter((x): x is string => typeof x === 'string')
           .slice(0, 500)
-      : []
+      : null
+    const alreadyShownIds: string[] =
+      bodyShownIds !== null
+        ? bodyShownIds
+        : profileId && useHybridRanking
+          ? await resolveImplicitShownIds(profileId, EXPOSURE_MEMORY_HOURS)
+          : []
     const debugMode = body?.debug === true
 
     const provider = createDefaultProvider(OPENAI_API_KEY)
@@ -594,4 +606,87 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
       ...(debugMode ? { scoreModel: SCORE_MODEL_V1 } : {}),
     })
   })
+
+  // ── Lab: shelf history ──────────────────────────────────────────────────────
+
+  const labInstanceSvc = new ShelfInstanceService(db)
+  const labPerformanceSvc = new ShelfPerformanceService(db)
+  const labFatigueSvc = new ShelfFatigueService(db)
+
+  app.get<{
+    Params: { profileId: string }
+    Querystring: { limit?: string }
+  }>(
+    '/recommendation-lab/profiles/:profileId/shelf-history',
+    async (request, reply) => {
+      const { profileId } = request.params
+      const limit = Math.min(Math.max(Number(request.query.limit ?? 20), 1), 100)
+
+      const instances = await labInstanceSvc.listProfileShelfInstances(profileId, limit)
+      if (instances.length === 0) return reply.send([])
+
+      const conceptIds = [...new Set(instances.map((i) => i.shelfConceptId).filter(Boolean) as string[])]
+
+      const [conceptRows, fatigueMap] = await Promise.all([
+        conceptIds.length > 0
+          ? db.select({ id: shelfConcepts.id, title: shelfConcepts.title })
+              .from(shelfConcepts)
+              .where(inArray(shelfConcepts.id, conceptIds))
+          : Promise.resolve([] as { id: string; title: string }[]),
+        conceptIds.length > 0
+          ? labFatigueSvc.getFatigueStates(profileId, conceptIds)
+          : Promise.resolve(new Map()),
+      ])
+
+      const conceptTitleById = new Map(conceptRows.map((c) => [c.id, c.title]))
+
+      const history = await Promise.all(
+        instances.map(async (inst) => {
+          const perf =
+            inst.shelfConceptId
+              ? await labPerformanceSvc.getConceptPerformance(profileId, inst.shelfConceptId)
+              : null
+
+          return {
+            instanceId: inst.id,
+            conceptId: inst.shelfConceptId,
+            conceptTitle: inst.shelfConceptId ? (conceptTitleById.get(inst.shelfConceptId) ?? null) : null,
+            renderedTitle: inst.title,
+            itemCount: inst.finalItemCount,
+            firstDisplayedAt: inst.firstDisplayedAt,
+            createdAt: inst.createdAt,
+            impressionCount: perf?.impressionCount ?? 0,
+            visibleRate: perf?.visibleRate ?? 0,
+            openRate: perf?.openRate ?? 0,
+            playRate: perf?.playRate ?? 0,
+            fatigueState: inst.shelfConceptId
+              ? (fatigueMap.get(inst.shelfConceptId) ?? null)
+              : null,
+          }
+        }),
+      )
+
+      return reply.send(history)
+    },
+  )
+
+  app.get<{ Params: { id: string } }>(
+    '/recommendation-lab/shelf-instances/:id/trace',
+    async (request, reply) => {
+      const { id } = request.params
+      const instance = await labInstanceSvc.getShelfInstanceWithItems(id)
+      if (!instance) {
+        return reply.status(404).send({ error: 'ShelfInstance not found' })
+      }
+
+      const fatigueAtDisplay =
+        instance.shelfConceptId
+          ? (
+              await labFatigueSvc.getFatigueStates(instance.profileId, [instance.shelfConceptId])
+            ).get(instance.shelfConceptId) ?? null
+          : null
+
+      return reply.send({ instance, fatigueAtDisplay })
+    },
+  )
 }

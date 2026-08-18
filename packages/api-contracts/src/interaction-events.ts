@@ -20,6 +20,7 @@ export type InteractionEventType =
   | 'RATED'
   | 'CONTINUE_WATCHING_DISMISSED'
   | 'REMINDER_ADDED'
+  | 'SHELF_ITEM_VISIBLE'
   // Playback
   | 'PLAY_STARTED'
   | 'PLAY_RESUMED'
@@ -58,6 +59,7 @@ export type InteractionEventBody = {
   positionMs?: number | null
   durationMs?: number | null
   shelfId?: string | null
+  shelfInstanceId?: string | null
   deviceType?: string | null
   sourceId?: string | null
   metadataJson?: Record<string, unknown> | null

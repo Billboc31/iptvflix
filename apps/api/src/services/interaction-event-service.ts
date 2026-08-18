@@ -1,7 +1,12 @@
-import { eq, sql } from 'drizzle-orm'
+import { eq, and, gte, desc } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { profileInteractionEvents } from '../db/schema/index.js'
 import type { InteractionEventBody } from '@iptvflix/api-contracts'
+import { ShelfInstanceService } from './shelf-instance-service.js'
+import { ShelfFatigueService } from './shelf-fatigue-service.js'
+
+const shelfInstanceSvc = new ShelfInstanceService(db)
+const shelfFatigueSvc = new ShelfFatigueService(db)
 
 export const ALLOWED_EVENT_TYPES = new Set([
   // Discovery / browsing
@@ -25,6 +30,7 @@ export const ALLOWED_EVENT_TYPES = new Set([
   'RATED',
   'CONTINUE_WATCHING_DISMISSED',
   'REMINDER_ADDED',
+  'SHELF_ITEM_VISIBLE',
   // Playback
   'PLAY_STARTED',
   'PLAY_RESUMED',
@@ -71,6 +77,7 @@ export async function recordEvent(
   profileId: string,
   event: Omit<InteractionEventBody, 'profileId'>,
 ): Promise<void> {
+  const occurredAt = event.occurredAt ? new Date(event.occurredAt) : new Date()
   const key = event.idempotencyKey ?? null
   if (key) {
     const [existing] = await db
@@ -86,10 +93,11 @@ export async function recordEvent(
     mediaId: event.mediaId ?? null,
     episodeId: event.episodeId ?? null,
     eventType: event.eventType,
-    occurredAt: event.occurredAt ? new Date(event.occurredAt) : new Date(),
+    occurredAt,
     positionMs: event.positionMs ?? null,
     durationMs: event.durationMs ?? null,
     shelfId: event.shelfId ?? null,
+    shelfInstanceId: event.shelfInstanceId ?? null,
     deviceType: event.deviceType ?? null,
     sourceId: event.sourceId ?? null,
     metadataJson: validateMetadata(event.metadataJson),
@@ -109,6 +117,108 @@ export async function recordEvent(
     schemaVersion: event.schemaVersion ?? 1,
     idempotencyKey: key,
   })
+
+  // Non-blocking side-effect dispatch — errors are logged but not thrown
+  dispatchSideEffects(profileId, event, occurredAt).catch((err) => {
+    console.error('[interaction-event] side-effect dispatch error', err)
+  })
+}
+
+async function dispatchSideEffects(
+  profileId: string,
+  event: Omit<InteractionEventBody, 'profileId'>,
+  occurredAt: Date,
+): Promise<void> {
+  const meta = (event.metadataJson ?? {}) as Record<string, unknown>
+  const shelfInstanceId =
+    event.shelfInstanceId ?? (typeof meta.shelfInstanceId === 'string' ? meta.shelfInstanceId : null)
+  const mediaId = event.mediaId ?? null
+  const mediaType = event.mediaType ?? null
+
+  if (event.eventType === 'SHELF_IMPRESSION') {
+    if (!shelfInstanceId) return
+    const shelfConceptId =
+      typeof meta.shelfConceptId === 'string' ? meta.shelfConceptId : null
+
+    await Promise.all([
+      shelfInstanceSvc.markFirstDisplayed(shelfInstanceId, occurredAt),
+      shelfConceptId
+        ? shelfFatigueSvc.recordImpression(profileId, shelfConceptId, false)
+        : Promise.resolve(),
+    ])
+    return
+  }
+
+  if (event.eventType === 'SHELF_ITEM_VISIBLE') {
+    if (!shelfInstanceId || !mediaId || !mediaType) return
+    const shelfConceptId =
+      typeof meta.shelfConceptId === 'string' ? meta.shelfConceptId : null
+
+    await Promise.all([
+      shelfInstanceSvc.markItemVisible(shelfInstanceId, mediaId, mediaType),
+      shelfConceptId
+        ? shelfFatigueSvc.recordImpression(profileId, shelfConceptId, true)
+        : Promise.resolve(),
+    ])
+    return
+  }
+
+  if (event.eventType === 'SHELF_ITEM_OPENED') {
+    if (!shelfInstanceId || !mediaId || !mediaType) return
+    const shelfConceptId =
+      typeof meta.shelfConceptId === 'string' ? meta.shelfConceptId : null
+
+    await Promise.all([
+      shelfInstanceSvc.markItemOpened(shelfInstanceId, mediaId, mediaType, occurredAt),
+      shelfConceptId
+        ? shelfFatigueSvc.recordInteraction(profileId, shelfConceptId)
+        : Promise.resolve(),
+    ])
+    return
+  }
+
+  if (event.eventType === 'PLAY_STARTED') {
+    if (!mediaId || !mediaType) return
+
+    let resolvedShelfInstanceId = shelfInstanceId
+
+    // Attribution fallback: find the most recent SHELF_ITEM_OPENED within 30 minutes
+    if (!resolvedShelfInstanceId) {
+      const thirtyMinutesAgo = new Date(occurredAt.getTime() - 30 * 60 * 1000)
+      const [recentOpen] = await db
+        .select({
+          shelfInstanceId: profileInteractionEvents.shelfInstanceId,
+          metadataJson: profileInteractionEvents.metadataJson,
+        })
+        .from(profileInteractionEvents)
+        .where(
+          and(
+            eq(profileInteractionEvents.profileId, profileId),
+            eq(profileInteractionEvents.mediaId, mediaId),
+            eq(profileInteractionEvents.eventType, 'SHELF_ITEM_OPENED'),
+            gte(profileInteractionEvents.occurredAt, thirtyMinutesAgo),
+          ),
+        )
+        .orderBy(desc(profileInteractionEvents.occurredAt))
+        .limit(1)
+
+      if (recentOpen) {
+        const openMeta = (recentOpen.metadataJson ?? {}) as Record<string, unknown>
+        resolvedShelfInstanceId =
+          recentOpen.shelfInstanceId ??
+          (typeof openMeta.shelfInstanceId === 'string' ? openMeta.shelfInstanceId : null)
+      }
+    }
+
+    if (resolvedShelfInstanceId) {
+      await shelfInstanceSvc.markItemPlayed(
+        resolvedShelfInstanceId,
+        mediaId,
+        mediaType,
+        occurredAt,
+      )
+    }
+  }
 }
 
 export async function recordEventBatch(
