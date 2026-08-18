@@ -513,7 +513,7 @@ describe('Vertical slice integration — source config → sync → catalog quer
     const ep1WithProfile = profileEpList.find((e) => e.id === ep1Id)
     const ep2WithProfile = profileEpList.find((e) => e.id === ep2!.id)
     expect(ep1WithProfile?.watchState).toBe('in_progress')
-    expect(ep2WithProfile?.watchState).toBe('not_started')
+    expect(ep2WithProfile?.watchState).toBe('unwatched')
   })
 
   it('sync error — MSW returns 500, sync run records FAILED status', async () => {

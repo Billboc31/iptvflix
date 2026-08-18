@@ -1,7 +1,7 @@
 {
   "ticket_id": "T109",
-  "state": "IMPLEMENTATION_FIX_REQUIRED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T109-fix-series-episode-level-source-selection-and-play",
   "issue_number": 230,
-  "updated_at": "2026-08-18T17:26:52Z"
+  "updated_at": "2026-08-18T17:28:45Z"
 }
