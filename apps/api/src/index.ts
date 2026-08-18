@@ -45,6 +45,7 @@ import { catalogStatsRoutes } from './routes/catalog-stats.js'
 import { embeddingBackfillRoutes } from './routes/embedding-backfill.js'
 import { recommendationLabRoutes } from './routes/recommendation-lab.js'
 import { shelfConceptsRoutes } from './routes/shelf-concepts.js'
+import { shelfInstancesRoutes } from './routes/shelf-instances.js'
 import { failRunningJobsRoutes } from './routes/fail-running-jobs.js'
 import { episodeSegmentsRoutes } from './routes/episodes.js'
 import { segmentAdminRoutes } from './routes/segment-admin.js'
@@ -219,6 +220,7 @@ await app.register(async function protectedScope(protectedApp) {
   await protectedApp.register(embeddingBackfillRoutes)
   await protectedApp.register(recommendationLabRoutes)
   await protectedApp.register(shelfConceptsRoutes)
+  await protectedApp.register(shelfInstancesRoutes)
   await protectedApp.register(segmentAdminRoutes)
   await protectedApp.register(adminRoutes)
 

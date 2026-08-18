@@ -1,4 +1,4 @@
-import { eq, gt, and } from 'drizzle-orm'
+import { eq, gt, and, gte } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import {
   profiles,
@@ -11,6 +11,7 @@ import {
   seriesAvailabilities,
   viewingProgress,
   discoveryCandidate,
+  profileMediaExposure,
 } from '../db/schema/index.js'
 import type { RecommendationsResponse, RecommendationCandidate, ScoreBreakdown, RecommendationQueryPlan } from '@iptvflix/api-contracts'
 import { NotFoundError } from '../errors.js'
@@ -687,4 +688,23 @@ export function rankHybrid(
   }
 
   return scored.slice(0, clampedLimit)
+}
+
+// ─── exposure memory helper ───────────────────────────────────────────────────
+
+export async function resolveImplicitShownIds(
+  profileId: string,
+  hoursBack: number,
+): Promise<string[]> {
+  const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000)
+  const rows = await db
+    .select({ mediaId: profileMediaExposure.mediaId })
+    .from(profileMediaExposure)
+    .where(
+      and(
+        eq(profileMediaExposure.profileId, profileId),
+        gte(profileMediaExposure.lastExposedAt, since),
+      ),
+    )
+  return rows.map((r) => r.mediaId)
 }

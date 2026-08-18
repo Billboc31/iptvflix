@@ -16,6 +16,7 @@ export const profileInteractionEvents = pgTable(
     positionMs: integer('position_ms'),
     durationMs: integer('duration_ms'),
     shelfId: uuid('shelf_id'),
+    shelfInstanceId: uuid('shelf_instance_id'),
     deviceType: text('device_type'),
     sourceId: uuid('source_id'),
     metadataJson: jsonb('metadata_json'),
