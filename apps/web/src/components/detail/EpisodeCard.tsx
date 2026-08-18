@@ -96,9 +96,13 @@ export default function EpisodeCard({ episode, devices = [], progressMs = 0, ser
                   navigate(`/player/episode/${episode.id}${qs ? `?${qs}` : ''}`)
                 }}
                 className="inline-flex items-center min-h-[44px] text-[#e50914] hover:text-[#e50914]/80 font-medium transition-colors"
-                aria-label={`Lire l'épisode ${episode.episodeNumber}`}
+                aria-label={
+                  progressMs > 30_000
+                    ? `Reprendre l'épisode ${episode.episodeNumber}`
+                    : `Lire l'épisode ${episode.episodeNumber}`
+                }
               >
-                ▶ Lire
+                ▶ {progressMs > 30_000 ? 'Reprendre' : 'Lire'}
               </button>
               {devices.length > 0 && (
                 <button

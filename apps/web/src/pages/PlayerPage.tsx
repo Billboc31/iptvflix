@@ -85,6 +85,9 @@ export default function PlayerPage() {
 
   const startPositionRef = useRef<number>(0)
   startPositionRef.current = startPositionSeconds
+  const skipResumeDialogRef = useRef(skipResumeDialog)
+  skipResumeDialogRef.current = skipResumeDialog
+  const resumeHandledRef = useRef(false)
 
   useEffect(() => {
     if (status === 'loading') {
@@ -510,32 +513,39 @@ export default function PlayerPage() {
     return () => video.removeEventListener('error', onError)
   }, [gatewayUrl, deliveryMode])
 
-  // Resume dialog and seek-to-saved-position on metadata ready
+  // Resume dialog and seek-to-saved-position on metadata ready.
+  // If loadedmetadata already fired (HLS), still decide using readyState / probe duration.
   useEffect(() => {
+    resumeHandledRef.current = false
     const video = videoRef.current
-    if (!video) return
-    function onMetadata() {
-      if (!video) return
-      // Prefer probe-based stable duration; fall back to what the video element reports
-      const dur = stableDurationRef.current ?? (isFinite(video.duration) ? video.duration : 0)
-      if (
-        !skipResumeDialog &&
-        startPositionSeconds > RESUME_THRESHOLD_START_S &&
-        isFinite(dur) && dur > 0 &&
-        startPositionSeconds < dur - RESUME_THRESHOLD_END_S
-      ) {
+    if (!video || status !== 'ready') return
+
+    function decide() {
+      if (!video || resumeHandledRef.current) return
+      const start = startPositionRef.current
+      const skip = skipResumeDialogRef.current
+      const dur = stableDurationRef.current ?? (Number.isFinite(video.duration) ? video.duration : 0)
+      const nearEnd = Number.isFinite(dur) && dur > 0 && start >= dur - RESUME_THRESHOLD_END_S
+      const shouldAsk = !skip && start > RESUME_THRESHOLD_START_S && !nearEnd
+
+      if (shouldAsk) {
+        resumeHandledRef.current = true
         video.pause()
         setShowResumeDialog(true)
-      } else {
-        if (startPositionSeconds > 0) {
-          video.currentTime = startPositionSeconds
-        }
+        return
+      }
+
+      if (skip || start === 0 || (Number.isFinite(dur) && dur > 0) || video.readyState >= 1) {
+        resumeHandledRef.current = true
+        if (start > 0 && !nearEnd) video.currentTime = start
         void video.play()?.catch(() => undefined)
       }
     }
-    video.addEventListener('loadedmetadata', onMetadata)
-    return () => video.removeEventListener('loadedmetadata', onMetadata)
-  }, [startPositionSeconds, skipResumeDialog])
+
+    video.addEventListener('loadedmetadata', decide)
+    if (video.readyState >= 1) decide()
+    return () => video.removeEventListener('loadedmetadata', decide)
+  }, [startPositionSeconds, skipResumeDialog, status, mediaId])
 
   function handleResumeConfirm() {
     const video = videoRef.current

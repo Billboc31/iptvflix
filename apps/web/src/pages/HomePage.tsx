@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import HeroSection from '../components/content/HeroSection.js'
 import ShelfRow from '../components/content/ShelfRow.js'
 import GenerateShelfDialog from '../components/content/GenerateShelfDialog.js'
+import ContinueWatchingRow from '../components/content/ContinueWatchingRow.js'
 import ArrivalCard from '../components/content/ArrivalCard.js'
 import HorizontalRow from '../components/content/HorizontalRow.js'
 import EmptyState from '../components/ui/EmptyState.js'
@@ -68,19 +69,23 @@ export default function HomePage() {
     return () => observer.disconnect()
   }, [hasMore, loadMore])
 
+  const recShelves = allShelves.filter((shelf) => shelf.id !== 'sys_continue_watching')
   const isLoading = moviesLoading || homeLoading
-  const hasContent = (movies?.items.length ?? 0) > 0 || allShelves.length > 0
+  const hasContent = (movies?.items.length ?? 0) > 0 || recShelves.length > 0
 
   if (!isLoading && !hasContent) {
     return (
-      <EmptyState
-        icon="📡"
-        heading="Aucun contenu disponible"
-        description="Ajoutez une source IPTV pour commencer à explorer votre catalogue."
-        action={
-          <Button onClick={() => navigate('/sources')}>Ajouter une source</Button>
-        }
-      />
+      <div>
+        <ContinueWatchingRow />
+        <EmptyState
+          icon="📡"
+          heading="Aucun contenu disponible"
+          description="Ajoutez une source IPTV pour commencer à explorer votre catalogue."
+          action={
+            <Button onClick={() => navigate('/sources')}>Ajouter une source</Button>
+          }
+        />
+      </div>
     )
   }
 
@@ -109,6 +114,8 @@ export default function HomePage() {
 
       {isLoading && <Spinner />}
 
+      <ContinueWatchingRow />
+
       {/* New arrivals shelf */}
       {arrivals.length > 0 && (
         <div className="px-8 mt-8">
@@ -125,7 +132,7 @@ export default function HomePage() {
       )}
 
       {/* Shelf rows */}
-      {!homeLoading && homeError && allShelves.length === 0 && (
+      {!homeLoading && homeError && recShelves.length === 0 && (
         <ErrorState
           message="Impossible de charger les recommandations. Le catalogue reste disponible via Films."
           onRetry={() => window.location.reload()}
@@ -138,7 +145,7 @@ export default function HomePage() {
               + Créer une sélection
             </Button>
           </div>
-          {allShelves.map((shelf) => (
+          {recShelves.map((shelf) => (
             <ShelfRow key={shelf.id} shelf={shelf} />
           ))}
         </>
@@ -157,7 +164,7 @@ export default function HomePage() {
       {hasMore && !isFetchingMore && <div ref={sentinelRef} aria-hidden="true" />}
 
       {/* End-of-feed indicator */}
-      {!hasMore && allShelves.length > 0 && (
+      {!hasMore && recShelves.length > 0 && (
         <p className="text-center text-sm text-gray-600 py-8">— Fin des recommandations —</p>
       )}
 

@@ -158,7 +158,7 @@ describe('MovieDetailPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: MOCK_MOVIE.title })).toBeInTheDocument()
     })
-    expect(screen.getByRole('button', { name: /lecture/i })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: /reprendre/i })).not.toBeDisabled()
   })
 
   it('play button is disabled and labelled "Non disponible" when movie is UNAVAILABLE', async () => {

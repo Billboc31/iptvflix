@@ -56,15 +56,19 @@ export async function upsertProgress(
 
   // Clear dismissal when the item reaches meaningful progress (≥5%), allowing re-entry into CW.
   if (progressSeconds >= durationSeconds * 0.05) {
-    await db
-      .delete(continueWatchingDismissals)
-      .where(
-        and(
-          eq(continueWatchingDismissals.profileId, profileId),
-          eq(continueWatchingDismissals.mediaType, mediaType),
-          eq(continueWatchingDismissals.mediaId, mediaId),
-        ),
-      )
+    try {
+      await db
+        .delete(continueWatchingDismissals)
+        .where(
+          and(
+            eq(continueWatchingDismissals.profileId, profileId),
+            eq(continueWatchingDismissals.mediaType, mediaType),
+            eq(continueWatchingDismissals.mediaId, mediaId),
+          ),
+        )
+    } catch (err) {
+      console.error('[continue-watching] could not clear dismissal (table may be missing):', err)
+    }
   }
 
   return toRow(row)
@@ -85,35 +89,54 @@ export async function dismissContinueWatching(
 }
 
 export async function listContinueWatching(profileId: string): Promise<ContinueWatchingItem[]> {
-  const rows = await db
-    .select({
-      id: viewingProgress.id,
-      profileId: viewingProgress.profileId,
-      mediaType: viewingProgress.mediaType,
-      mediaId: viewingProgress.mediaId,
-      progressSeconds: viewingProgress.progressSeconds,
-      durationSeconds: viewingProgress.durationSeconds,
-      lastWatchedAt: viewingProgress.lastWatchedAt,
-      updatedAt: viewingProgress.updatedAt,
-    })
-    .from(viewingProgress)
-    .leftJoin(
-      continueWatchingDismissals,
-      and(
-        eq(continueWatchingDismissals.profileId, viewingProgress.profileId),
-        eq(continueWatchingDismissals.mediaType, viewingProgress.mediaType),
-        eq(continueWatchingDismissals.mediaId, viewingProgress.mediaId),
-      ),
-    )
-    .where(
-      and(
-        eq(viewingProgress.profileId, profileId),
-        sql`${viewingProgress.progressSeconds} >= ${viewingProgress.durationSeconds} * 0.05`,
-        sql`${viewingProgress.progressSeconds} < ${viewingProgress.durationSeconds} * 0.90`,
-        isNull(continueWatchingDismissals.id),
-      ),
-    )
-    .orderBy(desc(viewingProgress.lastWatchedAt))
+  const progressSelect = {
+    id: viewingProgress.id,
+    profileId: viewingProgress.profileId,
+    mediaType: viewingProgress.mediaType,
+    mediaId: viewingProgress.mediaId,
+    progressSeconds: viewingProgress.progressSeconds,
+    durationSeconds: viewingProgress.durationSeconds,
+    lastWatchedAt: viewingProgress.lastWatchedAt,
+    updatedAt: viewingProgress.updatedAt,
+  }
+  const inProgress = and(
+    eq(viewingProgress.profileId, profileId),
+    sql`${viewingProgress.progressSeconds} >= ${viewingProgress.durationSeconds} * 0.05`,
+    sql`${viewingProgress.progressSeconds} < ${viewingProgress.durationSeconds} * 0.90`,
+  )
+
+  let rows: Array<{
+    id: string
+    profileId: string
+    mediaType: string
+    mediaId: string
+    progressSeconds: number
+    durationSeconds: number
+    lastWatchedAt: Date
+    updatedAt: Date
+  }>
+  try {
+    rows = await db
+      .select(progressSelect)
+      .from(viewingProgress)
+      .leftJoin(
+        continueWatchingDismissals,
+        and(
+          eq(continueWatchingDismissals.profileId, viewingProgress.profileId),
+          eq(continueWatchingDismissals.mediaType, viewingProgress.mediaType),
+          eq(continueWatchingDismissals.mediaId, viewingProgress.mediaId),
+        ),
+      )
+      .where(and(inProgress, isNull(continueWatchingDismissals.id)))
+      .orderBy(desc(viewingProgress.lastWatchedAt))
+  } catch (err) {
+    console.error('[continue-watching] dismissals join failed, listing without dismissals:', err)
+    rows = await db
+      .select(progressSelect)
+      .from(viewingProgress)
+      .where(inProgress)
+      .orderBy(desc(viewingProgress.lastWatchedAt))
+  }
 
   if (rows.length === 0) return []
 

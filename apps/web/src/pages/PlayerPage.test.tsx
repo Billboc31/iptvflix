@@ -4,7 +4,7 @@
  * What IS tested here:
  *   - Regression: HLS.js loadSource is called with the correct gateway URL (smoke test for the working playback path).
  *   - Resume dialog is shown when startPositionSeconds > 30 for movies and episodes.
- *   - Resume dialog is NOT shown when startPositionSeconds is 0, below threshold (≤30 s), or near end (within 60 s of duration).
+ *   - Resume dialog is NOT shown when startPositionSeconds is 0, below threshold (≤30 s), near end (within 60 s of duration), or when opened with ?source=continue_watching.
  *   - Escape key closes the dialog without starting playback.
  *   - "Reprendre" and "Recommencer" buttons dismiss the dialog.
  *   - Episode dialog heading uses episodeLabel from useEpisodeNavigation.
@@ -130,6 +130,23 @@ describe('PlayerPage', () => {
     renderPlayerPage()
     // Wait for playback to resolve
     await waitFor(() => expect(mockLoadSource).toHaveBeenCalled())
+    expect(screen.queryByText('Recommencer')).not.toBeInTheDocument()
+  })
+
+  it('does not show resume dialog when opened from the continue-watching row', async () => {
+    server.use(
+      http.post('/api/playback/resolve/:mediaType/:mediaId', () =>
+        HttpResponse.json({ ...BASE_PLAYBACK, startPositionSeconds: 600 }),
+      ),
+    )
+    renderPlayerPage('movie', 'movie-1', '?source=continue_watching')
+
+    await waitFor(() => expect(mockLoadSource).toHaveBeenCalled())
+
+    const video = document.querySelector('video') as HTMLVideoElement
+    Object.defineProperty(video, 'duration', { get: () => 7200, configurable: true })
+    video.dispatchEvent(new Event('loadedmetadata'))
+
     expect(screen.queryByText('Recommencer')).not.toBeInTheDocument()
   })
 

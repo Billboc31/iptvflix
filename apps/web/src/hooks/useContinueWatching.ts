@@ -21,13 +21,21 @@ export function useContinueWatching(): UseContinueWatchingResult {
   const [dismissErrorFor, setDismissErrorFor] = useState<string | null>(null)
 
   useEffect(() => {
-    setItems([])
-    setLoading(true)
+    let cancelled = false
     setError(null)
     fetchContinueWatching()
-      .then(setItems)
-      .catch((e: Error) => setError(e))
-      .finally(() => setLoading(false))
+      .then((next) => {
+        if (!cancelled) setItems(next)
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setError(e)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [profileVersion])
 
   async function dismissItem(mediaType: ProgressMediaType, mediaId: string): Promise<void> {

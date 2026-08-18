@@ -27,6 +27,11 @@ describe('MediaActions', () => {
     expect(btn).not.toBeDisabled()
   })
 
+  it('uses playLabel when provided', () => {
+    renderActions({ playRoute: '/player/movie/movie-1', playLabel: 'Reprendre' })
+    expect(screen.getByRole('button', { name: /reprendre/i })).toBeInTheDocument()
+  })
+
   it('shows disabled "Non disponible" button when sources are empty', () => {
     renderActions({ playRoute: '/player/movie/movie-1', availabilityStatus: 'UNAVAILABLE' })
     const btn = screen.getByRole('button', { name: /non disponible/i })

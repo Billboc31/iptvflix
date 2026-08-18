@@ -200,6 +200,7 @@ export default function MovieDetailPage() {
               mediaId={movie.id}
               availabilityStatus={movie.availabilityStatus}
               playRoute={playRoute}
+              playLabel={progressMs > 30_000 ? 'Reprendre' : 'Lecture'}
               onPlayOnTv={() => setPickerOpen(true)}
               showPlayOnTv={devices.length > 0}
             />

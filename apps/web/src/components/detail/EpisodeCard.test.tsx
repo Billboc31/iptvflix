@@ -51,6 +51,15 @@ describe('EpisodeCard', () => {
     expect(screen.getByRole('button', { name: /lire l'épisode 1/i })).toBeInTheDocument()
   })
 
+  it('labels play as Reprendre when progress is past 30 seconds', () => {
+    render(
+      <MemoryRouter>
+        <EpisodeCard episode={BASE_EPISODE} progressMs={45_000} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('button', { name: /reprendre l'épisode 1/i })).toBeInTheDocument()
+  })
+
   it('does not show play button when episode is unavailable', () => {
     renderCard({ ...BASE_EPISODE, availabilityStatus: 'UNAVAILABLE', availabilityCount: 0 })
     expect(screen.queryByRole('button', { name: /lire l'épisode/i })).not.toBeInTheDocument()

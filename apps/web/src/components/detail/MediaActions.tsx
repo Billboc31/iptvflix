@@ -10,6 +10,7 @@ type Props = {
   availabilityStatus: 'AVAILABLE' | 'UNAVAILABLE'
   /** Full route to navigate to on play. If absent, no play button is rendered. */
   playRoute?: string | null
+  playLabel?: string
   onPlayOnTv?: () => void
   showPlayOnTv?: boolean
 }
@@ -19,6 +20,7 @@ export default function MediaActions({
   mediaId,
   availabilityStatus,
   playRoute,
+  playLabel = 'Lecture',
   onPlayOnTv,
   showPlayOnTv,
 }: Props) {
@@ -36,9 +38,9 @@ export default function MediaActions({
           <Button
             className="min-h-[44px]"
             onClick={() => navigate(playRoute)}
-            aria-label="Lecture"
+            aria-label={playLabel}
           >
-            ▶ Lecture
+            ▶ {playLabel}
           </Button>
         ) : (
           <Button className="min-h-[44px]" disabled aria-label="Non disponible">

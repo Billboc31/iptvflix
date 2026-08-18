@@ -284,6 +284,43 @@ describe('GET /continue-watching', () => {
     expect(body[0].title).toBe('Test Movie')
   })
 
+  it('falls back to listing without dismissals when the join fails', async () => {
+    const row = makeProgressRow(60, 120, new Date('2024-01-01T10:00:00Z'))
+    mockDb.select
+      .mockImplementationOnce(() => {
+        throw new Error('relation "continue_watching_dismissals" does not exist')
+      })
+      .mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            orderBy: vi.fn().mockResolvedValue([row]),
+          }),
+        }),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([mockMovieMeta]),
+        }),
+      })
+
+    const res = await app.inject({ method: 'GET', url: '/continue-watching' })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toHaveLength(1)
+    expect(res.json()[0].mediaId).toBe(MOVIE_ID)
+  })
+
+  it('returns an empty list when continue-watching cannot be loaded', async () => {
+    mockDb.select.mockImplementation(() => {
+      throw new Error('database unavailable')
+    })
+
+    const res = await app.inject({ method: 'GET', url: '/continue-watching' })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual([])
+  })
+
   it('returns null fields for MOVIE items (no episode fields)', async () => {
     const row = makeProgressRow(60, 120, new Date('2024-01-01T10:00:00Z'))
     setupContinueWatchingSelect([row])

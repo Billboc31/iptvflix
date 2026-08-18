@@ -40,7 +40,12 @@ export async function viewingProgressRoutes(app: FastifyInstance): Promise<void>
   )
 
   app.get('/continue-watching', async (request) => {
-    return listContinueWatching(request.profileId!)
+    try {
+      return await listContinueWatching(request.profileId!)
+    } catch (err) {
+      console.error('[continue-watching] list failed:', err)
+      return []
+    }
   })
 
   app.delete<{ Params: { mediaType: string; mediaId: string } }>(
