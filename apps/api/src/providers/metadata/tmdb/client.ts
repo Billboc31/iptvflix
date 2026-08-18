@@ -467,6 +467,8 @@ export class TmdbClient implements MetadataProvider {
       popular: '/movie/popular',
       trending: '/trending/movie/week',
       upcoming: '/movie/upcoming',
+      now_playing: '/movie/now_playing',
+      airing_today: '/tv/airing_today',
     }
     const params = new URLSearchParams({ page: String(page) })
     const response = await this.fetchWithRetry(`${BASE_URL}${paths[feed]}?${params}`)
@@ -484,6 +486,7 @@ export class TmdbClient implements MetadataProvider {
         releaseDate: item.release_date || null,
         popularity: item.popularity ?? null,
         voteAverage: item.vote_average ?? null,
+        voteCount: item.vote_count ?? null,
       }))
     } catch (err) {
       if (err instanceof TmdbNetworkError) throw err
@@ -496,6 +499,8 @@ export class TmdbClient implements MetadataProvider {
       popular: '/tv/popular',
       trending: '/trending/tv/week',
       upcoming: '/tv/on_the_air',
+      airing_today: '/tv/airing_today',
+      now_playing: '/movie/now_playing',
     }
     const params = new URLSearchParams({ page: String(page) })
     const response = await this.fetchWithRetry(`${BASE_URL}${paths[feed]}?${params}`)
@@ -513,6 +518,7 @@ export class TmdbClient implements MetadataProvider {
         firstAirDate: item.first_air_date || null,
         popularity: item.popularity ?? null,
         voteAverage: item.vote_average ?? null,
+        voteCount: item.vote_count ?? null,
       }))
     } catch (err) {
       if (err instanceof TmdbNetworkError) throw err
@@ -537,6 +543,7 @@ export class TmdbClient implements MetadataProvider {
         releaseDate: item.release_date || null,
         popularity: item.popularity ?? null,
         voteAverage: item.vote_average ?? null,
+        voteCount: item.vote_count ?? null,
       }))
     } catch (err) {
       if (err instanceof TmdbNetworkError) throw err
@@ -561,6 +568,7 @@ export class TmdbClient implements MetadataProvider {
         firstAirDate: item.first_air_date || null,
         popularity: item.popularity ?? null,
         voteAverage: item.vote_average ?? null,
+        voteCount: item.vote_count ?? null,
       }))
     } catch (err) {
       if (err instanceof TmdbNetworkError) throw err
@@ -587,6 +595,7 @@ export class TmdbClient implements MetadataProvider {
         releaseDate: item.release_date || null,
         popularity: item.popularity ?? null,
         voteAverage: item.vote_average ?? null,
+        voteCount: item.vote_count ?? null,
       }))
     } catch (err) {
       if (err instanceof TmdbNetworkError) throw err
@@ -613,6 +622,7 @@ export class TmdbClient implements MetadataProvider {
         firstAirDate: item.first_air_date || null,
         popularity: item.popularity ?? null,
         voteAverage: item.vote_average ?? null,
+        voteCount: item.vote_count ?? null,
       }))
     } catch (err) {
       if (err instanceof TmdbNetworkError) throw err

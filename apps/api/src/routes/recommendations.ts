@@ -1,6 +1,9 @@
 import type { FastifyInstance } from 'fastify'
 import { rankRecommendations } from '../services/recommendation-ranking-service.js'
+import type { AvailabilityPolicy } from '../services/recommendation-ranking-service.js'
 import { NotFoundError } from '../errors.js'
+
+const VALID_POLICIES = new Set<string>(['ALL', 'WATCH_NOW', 'DISCOVERY', 'UPCOMING'])
 
 export async function recommendationRoutes(app: FastifyInstance): Promise<void> {
   app.get<{
@@ -8,15 +11,20 @@ export async function recommendationRoutes(app: FastifyInstance): Promise<void> 
     Querystring: {
       mediaType?: string
       availableToMe?: string
+      policy?: string
       includeSeen?: string
       limit?: string
     }
   }>('/profiles/:profileId/recommendations', async (request, reply) => {
     const { profileId } = request.params
-    const { mediaType, availableToMe, includeSeen, limit } = request.query
+    const { mediaType, availableToMe, policy, includeSeen, limit } = request.query
 
     if (mediaType !== undefined && mediaType !== 'MOVIE' && mediaType !== 'SERIES') {
       return reply.status(400).send({ error: 'mediaType must be MOVIE or SERIES' })
+    }
+
+    if (policy !== undefined && !VALID_POLICIES.has(policy)) {
+      return reply.status(400).send({ error: 'policy must be ALL, WATCH_NOW, DISCOVERY, or UPCOMING' })
     }
 
     const limitNum = limit !== undefined ? parseInt(limit, 10) : undefined
@@ -28,6 +36,7 @@ export async function recommendationRoutes(app: FastifyInstance): Promise<void> 
       const result = await rankRecommendations(profileId, {
         mediaType: mediaType as 'MOVIE' | 'SERIES' | undefined,
         availableToMe: availableToMe === 'true',
+        availabilityPolicy: policy as AvailabilityPolicy | undefined,
         includeSeen: includeSeen === 'true',
         limit: limitNum,
       })

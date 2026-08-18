@@ -96,7 +96,7 @@ export interface ExternalSeasonEpisode {
   voteCount?: number | null
 }
 
-export type DiscoveryFeed = 'popular' | 'trending' | 'upcoming'
+export type DiscoveryFeed = 'popular' | 'trending' | 'upcoming' | 'now_playing' | 'airing_today'
 
 export type DiscoverParams = { genreId?: number; language?: string }
 
@@ -112,6 +112,7 @@ export interface MetadataCandidate {
   firstAirDate?: string | null
   popularity?: number | null
   voteAverage?: number | null
+  voteCount?: number | null
 }
 
 export interface MetadataProvider {

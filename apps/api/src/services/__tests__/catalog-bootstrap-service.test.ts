@@ -1,13 +1,16 @@
 import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('../../config/env.js', () => ({
-  CATALOG_BOOTSTRAP_MAX_PAGES_PER_FEED: 20,
+  CATALOG_BOOTSTRAP_MAX_PAGES_PER_FEED: 50,
   CATALOG_BOOTSTRAP_MAX_PAGES_TOP_RATED: 20,
-  CATALOG_BOOTSTRAP_MAX_PAGES_PER_GENRE: 10,
+  CATALOG_BOOTSTRAP_MAX_PAGES_PER_GENRE: 20,
   CATALOG_BOOTSTRAP_MAX_PAGES_FRENCH: 10,
+  CATALOG_BOOTSTRAP_MAX_PAGES_NOW_PLAYING: 10,
   CATALOG_BOOTSTRAP_GENRE_IDS_MOVIE: [28, 35, 18, 27, 878, 12, 14, 10749],
   CATALOG_BOOTSTRAP_GENRE_IDS_TV: [18, 35, 10765, 10759, 80, 9648],
   CATALOG_BOOTSTRAP_HIERARCHY_PRIORITY_COUNT: 200,
+  CATALOG_BOOTSTRAP_QUALITY_MIN_VOTE_COUNT: 50,
+  CATALOG_BOOTSTRAP_QUALITY_MIN_POPULARITY: 5.0,
 }))
 
 import { CatalogBootstrapService } from '../catalog-bootstrap-service.js'
@@ -18,27 +21,48 @@ const config: BootstrapConfig = {
   maxPagesTopRated: 15,
   maxPagesPerGenre: 10,
   maxPagesFrench: 8,
+  maxPagesNowPlaying: 10,
   movieGenreIds: [28, 35],
   tvGenreIds: [18, 10765],
   hierarchyPriorityCount: 200,
+  qualityMinVoteCount: 50,
+  qualityMinPopularity: 5.0,
 }
 
 import type { MetadataEnrichmentService } from '../metadata-enrichment-service.js'
 
 describe('CatalogBootstrapService.buildSteps', () => {
-  it('includes all movie feed steps in order', () => {
+  it('includes all movie feed steps in order including now_playing', () => {
     const steps = CatalogBootstrapService.buildSteps(config)
     const movieFeeds = steps.filter((s) => s.kind === 'feed' && s.mediaType === 'MOVIE')
     const feedNames = movieFeeds.map((s) => (s.kind === 'feed' ? s.feed : ''))
-    expect(feedNames).toEqual(['popular', 'trending', 'upcoming', 'top_rated'])
+    expect(feedNames).toEqual(['popular', 'trending', 'upcoming', 'now_playing', 'top_rated'])
   })
 
-  it('includes series feed steps', () => {
+  it('includes series feed steps including airing_today', () => {
     const steps = CatalogBootstrapService.buildSteps(config)
     const seriesFeeds = steps.filter((s) => s.kind === 'feed' && s.mediaType === 'SERIES')
     const feedNames = seriesFeeds.map((s) => (s.kind === 'feed' ? s.feed : ''))
     expect(feedNames).toContain('popular')
+    expect(feedNames).toContain('trending')
+    expect(feedNames).toContain('airing_today')
     expect(feedNames).toContain('top_rated')
+  })
+
+  it('now_playing movie feed uses maxPagesNowPlaying', () => {
+    const steps = CatalogBootstrapService.buildSteps(config)
+    const nowPlayingStep = steps.find(
+      (s) => s.kind === 'feed' && s.mediaType === 'MOVIE' && s.feed === 'now_playing',
+    )
+    expect(nowPlayingStep?.maxPages).toBe(config.maxPagesNowPlaying)
+  })
+
+  it('airing_today series feed uses maxPagesNowPlaying', () => {
+    const steps = CatalogBootstrapService.buildSteps(config)
+    const airingTodayStep = steps.find(
+      (s) => s.kind === 'feed' && s.mediaType === 'SERIES' && s.feed === 'airing_today',
+    )
+    expect(airingTodayStep?.maxPages).toBe(config.maxPagesNowPlaying)
   })
 
   it('includes genre steps for movies and series', () => {
@@ -88,6 +112,14 @@ describe('CatalogBootstrapService — hierarchyPriorityCount config', () => {
   it('includes hierarchyPriorityCount in BootstrapConfig', () => {
     const customConfig: BootstrapConfig = { ...config, hierarchyPriorityCount: 50 }
     expect(customConfig.hierarchyPriorityCount).toBe(50)
+  })
+})
+
+describe('CatalogBootstrapService — quality floor config', () => {
+  it('BootstrapConfig includes qualityMinVoteCount and qualityMinPopularity', () => {
+    const customConfig: BootstrapConfig = { ...config, qualityMinVoteCount: 100, qualityMinPopularity: 10.0 }
+    expect(customConfig.qualityMinVoteCount).toBe(100)
+    expect(customConfig.qualityMinPopularity).toBe(10.0)
   })
 })
 

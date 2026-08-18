@@ -15,9 +15,12 @@ import {
 import type { RecommendationsResponse, RecommendationCandidate } from '@iptvflix/api-contracts'
 import { NotFoundError } from '../errors.js'
 
+export type AvailabilityPolicy = 'ALL' | 'WATCH_NOW' | 'DISCOVERY' | 'UPCOMING'
+
 type RankOpts = {
   mediaType?: 'MOVIE' | 'SERIES'
   availableToMe?: boolean
+  availabilityPolicy?: AvailabilityPolicy
   includeSeen?: boolean
   limit?: number
   positiveMediaIds?: string[]
@@ -34,13 +37,14 @@ type InternalCandidate = {
   genreIds: string[]
   popularity: number | null
   voteAverage: number | null
+  status: string | null
 }
 
 export async function rankRecommendations(
   profileId: string,
   opts: RankOpts = {},
 ): Promise<RecommendationsResponse> {
-  const { availableToMe = false, includeSeen = false, limit = 20 } = opts
+  const { availableToMe = false, availabilityPolicy, includeSeen = false, limit = 20 } = opts
   const clampedLimit = Math.min(Math.max(limit, 1), 100)
 
   const [
@@ -57,8 +61,8 @@ export async function rankRecommendations(
   ] = await Promise.all([
     db.select({ id: profiles.id }).from(profiles).where(eq(profiles.id, profileId)),
     db.select().from(profileTaste).where(eq(profileTaste.profileId, profileId)),
-    db.select({ id: movies.id, title: movies.title, year: movies.year, posterPath: movies.posterPath }).from(movies),
-    db.select({ id: seriesTbl.id, title: seriesTbl.title, year: seriesTbl.firstAirYear, posterPath: seriesTbl.posterPath }).from(seriesTbl),
+    db.select({ id: movies.id, title: movies.title, year: movies.year, posterPath: movies.posterPath, status: movies.status }).from(movies),
+    db.select({ id: seriesTbl.id, title: seriesTbl.title, year: seriesTbl.firstAirYear, posterPath: seriesTbl.posterPath, status: seriesTbl.status }).from(seriesTbl),
     db.select({ movieId: movieGenres.movieId, genreId: movieGenres.genreId }).from(movieGenres),
     db.select({ seriesId: seriesGenres.seriesId, genreId: seriesGenres.genreId }).from(seriesGenres),
     db.select().from(discoveryCandidate).where(gt(discoveryCandidate.expiresAt, new Date())),
@@ -126,6 +130,7 @@ export async function rankRecommendations(
         genreIds: movieGenreMap.get(m.id) ?? [],
         popularity: null,
         voteAverage: null,
+        status: m.status ?? null,
       })
     }
   }
@@ -143,6 +148,7 @@ export async function rankRecommendations(
         genreIds: seriesGenreMap.get(s.id) ?? [],
         popularity: null,
         voteAverage: null,
+        status: s.status ?? null,
       })
     }
   }
@@ -173,6 +179,7 @@ export async function rankRecommendations(
       genreIds,
       popularity: dc.popularity,
       voteAverage: dc.voteAverage,
+      status: null,
     })
   }
 
@@ -221,7 +228,17 @@ export async function rankRecommendations(
     return { ...c, score, reasons, available }
   })
 
-  const visible = availableToMe ? scored.filter((c) => c.available) : scored
+  const UPCOMING_STATUSES = new Set(['Rumored', 'Planned', 'In Production', 'Post Production'])
+
+  let visible: typeof scored
+  if (availabilityPolicy === 'WATCH_NOW') {
+    visible = scored.filter((c) => c.available)
+  } else if (availabilityPolicy === 'UPCOMING') {
+    visible = scored.filter((c) => c.status != null && UPCOMING_STATUSES.has(c.status))
+  } else {
+    // ALL, DISCOVERY, undefined — fall back to legacy availableToMe flag
+    visible = availableToMe ? scored.filter((c) => c.available) : scored
+  }
 
   visible.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score

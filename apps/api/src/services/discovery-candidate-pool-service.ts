@@ -5,11 +5,11 @@ import { discoveryCandidate } from '../db/schema/index.js'
 import type { DiscoveryFeed, MetadataCandidate, MetadataProvider } from '../providers/metadata/types.js'
 import { TmdbRateLimitError } from '../providers/metadata/tmdb/errors.js'
 import type { ExternalDiscoveryService } from './external-discovery-service.js'
+import { DISCOVERY_POOL_MAX_PAGES_PER_FEED } from '../config/env.js'
 
 type Db = PostgresJsDatabase<typeof schema>
 
 const CANDIDATE_TTL_DAYS = 7
-const MAX_PAGES_PER_FEED = 3
 const FEED_PAGE_DELAY_MS = 250
 
 function sleep(ms: number): Promise<void> {
@@ -39,7 +39,7 @@ export class DiscoveryCandidatePoolService {
   }
 
   private async refreshFeedType(feed: DiscoveryFeed, mediaType: 'MOVIE' | 'SERIES'): Promise<void> {
-    for (let page = 1; page <= MAX_PAGES_PER_FEED; page++) {
+    for (let page = 1; page <= DISCOVERY_POOL_MAX_PAGES_PER_FEED; page++) {
       if (page > 1) await sleep(FEED_PAGE_DELAY_MS)
 
       let candidates: MetadataCandidate[]

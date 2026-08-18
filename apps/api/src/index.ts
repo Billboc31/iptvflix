@@ -39,6 +39,8 @@ import { arrivalsRoutes } from './routes/arrivals.js'
 import { reconcileRoutes, episodeBackfillRoutes } from './routes/reconcile.js'
 import { catalogBootstrapRoutes } from './routes/catalog-bootstrap.js'
 import { catalogRefreshRoutes } from './routes/catalog-refresh.js'
+import { catalogStatsRoutes } from './routes/catalog-stats.js'
+import { embeddingBackfillRoutes } from './routes/embedding-backfill.js'
 import { failRunningJobsRoutes } from './routes/fail-running-jobs.js'
 import { authenticate } from './plugins/auth.js'
 import { failInterruptedRuns } from './services/fail-interrupted-runs.js'
@@ -165,6 +167,9 @@ await app.register(async function protectedScope(protectedApp) {
     await protectedApp.register(catalogRefreshRoutes, { service: refreshService })
     catalogRefreshServiceRef = refreshService
   }
+
+  await protectedApp.register(catalogStatsRoutes)
+  await protectedApp.register(embeddingBackfillRoutes)
 })
 
 if (process.env.NODE_ENV !== 'production') {
