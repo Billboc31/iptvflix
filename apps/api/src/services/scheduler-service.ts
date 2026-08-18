@@ -1,11 +1,16 @@
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, gt, isNull, or, sql } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import type * as schema from '../db/schema/index.js'
 import { sources } from '../db/schema/sources.js'
 import { syncRuns } from '../db/schema/sync-runs.js'
+import { episodes } from '../db/schema/episodes.js'
+import { seasons } from '../db/schema/seasons.js'
+import { series } from '../db/schema/series.js'
+import { mediaSegments } from '../db/schema/media-segments.js'
 import type { TriggerSyncBody } from '@iptvflix/api-contracts'
 import type { DiscoveryCandidatePoolService } from './discovery-candidate-pool-service.js'
 import { type CatalogRefreshService, CatalogRefreshAlreadyRunningError } from './catalog-refresh-service.js'
+import type { SegmentSyncService } from './segment-sync-service.js'
 
 async function withBoundedConcurrency<T>(
   tasks: (() => Promise<T>)[],
@@ -40,6 +45,9 @@ interface SchedulerConfig {
   startupDelayMs: number
   catalogRefreshEnabled?: boolean
   catalogRefreshCadenceHours?: number
+  segmentRefreshEnabled?: boolean
+  segmentRefreshCadenceHours?: number
+  segmentRefreshRecentDays?: number
 }
 
 export class SchedulerService {
@@ -47,6 +55,8 @@ export class SchedulerService {
   private sourceSyncTimer: ReturnType<typeof setInterval> | null = null
   private discoveryTimer: ReturnType<typeof setInterval> | null = null
   private catalogRefreshTimer: ReturnType<typeof setInterval> | null = null
+  private segmentRefreshTimer: ReturnType<typeof setInterval> | null = null
+  private segmentRefreshTickCount = 0
 
   constructor(
     private readonly db: Db,
@@ -54,6 +64,7 @@ export class SchedulerService {
     private readonly discoveryPoolService: DiscoveryCandidatePoolService | null,
     private readonly config: SchedulerConfig,
     private readonly catalogRefreshService: CatalogRefreshService | null = null,
+    private readonly segmentSyncService: SegmentSyncService | null = null,
   ) {}
 
   start(): void {
@@ -82,6 +93,14 @@ export class SchedulerService {
           (this.config.catalogRefreshCadenceHours ?? 24) * 3_600_000,
         )
       }
+
+      if ((this.config.segmentRefreshEnabled ?? false) && this.segmentSyncService) {
+        void this.runSegmentRefreshTick()
+        this.segmentRefreshTimer = setInterval(
+          () => void this.runSegmentRefreshTick(),
+          (this.config.segmentRefreshCadenceHours ?? 24) * 3_600_000,
+        )
+      }
     }, this.config.startupDelayMs)
   }
 
@@ -101,6 +120,10 @@ export class SchedulerService {
     if (this.catalogRefreshTimer !== null) {
       clearInterval(this.catalogRefreshTimer)
       this.catalogRefreshTimer = null
+    }
+    if (this.segmentRefreshTimer !== null) {
+      clearInterval(this.segmentRefreshTimer)
+      this.segmentRefreshTimer = null
     }
   }
 
@@ -165,6 +188,105 @@ export class SchedulerService {
         return
       }
       console.error('[scheduler] Catalog refresh tick error:', err)
+    }
+  }
+
+  private async runSegmentRefreshTick(): Promise<void> {
+    if (!this.segmentSyncService) return
+    this.segmentRefreshTickCount++
+    const tick = this.segmentRefreshTickCount
+    const recentDays = this.config.segmentRefreshRecentDays ?? 30
+    const recentCutoff = new Date(Date.now() - recentDays * 86_400_000)
+    const CONCURRENCY = 3
+
+    try {
+      // Priority 1: episodes aired recently — refresh every tick
+      const recentRows = await this.db
+        .select({
+          episodeId: episodes.id,
+          episodeNumber: episodes.episodeNumber,
+          seriesId: episodes.seriesId,
+          seasonNumber: seasons.seasonNumber,
+        })
+        .from(episodes)
+        .innerJoin(seasons, eq(episodes.seasonId, seasons.id))
+        .innerJoin(series, eq(episodes.seriesId, series.id))
+        .where(
+          and(
+            gt(episodes.airDate, recentCutoff.toISOString().slice(0, 10)),
+            sql`${series.tmdbId} IS NOT NULL`,
+          ),
+        )
+        .limit(100)
+
+      const recentTasks = recentRows.map((row) => () =>
+        this.segmentSyncService!.syncEpisode(row.episodeId, row.seriesId, row.seasonNumber, row.episodeNumber),
+      )
+      await withBoundedConcurrency(recentTasks, CONCURRENCY)
+
+      // Priority 2: no-data episodes — retry every 3 ticks
+      if (tick % 3 === 0) {
+        const noDataRows = await this.db
+          .select({
+            episodeId: episodes.id,
+            episodeNumber: episodes.episodeNumber,
+            seriesId: episodes.seriesId,
+            seasonNumber: seasons.seasonNumber,
+          })
+          .from(episodes)
+          .innerJoin(seasons, eq(episodes.seasonId, seasons.id))
+          .innerJoin(series, eq(episodes.seriesId, series.id))
+          .where(
+            and(
+              sql`${series.tmdbId} IS NOT NULL`,
+              isNull(
+                this.db
+                  .select({ id: mediaSegments.id })
+                  .from(mediaSegments)
+                  .where(eq(mediaSegments.episodeId, episodes.id))
+                  .limit(1)
+                  .as('seg'),
+              ),
+            ),
+          )
+          .limit(50)
+
+        const noDataTasks = noDataRows.map((row) => () =>
+          this.segmentSyncService!.syncEpisode(row.episodeId, row.seriesId, row.seasonNumber, row.episodeNumber),
+        )
+        await withBoundedConcurrency(noDataTasks, CONCURRENCY)
+      }
+
+      // Priority 3: stable episodes — refresh every 7 ticks
+      if (tick % 7 === 0) {
+        const stableRows = await this.db
+          .select({
+            episodeId: episodes.id,
+            episodeNumber: episodes.episodeNumber,
+            seriesId: episodes.seriesId,
+            seasonNumber: seasons.seasonNumber,
+          })
+          .from(episodes)
+          .innerJoin(seasons, eq(episodes.seasonId, seasons.id))
+          .innerJoin(series, eq(episodes.seriesId, series.id))
+          .where(
+            and(
+              or(
+                isNull(episodes.airDate),
+                sql`${episodes.airDate} <= ${recentCutoff.toISOString().slice(0, 10)}`,
+              ),
+              sql`${series.tmdbId} IS NOT NULL`,
+            ),
+          )
+          .limit(50)
+
+        const stableTasks = stableRows.map((row) => () =>
+          this.segmentSyncService!.syncEpisode(row.episodeId, row.seriesId, row.seasonNumber, row.episodeNumber),
+        )
+        await withBoundedConcurrency(stableTasks, CONCURRENCY)
+      }
+    } catch (err) {
+      console.error('[scheduler] Segment refresh tick error:', err)
     }
   }
 }

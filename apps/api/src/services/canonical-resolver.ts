@@ -43,7 +43,10 @@ export interface ResolveEpisodeInput {
  *   3. Returns null when resolution fails — callers must skip availability creation.
  */
 export class CanonicalResolver {
-  constructor(private readonly enrichmentService: MetadataEnrichmentService) {}
+  constructor(
+    private readonly enrichmentService: MetadataEnrichmentService,
+    private readonly onNewEpisode?: (episodeId: string) => void,
+  ) {}
 
   async resolveMovieCanonical(input: ResolveMovieInput): Promise<{ id: string } | null> {
     if (input.tmdbId != null) {
@@ -147,7 +150,10 @@ export class CanonicalResolver {
       .onConflictDoNothing()
       .returning({ id: episodes.id })
 
-    if (inserted[0]) return inserted[0]
+    if (inserted[0]) {
+      if (this.onNewEpisode) this.onNewEpisode(inserted[0].id)
+      return inserted[0]
+    }
 
     const [row] = await db
       .select({ id: episodes.id })

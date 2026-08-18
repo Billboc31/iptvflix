@@ -45,6 +45,8 @@ import { catalogStatsRoutes } from './routes/catalog-stats.js'
 import { embeddingBackfillRoutes } from './routes/embedding-backfill.js'
 import { recommendationLabRoutes } from './routes/recommendation-lab.js'
 import { failRunningJobsRoutes } from './routes/fail-running-jobs.js'
+import { episodeSegmentsRoutes } from './routes/episodes.js'
+import { segmentAdminRoutes } from './routes/segment-admin.js'
 import { authenticate, requireProfile } from './plugins/auth.js'
 import { failInterruptedRuns } from './services/fail-interrupted-runs.js'
 import { runSeed } from './db/seed.js'
@@ -61,6 +63,10 @@ import {
   CATALOG_REFRESH_ENABLED,
   CATALOG_REFRESH_CADENCE_HOURS,
   OPENAI_API_KEY,
+  SEGMENT_REFRESH_ENABLED,
+  SEGMENT_REFRESH_CADENCE_HOURS,
+  SEGMENT_REFRESH_RECENT_DAYS,
+  INTRODB_BASE_URL,
 } from './config/env.js'
 
 import { db } from './db/client.js'
@@ -77,7 +83,9 @@ import { CatalogBootstrapService } from './services/catalog-bootstrap-service.js
 import { CatalogRefreshService } from './services/catalog-refresh-service.js'
 import { EmbeddingService } from './services/embedding-service.js'
 import { createDefaultProvider } from './services/embedding-provider.js'
-import { triggerSync } from './services/sync-runs-service.js'
+import { triggerSync, setOnNewEpisodeHook } from './services/sync-runs-service.js'
+import { IntroDbClient } from './providers/segments/introdb/client.js'
+import { SegmentSyncService } from './services/segment-sync-service.js'
 
 const app = Fastify({ logger: true })
 
@@ -116,6 +124,7 @@ await app.register(catalogRoutes, {
     : undefined,
 })
 await app.register(releaseLifecycleRoutes)
+await app.register(episodeSegmentsRoutes)
 
 const discoveryService = TMDB_API_KEY
   ? new ExternalDiscoveryService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
@@ -193,6 +202,7 @@ await app.register(async function protectedScope(protectedApp) {
   await protectedApp.register(catalogStatsRoutes)
   await protectedApp.register(embeddingBackfillRoutes)
   await protectedApp.register(recommendationLabRoutes)
+  await protectedApp.register(segmentAdminRoutes)
 
   // Profile-scoped routes — also require a profileId in the session JWT
   await protectedApp.register(async function profileScope(profileApp) {
@@ -230,6 +240,20 @@ const discoveryPoolService =
       )
     : null
 
+const segmentSyncService = TMDB_API_KEY
+  ? new SegmentSyncService(
+      db,
+      new TmdbClient({ apiKey: TMDB_API_KEY }),
+      [new IntroDbClient({ baseUrl: INTRODB_BASE_URL })],
+    )
+  : null
+
+if (segmentSyncService) {
+  setOnNewEpisodeHook((episodeId) => {
+    void segmentSyncService.syncEpisodeById(episodeId)
+  })
+}
+
 const scheduler = new SchedulerService(
   db,
   triggerSync,
@@ -242,8 +266,12 @@ const scheduler = new SchedulerService(
     startupDelayMs: SCHEDULER_STARTUP_DELAY_MS,
     catalogRefreshEnabled: CATALOG_REFRESH_ENABLED,
     catalogRefreshCadenceHours: CATALOG_REFRESH_CADENCE_HOURS,
+    segmentRefreshEnabled: SEGMENT_REFRESH_ENABLED,
+    segmentRefreshCadenceHours: SEGMENT_REFRESH_CADENCE_HOURS,
+    segmentRefreshRecentDays: SEGMENT_REFRESH_RECENT_DAYS,
   },
   catalogRefreshServiceRef,
+  segmentSyncService,
 )
 try {
   const cleared = await failInterruptedRuns(db)
