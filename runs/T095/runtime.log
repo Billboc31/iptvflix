@@ -21,3 +21,8 @@
 [2026-08-18T13:22:55Z] conflict-resolver: running tests
 [2026-08-18T13:22:55Z] conflict-resolver: test-report written: runs/T095/conflict/test-report.md
 [2026-08-18T13:22:55Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-18T13:38:04Z] conflict-resolver: [pass 1] mechanical migration fix advanced next_source=[]
+[2026-08-18T13:38:04Z] conflict-resolver: all conflicts resolved after 1 pass(es)
+[2026-08-18T13:38:04Z] conflict-resolver: running tests
+[2026-08-18T13:38:04Z] conflict-resolver: test-report written: runs/T095/conflict/test-report.md
+[2026-08-18T13:38:04Z] conflict-resolver: staging and committing resolution artifacts
