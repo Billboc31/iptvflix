@@ -1,7 +1,7 @@
 {
   "ticket_id": "T098",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T098-introduce-account-profile-foundation-and-move-all",
   "issue_number": 201,
-  "updated_at": "2026-08-17T21:11:10Z"
+  "updated_at": "2026-08-18T07:42:02Z"
 }
