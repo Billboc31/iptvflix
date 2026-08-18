@@ -11,3 +11,25 @@
 [2026-08-18T15:45:20Z] compose: task (canonical prompt)
 [2026-08-18T15:45:20Z] snapshot: runtime-prompt=runs/T109/prompts/planner-attempt-1.md
 [2026-08-18T15:53:24Z] auto-run: step=planner done rc=0
+[2026-08-18T17:32:48Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-18T17:32:48Z] auto-run: running step=tester
+[2026-08-18T17:32:49Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-18T17:32:49Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-18T17:32:49Z] prompt: generic fallback — injecting runs/T109/ticket.md
+[2026-08-18T17:32:49Z] compose: global-context=docs/ai/global-context.md
+[2026-08-18T17:32:49Z] compose: role=ai/roles/tester.md
+[2026-08-18T17:32:49Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-18T17:32:49Z] compose: skill=ai/skills/testing.md
+[2026-08-18T17:32:49Z] compose: skill=ai/skills/debugging.md
+[2026-08-18T17:32:49Z] compose: task (canonical prompt)
+[2026-08-18T17:32:49Z] snapshot: runtime-prompt=runs/T109/prompts/tester-attempt-1.md
+[2026-08-18T17:35:39Z] auto-run: step=tester done rc=0
+[2026-08-18T17:35:39Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-18T17:35:39Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-18T17:35:40Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.vite/vitest/results.json', 'apps/web/node_modules/.vite/vitest/results.json', 'runs/T109/daemon.lock', 'runs/T109/runtime.log', 'runs/T109/workflow-status.md']
+[2026-08-18T17:35:40Z] commit-checkpoint: sha=20b35e1d files=3 title='test(T109/workflow): tester — update 3 file(s)'
+[2026-08-18T17:35:40Z] auto-run: auto-push triggered
+[2026-08-18T17:35:40Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.vite/vitest/results.json', 'apps/web/node_modules/.vite/vitest/results.json', 'runs/T109/daemon.lock', 'runs/T109/runtime.log', 'runs/T109/workflow-status.md']
+[2026-08-18T17:35:40Z] push: pushing branch=ticket/T109-fix-series-episode-level-source-selection-and-play
+[2026-08-18T17:35:42Z] push: done branch=ticket/T109-fix-series-episode-level-source-selection-and-play
+[2026-08-18T17:35:42Z] auto-run: TEST_COMPLETE — running PR lifecycle
