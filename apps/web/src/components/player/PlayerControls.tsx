@@ -167,13 +167,15 @@ export default function PlayerControls({
     }
     function onTimeUpdate() { setCurrentTime(video!.currentTime) }
     function onDurationChange() {
-      if (stableDurationSetRef.current) return
       const d = video!.duration
-      if (isFinite(d) && d > 0) {
-        stableDurationSetRef.current = true
-        setStableDuration(d)
-        onStableDuration?.(d)
-      }
+      if (!isFinite(d) || d <= 0) return
+      const current = stableDurationRef.current ?? 0
+      // IPTV/HLS often reports a fragment duration first. Allow the known
+      // duration to grow, never shrink — a 10s lock would mark the title complete.
+      if (d <= current + 0.5) return
+      setStableDuration(d)
+      onStableDuration?.(d)
+      stableDurationSetRef.current = true
     }
     function onVolumeChange() {
       setVolume(video!.volume)

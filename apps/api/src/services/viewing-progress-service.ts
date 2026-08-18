@@ -45,17 +45,25 @@ export async function upsertProgress(
   await validateMediaId(mediaType, mediaId)
 
   const now = new Date()
+  // HLS/IPTV often reports a fragment duration much shorter than the title.
+  // Never shrink a longer duration already stored, otherwise a 10s playlist
+  // "ended" event would mark the title complete and drop it from Continue Watching.
   const [row] = await db
     .insert(viewingProgress)
     .values({ profileId, mediaType, mediaId, progressSeconds, durationSeconds, lastWatchedAt: now, updatedAt: now })
     .onConflictDoUpdate({
       target: [viewingProgress.profileId, viewingProgress.mediaType, viewingProgress.mediaId],
-      set: { progressSeconds, durationSeconds, lastWatchedAt: now, updatedAt: now },
+      set: {
+        durationSeconds: sql`GREATEST(${viewingProgress.durationSeconds}, EXCLUDED.duration_seconds)`,
+        progressSeconds: sql`LEAST(${progressSeconds}, GREATEST(${viewingProgress.durationSeconds}, EXCLUDED.duration_seconds))`,
+        lastWatchedAt: now,
+        updatedAt: now,
+      },
     })
     .returning()
 
   // Clear dismissal when the item reaches meaningful progress (≥5%), allowing re-entry into CW.
-  if (progressSeconds >= durationSeconds * 0.05) {
+  if (row.progressSeconds >= row.durationSeconds * 0.05) {
     try {
       await db
         .delete(continueWatchingDismissals)

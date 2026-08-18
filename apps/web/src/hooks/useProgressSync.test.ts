@@ -64,8 +64,8 @@ describe('useProgressSync', () => {
     expect(upsertProgress).toHaveBeenCalledTimes(1)
   })
 
-  it('sends final progress on ended event with duration as position', () => {
-    const video = makeVideo(100, 3600)
+  it('sends final progress on ended only when playback is near the end', () => {
+    const video = makeVideo(3550, 3600)
     const videoRef = { current: video }
 
     renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true, null))
@@ -77,6 +77,61 @@ describe('useProgressSync', () => {
     expect(upsertProgress).toHaveBeenCalledWith('MOVIE', 'movie-1', {
       progressSeconds: 3600,
       durationSeconds: 3600,
+    })
+  })
+
+  it('ignores a premature ended event in the middle of the title', () => {
+    const video = makeVideo(100, 3600)
+    const videoRef = { current: video }
+
+    renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true, null))
+
+    act(() => {
+      video.dispatchEvent(new Event('ended'))
+    })
+
+    expect(upsertProgress).not.toHaveBeenCalled()
+  })
+
+  it('does not mark complete when HLS reports a short duration against a known long duration', () => {
+    const video = makeVideo(10, 12)
+    const videoRef = { current: video }
+
+    renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true, 7200))
+
+    act(() => {
+      video.dispatchEvent(new Event('ended'))
+    })
+
+    expect(upsertProgress).not.toHaveBeenCalled()
+  })
+
+  it('does not save a glitch rewind below the resume floor', () => {
+    const video = makeVideo(5, 7200)
+    const videoRef = { current: video }
+
+    renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true, 7200, null, 1800))
+
+    act(() => {
+      video.dispatchEvent(new Event('pause'))
+    })
+
+    expect(upsertProgress).not.toHaveBeenCalled()
+  })
+
+  it('saves progress at or above the resume floor', () => {
+    const video = makeVideo(1850, 7200)
+    const videoRef = { current: video }
+
+    renderHook(() => useProgressSync(videoRef, 'MOVIE', 'movie-1', true, 7200, null, 1800))
+
+    act(() => {
+      video.dispatchEvent(new Event('pause'))
+    })
+
+    expect(upsertProgress).toHaveBeenCalledWith('MOVIE', 'movie-1', {
+      progressSeconds: 1850,
+      durationSeconds: 7200,
     })
   })
 

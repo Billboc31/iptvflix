@@ -88,6 +88,13 @@ export default function PlayerPage() {
   const skipResumeDialogRef = useRef(skipResumeDialog)
   skipResumeDialogRef.current = skipResumeDialog
   const resumeHandledRef = useRef(false)
+  const [progressSyncReady, setProgressSyncReady] = useState(false)
+  const [progressFloorSeconds, setProgressFloorSeconds] = useState(0)
+
+  useEffect(() => {
+    setProgressSyncReady(false)
+    setProgressFloorSeconds(0)
+  }, [mediaId])
 
   useEffect(() => {
     if (status === 'loading') {
@@ -108,7 +115,15 @@ export default function PlayerPage() {
   const sessionIdRef = useRef<string | null>(null)
   const hasPlayedRef = useRef(false)
 
-  const { flushProgress } = useProgressSync(videoRef, progressMediaType, mediaId!, status === 'ready', stableDurationSeconds, sessionIdRef.current)
+  const { flushProgress } = useProgressSync(
+    videoRef,
+    progressMediaType,
+    mediaId!,
+    status === 'ready' && progressSyncReady,
+    stableDurationSeconds,
+    sessionIdRef.current,
+    progressFloorSeconds,
+  )
   const { emit: emitEvent, emitBatch } = useInteractionEvents()
 
   // Reset play tracking when media changes
@@ -539,6 +554,8 @@ export default function PlayerPage() {
         resumeHandledRef.current = true
         if (start > 0 && !nearEnd) video.currentTime = start
         void video.play()?.catch(() => undefined)
+        setProgressFloorSeconds(start > 0 && !nearEnd ? start : 0)
+        setProgressSyncReady(true)
       }
     }
 
@@ -552,6 +569,8 @@ export default function PlayerPage() {
     if (!video) return
     video.currentTime = startPositionSeconds
     void video.play()?.catch(() => undefined)
+    setProgressFloorSeconds(startPositionSeconds)
+    setProgressSyncReady(true)
     setShowResumeDialog(false)
   }
 
@@ -560,6 +579,8 @@ export default function PlayerPage() {
     if (!video) return
     video.currentTime = 0
     void video.play()?.catch(() => undefined)
+    setProgressFloorSeconds(0)
+    setProgressSyncReady(true)
     setShowResumeDialog(false)
   }
 
