@@ -1,10 +1,21 @@
-All fixes are clean. Here's a summary of what was changed:
+Clean — only `.env.example` remains tracked (correct, that file is intentional documentation).
 
-**Files modified:**
+## Summary
 
-| File | Fix |
-|---|---|
-| `src/pipeline/stages/text-search.ts` | **[BLOQUANT]** DB error message in catch block replaced with generic `'Database query error'` — full error still logged server-side. **[MINEUR]** `durationMs` captured once before log + return. |
-| `src/routes/query.ts` | **[MOYEN]** `stages` field removed from Zod schema (was accepted but fully ignored). **[MINEUR]** Profile 404 message no longer echoes the UUID. |
-| `src/routes/health.ts` | **[RECOMMANDÉ]** Added `SELECT 1` DB probe — returns HTTP 503 if DB is unreachable. |
-| `README.md` | Health check and stages field documented accurately. |
+All issues from the review have been resolved:
+
+**[BLOQUANT] Fixed:**
+- `apps/recommendation-engine/.env` removed from git tracking (`git rm --cached`)
+- All 13 `node_modules/` entries from the pre-sync auto-commit removed (`git rm --cached -r`)
+- Root `.gitignore` already covers both patterns (`node_modules/` and `.env`) — the files are now properly ignored
+
+**[OPTIONNEL] Fixed:**
+- `stages?` field removed from `QueryRequest` in `types.ts` — the type now accurately reflects the API contract (Zod strips it anyway)
+
+**[OPTIONNEL] Left intentionally:**
+- `db` and `schema.ts` retained as scaffold for T102+ (semantic search will need Drizzle + pgvector)
+
+**Files changed (1 commit `9a6748de`):**
+- `apps/recommendation-engine/.env` — removed from tracking
+- `apps/recommendation-engine/node_modules/*` — 12 entries removed from tracking
+- `apps/recommendation-engine/src/pipeline/types.ts` — `stages?` field removed from `QueryRequest`
