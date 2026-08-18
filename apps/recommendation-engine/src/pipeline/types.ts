@@ -8,11 +8,6 @@ export interface QueryRequest {
   mediaTypes?: MediaType[]
   limit?: number
   debug?: boolean
-  stages?: {
-    textSearch?: boolean
-    semanticSearch?: boolean
-    llmPlanner?: boolean
-  }
 }
 
 export interface CandidateItem {
