@@ -165,6 +165,42 @@ describe('ContinueWatchingCard — keyboard navigation in overflow menu', () => 
   })
 })
 
+describe('ContinueWatchingCard — info button navigation', () => {
+  it('MOVIE: clicking ⓘ navigates to /movies/:id', async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route
+            path="/"
+            element={<ContinueWatchingCard item={MOCK_CONTINUE_WATCHING} onDismiss={vi.fn().mockResolvedValue(undefined)} />}
+          />
+          <Route path="/movies/:id" element={<div data-testid="movie-detail">MovieDetail</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await user.click(screen.getByRole('button', { name: 'Voir les détails' }))
+    expect(screen.getByTestId('movie-detail')).toBeInTheDocument()
+  })
+
+  it('EPISODE: clicking ⓘ navigates to /series/:seriesId', async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route
+            path="/"
+            element={<ContinueWatchingCard item={MOCK_CONTINUE_WATCHING_EPISODE} onDismiss={vi.fn().mockResolvedValue(undefined)} />}
+          />
+          <Route path="/series/:id" element={<div data-testid="series-detail">SeriesDetail</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await user.click(screen.getByRole('button', { name: 'Voir les détails' }))
+    expect(screen.getByTestId('series-detail')).toBeInTheDocument()
+  })
+})
+
 describe('ContinueWatchingCard — direct resume (no resume dialog)', () => {
   it('DELETE /continue-watching is called with correct params on dismiss via API handler', async () => {
     const user = userEvent.setup()
