@@ -20,8 +20,9 @@ export class SemanticRetrievalService {
     private readonly embeddingService: EmbeddingService,
   ) {}
 
-  async retrieve(queryText: string, topK = 10): Promise<SemanticResult[]> {
-    const candidates = await this.embeddingService.semanticSearch(queryText, topK)
+  async retrieve(queryText: string, topK = 10, queryTextOverride?: string): Promise<SemanticResult[]> {
+    const embedText = queryTextOverride ?? queryText
+    const candidates = await this.embeddingService.semanticSearch(embedText, topK)
     return this.enrichWithMetadata(candidates)
   }
 

@@ -101,3 +101,4 @@ export const MEDIA_RELAY_SECRET: string | undefined = process.env.MEDIA_RELAY_SE
 export const MEDIA_RELAY_ENABLED = Boolean(MEDIA_RELAY_URL && MEDIA_RELAY_SECRET)
 
 export const OPENAI_API_KEY: string | undefined = process.env.OPENAI_API_KEY || undefined
+export const LLM_PLANNER_MODEL: string = process.env.LLM_PLANNER_MODEL ?? 'gpt-4o-mini'
