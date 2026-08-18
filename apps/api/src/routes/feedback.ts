@@ -2,11 +2,10 @@ import type { FastifyInstance } from 'fastify'
 import type { SetFeedbackBody, WatchlistMediaType } from '@iptvflix/api-contracts'
 import { upsertFeedback, removeFeedback, listFeedback } from '../services/feedback-service.js'
 import { NotFoundError } from '../errors.js'
-import { DEFAULT_PROFILE_ID } from '../services/profile-service.js'
 
 export async function feedbackRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/feedback', async () => {
-    return listFeedback(DEFAULT_PROFILE_ID)
+  app.get('/feedback', async (request) => {
+    return listFeedback(request.profileId!)
   })
 
   app.put<{ Params: { mediaType: string; mediaId: string }; Body: SetFeedbackBody }>(
@@ -24,7 +23,7 @@ export async function feedbackRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: 'feedback must be LIKE, DISLIKE, or NOT_INTERESTED' })
       }
       try {
-        const item = await upsertFeedback(DEFAULT_PROFILE_ID, mediaType as WatchlistMediaType, mediaId, feedback)
+        const item = await upsertFeedback(request.profileId!, mediaType as WatchlistMediaType, mediaId, feedback)
         return reply.status(200).send(item)
       } catch (err) {
         if (err instanceof NotFoundError) {
@@ -42,7 +41,7 @@ export async function feedbackRoutes(app: FastifyInstance): Promise<void> {
       if (mediaType !== 'MOVIE' && mediaType !== 'SERIES') {
         return reply.status(400).send({ error: 'mediaType must be MOVIE or SERIES' })
       }
-      await removeFeedback(DEFAULT_PROFILE_ID, mediaType as WatchlistMediaType, mediaId)
+      await removeFeedback(request.profileId!, mediaType as WatchlistMediaType, mediaId)
       return reply.status(204).send()
     },
   )

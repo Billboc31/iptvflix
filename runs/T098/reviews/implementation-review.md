@@ -1,0 +1,181 @@
+J'ai maintenant tous les éléments pour la review. Voici mon analyse complète.
+
+---
+
+# PR Review — T098 Account → Profile Foundation
+
+## Résumé
+
+Implémentation d'une fondation Account → Profile : 36 fichiers, 1 491 insertions. Les nouveaux schémas, l'API CRUD profile, le seed idempotent, la migration des routes personnalisées et le store d'interaction events sont en place. La structure générale est solide, mais deux vulnérabilités de sécurité bloquantes ont été identifiées sur les routes `/home` et `/recommendations`.
+
+---
+
+## Vérifications effectuées
+
+- Schémas `accounts`, `profiles` (étendu), `profile_interaction_events` + migration SQL
+- Auth middleware (`plugins/auth.ts`) — décodage JWT, vérification ownership profile
+- Toutes les routes personnalisées (`watchlist`, `viewing-progress`, `feedback`, `shelves`, `taste`, `profile`, `profiles`, `interaction-events`, `home`, `recommendations`)
+- Service `profile-service.ts` — CRUD complet, limites, delete guards
+- Seed idempotent `db/seed.ts`
+- Câblage `index.ts` — scope `protectedScope` vs `profileScope`
+- Contrats API (`packages/api-contracts`)
+- Tests `profiles.test.ts`
+
+---
+
+## Points validés
+
+**Schéma et migration**
+- `accounts` table correcte : `id`, `username`, `passwordHash`, `email`, `maxProfiles`, timestamps.
+- `profiles` étendu : `accountId` (FK cascade), `isKids`, `maturityLevel`, `avatarKey`, `autoplayNextEpisode`, `autoSkipIntro`, `autoSkipRecap`, `neverStopMode`, `subtitlesEnabledPreference`, `preferredUiLanguage`, `lastUsedAt`, `updatedAt` — tous présents.
+- `profile_interaction_events` : schéma conforme au ticket, index sur `(profileId, occurredAt DESC)`, FK cascade.
+- Migration SQL : `IF NOT EXISTS` sur chaque `ALTER TABLE` — sûre sur une DB live, pas de destruction de données.
+
+**Auth à deux niveaux**
+- JWT login : `{ accountId, username }` — pas de profileId à ce stade.
+- JWT post-select : `{ accountId, username, profileId }`.
+- `authenticate` middleware : décode le JWT, vérifie en DB que `profiles.accountId = accountId` pour chaque requête portant un profileId — protection correcte contre les tokens obsolètes.
+- `requireProfile` middleware : renvoie 403 `PROFILE_NOT_SELECTED` si pas de profileId en session.
+
+**CRUD profile**
+- `listProfiles` : filtre par `accountId` ✓
+- `createProfile` : vérifie `maxProfiles` via DB, retourne 409 ✓
+- `updateProfile` : ownership check `WHERE id AND accountId` ✓
+- `deleteProfile` : guards last-profile et current-profile ✓
+- `selectProfile` : ownership check + `lastUsedAt` ✓
+
+**Routes personnalisées migrées**
+- `watchlist`, `viewing-progress`, `feedback`, `shelves`, `taste`, `profile`, `interaction-events` : toutes utilisent `request.profileId!` — `DEFAULT_PROFILE_ID` absent de ces fichiers.
+
+**Seed idempotent**
+- Logique en trois étapes : compte déjà existant → skip, profil legacy non lié → lier, aucun profil → créer. Safe à chaque redémarrage.
+
+**Tests**
+- Limite maxProfiles (409) ✓
+- Protection dernier profil (409) ✓
+- Rejet cross-account sur `/select` (403) ✓
+- Isolation watch progress (service level) ✓
+- Isolation watchlist (deux apps séparées) ✓
+- Isolation préférences ✓
+- Interaction events : 204 succès, 400 eventType inconnu ✓
+- Seed idempotent : 3 scénarios couverts ✓
+
+**Contrats API**
+- `ProfileResponse`, `CreateProfileBody`, `UpdateProfileBody`, `SelectProfileResponse` ✓
+- `InteractionEventBody`, `InteractionEventType` ✓
+
+---
+
+## Problèmes détectés
+
+### 🔴 BLOQUANT — Sécurité : `home.ts` — profileId depuis l'URL sans vérification d'ownership
+
+**Fichier** : `apps/api/src/routes/home.ts:7-9`
+
+```typescript
+app.get('/profiles/:profileId/home', async (request, reply) => {
+  const { profileId } = request.params   // ← vient du client, jamais vérifié
+  const result = await buildHome(profileId)
+```
+
+La route est dans `protectedScope` (JWT requis) mais **pas** dans `profileScope`. N'importe quel utilisateur authentifié peut passer un `profileId` arbitraire et lire le contenu Home d'un profil appartenant à un autre compte.
+
+**Violation directe de §11** : *"profile IDs in URLs/payloads must be authorization-checked"* et *"authenticated account can only access its own profiles"*.
+
+**Fix attendu** : Vérifier que `profileId` appartient à `request.account.id` avant d'appeler `buildHome`. Soit via `selectProfile`/`getCurrentProfile`, soit en passant `request.account.id` à `buildHome`. Alternative : passer la route dans `profileScope` et utiliser `request.profileId`.
+
+---
+
+### 🔴 BLOQUANT — Sécurité : `recommendations.ts` — profileId depuis l'URL sans vérification d'ownership
+
+**Fichier** : `apps/api/src/routes/recommendations.ts:15,28`
+
+```typescript
+app.get('/profiles/:profileId/recommendations', async (request, reply) => {
+  const { profileId } = request.params   // ← vient du client, jamais vérifié
+  const result = await rankRecommendations(profileId, ...)
+```
+
+Même vulnérabilité. Compte A peut accéder aux recommendations calculées sur les goûts du profil B appartenant au compte B.
+
+**Fix attendu** : Idem — ownership check ou passage dans `profileScope` avec `request.profileId`.
+
+---
+
+### 🟡 MINEUR — `profile.ts` : erreur retourne HTTP 500 au lieu de 404
+
+**Fichier** : `apps/api/src/routes/profile.ts:13-16`
+
+```typescript
+} catch {
+  return reply.status(500).send({ error: 'Profile not found' })
+}
+```
+
+Un profil introuvable (ex. : token corrompu) renvoie une 500, ce qui simule une erreur serveur interne. Devrait être 403 ou 404.
+
+---
+
+### 🟡 MINEUR — `DEFAULT_PROFILE_ID` et aliases compat toujours exportés
+
+**Fichier** : `apps/api/src/services/profile-service.ts:235-249`
+
+```typescript
+export const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
+export async function getDefaultProfilePreferences() { ... }
+export async function getDefaultProfile() { ... }
+export async function updateDefaultProfilePreferences() { ... }
+```
+
+Le plan indiquait "remove DEFAULT_PROFILE_ID export". Ces exports sont du dead code (aucune route de production ne les importe). Laissés en place comme compat shim, mais ils maintiennent la possibilité de contourner accidentellement le profileId de session.
+
+---
+
+### 🟡 MINEUR — `profiles.accountId` reste nullable en DB, pas de migration NOT NULL
+
+La colonne `account_id` est ajoutée nullable. Le plan prévoyait de déférer la contrainte NOT NULL après seed. Il n'existe pas de migration suivante pour ajouter cette contrainte. Toute insertion directe en DB peut créer un profil orphelin non visible par aucun compte.
+
+---
+
+### 🟡 MINEUR — Gaps de tests
+
+- Pas de test vérifiant que la suppression d'un profil **ne touche pas les données du profil sibling** (la cascade DB est correcte mais non couverte).
+- Pas de test vérifiant que **la configuration source reste partagée** (invariant §8 non testé).
+- Le test d'isolation des préférences vérifie que `mockDb.update` est appelé une fois, mais ne compare pas deux profils côte à côte.
+
+---
+
+### 🟡 MINEUR — `metadataJson` non borné
+
+**Fichier** : `apps/api/src/services/interaction-event-service.ts:39`
+
+Le ticket demande "strictly bounded/sanitized". Aucune validation de taille ou de profondeur sur `metadataJson`. Risque de stockage de payloads arbitrairement larges.
+
+---
+
+## Risques éventuels
+
+- L'authentification à deux niveaux (login sans profileId, select avec profileId) est un pattern inhabituel pour les clients frontend. Si le client oublie de `POST /profiles/:id/select` après login, toutes les routes profile-scoped retournent 403 — assez invisible pour déboguer. Un message d'erreur structuré avec `code: 'PROFILE_NOT_SELECTED'` est déjà en place — correct.
+- Stale token avec un profileId supprimé : `authenticate` silently drop `request.profileId`, l'utilisateur reçoit 403 sans message explicite sur la raison. Acceptable mais pourrait être amélioré.
+
+---
+
+## Décision
+
+REQUEST_CHANGES — deux vulnérabilités de sécurité bloquantes (cross-account profile access sur `/home` et `/recommendations`) doivent être corrigées avant merge.
+
+---
+
+## Actions demandées
+
+1. **[BLOQUANT]** `apps/api/src/routes/home.ts` — Ajouter une vérification d'ownership du `profileId` paramètre avant d'appeler `buildHome`. Passer `request.account.id` et vérifier que le profil lui appartient, ou déplacer la route dans `profileScope` et utiliser `request.profileId`.
+
+2. **[BLOQUANT]** `apps/api/src/routes/recommendations.ts` — Même correction : vérifier que `profileId` appartient à `request.account.id` avant d'appeler `rankRecommendations`.
+
+3. **[MINEUR]** `apps/api/src/routes/profile.ts:13` — Changer `reply.status(500)` en `reply.status(404)` (ou 403) sur profil introuvable.
+
+4. **[MINEUR]** Supprimer `DEFAULT_PROFILE_ID`, `getDefaultProfile`, `getDefaultProfilePreferences`, `updateDefaultProfilePreferences` de `profile-service.ts` ou les marquer `@deprecated` avec un lint rule pour éviter les régressions.
+
+5. **[RECOMMANDÉ]** Ajouter une migration pour contraindre `profiles.account_id NOT NULL` une fois le seed initial garanti.
+
+IMPLEMENTATION_FIX_REQUIRED

@@ -86,6 +86,9 @@ function setupDelete() {
 const app = Fastify({ logger: false })
 
 beforeAll(async () => {
+  app.addHook('preHandler', async (request) => {
+    request.profileId = PROFILE_ID
+  })
   await app.register(feedbackRoutes)
   await app.ready()
 })
@@ -316,7 +319,7 @@ describe('GET /feedback', () => {
 
     expect(res.statusCode).toBe(200)
     // The DB select was called once with the profile's rows — profile isolation
-    // is enforced by the WHERE clause using DEFAULT_PROFILE_ID.
+    // is enforced by the WHERE clause using request.profileId.
     expect(mockDb.select).toHaveBeenCalledTimes(1)
   })
 })

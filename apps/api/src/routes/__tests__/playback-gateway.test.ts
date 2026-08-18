@@ -94,6 +94,10 @@ import { playbackRoutes } from '../playback.js'
 const app = Fastify({ logger: false })
 
 beforeAll(async () => {
+  // Simulate requireProfile middleware: set profileId on every request
+  app.addHook('preHandler', async (request) => {
+    request.profileId = PROFILE_ID
+  })
   await app.register(playbackRoutes)
   await app.ready()
 })

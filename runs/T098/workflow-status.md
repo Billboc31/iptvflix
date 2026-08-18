@@ -1,0 +1,30 @@
+# Workflow Status
+
+## Current Status
+
+- PLAN_APPROVED
+- PLAN_FIX_REQUIRED
+- IMPLEMENTATION_APPROVED
+- IMPLEMENTATION_FIX_REQUIRED
+- MEMORY_APPROVED
+- MEMORY_FIX_REQUIRED
+
+## Risk Level
+
+- AUTO_SAFE
+- CHAT_REVIEW_REQUIRED
+- HIGH_RISK
+
+## Notes
+
+## 2026-08-18T08:34:26Z
+
+- prev: IMPLEMENTATION_APPROVED
+- step: tester
+- next: TEST_COMPLETE
+
+## 2026-08-18T08:36:29Z
+
+- prev: CONFLICT_RESOLVED_REVIEW_NEEDED
+- step: auto-approve-conflict-resolution
+- next: TEST_COMPLETE

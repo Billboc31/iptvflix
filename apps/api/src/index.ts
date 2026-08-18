@@ -27,6 +27,8 @@ import { homeRoutes } from './routes/home.js'
 import { releaseLifecycleRoutes } from './routes/release-lifecycle.js'
 import { catalogRoutes } from './routes/catalog.js'
 import { profileRoutes } from './routes/profile.js'
+import { profilesRoutes } from './routes/profiles.js'
+import { interactionEventsRoutes } from './routes/interaction-events.js'
 import { pairingRoutes } from './routes/pairing.js'
 import { devicesRoutes } from './routes/devices.js'
 import { commandsRoutes } from './routes/commands.js'
@@ -42,8 +44,9 @@ import { catalogRefreshRoutes } from './routes/catalog-refresh.js'
 import { catalogStatsRoutes } from './routes/catalog-stats.js'
 import { embeddingBackfillRoutes } from './routes/embedding-backfill.js'
 import { failRunningJobsRoutes } from './routes/fail-running-jobs.js'
-import { authenticate } from './plugins/auth.js'
+import { authenticate, requireProfile } from './plugins/auth.js'
 import { failInterruptedRuns } from './services/fail-interrupted-runs.js'
+import { runSeed } from './db/seed.js'
 import {
   PORT,
   CORS_ORIGIN,
@@ -84,6 +87,14 @@ await app.register(cors, { origin: CORS_ORIGIN, credentials: true })
 await app.register(jwt, { secret: JWT_SECRET })
 await app.register(cookie)
 
+// Run idempotent boot-time seed (account + default profile) before accepting requests
+try {
+  await runSeed()
+  app.log.info('startup: account/profile seed completed')
+} catch (err) {
+  app.log.error(err, 'startup: seed failed — login may not work until DB is healthy')
+}
+
 const similarTitlesService = TMDB_API_KEY
   ? new SimilarTitlesService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
   : undefined
@@ -113,25 +124,18 @@ await app.register(commandsRoutes)
 
 let catalogRefreshServiceRef: CatalogRefreshService | null = null
 
-// Protected routes
+// Protected routes — require valid JWT (authenticate)
 await app.register(async function protectedScope(protectedApp) {
   protectedApp.addHook('preHandler', authenticate)
 
+  // Account-level routes (no profileId needed)
   await protectedApp.register(sourcesRoutes)
   await protectedApp.register(syncRunsRoutes)
   await protectedApp.register(failRunningJobsRoutes)
-  await protectedApp.register(profileRoutes)
-  await protectedApp.register(watchlistRoutes)
-  await protectedApp.register(viewingProgressRoutes)
-  await protectedApp.register(playbackRoutes)
-  await protectedApp.register(shelvesRoutes)
-  await protectedApp.register(followReleaseRoutes)
-  await protectedApp.register(feedbackRoutes)
-  await protectedApp.register(tasteRoutes)
+  await protectedApp.register(profilesRoutes)
+  await protectedApp.register(discoveryRoutes, { discoveryService })
   await protectedApp.register(recommendationRoutes)
   await protectedApp.register(homeRoutes)
-  await protectedApp.register(arrivalsRoutes)
-  await protectedApp.register(discoveryRoutes, { discoveryService })
 
   const enrichmentService = TMDB_API_KEY
     ? new MetadataEnrichmentService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
@@ -170,6 +174,22 @@ await app.register(async function protectedScope(protectedApp) {
 
   await protectedApp.register(catalogStatsRoutes)
   await protectedApp.register(embeddingBackfillRoutes)
+
+  // Profile-scoped routes — also require a profileId in the session JWT
+  await protectedApp.register(async function profileScope(profileApp) {
+    profileApp.addHook('preHandler', requireProfile)
+
+    await profileApp.register(profileRoutes)
+    await profileApp.register(watchlistRoutes)
+    await profileApp.register(viewingProgressRoutes)
+    await profileApp.register(playbackRoutes)
+    await profileApp.register(shelvesRoutes)
+    await profileApp.register(feedbackRoutes)
+    await profileApp.register(tasteRoutes)
+    await profileApp.register(interactionEventsRoutes)
+    await profileApp.register(followReleaseRoutes)
+    await profileApp.register(arrivalsRoutes)
+  })
 })
 
 if (process.env.NODE_ENV !== 'production') {

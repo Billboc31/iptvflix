@@ -165,12 +165,13 @@ vi.mock('../../db/client.js', () => {
 })
 
 vi.mock('../profile-service.js', () => ({
+  getProfilePreferences: vi.fn(),
   getDefaultProfilePreferences: vi.fn(),
 }))
 
 // Import after mocks are defined
 import { resolvePlayback } from '../playback-resolver.js'
-import { getDefaultProfilePreferences } from '../profile-service.js'
+import { getDefaultProfilePreferences, getProfilePreferences } from '../profile-service.js'
 import { createSession } from '../playback-session-store.js'
 
 const EMPTY_PREFS: ProfilePreferences = {
@@ -229,6 +230,7 @@ function makeSource(overrides: {
 beforeEach(() => {
   dbResultQueue.length = 0
   vi.mocked(getDefaultProfilePreferences).mockResolvedValue(EMPTY_PREFS)
+  vi.mocked(getProfilePreferences).mockResolvedValue(EMPTY_PREFS)
 })
 
 // ---------------------------------------------------------------------------

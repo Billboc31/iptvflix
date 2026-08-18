@@ -32,6 +32,9 @@ const mockArrival = {
 const app = Fastify({ logger: false })
 
 beforeAll(async () => {
+  app.addHook('preHandler', async (request) => {
+    request.profileId = PROFILE_ID
+  })
   await app.register(arrivalsRoutes)
   await app.ready()
 })

@@ -33,15 +33,18 @@ vi.mock('../db/client.js', () => {
   return { db: { select: chain.select } }
 })
 
+const EMPTY_PREFS = {
+  preferredAudioLanguages: [],
+  preferredSubtitleLanguages: [],
+  preferredSourceIds: [],
+  maxVideoQuality: null,
+  autoplayPreviews: false,
+}
+
 vi.mock('../services/profile-service.js', () => ({
   DEFAULT_PROFILE_ID: '00000000-0000-0000-0000-000000000001',
-  getDefaultProfilePreferences: vi.fn().mockResolvedValue({
-    preferredAudioLanguages: [],
-    preferredSubtitleLanguages: [],
-    preferredSourceIds: [],
-    maxVideoQuality: null,
-    autoplayPreviews: false,
-  }),
+  getDefaultProfilePreferences: vi.fn().mockResolvedValue(EMPTY_PREFS),
+  getProfilePreferences: vi.fn().mockResolvedValue(EMPTY_PREFS),
 }))
 
 vi.mock('../services/probe-cache.js', () => ({
@@ -171,9 +174,14 @@ import { playbackRoutes } from '../routes/playback.js'
 let app: FastifyInstance
 let fakeServer: { baseUrl: string; stop(): Promise<void> }
 
+const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
+
 beforeAll(async () => {
   fakeServer = await startFakeXtream()
   app = Fastify({ logger: false })
+  app.addHook('preHandler', async (request) => {
+    request.profileId = DEFAULT_PROFILE_ID
+  })
   await app.register(playbackRoutes)
   await app.ready()
 })
