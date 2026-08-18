@@ -1,3 +1,11 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T095/reviews/implementation-review.md
+- generated at: 2026-08-18T13:35:59Z
+
+---
+
 I now have all the information needed to write a complete review.
 
 ---
