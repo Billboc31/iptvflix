@@ -7,6 +7,7 @@ import {
   FATIGUE_MAX_ZERO_INTERACTION_STREAK,
   FATIGUE_COOLDOWN_DAYS,
   FATIGUE_SUPPRESSION_VERSION,
+  FATIGUE_LOOKBACK_DAYS,
 } from '../config/env.js'
 
 type Db = PostgresJsDatabase<typeof schema>
@@ -54,6 +55,7 @@ export class ShelfFatigueService {
     wasVisible: boolean,
   ): Promise<void> {
     const now = new Date()
+    const lookbackCutoff = new Date(now.getTime() - FATIGUE_LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
 
     await this.db
       .insert(shelfConceptFatigue)
@@ -73,8 +75,9 @@ export class ShelfFatigueService {
           visibleImpressionCount: wasVisible
             ? sql`${shelfConceptFatigue.visibleImpressionCount} + 1`
             : shelfConceptFatigue.visibleImpressionCount,
+          // Reset streak if last impression was outside the lookback window; prevents stale history from triggering cooldown
           zeroInteractionStreakCount: wasVisible
-            ? sql`${shelfConceptFatigue.zeroInteractionStreakCount} + 1`
+            ? sql`CASE WHEN ${shelfConceptFatigue.lastShownAt} IS NULL OR ${shelfConceptFatigue.lastShownAt} < ${lookbackCutoff} THEN 1 ELSE ${shelfConceptFatigue.zeroInteractionStreakCount} + 1 END`
             : shelfConceptFatigue.zeroInteractionStreakCount,
           lastShownAt: now,
           updatedAt: now,
