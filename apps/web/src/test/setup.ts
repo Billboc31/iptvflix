@@ -14,6 +14,10 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 })
 
+// jsdom does not implement HTMLMediaElement.play/pause; stub them so tests do not throw
+window.HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined)
+window.HTMLMediaElement.prototype.pause = vi.fn()
+
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
