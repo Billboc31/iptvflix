@@ -3,5 +3,8 @@
   "state": "IMPLEMENTATION_FIX_REQUIRED",
   "branch": "ticket/T098-introduce-account-profile-foundation-and-move-all",
   "issue_number": 201,
-  "updated_at": "2026-08-18T08:11:27Z"
+  "updated_at": "2026-08-18T08:12:56Z",
+  "pre_conflict_state": "IMPLEMENTATION_FIX_REQUIRED",
+  "conflict_detected_at": "2026-08-18T08:11:42Z",
+  "conflicted_files": []
 }
