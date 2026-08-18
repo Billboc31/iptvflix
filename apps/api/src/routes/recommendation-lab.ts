@@ -42,7 +42,7 @@ import type {
   RecommendationQueryPlan,
   RecommendationCandidate,
 } from '@iptvflix/api-contracts'
-import { rawQueryFallbackPlan } from '@iptvflix/api-contracts'
+import { rawQueryFallbackPlan } from '../query-plan-fallback.js'
 
 // ---------------------------------------------------------------------------
 // profileContext sanitisation — validate shape and bound string lengths

@@ -1,6 +1,6 @@
 import OpenAI from 'openai'
 import type { CompactTasteContext, RecommendationQueryPlan } from '@iptvflix/api-contracts'
-import { QUERY_PLAN_SCHEMA_VERSION } from '@iptvflix/api-contracts'
+import { QUERY_PLAN_SCHEMA_VERSION } from '../query-plan-fallback.js'
 import type { LlmPlannerProvider } from './llm-planner-provider.js'
 import { buildQueryPlannerPrompt } from '../prompts/query-planner-v1.js'
 
