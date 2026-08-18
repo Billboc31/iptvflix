@@ -1,7 +1,7 @@
 {
   "ticket_id": "T109",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T109-fix-series-episode-level-source-selection-and-play",
   "issue_number": 230,
-  "updated_at": "2026-08-18T15:39:44Z"
+  "updated_at": "2026-08-18T15:53:26Z"
 }
