@@ -99,3 +99,5 @@ export const CATALOG_BOOTSTRAP_HIERARCHY_PRIORITY_COUNT = Number(
 export const MEDIA_RELAY_URL: string | undefined = process.env.MEDIA_RELAY_URL?.replace(/\/$/, '') || undefined
 export const MEDIA_RELAY_SECRET: string | undefined = process.env.MEDIA_RELAY_SECRET || undefined
 export const MEDIA_RELAY_ENABLED = Boolean(MEDIA_RELAY_URL && MEDIA_RELAY_SECRET)
+
+export const OPENAI_API_KEY: string | undefined = process.env.OPENAI_API_KEY || undefined

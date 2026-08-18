@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { label: 'Séries', to: '/series' },
   { label: 'Ma Liste', to: '/my-list' },
   { label: 'Nouveautés', to: '/arrivals' },
+  { label: 'Lab', to: '/lab' },
 ]
 
 export default function TopNav() {

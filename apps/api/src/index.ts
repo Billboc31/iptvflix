@@ -43,6 +43,7 @@ import { catalogBootstrapRoutes } from './routes/catalog-bootstrap.js'
 import { catalogRefreshRoutes } from './routes/catalog-refresh.js'
 import { catalogStatsRoutes } from './routes/catalog-stats.js'
 import { embeddingBackfillRoutes } from './routes/embedding-backfill.js'
+import { recommendationLabRoutes } from './routes/recommendation-lab.js'
 import { failRunningJobsRoutes } from './routes/fail-running-jobs.js'
 import { authenticate, requireProfile } from './plugins/auth.js'
 import { failInterruptedRuns } from './services/fail-interrupted-runs.js'
@@ -59,6 +60,7 @@ import {
   SCHEDULER_STARTUP_DELAY_MS,
   CATALOG_REFRESH_ENABLED,
   CATALOG_REFRESH_CADENCE_HOURS,
+  OPENAI_API_KEY,
 } from './config/env.js'
 
 import { db } from './db/client.js'
@@ -73,6 +75,8 @@ import { MediaReconciliationService } from './services/media-reconciliation-serv
 import { EpisodeBackfillService } from './services/episode-backfill-service.js'
 import { CatalogBootstrapService } from './services/catalog-bootstrap-service.js'
 import { CatalogRefreshService } from './services/catalog-refresh-service.js'
+import { EmbeddingService } from './services/embedding-service.js'
+import { createDefaultProvider } from './services/embedding-provider.js'
 import { triggerSync } from './services/sync-runs-service.js'
 
 const app = Fastify({ logger: true })
@@ -137,8 +141,22 @@ await app.register(async function protectedScope(protectedApp) {
   await protectedApp.register(recommendationRoutes)
   await protectedApp.register(homeRoutes)
 
+  const embeddingProvider = OPENAI_API_KEY ? createDefaultProvider(OPENAI_API_KEY) : null
+  const embeddingService = embeddingProvider ? new EmbeddingService(db, embeddingProvider) : null
+
   const enrichmentService = TMDB_API_KEY
-    ? new MetadataEnrichmentService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
+    ? new MetadataEnrichmentService(
+        db,
+        new TmdbClient({ apiKey: TMDB_API_KEY }),
+        undefined,
+        embeddingService
+          ? (mediaId, mediaType) => {
+              embeddingService.upsertEmbedding(mediaId, mediaType).catch((err) => {
+                app.log.error(err, `[embedding] incremental upsert failed for ${mediaType}:${mediaId}`)
+              })
+            }
+          : undefined,
+      )
     : null
   await protectedApp.register(enrichmentRoutes, { enrichmentService })
 
@@ -174,6 +192,7 @@ await app.register(async function protectedScope(protectedApp) {
 
   await protectedApp.register(catalogStatsRoutes)
   await protectedApp.register(embeddingBackfillRoutes)
+  await protectedApp.register(recommendationLabRoutes)
 
   // Profile-scoped routes — also require a profileId in the session JWT
   await protectedApp.register(async function profileScope(profileApp) {

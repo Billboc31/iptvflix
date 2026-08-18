@@ -358,3 +358,7 @@ export function renameDevice(deviceId: string, name: string): Promise<DeviceResp
 export function revokeDevice(deviceId: string): Promise<void> {
   return request(`/devices/${deviceId}`, { method: 'DELETE' })
 }
+
+export function semanticQuery(body: import('@iptvflix/api-contracts').SemanticQueryRequest): Promise<import('@iptvflix/api-contracts').SemanticQueryResponse> {
+  return request('/recommendation-lab/semantic-query', { method: 'POST', body: JSON.stringify(body) })
+}
