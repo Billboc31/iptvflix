@@ -29,7 +29,6 @@ describe('ContinueWatchingRow', () => {
   it('renders nothing when continue-watching list is empty', async () => {
     server.use(http.get('/api/continue-watching', () => HttpResponse.json([])))
     const { container } = renderRow()
-    // Flush all pending state updates (fetch + setState)
     await act(async () => {
       await new Promise((r) => setTimeout(r, 100))
     })

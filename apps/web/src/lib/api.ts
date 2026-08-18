@@ -233,6 +233,10 @@ export function fetchContinueWatching(): Promise<ContinueWatchingItem[]> {
   return request('/continue-watching')
 }
 
+export function dismissContinueWatching(mediaType: ProgressMediaType, mediaId: string): Promise<void> {
+  return request(`/continue-watching/${mediaType}/${mediaId}`, { method: 'DELETE' })
+}
+
 export function fetchShelves(): Promise<ShelfSummaryResponse[]> {
   return request('/shelves')
 }

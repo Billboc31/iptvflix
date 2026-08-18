@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
-import { fetchContinueWatching } from '../lib/api.js'
+import { fetchContinueWatching, dismissContinueWatching } from '../lib/api.js'
 import { useProfile } from '../context/ProfileContext.js'
-import type { ContinueWatchingItem } from '@iptvflix/api-contracts'
+import type { ContinueWatchingItem, ProgressMediaType } from '@iptvflix/api-contracts'
 
 export type UseContinueWatchingResult = {
   items: ContinueWatchingItem[]
   loading: boolean
   error: Error | null
+  dismissItem: (mediaType: ProgressMediaType, mediaId: string) => Promise<void>
 }
 
 export function useContinueWatching(): UseContinueWatchingResult {
@@ -25,5 +26,16 @@ export function useContinueWatching(): UseContinueWatchingResult {
       .finally(() => setLoading(false))
   }, [profileVersion])
 
-  return { items, loading, error }
+  async function dismissItem(mediaType: ProgressMediaType, mediaId: string): Promise<void> {
+    const previous = items
+    setItems((current) => current.filter((i) => !(i.mediaType === mediaType && i.mediaId === mediaId)))
+    try {
+      await dismissContinueWatching(mediaType, mediaId)
+    } catch (e) {
+      setItems(previous)
+      throw e
+    }
+  }
+
+  return { items, loading, error, dismissItem }
 }

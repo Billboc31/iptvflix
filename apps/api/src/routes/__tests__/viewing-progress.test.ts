@@ -4,6 +4,7 @@ import Fastify from 'fastify'
 const mockDb = vi.hoisted(() => ({
   insert: vi.fn(),
   select: vi.fn(),
+  delete: vi.fn(),
 }))
 
 vi.mock('../../db/client.js', () => ({ db: mockDb }))
@@ -17,17 +18,26 @@ import { viewingProgressRoutes } from '../viewing-progress.js'
 const PROFILE_ID = '00000000-0000-0000-0000-000000000001'
 const MOVIE_ID = 'aaaaaaaa-0000-0000-0000-000000000001'
 const EPISODE_ID = 'dddddddd-0000-0000-0000-000000000001'
+const EPISODE_ID_B = 'dddddddd-0000-0000-0000-000000000002'
+const SERIES_ID = 'eeeeeeee-0000-0000-0000-000000000001'
 const UNKNOWN_ID = 'cccccccc-0000-0000-0000-000000000099'
 
 const mockMovieRow = { id: MOVIE_ID }
+const mockEpisodeRow = { id: EPISODE_ID }
 const mockMovieMeta = { id: MOVIE_ID, title: 'Test Movie', posterPath: null }
+const mockSeriesMeta = { id: SERIES_ID, title: 'Test Series', posterPath: null }
 
-function makeProgressRow(progressSeconds: number, durationSeconds: number, lastWatchedAt: Date) {
+function makeProgressRow(
+  progressSeconds: number,
+  durationSeconds: number,
+  lastWatchedAt: Date,
+  overrides: Partial<{ id: string; mediaType: 'MOVIE' | 'EPISODE'; mediaId: string }> = {},
+) {
   return {
-    id: 'ffffffff-0000-0000-0000-000000000001',
+    id: overrides.id ?? 'ffffffff-0000-0000-0000-000000000001',
     profileId: PROFILE_ID,
-    mediaType: 'MOVIE' as const,
-    mediaId: MOVIE_ID,
+    mediaType: overrides.mediaType ?? ('MOVIE' as const),
+    mediaId: overrides.mediaId ?? MOVIE_ID,
     progressSeconds,
     durationSeconds,
     lastWatchedAt,
@@ -55,25 +65,70 @@ function setupUpsert(row: ReturnType<typeof makeProgressRow>) {
   })
 }
 
-// Sets up: progress rows select, then movie meta batch select
-function setupContinueWatchingSelect(rows: ReturnType<typeof makeProgressRow>[]) {
-  // 1. Progress rows
+function setupDelete() {
+  mockDb.delete.mockReturnValue({
+    where: vi.fn().mockResolvedValue([]),
+  })
+}
+
+// Sets up the main CW query (leftJoin chain) then optional meta batches
+function setupContinueWatchingSelect(
+  rows: ReturnType<typeof makeProgressRow>[],
+  opts: {
+    movieMeta?: typeof mockMovieMeta[]
+    episodeMeta?: { id: string; seriesId: string; episodeNumber: number; title: string | null; seasonNumber: number }[]
+    seriesMeta?: typeof mockSeriesMeta[]
+  } = {},
+) {
+  // 1. Progress rows with leftJoin chain
   mockDb.select.mockReturnValueOnce({
     from: vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({
-        orderBy: vi.fn().mockResolvedValue(rows),
+      leftJoin: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          orderBy: vi.fn().mockResolvedValue(rows),
+        }),
       }),
     }),
   })
-  // 2. Movie meta batch (only called when rows is non-empty and contains MOVIE items)
-  if (rows.length > 0 && rows.some((r) => r.mediaType === 'MOVIE')) {
+
+  if (rows.length === 0) return
+
+  const hasMovies = rows.some((r) => r.mediaType === 'MOVIE')
+  const hasEpisodes = rows.some((r) => r.mediaType === 'EPISODE')
+
+  // 2a. Movie meta batch
+  if (hasMovies) {
     mockDb.select.mockReturnValueOnce({
       from: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([mockMovieMeta]),
+        where: vi.fn().mockResolvedValue(opts.movieMeta ?? [mockMovieMeta]),
       }),
     })
   }
-  // Episodes batch would be set up separately if needed
+
+  // 2b. Episode meta batch (with innerJoin for seasons)
+  if (hasEpisodes) {
+    mockDb.select.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        innerJoin: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(opts.episodeMeta ?? []),
+        }),
+      }),
+    })
+    // 3. Series meta batch
+    mockDb.select.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(opts.seriesMeta ?? [mockSeriesMeta]),
+      }),
+    })
+  }
+}
+
+function setupDismissInsert() {
+  mockDb.insert.mockReturnValue({
+    values: vi.fn().mockReturnValue({
+      onConflictDoUpdate: vi.fn().mockResolvedValue([]),
+    }),
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -93,6 +148,8 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Default delete mock for upsertProgress dismissal cleanup
+  setupDelete()
 })
 
 // ---------------------------------------------------------------------------
@@ -131,8 +188,37 @@ describe('PUT /progress/:mediaType/:mediaId', () => {
 
     expect(res.statusCode).toBe(200)
     expect(res.json().progressSeconds).toBe(90)
-    // upsert was called exactly once (no duplicate insertion)
     expect(mockDb.insert).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears dismissal when progress reaches ≥5% threshold', async () => {
+    const row = makeProgressRow(10, 120, new Date('2024-01-01T10:00:00Z')) // ~8.3%
+    setupValidationSelect([mockMovieRow])
+    setupUpsert(row)
+
+    await app.inject({
+      method: 'PUT',
+      url: `/progress/MOVIE/${MOVIE_ID}`,
+      payload: { progressSeconds: 10, durationSeconds: 120 },
+    })
+
+    expect(mockDb.delete).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not clear dismissal when progress is below 5% threshold', async () => {
+    const row = makeProgressRow(3, 120, new Date('2024-01-01T10:00:00Z')) // 2.5%
+    setupValidationSelect([mockMovieRow])
+    setupUpsert(row)
+    // Override beforeEach delete mock — delete should NOT be called
+    mockDb.delete.mockClear()
+
+    await app.inject({
+      method: 'PUT',
+      url: `/progress/MOVIE/${MOVIE_ID}`,
+      payload: { progressSeconds: 3, durationSeconds: 120 },
+    })
+
+    expect(mockDb.delete).not.toHaveBeenCalled()
   })
 
   it('returns 404 for unknown mediaId', async () => {
@@ -198,8 +284,40 @@ describe('GET /continue-watching', () => {
     expect(body[0].title).toBe('Test Movie')
   })
 
+  it('returns null fields for MOVIE items (no episode fields)', async () => {
+    const row = makeProgressRow(60, 120, new Date('2024-01-01T10:00:00Z'))
+    setupContinueWatchingSelect([row])
+
+    const res = await app.inject({ method: 'GET', url: '/continue-watching' })
+
+    const item = res.json()[0]
+    expect(item.seriesId).toBeNull()
+    expect(item.seasonNumber).toBeNull()
+    expect(item.episodeNumber).toBeNull()
+    expect(item.episodeTitle).toBeNull()
+  })
+
+  it('returns episode metadata fields for EPISODE items', async () => {
+    const row = makeProgressRow(60, 120, new Date('2024-01-01T10:00:00Z'), {
+      mediaType: 'EPISODE',
+      mediaId: EPISODE_ID,
+    })
+    setupContinueWatchingSelect([row], {
+      episodeMeta: [{ id: EPISODE_ID, seriesId: SERIES_ID, episodeNumber: 5, title: 'The Episode', seasonNumber: 2 }],
+      seriesMeta: [mockSeriesMeta],
+    })
+
+    const res = await app.inject({ method: 'GET', url: '/continue-watching' })
+
+    const item = res.json()[0]
+    expect(item.seriesId).toBe(SERIES_ID)
+    expect(item.seasonNumber).toBe(2)
+    expect(item.episodeNumber).toBe(5)
+    expect(item.episodeTitle).toBe('The Episode')
+    expect(item.title).toBe('Test Series')
+  })
+
   it('excludes item at 94% progress (completed threshold)', async () => {
-    // The DB filter handles this — we simulate the DB returning no rows
     setupContinueWatchingSelect([])
 
     const res = await app.inject({ method: 'GET', url: '/continue-watching' })
@@ -219,19 +337,17 @@ describe('GET /continue-watching', () => {
 
   it('returns items ordered by lastWatchedAt descending', async () => {
     const older = makeProgressRow(60, 120, new Date('2024-01-01T10:00:00Z'))
-    const newer = {
-      ...makeProgressRow(70, 120, new Date('2024-01-02T10:00:00Z')),
-      id: 'ffffffff-0000-0000-0000-000000000002',
-    }
-    // 1. Progress rows
+    const newer = makeProgressRow(70, 120, new Date('2024-01-02T10:00:00Z'), { id: 'ffffffff-0000-0000-0000-000000000002' })
+
     mockDb.select.mockReturnValueOnce({
       from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          orderBy: vi.fn().mockResolvedValue([newer, older]),
+        leftJoin: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            orderBy: vi.fn().mockResolvedValue([newer, older]),
+          }),
         }),
       }),
     })
-    // 2. Movie meta batch
     mockDb.select.mockReturnValueOnce({
       from: vi.fn().mockReturnValue({
         where: vi.fn().mockResolvedValue([mockMovieMeta]),
@@ -244,5 +360,53 @@ describe('GET /continue-watching', () => {
     const body = res.json()
     expect(body[0].id).toBe(newer.id)
     expect(body[1].id).toBe(older.id)
+  })
+})
+
+describe('DELETE /continue-watching/:mediaType/:mediaId', () => {
+  it('persists dismissal and returns 204', async () => {
+    setupDismissInsert()
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/continue-watching/MOVIE/${MOVIE_ID}`,
+    })
+
+    expect(res.statusCode).toBe(204)
+    expect(mockDb.insert).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns 400 for invalid mediaType', async () => {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/continue-watching/SERIES/${MOVIE_ID}`,
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('dismissed item is absent from subsequent GET /continue-watching', async () => {
+    // After dismissal the DB leftJoin filters it out — simulate empty result
+    setupContinueWatchingSelect([])
+
+    const res = await app.inject({ method: 'GET', url: '/continue-watching' })
+
+    expect(res.json()).toEqual([])
+  })
+
+  it('dismissing episode A does not affect episode B of the same series', async () => {
+    // Episode B is still returned after A is dismissed
+    const rowB = makeProgressRow(60, 120, new Date('2024-01-01T10:00:00Z'), {
+      mediaType: 'EPISODE',
+      mediaId: EPISODE_ID_B,
+    })
+    setupContinueWatchingSelect([rowB], {
+      episodeMeta: [{ id: EPISODE_ID_B, seriesId: SERIES_ID, episodeNumber: 2, title: 'Episode B', seasonNumber: 1 }],
+      seriesMeta: [mockSeriesMeta],
+    })
+
+    const res = await app.inject({ method: 'GET', url: '/continue-watching' })
+
+    expect(res.json().length).toBe(1)
+    expect(res.json()[0].mediaId).toBe(EPISODE_ID_B)
   })
 })
