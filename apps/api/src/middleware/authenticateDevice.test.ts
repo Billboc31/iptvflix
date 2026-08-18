@@ -37,7 +37,7 @@ const VALID_DEVICE = {
   name: 'TV',
   tokenHash: 'e3b0c44298fc1c149afb', // placeholder
   lastSeenAt: null,
-  revokedAt: null,
+  revokedAt: null as Date | null,
   createdAt: new Date('2026-01-01'),
 }
 

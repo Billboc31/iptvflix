@@ -162,11 +162,16 @@ async function buildProfilesApp(accountId: string): Promise<FastifyInstance> {
     request.account = { id: accountId, username: 'testuser' }
   })
   // Use a plain function (not vi.fn) so vi.resetAllMocks() doesn't wipe the return value
-  app.decorate('jwt', {
-    sign: () => 'mock-jwt-token',
-    verify: vi.fn(),
-    decode: vi.fn(),
-  })
+  app.decorate(
+    'jwt',
+    {
+      sign: () => 'mock-jwt-token',
+      verify: vi.fn(),
+      decode: vi.fn(),
+      options: {},
+      lookupToken: vi.fn(),
+    } as never,
+  )
   await app.register(cookie)
   await app.register(profilesRoutes)
   await app.ready()

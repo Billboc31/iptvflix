@@ -10,6 +10,7 @@ const BASE_DATA = {
   providerStreamUrl: 'http://provider.example.com/user/pass/123.mp4',
   containerExtension: 'mp4',
   deliveryMode: 'DIRECT' as const,
+  correlationId: 'corr-test',
 }
 
 afterEach(() => {
