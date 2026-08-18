@@ -1,7 +1,7 @@
 {
   "ticket_id": "T103",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T103-add-llm-query-planner-to-expand-natural-language-s",
   "issue_number": 206,
-  "updated_at": "2026-08-17T21:33:05Z"
+  "updated_at": "2026-08-18T09:27:27Z"
 }
