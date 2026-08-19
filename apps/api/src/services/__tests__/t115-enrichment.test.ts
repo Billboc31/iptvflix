@@ -124,6 +124,7 @@ describe('MetadataEnrichmentService — T115', () => {
 
       const dbErr = new Error('null value in column violates not-null constraint')
       Object.assign(dbErr, { code: '23502' })
+      Object.defineProperty(dbErr, 'constructor', { value: { name: 'PostgresError' } })
 
       let insertCallCount = 0
       const insert = vi.fn().mockImplementation(() => {
@@ -165,7 +166,9 @@ describe('MetadataEnrichmentService — T115', () => {
         expect.objectContaining({
           mediaType: 'MOVIE',
           stage: 'db_update',
+          errorClass: 'PostgresError',
           errorCode: '23502',
+          errorMessage: 'null value in column violates not-null constraint',
         }),
       )
     })

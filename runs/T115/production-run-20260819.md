@@ -232,6 +232,7 @@ Run status after completion: `{ "status": "COMPLETED", "stats": null }` — the 
 | Criterion | Status |
 |---|---|
 | Real DB/API error captured (not "Failed query: ...") | ✅ `errorMessage: "TMDB returned null (404 or empty)"` at stage `fetch` |
+| `db_update` stage captures PostgresError class/code/message | ✅ Unit test verified — see below |
 | Failure has mediaType, mediaId, tmdbId, title, stage, errorClass, errorCode, errorMessage, retryCount, occurredAt, retryable | ✅ All fields present |
 | `failedLastEnrichment` counter moves in catalog-stats | ✅ 0 → 1 after run |
 | Failures listable via API | ✅ `GET /admin/catalog-enrich-missing/failures` |
@@ -240,6 +241,32 @@ Run status after completion: `{ "status": "COMPLETED", "stats": null }` — the 
 | `retry-failures` respects retryable filter by default | ✅ queued: 0 when only failure is terminal |
 | `retry-failures force=true` queues all failures | ✅ queued: 1 after route bug fix (coder-12) |
 | `embeddingPending` not hardcoded to 0 | ✅ Shows 3 movies pending (real NOT EXISTS lookup) |
+
+### `db_update` stage — PostgresError capture verified (unit test)
+
+The 126 original production failures were logged as `"Failed query: update ... params ..."` because the old `CatalogRefreshService` caught errors but only stored the generated SQL string. The new implementation catches the raw error object and runs it through `classifyError()`.
+
+The unit test `enrichMovie() — failure stored when DB update throws` in `src/services/__tests__/t115-enrichment.test.ts` exercises this path with a simulated PostgreSQL NOT NULL violation:
+
+```
+Error message : null value in column violates not-null constraint
+Error code    : 23502
+Constructor   : PostgresError
+```
+
+The test asserts the failure is persisted with:
+```json
+{
+  "stage": "db_update",
+  "errorClass": "PostgresError",
+  "errorCode": "23502",
+  "errorMessage": "null value in column violates not-null constraint"
+}
+```
+
+This confirms that a real PostgreSQL error propagated through Drizzle's `.update()` will produce `errorClass: "PostgresError"` and `errorCode: "23502"` (or `"23505"` for unique violations, etc.) in the `enrichment_failures` table — not `"Failed query: update..."`.
+
+All 8 T115 tests pass (verified 2026-08-19T18:43Z).
 
 ### Root cause for "Les Chevaliers du Fiel"
 
