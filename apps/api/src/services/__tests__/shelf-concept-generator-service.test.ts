@@ -38,6 +38,8 @@ const T100_TASTE_FIELDS = {
   completionRate: null,
   historyEventCount: 0,
   tasteVersion: 1,
+  dislikedMediaIds: [] as string[],
+  notInterestedMediaIds: [] as string[],
 }
 
 const WARM_TASTE: ProfileTaste = {

@@ -1,7 +1,7 @@
 import { runTextSearch } from './stages/text-search.js'
 import { runSemanticSearch } from './stages/semantic-search.js'
 import { runLlmPlanner } from './stages/llm-planner.js'
-import { runHybridReranker, SCORE_MODEL_V1 } from './stages/hybrid-reranker.js'
+import { runHybridReranker, SCORE_MODEL_V2 } from './stages/hybrid-reranker.js'
 import { EMBEDDING_MODEL_PROVIDER, EMBEDDING_MODEL_NAME, LLM_PLANNER_MODEL, OPENAI_API_KEY } from '../config.js'
 import type {
   QueryRequest,
@@ -125,7 +125,7 @@ export async function runPipeline(
       engineVersion: PIPELINE_VERSION,
       embeddingModelVersion,
       plannerModelVersion,
-      rerankerVersion: SCORE_MODEL_V1.version,
+      rerankerVersion: SCORE_MODEL_V2.version,
       timingsMs: timingStages,
       fallbackFlags,
     },

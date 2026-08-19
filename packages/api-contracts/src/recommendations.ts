@@ -8,6 +8,11 @@ export interface ScoreBreakdown {
   genreAffinity: number
   themeAffinity: number
   peopleAffinity: number
+  keywordAffinity: number
+  franchiseAffinity: number
+  languageAffinity: number
+  decadeAffinity: number
+  mediaTypeAffinity: number
   qualityPrior: number
   freshness: number
   availabilityBonus: number
