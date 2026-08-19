@@ -3,6 +3,8 @@ import { rankRecommendations } from '../services/recommendation-ranking-service.
 import type { AvailabilityPolicy } from '../services/recommendation-ranking-service.js'
 import { getCurrentProfile } from '../services/profile-service.js'
 import { NotFoundError } from '../errors.js'
+import { RecommendationEngineClient } from '../client/recommendation-engine-client.js'
+import type { RecommendationCandidate } from '@iptvflix/api-contracts'
 
 const VALID_POLICIES = new Set<string>(['ALL', 'WATCH_NOW', 'DISCOVERY', 'UPCOMING'])
 
@@ -37,6 +39,38 @@ export async function recommendationRoutes(app: FastifyInstance): Promise<void> 
     const limitNum = limit !== undefined ? parseInt(limit, 10) : undefined
     if (limitNum !== undefined && (isNaN(limitNum) || limitNum < 1 || limitNum > 100)) {
       return reply.status(400).send({ error: 'limit must be an integer between 1 and 100' })
+    }
+
+    const mediaTypes =
+      mediaType === 'MOVIE' ? ['movie' as const]
+      : mediaType === 'SERIES' ? ['series' as const]
+      : undefined
+
+    const engineResult = await RecommendationEngineClient.query({
+      text: '',
+      profileId,
+      mediaTypes,
+      limit: limitNum,
+    })
+
+    if (engineResult) {
+      const candidates: RecommendationCandidate[] = engineResult.results.map((r) => ({
+        mediaType: r.mediaType === 'movie' ? 'MOVIE' : 'SERIES',
+        mediaId: r.id,
+        title: r.title,
+        year: r.year ?? null,
+        posterPath: r.posterPath ?? null,
+        score: r.score ?? 0,
+        reasons: [],
+        source: 'LOCAL' as const,
+        available: true,
+      }))
+      return reply.status(200).send({
+        profileId,
+        coldStart: false,
+        candidates,
+        engineMetadata: engineResult.engineMetadata,
+      })
     }
 
     try {

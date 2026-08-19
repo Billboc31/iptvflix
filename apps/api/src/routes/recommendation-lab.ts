@@ -43,6 +43,7 @@ import type {
   RecommendationCandidate,
 } from '@iptvflix/api-contracts'
 import { rawQueryFallbackPlan } from '../query-plan-fallback.js'
+import { RecommendationEngineClient } from '../client/recommendation-engine-client.js'
 
 // ---------------------------------------------------------------------------
 // profileContext sanitisation — validate shape and bound string lengths
@@ -376,6 +377,22 @@ function mapScoredToCandidate(
   }
 }
 
+function mapEngineResultToCandidate(
+  r: NonNullable<Awaited<ReturnType<typeof RecommendationEngineClient.query>>>['results'][number],
+): RecommendationCandidate {
+  return {
+    mediaType: r.mediaType === 'movie' ? 'MOVIE' : 'SERIES',
+    mediaId: r.id,
+    title: r.title,
+    year: r.year ?? null,
+    posterPath: r.posterPath ?? null,
+    score: r.score ?? 0,
+    reasons: [],
+    source: 'LOCAL' as const,
+    available: true,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
@@ -500,26 +517,48 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
       let compareProfileHybridResults: RecommendationCandidate[] | undefined
 
       if (useHybridRanking) {
-        const rankingOpts: RankingOptions = {
+        const engineResult = await RecommendationEngineClient.query({
+          text: rawQuery,
+          profileId,
           limit: topK,
-          explorationLevel,
-          diversityEnabled,
-          alreadyShownIds,
           debug: debugMode,
-        }
+        })
 
-        const [enriched, taste1, taste2] = await Promise.all([
-          enrichAsHybridCandidates(filteredResults, profileId),
-          profileId ? loadTasteSignals(profileId) : Promise.resolve(null),
-          compareProfileId ? loadTasteSignals(compareProfileId) : Promise.resolve(null),
-        ])
+        if (engineResult) {
+          hybridResults = engineResult.results.map(mapEngineResultToCandidate)
+          if (compareProfileId) {
+            const compareEngineResult = await RecommendationEngineClient.query({
+              text: rawQuery,
+              profileId: compareProfileId,
+              limit: topK,
+              debug: debugMode,
+            })
+            if (compareEngineResult) {
+              compareProfileHybridResults = compareEngineResult.results.map(mapEngineResultToCandidate)
+            }
+          }
+        } else {
+          const rankingOpts: RankingOptions = {
+            limit: topK,
+            explorationLevel,
+            diversityEnabled,
+            alreadyShownIds,
+            debug: debugMode,
+          }
 
-        hybridResults = rankHybrid(enriched, plan, taste1, rankingOpts).map(mapScoredToCandidate)
+          const [enriched, taste1, taste2] = await Promise.all([
+            enrichAsHybridCandidates(filteredResults, profileId),
+            profileId ? loadTasteSignals(profileId) : Promise.resolve(null),
+            compareProfileId ? loadTasteSignals(compareProfileId) : Promise.resolve(null),
+          ])
 
-        if (compareProfileId && taste2 !== undefined) {
-          compareProfileHybridResults = rankHybrid(enriched, plan, taste2, rankingOpts).map(
-            mapScoredToCandidate,
-          )
+          hybridResults = rankHybrid(enriched, plan, taste1, rankingOpts).map(mapScoredToCandidate)
+
+          if (compareProfileId && taste2 !== undefined) {
+            compareProfileHybridResults = rankHybrid(enriched, plan, taste2, rankingOpts).map(
+              mapScoredToCandidate,
+            )
+          }
         }
       }
 
@@ -563,29 +602,51 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
     let compareProfileHybridResults: RecommendationCandidate[] | undefined
 
     if (useHybridRanking) {
-      const fallbackPlan = rawQueryFallbackPlan(rawQuery)
-      const rankingOpts: RankingOptions = {
+      const engineResult = await RecommendationEngineClient.query({
+        text: rawQuery,
+        profileId,
         limit: topK,
-        explorationLevel,
-        diversityEnabled,
-        alreadyShownIds,
         debug: debugMode,
-      }
+      })
 
-      const [enriched, taste1, taste2] = await Promise.all([
-        enrichAsHybridCandidates(primary, profileId),
-        profileId ? loadTasteSignals(profileId) : Promise.resolve(null),
-        compareProfileId ? loadTasteSignals(compareProfileId) : Promise.resolve(null),
-      ])
+      if (engineResult) {
+        hybridResults = engineResult.results.map(mapEngineResultToCandidate)
+        if (compareProfileId) {
+          const compareEngineResult = await RecommendationEngineClient.query({
+            text: rawQuery,
+            profileId: compareProfileId,
+            limit: topK,
+            debug: debugMode,
+          })
+          if (compareEngineResult) {
+            compareProfileHybridResults = compareEngineResult.results.map(mapEngineResultToCandidate)
+          }
+        }
+      } else {
+        const fallbackPlan = rawQueryFallbackPlan(rawQuery)
+        const rankingOpts: RankingOptions = {
+          limit: topK,
+          explorationLevel,
+          diversityEnabled,
+          alreadyShownIds,
+          debug: debugMode,
+        }
 
-      hybridResults = rankHybrid(enriched, fallbackPlan, taste1, rankingOpts).map(
-        mapScoredToCandidate,
-      )
+        const [enriched, taste1, taste2] = await Promise.all([
+          enrichAsHybridCandidates(primary, profileId),
+          profileId ? loadTasteSignals(profileId) : Promise.resolve(null),
+          compareProfileId ? loadTasteSignals(compareProfileId) : Promise.resolve(null),
+        ])
 
-      if (compareProfileId && taste2 !== undefined) {
-        compareProfileHybridResults = rankHybrid(enriched, fallbackPlan, taste2, rankingOpts).map(
+        hybridResults = rankHybrid(enriched, fallbackPlan, taste1, rankingOpts).map(
           mapScoredToCandidate,
         )
+
+        if (compareProfileId && taste2 !== undefined) {
+          compareProfileHybridResults = rankHybrid(enriched, fallbackPlan, taste2, rankingOpts).map(
+            mapScoredToCandidate,
+          )
+        }
       }
     }
 

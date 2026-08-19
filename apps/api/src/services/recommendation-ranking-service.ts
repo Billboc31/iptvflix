@@ -576,6 +576,7 @@ function applyDiversityFilter(
 
 // ─── main export ──────────────────────────────────────────────────────────────
 
+/** @deprecated — use recommendation-engine (apps/recommendation-engine/src/pipeline/stages/hybrid-reranker.ts) */
 export function rankHybrid(
   candidates: HybridCandidate[],
   queryPlan: RecommendationQueryPlan,

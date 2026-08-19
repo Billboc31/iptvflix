@@ -1,3 +1,4 @@
+// @deprecated — use recommendation-engine (apps/recommendation-engine/src/pipeline/stages/llm-planner.ts)
 import OpenAI from 'openai'
 import type { CompactTasteContext, RecommendationQueryPlan } from '@iptvflix/api-contracts'
 import { QUERY_PLAN_SCHEMA_VERSION } from '../query-plan-fallback.js'

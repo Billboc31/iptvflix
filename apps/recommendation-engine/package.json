@@ -12,9 +12,11 @@
   },
   "dependencies": {
     "@fastify/cors": "^9.0.0",
+    "@iptvflix/api-contracts": "workspace:*",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "fastify": "^4.28.0",
+    "openai": "^4.67.0",
     "postgres": "^3.4.9",
     "zod": "^3.23.8"
   },

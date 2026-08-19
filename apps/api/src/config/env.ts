@@ -97,6 +97,9 @@ export const CATALOG_BOOTSTRAP_HIERARCHY_PRIORITY_COUNT = Number(
  * gateway URLs point at the relay instead of proxying through Railway (blocked by CF).
  */
 export const MEDIA_RELAY_URL: string | undefined = process.env.MEDIA_RELAY_URL?.replace(/\/$/, '') || undefined
+
+/** Standalone recommendation-engine base URL. When set, API delegates computation to it. */
+export const RECOMMENDATION_ENGINE_URL: string | undefined = process.env.RECOMMENDATION_ENGINE_URL?.replace(/\/$/, '') || undefined
 export const MEDIA_RELAY_SECRET: string | undefined = process.env.MEDIA_RELAY_SECRET || undefined
 export const MEDIA_RELAY_ENABLED = Boolean(MEDIA_RELAY_URL && MEDIA_RELAY_SECRET)
 

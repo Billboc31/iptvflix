@@ -1,3 +1,4 @@
+// @deprecated — use recommendation-engine (apps/recommendation-engine/src/services/shelf-generator.ts)
 import { eq, inArray, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import {

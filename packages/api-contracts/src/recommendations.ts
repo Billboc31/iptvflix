@@ -1,3 +1,5 @@
+import type { EngineMetadata } from './engine-metadata.js'
+
 export type RecommendationSource = 'LOCAL' | 'DISCOVERY'
 
 export interface ScoreBreakdown {
@@ -35,4 +37,5 @@ export type RecommendationsResponse = {
   profileId: string
   coldStart: boolean
   candidates: RecommendationCandidate[]
+  engineMetadata?: EngineMetadata
 }
