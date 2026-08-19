@@ -16,6 +16,8 @@ import {
 import type { StageResult, CandidateItem, PipelineContext } from '../types.js'
 import type { RecommendationQueryPlan, ScoreBreakdown } from '@iptvflix/api-contracts'
 
+export const HARD_FILTER_UNKNOWN_POLICY = 'STRICT_EXCLUDE_UNKNOWN' as const
+
 export const SCORE_MODEL_V1 = {
   version: 'v1',
   wSemantic: 0.35,
