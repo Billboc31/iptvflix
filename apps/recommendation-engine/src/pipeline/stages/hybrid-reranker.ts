@@ -16,6 +16,8 @@ import {
 import type { StageResult, CandidateItem, PipelineContext } from '../types.js'
 import type { RecommendationQueryPlan, ScoreBreakdown } from '@iptvflix/api-contracts'
 
+export const HARD_FILTER_UNKNOWN_POLICY = 'STRICT_EXCLUDE_UNKNOWN' as const
+
 export const SCORE_MODEL_V1 = {
   version: 'v1',
   wSemantic: 0.35,
@@ -101,7 +103,7 @@ function getBlendedWeights(model: typeof SCORE_MODEL_V2, level: ExplorationLevel
   return { ...base }
 }
 
-interface EnrichedCandidate extends CandidateItem {
+export interface EnrichedCandidate extends CandidateItem {
   genreIds: string[]
   genreNames: string[]
   available: boolean
@@ -494,14 +496,23 @@ function computeAvoidPenalty(c: EnrichedCandidate, avoidSignals: string[]): numb
   return hasMatch ? 0.2 : 0
 }
 
-function passesHardFilters(c: EnrichedCandidate, queryPlan: RecommendationQueryPlan): boolean {
+export const HARD_FILTER_UNKNOWN_POLICY = 'STRICT_EXCLUDE_UNKNOWN' as const
+
+export function passesHardFilters(c: EnrichedCandidate, queryPlan: RecommendationQueryPlan): boolean {
   const { hardFilters, mediaTypes } = queryPlan
   const candidateMediaType = c.mediaType.toUpperCase() as 'MOVIE' | 'SERIES'
 
   if (mediaTypes.length > 0 && mediaTypes.length < 2 && !mediaTypes.includes(candidateMediaType)) return false
-  if (hardFilters.maxRuntimeMinutes != null && c.durationMinutes != null && c.durationMinutes > hardFilters.maxRuntimeMinutes) return false
-  if (hardFilters.minReleaseYear != null && c.year != null && c.year < hardFilters.minReleaseYear) return false
-  if (hardFilters.maxReleaseYear != null && c.year != null && c.year > hardFilters.maxReleaseYear) return false
+
+  if (hardFilters.maxRuntimeMinutes != null) {
+    if (c.durationMinutes == null || c.durationMinutes > hardFilters.maxRuntimeMinutes) return false
+  }
+
+  if (hardFilters.minReleaseYear != null || hardFilters.maxReleaseYear != null) {
+    if (c.year == null) return false
+    if (hardFilters.minReleaseYear != null && c.year < hardFilters.minReleaseYear) return false
+    if (hardFilters.maxReleaseYear != null && c.year > hardFilters.maxReleaseYear) return false
+  }
 
   if (hardFilters.includeGenres && hardFilters.includeGenres.length > 0) {
     const genreSet = new Set(c.genreIds)
@@ -513,8 +524,8 @@ function passesHardFilters(c: EnrichedCandidate, queryPlan: RecommendationQueryP
     if (hardFilters.excludeGenres.some((g) => genreSet.has(g))) return false
   }
 
-  if (hardFilters.audioLanguages && hardFilters.audioLanguages.length > 0 && c.originalLanguage != null) {
-    if (!hardFilters.audioLanguages.includes(c.originalLanguage)) return false
+  if (hardFilters.audioLanguages && hardFilters.audioLanguages.length > 0) {
+    if (c.originalLanguage == null || !hardFilters.audioLanguages.includes(c.originalLanguage)) return false
   }
 
   return true
