@@ -65,7 +65,7 @@ function getBlendedWeights(model: typeof SCORE_MODEL_V1, level: ExplorationLevel
   return { ...model }
 }
 
-interface EnrichedCandidate extends CandidateItem {
+export interface EnrichedCandidate extends CandidateItem {
   genreIds: string[]
   genreNames: string[]
   available: boolean
@@ -304,14 +304,27 @@ function computeAvoidPenalty(c: EnrichedCandidate, avoidSignals: string[]): numb
   return hasMatch ? 0.2 : 0
 }
 
-function passesHardFilters(c: EnrichedCandidate, queryPlan: RecommendationQueryPlan): boolean {
+// When a hard filter is active and the candidate's required metadata is null,
+// the candidate is excluded. Silently passing unknowns would allow constraint violations.
+export const HARD_FILTER_UNKNOWN_POLICY = 'STRICT_EXCLUDE_UNKNOWN' as const
+
+export function passesHardFilters(c: EnrichedCandidate, queryPlan: RecommendationQueryPlan): boolean {
   const { hardFilters, mediaTypes } = queryPlan
   const candidateMediaType = c.mediaType.toUpperCase() as 'MOVIE' | 'SERIES'
 
   if (mediaTypes.length > 0 && mediaTypes.length < 2 && !mediaTypes.includes(candidateMediaType)) return false
-  if (hardFilters.maxRuntimeMinutes != null && c.durationMinutes != null && c.durationMinutes > hardFilters.maxRuntimeMinutes) return false
-  if (hardFilters.minReleaseYear != null && c.year != null && c.year < hardFilters.minReleaseYear) return false
-  if (hardFilters.maxReleaseYear != null && c.year != null && c.year > hardFilters.maxReleaseYear) return false
+
+  // maxRuntimeMinutes — STRICT_EXCLUDE_UNKNOWN: exclude if runtime unknown when filter is active
+  if (hardFilters.maxRuntimeMinutes != null) {
+    if (c.durationMinutes == null || c.durationMinutes > hardFilters.maxRuntimeMinutes) return false
+  }
+
+  // minReleaseYear / maxReleaseYear — STRICT_EXCLUDE_UNKNOWN: exclude if year unknown when either filter is active
+  if (hardFilters.minReleaseYear != null || hardFilters.maxReleaseYear != null) {
+    if (c.year == null) return false
+    if (hardFilters.minReleaseYear != null && c.year < hardFilters.minReleaseYear) return false
+    if (hardFilters.maxReleaseYear != null && c.year > hardFilters.maxReleaseYear) return false
+  }
 
   if (hardFilters.includeGenres && hardFilters.includeGenres.length > 0) {
     const genreSet = new Set(c.genreIds)
@@ -323,8 +336,9 @@ function passesHardFilters(c: EnrichedCandidate, queryPlan: RecommendationQueryP
     if (hardFilters.excludeGenres.some((g) => genreSet.has(g))) return false
   }
 
-  if (hardFilters.audioLanguages && hardFilters.audioLanguages.length > 0 && c.originalLanguage != null) {
-    if (!hardFilters.audioLanguages.includes(c.originalLanguage)) return false
+  // audioLanguages — STRICT_EXCLUDE_UNKNOWN: exclude if language unknown when filter is active
+  if (hardFilters.audioLanguages && hardFilters.audioLanguages.length > 0) {
+    if (c.originalLanguage == null || !hardFilters.audioLanguages.includes(c.originalLanguage)) return false
   }
 
   return true
@@ -412,6 +426,7 @@ export async function runHybridReranker(
     const allGenreScores = taste?.genreScores ?? {}
 
     const eligible = enriched.filter((c) => passesHardFilters(c, plan))
+    const filteredCount = eligible.length
 
     const scored = eligible.map((c) => {
       const isNegative = taste?.negativeMediaIds.has(c.id) ?? false
@@ -458,6 +473,7 @@ export async function runHybridReranker(
     })
 
     const diversified = applyDiversityFilter(scored, limit, 2, 3)
+    const finalCount = diversified.length
 
     const output: CandidateItem[] = diversified.map((c) => ({
       id: c.id,
@@ -472,7 +488,7 @@ export async function runHybridReranker(
     }))
 
     ctx.log.info(
-      { requestId: ctx.requestId, stage: 'hybrid-reranker', durationMs: Date.now() - start, inputCount: candidates.length, outputCount: output.length },
+      { requestId: ctx.requestId, stage: 'hybrid-reranker', durationMs: Date.now() - start, inputCount: candidates.length, filteredCount, finalCount, outputCount: output.length },
       'stage complete',
     )
 
@@ -482,6 +498,8 @@ export async function runHybridReranker(
       durationMs: Date.now() - start,
       inputCount: candidates.length,
       outputCount: output.length,
+      filteredCount,
+      finalCount,
       candidates: output,
     }
   } catch (err) {
