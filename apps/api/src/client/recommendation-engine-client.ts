@@ -54,10 +54,29 @@ export interface EngineQueryResult {
     posterPath?: string | null
     score?: number
     reasons?: string[]
-    scoreBreakdown?: Record<string, unknown>
+    scoreBreakdown?: Record<string, number>
+    available?: boolean
   }>
   engineMetadata: EngineMetadata
   queryPlan?: RecommendationQueryPlan
+}
+
+export interface ShelfCandidateItem {
+  mediaId: string
+  mediaType: 'MOVIE' | 'SERIES'
+  semanticScore: number
+  profileScore: number
+  finalScore: number
+  reasons: string[]
+  available: boolean
+}
+
+export interface ShelfQueryResult {
+  candidates: ShelfCandidateItem[]
+  queryPlannerVersion: string
+  embeddingModelVersion: string
+  rankerVersion: string
+  candidateCount: number
 }
 
 export interface EnginePersonalizedResult {
@@ -219,6 +238,32 @@ export const RecommendationEngineClient = {
     } catch {
       recordFailure()
       return null
+    }
+  },
+
+  async queryForShelf(params: {
+    text: string
+    profileId: string
+    limit: number
+  }): Promise<ShelfQueryResult | null> {
+    const raw = await this.query({ text: params.text, profileId: params.profileId, limit: params.limit })
+    if (!raw) return null
+
+    const meta = raw.engineMetadata
+    return {
+      candidates: raw.results.map((r) => ({
+        mediaId: r.id,
+        mediaType: r.mediaType === 'movie' ? 'MOVIE' : 'SERIES',
+        semanticScore: (r.scoreBreakdown?.semantic ?? 0) as number,
+        profileScore: (r.scoreBreakdown?.profileScore ?? 0) as number,
+        finalScore: r.score ?? 0,
+        reasons: r.reasons ?? [],
+        available: r.available ?? false,
+      })),
+      queryPlannerVersion: meta.plannerModelVersion ?? 'unknown',
+      embeddingModelVersion: meta.embeddingModelVersion ?? 'unknown',
+      rankerVersion: meta.rerankerVersion ?? 'unknown',
+      candidateCount: raw.results.length,
     }
   },
 

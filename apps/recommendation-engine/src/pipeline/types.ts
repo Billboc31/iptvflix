@@ -21,6 +21,7 @@ export interface CandidateItem {
   similarity?: number
   reasons?: string[]
   scoreBreakdown?: Record<string, number>
+  available?: boolean
 }
 
 export interface StageAvailability {

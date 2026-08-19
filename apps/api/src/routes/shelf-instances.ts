@@ -37,4 +37,28 @@ export async function shelfInstancesRoutes(app: FastifyInstance): Promise<void> 
       return reply.send(performance)
     },
   )
+
+  app.get<{ Params: { id: string } }>('/shelf-instances/:id/pipeline', async (request, reply) => {
+    const { id } = request.params
+    const detail = await instanceSvc.getShelfInstanceWithItems(id)
+    if (!detail) {
+      return reply.status(404).send({ error: 'ShelfInstance not found' })
+    }
+    return reply.send({
+      shelfInstanceId: detail.id,
+      semanticIntentSnapshot: detail.semanticIntentSnapshot,
+      queryPlannerVersion: detail.queryPlannerVersion,
+      embeddingModelVersion: detail.embeddingModelVersion,
+      rankerVersion: detail.rankerVersion,
+      items: detail.items.map((item) => ({
+        rankPosition: item.rankPosition,
+        mediaType: item.mediaType,
+        mediaId: item.mediaId,
+        semanticScore: item.semanticScore,
+        profileScore: item.profileScore,
+        finalScore: item.finalScore,
+        reasonCodes: item.reasonCodes,
+      })),
+    })
+  })
 }

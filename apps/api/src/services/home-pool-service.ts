@@ -19,6 +19,7 @@ import {
 import { ShelfInstanceService } from './shelf-instance-service.js'
 import { ShelfFatigueService } from './shelf-fatigue-service.js'
 import { rankRecommendations } from './recommendation-ranking-service.js'
+import { RecommendationEngineClient } from '../client/recommendation-engine-client.js'
 import { getShelf } from './shelf-service.js'
 import { resolveMediaImageUrl } from '../lib/tmdb-image.js'
 import type { ShelfResponse, ShelfItem } from '@iptvflix/api-contracts'
@@ -219,15 +220,58 @@ async function _fillPoolAsync(sessionId: string, profileId: string, targetCount:
     if (generated >= targetCount) break
 
     try {
-      const needed = HOME_ITEMS_PER_SHELF + excludedMediaIds.size
-      const recResult = await rankRecommendations(profileId, {
-        limit: Math.min(needed + 10, HOME_ITEMS_MAX + excludedMediaIds.size),
-        includeSeen: false,
+      // Request extra to compensate for items that will be excluded post-filter.
+      const requestLimit = Math.min(HOME_ITEMS_PER_SHELF + excludedMediaIds.size + 10, HOME_ITEMS_MAX)
+      const t0 = Date.now()
+
+      let candidates: Array<{ mediaId: string; mediaType: string; semanticScore: number; profileScore: number; finalScore: number; reasons: string[]; available: boolean }>
+      let queryPlannerVersion = MODEL_VERSION
+      let embeddingModelVersion = 'none'
+      let rankerVersion = MODEL_VERSION
+      let totalCandidateCount = 0
+
+      const engineResult = await RecommendationEngineClient.queryForShelf({
+        text: concept.semanticIntent,
+        profileId,
+        limit: requestLimit,
       })
 
-      const candidates = recResult.candidates
-        .filter((c) => !excludedMediaIds.has(c.mediaId))
-        .slice(0, HOME_ITEMS_PER_SHELF)
+      if (engineResult) {
+        // Engine returned semantic results — use them, applying freshness policy.
+        let pool = engineResult.candidates.filter((c) => !excludedMediaIds.has(c.mediaId))
+
+        if (concept.freshnessPolicy === 'AVAILABLE_NOW') {
+          pool = pool.filter((c) => c.available)
+        }
+
+        candidates = pool.slice(0, HOME_ITEMS_PER_SHELF)
+        queryPlannerVersion = engineResult.queryPlannerVersion
+        embeddingModelVersion = engineResult.embeddingModelVersion
+        rankerVersion = engineResult.rankerVersion
+        totalCandidateCount = engineResult.candidateCount
+      } else {
+        // Engine unavailable — fall back to generic profile ranking.
+        const recResult = await rankRecommendations(profileId, {
+          limit: requestLimit,
+          includeSeen: false,
+        })
+        let pool = recResult.candidates.filter((c) => !excludedMediaIds.has(c.mediaId))
+
+        if (concept.freshnessPolicy === 'AVAILABLE_NOW') {
+          pool = pool.filter((c) => c.available)
+        }
+
+        candidates = pool.slice(0, HOME_ITEMS_PER_SHELF).map((c) => ({
+          mediaId: c.mediaId,
+          mediaType: c.mediaType,
+          semanticScore: 0,
+          profileScore: c.score ?? 0,
+          finalScore: c.score ?? 0,
+          reasons: c.reasons ?? [],
+          available: c.available ?? false,
+        }))
+        totalCandidateCount = recResult.candidates.length
+      }
 
       if (candidates.length === 0) continue
 
@@ -240,16 +284,19 @@ async function _fillPoolAsync(sessionId: string, profileId: string, targetCount:
         generationReasonCodes: (concept.reasonCodes as string[]) ?? [],
         homeSessionId: sessionId,
         verticalPosition: nextPosition,
-        rankerVersion: MODEL_VERSION,
-        queryPlannerVersion: MODEL_VERSION,
-        embeddingModelVersion: 'none',
-        candidateCount: recResult.candidates.length,
+        rankerVersion,
+        queryPlannerVersion,
+        embeddingModelVersion,
+        candidateCount: totalCandidateCount,
+        latencyMs: Date.now() - t0,
         cacheHit: false,
         items: candidates.map((c, i) => ({
           mediaType: c.mediaType,
           mediaId: c.mediaId,
           rankPosition: i,
-          finalScore: c.score,
+          semanticScore: c.semanticScore,
+          profileScore: c.profileScore,
+          finalScore: c.finalScore,
           reasonCodes: c.reasons,
           availabilityStatus: c.available ? 'available' : 'upcoming',
           wasEligibleAtGeneration: true,

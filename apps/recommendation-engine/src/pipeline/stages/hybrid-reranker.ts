@@ -11,6 +11,7 @@ import {
   mediaCredits,
   viewingProgress,
   profileTaste,
+  profileMediaExposure,
 } from '../../db/schema.js'
 import type { StageResult, CandidateItem, PipelineContext } from '../types.js'
 import type { RecommendationQueryPlan } from '@iptvflix/api-contracts'
@@ -76,6 +77,7 @@ interface EnrichedCandidate extends CandidateItem {
   popularity: number | null
   voteAverage: number | null
   completionRatio: number | null
+  exposureCount: number
 }
 
 interface TasteSignals {
@@ -106,9 +108,27 @@ async function loadTasteSignals(profileId: string): Promise<TasteSignals | null>
   }
 }
 
+async function loadExposureCounts(profileId: string, mediaIds: string[]): Promise<Map<string, number>> {
+  if (mediaIds.length === 0) return new Map()
+  const rows = await db
+    .select({
+      mediaId: profileMediaExposure.mediaId,
+      exposureCount: profileMediaExposure.exposureCount,
+    })
+    .from(profileMediaExposure)
+    .where(
+      and(
+        eq(profileMediaExposure.profileId, profileId),
+        inArray(profileMediaExposure.mediaId, mediaIds),
+      ),
+    )
+  return new Map(rows.map((r) => [r.mediaId, r.exposureCount]))
+}
+
 async function enrichCandidates(
   candidates: CandidateItem[],
   profileId?: string,
+  exposureCounts?: Map<string, number>,
 ): Promise<EnrichedCandidate[]> {
   if (candidates.length === 0) return []
 
@@ -224,6 +244,7 @@ async function enrichCandidates(
       popularity: movieMeta?.popularity ?? seriesMeta?.popularity ?? null,
       voteAverage: movieMeta?.voteAverage ?? seriesMeta?.voteAverage ?? null,
       completionRatio: completionRatioMap.get(c.id) ?? null,
+      exposureCount: exposureCounts?.get(c.id) ?? 0,
     }
   })
 }
@@ -379,10 +400,12 @@ export async function runHybridReranker(
   const limit = ctx.request.limit ?? 24
 
   try {
-    const [enriched, taste] = await Promise.all([
-      enrichCandidates(candidates, ctx.request.profileId),
+    const allIds = candidates.map((c) => c.id)
+    const [exposureCounts, taste] = await Promise.all([
+      ctx.request.profileId ? loadExposureCounts(ctx.request.profileId, allIds) : Promise.resolve(new Map<string, number>()),
       ctx.request.profileId ? loadTasteSignals(ctx.request.profileId) : Promise.resolve(null),
     ])
+    const enriched = await enrichCandidates(candidates, ctx.request.profileId, exposureCounts)
 
     const plan = ctx.queryPlan
     const weights = getBlendedWeights(SCORE_MODEL_V1, 'exploit')
@@ -407,6 +430,7 @@ export async function runHybridReranker(
       const abandonPenalty = isAbandoned ? 0.1 : 0
       const dislikePenalty = isNegative ? 1.5 : 0
       const avoidPenalty = computeAvoidPenalty(c, plan.avoidSignals)
+      const exposurePenalty = 0.05 * Math.min(c.exposureCount, 4)
 
       const weighted =
         semantic * weights.wSemantic +
@@ -417,12 +441,14 @@ export async function runHybridReranker(
         prior * weights.wPrior +
         availBonus * weights.wAvailability
 
-      const finalScore = weighted - watchedPenalty - abandonPenalty - dislikePenalty - avoidPenalty
+      const profileScore = genreAffinity * weights.wGenre + themeAffinity * weights.wTheme + peopleAffinity * weights.wPeople
+      const finalScore = weighted - watchedPenalty - abandonPenalty - dislikePenalty - avoidPenalty - exposurePenalty
 
       return {
         ...c,
         score: finalScore,
         reasons: buildReasons(semantic, genreAffinity, themeAffinity, c.genreNames),
+        scoreBreakdown: { semantic, profileScore, finalScore },
       }
     })
 
@@ -441,6 +467,8 @@ export async function runHybridReranker(
       posterPath: c.posterPath,
       score: c.score,
       reasons: c.reasons,
+      scoreBreakdown: c.scoreBreakdown,
+      available: c.available,
     }))
 
     ctx.log.info(

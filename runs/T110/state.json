@@ -1,7 +1,7 @@
 {
   "ticket_id": "T110",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T110-wire-shelfconcept-through-queryplan-semantic-retri",
   "issue_number": 232,
-  "updated_at": "2026-08-19T10:12:37Z"
+  "updated_at": "2026-08-19T10:25:36Z"
 }
