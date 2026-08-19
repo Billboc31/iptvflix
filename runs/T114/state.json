@@ -1,7 +1,7 @@
 {
   "ticket_id": "T114",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T114-use-full-profiletaste-and-interaction-signals-in-r",
   "issue_number": 241,
-  "updated_at": "2026-08-19T13:00:39Z"
+  "updated_at": "2026-08-19T13:13:59Z"
 }
