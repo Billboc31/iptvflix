@@ -173,63 +173,112 @@ describe('MetadataEnrichmentService — T115', () => {
 })
 
 describe('CatalogEnrichMissingService — cursor pagination', () => {
-  it('second batch starts after lastId so processed rows are not revisited', async () => {
-    // This is a behavioral unit test: running two sequential batches with lastId set
-    // should produce a query with `id > lastId` rather than starting from scratch.
-    // We verify the WHERE clause by checking the query parameters.
-
-    // Since the service uses Drizzle ORM chaining, we simulate by checking
-    // that `gt(table.id, lastId)` condition is applied (observable via sql).
-    // We assert the service increments processedCount correctly across batches.
-
-    const batch1 = [
-      { id: 'aaaaaaaa-0000-0000-0000-000000000001' },
-      { id: 'aaaaaaaa-0000-0000-0000-000000000002' },
-    ]
-    const batch2 = [{ id: 'aaaaaaaa-0000-0000-0000-000000000003' }]
-
-    let selectCallCount = 0
-    const mockLimit = vi.fn().mockImplementation(() => {
-      selectCallCount++
-      if (selectCallCount === 1) return Promise.resolve(batch1)
-      if (selectCallCount === 2) return Promise.resolve([]) // done
-      return Promise.resolve([])
-    })
-    const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit })
-    const mockWhere = vi.fn().mockReturnValue({ orderBy: mockOrderBy })
-    const mockFrom = vi.fn().mockReturnValue({ where: mockWhere })
-    const mockSelect = vi.fn().mockReturnValue({ from: mockFrom })
-
-    const db = {
-      select: mockSelect,
-      insert: vi.fn().mockReturnValue({
-        values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'run-id-1' }]) }),
-      }),
-      update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
-    } as unknown as Db
-
-    // We can't easily test the full async run without a real DB, but we can verify
-    // the countEligible method queries correctly.
+  it('countEligible returns the eligible item count from DB', async () => {
     const { CatalogEnrichMissingService } = await import('../catalog-enrich-missing-service.js')
 
-    const mockCountDb = {
+    const db = {
       select: vi.fn().mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockResolvedValue([{ cnt: 5 }]),
         }),
       }),
-      insert: vi.fn().mockReturnValue({
-        values: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([{ id: 'run-id-1' }]),
-        }),
-      }),
-      update: vi.fn().mockReturnValue({
-        set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
-      }),
+      insert: vi.fn(),
+      update: vi.fn(),
     } as unknown as Db
 
-    const svc = new CatalogEnrichMissingService(mockCountDb, {} as never)
-    const movieCount = await svc.countEligible('MOVIE', false)
-    expect(movieCount).toBe(5)
+    const svc = new CatalogEnrichMissingService(db, {} as never)
+    const count = await svc.countEligible('MOVIE', false)
+    expect(count).toBe(5)
+  })
+
+  it('processes items in two batches and advances cursor after each batch', async () => {
+    const batch1 = [
+      { id: 'aaaaaaaa-0000-0000-0000-000000000001' },
+      { id: 'aaaaaaaa-0000-0000-0000-000000000002' },
+    ]
+
+    let batchQueryCount = 0
+    const mockLimit = vi.fn().mockImplementation(() => {
+      batchQueryCount++
+      if (batchQueryCount === 1) return Promise.resolve(batch1)
+      return Promise.resolve([]) // second batch empty → done
+    })
+    const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit })
+
+    // select() is called for:
+    //   1. checkNoRunningConflict: .where().limit(1) → []
+    //   2. countEligible MOVIE: await .where() → [{ cnt: 2 }]
+    //   3+ batch queries: .where().orderBy().limit() → batch1, then []
+    let queryCount = 0
+    const mockWhere = vi.fn().mockImplementation(() => {
+      queryCount++
+      if (queryCount === 1) {
+        // checkNoRunningConflict uses .where().limit(1)
+        return Object.assign(Promise.resolve([]), {
+          limit: vi.fn().mockResolvedValue([]),
+          orderBy: mockOrderBy,
+        })
+      }
+      if (queryCount === 2) {
+        // countEligible MOVIE: await .where() → [{ cnt: 2 }]
+        return Object.assign(Promise.resolve([{ cnt: 2 }]), {
+          orderBy: mockOrderBy,
+          limit: vi.fn().mockResolvedValue([{ cnt: 2 }]),
+        })
+      }
+      // Batch queries: .where().orderBy().limit()
+      return Object.assign(Promise.resolve([]), { orderBy: mockOrderBy })
+    })
+    const mockFrom = vi.fn().mockReturnValue({ where: mockWhere })
+    const mockSelect = vi.fn().mockReturnValue({ from: mockFrom })
+
+    let completedResolve!: () => void
+    const completed = new Promise<void>((r) => { completedResolve = r })
+
+    const mockUpdate = vi.fn().mockReturnValue({
+      set: vi.fn().mockImplementation((data: Record<string, unknown>) => ({
+        where: vi.fn().mockImplementation(() => {
+          if (data.status === 'COMPLETED') completedResolve()
+          return Promise.resolve(undefined)
+        }),
+      })),
+    })
+
+    const db = {
+      select: mockSelect,
+      insert: vi.fn().mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([{ id: 'run-001' }]),
+        }),
+      }),
+      update: mockUpdate,
+    } as unknown as Db
+
+    const enrichmentService = {
+      enrichMovie: vi.fn().mockResolvedValue('enriched' as const),
+      enrichSeries: vi.fn().mockResolvedValue('enriched' as const),
+    }
+
+    const { CatalogEnrichMissingService } = await import('../catalog-enrich-missing-service.js')
+    const svc = new CatalogEnrichMissingService(db, enrichmentService as never)
+
+    // mediaTypes: ['MOVIE'] → checkNoRunningConflict + 1 countEligible + batch queries
+    await svc.start({ mediaTypes: ['MOVIE'], batchSize: 2 })
+
+    // Wait for the async execute to complete (signalled by COMPLETED status update)
+    await completed
+
+    // Two batch queries: first returns batch1, second returns [] → done
+    expect(batchQueryCount).toBe(2)
+    // enrichMovie called once per item in batch1
+    expect(enrichmentService.enrichMovie).toHaveBeenCalledTimes(2)
+    expect(enrichmentService.enrichMovie).toHaveBeenCalledWith(
+      'aaaaaaaa-0000-0000-0000-000000000001',
+      expect.any(Object),
+    )
+    expect(enrichmentService.enrichMovie).toHaveBeenCalledWith(
+      'aaaaaaaa-0000-0000-0000-000000000002',
+      expect.any(Object),
+    )
   })
 })

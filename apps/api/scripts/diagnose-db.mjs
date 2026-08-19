@@ -85,6 +85,7 @@ async function main() {
       'my_list',
       'media_sources',
       'media_embeddings',
+      'enrichment_failures',
     ]
     console.log('\nrow_counts:')
     for (const table of tables) {

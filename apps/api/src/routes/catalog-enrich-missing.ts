@@ -14,6 +14,7 @@ export async function catalogEnrichMissingRoutes(
       concurrency?: number
       throttleMs?: number
       force?: boolean
+      resumeRunId?: string
     } | undefined
 
     const batchSize = body?.batchSize
@@ -36,6 +37,7 @@ export async function catalogEnrichMissingRoutes(
         concurrency,
         throttleMs,
         force: body?.force,
+        resumeRunId: body?.resumeRunId,
       })
       return reply.status(202).send({ runId })
     } catch (err) {

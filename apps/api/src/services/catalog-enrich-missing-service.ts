@@ -18,6 +18,8 @@ export interface EnrichMissingOptions {
   concurrency?: number
   throttleMs?: number
   force?: boolean
+  /** Resume from the checkpoint of a previously interrupted run (by run ID). */
+  resumeRunId?: string
 }
 
 export interface EnrichMissingStats {
@@ -25,6 +27,7 @@ export interface EnrichMissingStats {
   processed: number
   enriched: number
   skipped: number
+  /** Counts retry *attempts*, not unique items — one item may contribute multiple counts. */
   retrying: number
   failedTerminal: number
   remaining: number
@@ -119,24 +122,57 @@ export class CatalogEnrichMissingService {
       concurrency = 3,
       throttleMs = 250,
       force = false,
+      resumeRunId,
     } = opts
 
     await this.checkNoRunningConflict()
 
-    const [run] = await this.db
-      .insert(catalogRefreshRuns)
-      .values({ type: 'ENRICH_MISSING', status: 'RUNNING', checkpoint: null })
-      .returning({ id: catalogRefreshRuns.id })
+    let run: { id: string }
+    try {
+      const [inserted] = await this.db
+        .insert(catalogRefreshRuns)
+        .values({ type: 'ENRICH_MISSING', status: 'RUNNING', checkpoint: null })
+        .returning({ id: catalogRefreshRuns.id })
+      run = inserted
+    } catch (err: unknown) {
+      // Partial unique index violation: another run became RUNNING between check and insert
+      if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === '23505') {
+        const conflict = new Error('A run is already RUNNING (concurrent insert detected)')
+        Object.assign(conflict, { code: 'RUN_CONFLICT' })
+        throw conflict
+      }
+      throw err
+    }
 
     const runId = run.id
-
-    const totalMovies = mediaTypes.includes('MOVIE') ? await this.countEligible('MOVIE', force) : 0
-    const totalSeries = mediaTypes.includes('SERIES') ? await this.countEligible('SERIES', force) : 0
 
     const checkpoint: RunCheckpoint = {
       movies: { lastId: null, processedCount: 0, done: !mediaTypes.includes('MOVIE') },
       series: { lastId: null, processedCount: 0, done: !mediaTypes.includes('SERIES') },
     }
+
+    // Resume from a previous run's cursor position if requested
+    if (resumeRunId) {
+      const [prevRun] = await this.db
+        .select({ checkpoint: catalogRefreshRuns.checkpoint })
+        .from(catalogRefreshRuns)
+        .where(eq(catalogRefreshRuns.id, resumeRunId))
+        .limit(1)
+      const prev = prevRun?.checkpoint as RunCheckpoint | null
+      if (prev) {
+        if (prev.movies) {
+          checkpoint.movies.lastId = prev.movies.done ? null : prev.movies.lastId
+          checkpoint.movies.done = prev.movies.done && !mediaTypes.includes('MOVIE')
+        }
+        if (prev.series) {
+          checkpoint.series.lastId = prev.series.done ? null : prev.series.lastId
+          checkpoint.series.done = prev.series.done && !mediaTypes.includes('SERIES')
+        }
+      }
+    }
+
+    const totalMovies = mediaTypes.includes('MOVIE') ? await this.countEligible('MOVIE', force) : 0
+    const totalSeries = mediaTypes.includes('SERIES') ? await this.countEligible('SERIES', force) : 0
 
     const stats = {
       totalEligible: totalMovies + totalSeries,
@@ -157,8 +193,7 @@ export class CatalogEnrichMissingService {
       checkpoint.stats = { ...stats, remaining, ratePerMinute: rate, etaSeconds: eta }
       await this.db
         .update(catalogRefreshRuns)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .set({ checkpoint: checkpoint as any })
+        .set({ checkpoint })
         .where(eq(catalogRefreshRuns.id, runId))
     }
 
@@ -356,10 +391,21 @@ export class CatalogEnrichMissingService {
       return { runId: run.id, queued: 0 }
     }
 
-    const [run] = await this.db
-      .insert(catalogRefreshRuns)
-      .values({ type: 'ENRICH_MISSING', status: 'RUNNING', checkpoint: null })
-      .returning({ id: catalogRefreshRuns.id })
+    let run: { id: string }
+    try {
+      const [inserted] = await this.db
+        .insert(catalogRefreshRuns)
+        .values({ type: 'ENRICH_MISSING', status: 'RUNNING', checkpoint: null })
+        .returning({ id: catalogRefreshRuns.id })
+      run = inserted
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === '23505') {
+        const conflict = new Error('A run is already RUNNING (concurrent insert detected)')
+        Object.assign(conflict, { code: 'RUN_CONFLICT' })
+        throw conflict
+      }
+      throw err
+    }
 
     const runId = run.id
 

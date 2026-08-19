@@ -1,8 +1,6 @@
 import { pgTable, text, uuid, integer, timestamp, jsonb, uniqueIndex } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
-type RefreshCheckpoint = Record<string, { done: boolean; offset: number }>
-
 export const catalogRefreshRuns = pgTable(
   'catalog_refresh_runs',
   {
@@ -11,7 +9,7 @@ export const catalogRefreshRuns = pgTable(
     status: text('status').notNull().default('PENDING'),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp('completed_at', { withTimezone: true }),
-    checkpoint: jsonb('checkpoint').$type<RefreshCheckpoint>(),
+    checkpoint: jsonb('checkpoint').$type<unknown>(),
     moviesRefreshed: integer('movies_refreshed').notNull().default(0),
     seriesRefreshed: integer('series_refreshed').notNull().default(0),
     moviesImported: integer('movies_imported').notNull().default(0),
