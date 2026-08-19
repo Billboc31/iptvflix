@@ -60,9 +60,13 @@ export async function pairingRoutes(app: FastifyInstance): Promise<void> {
     '/pairing/codes/:code/approve',
     async (request, reply) => {
       if (!(await authenticateWeb(request, reply))) return
+      if (!request.account) {
+        return reply.status(401).send({ error: 'Web authentication required' })
+      }
       try {
         const { device, deviceToken } = await approvePairingCode(
           request.params.code,
+          request.account.id,
           request.body?.name,
         )
         return reply.status(201).send({

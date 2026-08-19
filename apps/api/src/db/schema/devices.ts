@@ -1,9 +1,11 @@
 import { pgTable, pgEnum, varchar, uuid, timestamp } from 'drizzle-orm/pg-core'
+import { accounts } from './accounts.js'
 
 export const pairingCodeStatusEnum = pgEnum('pairing_code_status', ['pending', 'approved', 'expired'])
 
 export const devices = pgTable('devices', {
   id: uuid('id').primaryKey().defaultRandom(),
+  accountId: uuid('account_id').references(() => accounts.id, { onDelete: 'cascade' }),
   name: varchar('name', { length: 128 }).notNull().default('TV'),
   tokenHash: varchar('token_hash', { length: 128 }).unique().notNull(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),

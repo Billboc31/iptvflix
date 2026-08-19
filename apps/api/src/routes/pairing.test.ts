@@ -42,7 +42,10 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.mocked(authenticateWeb).mockResolvedValue(true)
+  vi.mocked(authenticateWeb).mockImplementation(async (request) => {
+    request.account = { id: 'acc-1', username: 'admin' }
+    return true
+  })
 })
 
 function mockWebAuthFail() {

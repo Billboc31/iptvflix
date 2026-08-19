@@ -65,6 +65,7 @@ export async function getPairingStatus(code: string): Promise<PairingStatusRespo
 
 export async function approvePairingCode(
   code: string,
+  accountId: string,
   deviceName?: string,
 ): Promise<{ device: typeof devices.$inferSelect; deviceToken: string }> {
   const [row] = await db
@@ -87,7 +88,7 @@ export async function approvePairingCode(
 
   const [device] = await db
     .insert(devices)
-    .values({ name: deviceName ?? 'TV', tokenHash })
+    .values({ name: deviceName ?? 'TV', tokenHash, accountId })
     .returning()
 
   await db

@@ -1,7 +1,8 @@
 import type { FastifyRequest, FastifyReply } from 'fastify'
+import { createHash } from 'node:crypto'
 import { eq, and } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { profiles } from '../db/schema/index.js'
+import { profiles, devices, accounts } from '../db/schema/index.js'
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
@@ -14,6 +15,7 @@ declare module 'fastify' {
   interface FastifyRequest {
     account?: { id: string; username: string }
     profileId?: string
+    device?: typeof devices.$inferSelect
   }
 }
 
@@ -21,6 +23,37 @@ function extractBearerToken(request: FastifyRequest): string | undefined {
   const auth = request.headers.authorization
   if (auth?.startsWith('Bearer ')) return auth.slice(7)
   return undefined
+}
+
+async function authenticateDeviceToken(
+  request: FastifyRequest,
+  token: string,
+): Promise<boolean> {
+  const tokenHash = createHash('sha256').update(token).digest('hex')
+  const [device] = await db.select().from(devices).where(eq(devices.tokenHash, tokenHash))
+
+  if (!device || device.revokedAt || !device.accountId) {
+    return false
+  }
+
+  const [account] = await db
+    .select({ id: accounts.id, username: accounts.username })
+    .from(accounts)
+    .where(eq(accounts.id, device.accountId))
+
+  if (!account) {
+    return false
+  }
+
+  await db
+    .update(devices)
+    .set({ lastSeenAt: new Date() })
+    .where(eq(devices.id, device.id))
+
+  request.device = device
+  request.account = account
+  request.user = { username: account.username, accountId: account.id }
+  return true
 }
 
 export async function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<void> {
@@ -55,7 +88,11 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
         }
       }
     }
+    return
   } catch {
+    if (await authenticateDeviceToken(request, token)) {
+      return
+    }
     return reply.status(401).send({ error: 'Unauthorized' })
   }
 }
