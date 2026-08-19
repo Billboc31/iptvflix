@@ -10,6 +10,7 @@ import { collections } from '../db/schema/collections.js'
 import { mediaVideos } from '../db/schema/media-videos.js'
 import { mediaCredits } from '../db/schema/media-credits.js'
 import { persons } from '../db/schema/persons.js'
+import { enrichmentFailures } from '../db/schema/enrichment-failures.js'
 import type { MetadataProvider, ExternalVideo, ExternalCreditPerson, ExternalSeasonEpisode, ExternalMovieMetadata, ExternalSeriesMetadata } from '../providers/metadata/types.js'
 
 type Db = PostgresJsDatabase<typeof schema>
@@ -37,6 +38,39 @@ function pickBestTrailer(videos: ExternalVideo[]): ExternalVideo | null {
   return teaser ?? null
 }
 
+interface FailureInfo {
+  errorClass: string | null
+  errorCode: string | null
+  errorMessage: string
+  retryable: boolean
+}
+
+function classifyError(err: unknown): FailureInfo {
+  if (err instanceof Error) {
+    const anyErr = err as unknown as Record<string, unknown>
+    const code = typeof anyErr['code'] === 'string' ? anyErr['code'] : null
+    const name = err.constructor?.name ?? err.name ?? 'Error'
+    const isTransient =
+      name.includes('Network') ||
+      name.includes('RateLimit') ||
+      code === 'ECONNRESET' ||
+      code === 'ETIMEDOUT' ||
+      code === 'ECONNREFUSED'
+    return {
+      errorClass: name,
+      errorCode: code,
+      errorMessage: err.message,
+      retryable: isTransient,
+    }
+  }
+  return {
+    errorClass: null,
+    errorCode: null,
+    errorMessage: String(err),
+    retryable: false,
+  }
+}
+
 export type EnrichResult = 'enriched' | 'skipped' | 'no-tmdb-id' | 'provider-failed'
 
 export interface EnrichmentCounters {
@@ -58,15 +92,68 @@ export class MetadataEnrichmentService {
     private readonly onEnriched?: (mediaId: string, mediaType: 'MOVIE' | 'SERIES') => void,
   ) {}
 
+  async persistFailure(opts: {
+    mediaType: 'MOVIE' | 'SERIES'
+    mediaId: string
+    tmdbId?: number | null
+    title?: string | null
+    stage: 'fetch' | 'map' | 'db_update'
+    err: unknown
+    runId?: string | null
+  }): Promise<void> {
+    const { errorClass, errorCode, errorMessage, retryable } = classifyError(opts.err)
+    await this.db
+      .insert(enrichmentFailures)
+      .values({
+        mediaType: opts.mediaType,
+        mediaId: opts.mediaId,
+        tmdbId: opts.tmdbId ?? null,
+        title: opts.title ?? null,
+        stage: opts.stage,
+        errorClass,
+        errorCode,
+        errorMessage,
+        retryable,
+        runId: opts.runId ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [enrichmentFailures.mediaType, enrichmentFailures.mediaId],
+        set: {
+          tmdbId: sql`EXCLUDED.tmdb_id`,
+          title: sql`EXCLUDED.title`,
+          stage: sql`EXCLUDED.stage`,
+          errorClass: sql`EXCLUDED.error_class`,
+          errorCode: sql`EXCLUDED.error_code`,
+          errorMessage: sql`EXCLUDED.error_message`,
+          retryable: sql`EXCLUDED.retryable`,
+          retryCount: sql`${enrichmentFailures.retryCount} + 1`,
+          occurredAt: sql`now()`,
+          runId: sql`EXCLUDED.run_id`,
+        },
+      })
+  }
+
+  private async clearFailure(mediaType: 'MOVIE' | 'SERIES', mediaId: string): Promise<void> {
+    await this.db
+      .delete(enrichmentFailures)
+      .where(
+        and(
+          eq(enrichmentFailures.mediaType, mediaType),
+          eq(enrichmentFailures.mediaId, mediaId),
+        ),
+      )
+  }
+
   async enrichMovie(
     movieId: string,
-    opts?: { force?: boolean; staleDays?: number },
+    opts?: { force?: boolean; staleDays?: number; runId?: string },
   ): Promise<EnrichResult> {
     const staleDays = opts?.staleDays ?? this.staleDays
     const [movie] = await this.db
       .select({
         id: movies.id,
         tmdbId: movies.tmdbId,
+        title: movies.title,
         metadataEnrichedAt: movies.metadataEnrichedAt,
       })
       .from(movies)
@@ -88,64 +175,101 @@ export class MetadataEnrichmentService {
         this.provider.getMovieCredits(movie.tmdbId),
         this.provider.getMovieCertification(movie.tmdbId),
       ])
-    } catch {
+    } catch (err) {
+      await this.persistFailure({
+        mediaType: 'MOVIE',
+        mediaId: movieId,
+        tmdbId: movie.tmdbId,
+        title: movie.title,
+        stage: 'fetch',
+        err,
+        runId: opts?.runId,
+      })
       return 'provider-failed'
     }
-    if (metadata === null) return 'provider-failed'
+    if (metadata === null) {
+      await this.persistFailure({
+        mediaType: 'MOVIE',
+        mediaId: movieId,
+        tmdbId: movie.tmdbId,
+        title: movie.title,
+        stage: 'fetch',
+        err: new Error('TMDB returned null (404 or empty)'),
+        runId: opts?.runId,
+      })
+      return 'provider-failed'
+    }
 
     // Upsert collection if movie belongs to one
     let collectionId: string | null = null
     if (metadata.belongsToCollection) {
       const bc = metadata.belongsToCollection
-      const [collRow] = await this.db
-        .insert(collections)
-        .values({
-          tmdbId: bc.tmdbId,
-          name: bc.name,
-          posterPath: bc.posterPath,
-          backdropPath: bc.backdropPath,
-        })
-        .onConflictDoUpdate({
-          target: collections.tmdbId,
-          set: {
+      try {
+        const [collRow] = await this.db
+          .insert(collections)
+          .values({
+            tmdbId: bc.tmdbId,
             name: bc.name,
             posterPath: bc.posterPath,
             backdropPath: bc.backdropPath,
-          },
-        })
-        .returning({ id: collections.id })
-      collectionId = collRow?.id ?? null
+          })
+          .onConflictDoUpdate({
+            target: collections.tmdbId,
+            set: {
+              name: bc.name,
+              posterPath: bc.posterPath,
+              backdropPath: bc.backdropPath,
+            },
+          })
+          .returning({ id: collections.id })
+        collectionId = collRow?.id ?? null
+      } catch {
+        // collection upsert failure is non-fatal
+      }
     }
 
-    await this.db
-      .update(movies)
-      .set({
-        title: metadata.title,
-        originalTitle: metadata.originalTitle,
-        year: metadata.year,
-        synopsis: metadata.synopsis,
-        posterPath: metadata.posterPath,
-        backdropPath: metadata.backdropPath,
-        durationMinutes: metadata.runtimeMinutes,
-        imdbId: metadata.imdbId,
-        voteAverage: metadata.voteAverage,
-        voteCount: metadata.voteCount ?? null,
-        certification,
-        metadataProvider: 'tmdb',
-        metadataEnrichedAt: new Date(),
-        updatedAt: new Date(),
-        status: metadata.status ?? metadata.releaseStatus ?? null,
-        popularity: metadata.popularity ?? null,
-        originalLanguage: metadata.originalLanguage ?? null,
-        spokenLanguages: metadata.spokenLanguages ?? null,
-        productionCountries: metadata.productionCountries ?? null,
-        tagline: metadata.tagline ?? null,
-        keywords: metadata.keywords ?? null,
-        externalIds: metadata.externalIds ?? null,
-        collectionId,
-        tmdbSyncedAt: new Date(),
+    try {
+      await this.db
+        .update(movies)
+        .set({
+          title: metadata.title,
+          originalTitle: metadata.originalTitle,
+          year: metadata.year,
+          synopsis: metadata.synopsis,
+          posterPath: metadata.posterPath,
+          backdropPath: metadata.backdropPath,
+          durationMinutes: metadata.runtimeMinutes,
+          imdbId: metadata.imdbId,
+          voteAverage: metadata.voteAverage,
+          voteCount: metadata.voteCount ?? null,
+          certification,
+          metadataProvider: 'tmdb',
+          metadataEnrichedAt: new Date(),
+          updatedAt: new Date(),
+          status: metadata.status ?? metadata.releaseStatus ?? null,
+          popularity: metadata.popularity ?? null,
+          originalLanguage: metadata.originalLanguage ?? null,
+          spokenLanguages: metadata.spokenLanguages ?? null,
+          productionCountries: metadata.productionCountries ?? null,
+          tagline: metadata.tagline ?? null,
+          keywords: metadata.keywords ?? null,
+          externalIds: metadata.externalIds ?? null,
+          collectionId,
+          tmdbSyncedAt: new Date(),
+        })
+        .where(eq(movies.id, movieId))
+    } catch (err) {
+      await this.persistFailure({
+        mediaType: 'MOVIE',
+        mediaId: movieId,
+        tmdbId: movie.tmdbId,
+        title: movie.title,
+        stage: 'db_update',
+        err,
+        runId: opts?.runId,
       })
-      .where(eq(movies.id, movieId))
+      return 'provider-failed'
+    }
 
     await this.upsertGenres(metadata.genres, metadata.genreObjects, async (genreIds) => {
       await this.db.delete(movieGenres).where(eq(movieGenres.movieId, movieId))
@@ -160,19 +284,21 @@ export class MetadataEnrichmentService {
     await this.persistCredits('movie', movieId, credits)
     await this.persistFrenchLocalization('movie', movieId, movie.tmdbId, metadata.title, metadata.synopsis ?? null, metadata.tagline ?? null)
 
+    await this.clearFailure('MOVIE', movieId)
     this.onEnriched?.(movieId, 'MOVIE')
     return 'enriched'
   }
 
   async enrichSeries(
     seriesId: string,
-    opts?: { force?: boolean; staleDays?: number },
+    opts?: { force?: boolean; staleDays?: number; runId?: string },
   ): Promise<EnrichResult> {
     const staleDays = opts?.staleDays ?? this.staleDays
     const [seriesRow] = await this.db
       .select({
         id: series.id,
         tmdbId: series.tmdbId,
+        title: series.title,
         metadataEnrichedAt: series.metadataEnrichedAt,
       })
       .from(series)
@@ -194,43 +320,76 @@ export class MetadataEnrichmentService {
         this.provider.getSeriesCredits(seriesRow.tmdbId),
         this.provider.getSeriesCertification(seriesRow.tmdbId),
       ])
-    } catch {
+    } catch (err) {
+      await this.persistFailure({
+        mediaType: 'SERIES',
+        mediaId: seriesId,
+        tmdbId: seriesRow.tmdbId,
+        title: seriesRow.title,
+        stage: 'fetch',
+        err,
+        runId: opts?.runId,
+      })
       return 'provider-failed'
     }
-    if (metadata === null) return 'provider-failed'
-
-    await this.db
-      .update(series)
-      .set({
-        title: metadata.title,
-        originalTitle: metadata.originalTitle,
-        firstAirYear: metadata.firstAirYear,
-        synopsis: metadata.synopsis,
-        posterPath: metadata.posterPath,
-        backdropPath: metadata.backdropPath,
-        imdbId: metadata.imdbId,
-        voteAverage: metadata.voteAverage,
-        voteCount: metadata.voteCount ?? null,
-        certification,
-        status: metadata.status,
-        metadataProvider: 'tmdb',
-        metadataEnrichedAt: new Date(),
-        updatedAt: new Date(),
-        popularity: metadata.popularity ?? null,
-        originalLanguage: metadata.originalLanguage ?? null,
-        spokenLanguages: metadata.spokenLanguages ?? null,
-        productionCountries: metadata.productionCountries ?? null,
-        tagline: metadata.tagline ?? null,
-        inProduction: metadata.inProduction ?? null,
-        networks: metadata.networks ?? null,
-        createdBy: metadata.createdBy ?? null,
-        numberOfSeasons: metadata.numberOfSeasons ?? null,
-        numberOfEpisodes: metadata.numberOfEpisodes ?? null,
-        keywords: metadata.keywords ?? null,
-        externalIds: metadata.externalIds ?? null,
-        tmdbSyncedAt: new Date(),
+    if (metadata === null) {
+      await this.persistFailure({
+        mediaType: 'SERIES',
+        mediaId: seriesId,
+        tmdbId: seriesRow.tmdbId,
+        title: seriesRow.title,
+        stage: 'fetch',
+        err: new Error('TMDB returned null (404 or empty)'),
+        runId: opts?.runId,
       })
-      .where(eq(series.id, seriesId))
+      return 'provider-failed'
+    }
+
+    try {
+      await this.db
+        .update(series)
+        .set({
+          title: metadata.title,
+          originalTitle: metadata.originalTitle,
+          firstAirYear: metadata.firstAirYear,
+          synopsis: metadata.synopsis,
+          posterPath: metadata.posterPath,
+          backdropPath: metadata.backdropPath,
+          imdbId: metadata.imdbId,
+          voteAverage: metadata.voteAverage,
+          voteCount: metadata.voteCount ?? null,
+          certification,
+          status: metadata.status,
+          metadataProvider: 'tmdb',
+          metadataEnrichedAt: new Date(),
+          updatedAt: new Date(),
+          popularity: metadata.popularity ?? null,
+          originalLanguage: metadata.originalLanguage ?? null,
+          spokenLanguages: metadata.spokenLanguages ?? null,
+          productionCountries: metadata.productionCountries ?? null,
+          tagline: metadata.tagline ?? null,
+          inProduction: metadata.inProduction ?? null,
+          networks: metadata.networks ?? null,
+          createdBy: metadata.createdBy ?? null,
+          numberOfSeasons: metadata.numberOfSeasons ?? null,
+          numberOfEpisodes: metadata.numberOfEpisodes ?? null,
+          keywords: metadata.keywords ?? null,
+          externalIds: metadata.externalIds ?? null,
+          tmdbSyncedAt: new Date(),
+        })
+        .where(eq(series.id, seriesId))
+    } catch (err) {
+      await this.persistFailure({
+        mediaType: 'SERIES',
+        mediaId: seriesId,
+        tmdbId: seriesRow.tmdbId,
+        title: seriesRow.title,
+        stage: 'db_update',
+        err,
+        runId: opts?.runId,
+      })
+      return 'provider-failed'
+    }
 
     await this.upsertGenres(metadata.genres, metadata.genreObjects, async (genreIds) => {
       await this.db.delete(seriesGenres).where(eq(seriesGenres.seriesId, seriesId))
@@ -279,6 +438,7 @@ export class MetadataEnrichmentService {
       console.warn(`[enrichment] enrichSeriesSeasons(${seriesId}) failed:`, err)
     }
 
+    await this.clearFailure('SERIES', seriesId)
     this.onEnriched?.(seriesId, 'SERIES')
     return 'enriched'
   }

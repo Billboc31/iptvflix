@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { count, isNotNull, sql } from 'drizzle-orm'
+import { count, isNotNull, isNull, lt, and, or, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { movies } from '../db/schema/movies.js'
 import { series } from '../db/schema/series.js'
@@ -9,9 +9,15 @@ import {
   seriesAvailabilities,
   episodeAvailabilities,
 } from '../db/schema/availabilities.js'
+import { mediaEmbeddings } from '../db/schema/media-embeddings.js'
+import { enrichmentFailures } from '../db/schema/enrichment-failures.js'
+
+const STALE_DAYS = 30
 
 export async function catalogStatsRoutes(app: FastifyInstance): Promise<void> {
   app.get('/admin/catalog-stats', async () => {
+    const staleThreshold = new Date(Date.now() - STALE_DAYS * 86_400_000)
+
     const [
       movieStats,
       seriesStats,
@@ -21,6 +27,10 @@ export async function catalogStatsRoutes(app: FastifyInstance): Promise<void> {
       episodeAvailRow,
       oldestMovieSync,
       oldestSeriesSync,
+      movieFailureCount,
+      seriesFailureCount,
+      movieEmbeddingCount,
+      seriesEmbeddingCount,
     ] = await Promise.all([
       db.select({
         total: count(),
@@ -30,7 +40,16 @@ export async function catalogStatsRoutes(app: FastifyInstance): Promise<void> {
         upcoming: sql<number>`cast(count(*) filter (where status in (
           'Rumored','Planned','In Production','Post Production'
         )) as integer)`,
-        enriched: sql<number>`cast(count(*) filter (where metadata_enriched_at is not null) as integer)`,
+        neverEnriched: sql<number>`cast(count(*) filter (where metadata_enriched_at is null) as integer)`,
+        partiallyEnriched: sql<number>`cast(count(*) filter (
+          where metadata_enriched_at is not null and (synopsis is null or keywords is null)
+        ) as integer)`,
+        fullyEnriched: sql<number>`cast(count(*) filter (
+          where metadata_enriched_at is not null and synopsis is not null and keywords is not null
+        ) as integer)`,
+        stale: sql<number>`cast(count(*) filter (
+          where metadata_enriched_at is not null and metadata_enriched_at < ${staleThreshold}
+        ) as integer)`,
       }).from(movies),
 
       db.select({
@@ -41,7 +60,16 @@ export async function catalogStatsRoutes(app: FastifyInstance): Promise<void> {
         upcoming: sql<number>`cast(count(*) filter (where status in (
           'In Production','Planned','Returning Series'
         )) as integer)`,
-        enriched: sql<number>`cast(count(*) filter (where metadata_enriched_at is not null) as integer)`,
+        neverEnriched: sql<number>`cast(count(*) filter (where metadata_enriched_at is null) as integer)`,
+        partiallyEnriched: sql<number>`cast(count(*) filter (
+          where metadata_enriched_at is not null and (synopsis is null or keywords is null)
+        ) as integer)`,
+        fullyEnriched: sql<number>`cast(count(*) filter (
+          where metadata_enriched_at is not null and synopsis is not null and keywords is not null
+        ) as integer)`,
+        stale: sql<number>`cast(count(*) filter (
+          where metadata_enriched_at is not null and metadata_enriched_at < ${staleThreshold}
+        ) as integer)`,
       }).from(series),
 
       db.select({ cnt: count() }).from(episodes),
@@ -58,12 +86,53 @@ export async function catalogStatsRoutes(app: FastifyInstance): Promise<void> {
         .select({ syncedAt: sql<string | null>`min(tmdb_synced_at)::text` })
         .from(series)
         .where(isNotNull(series.tmdbSyncedAt)),
+
+      db.select({ cnt: count() }).from(enrichmentFailures).where(
+        sql`media_type = 'MOVIE'`,
+      ),
+      db.select({ cnt: count() }).from(enrichmentFailures).where(
+        sql`media_type = 'SERIES'`,
+      ),
+
+      // Embedding eligible = enriched. Pending = enriched but no embedding row.
+      db.select({
+        eligible: sql<number>`cast(count(*) filter (where metadata_enriched_at is not null) as integer)`,
+        pending: sql<number>`cast(count(*) filter (
+          where metadata_enriched_at is not null and not exists (
+            select 1 from media_embeddings
+            where media_id = movies.id and media_type = 'MOVIE'
+          )
+        ) as integer)`,
+      }).from(movies),
+
+      db.select({
+        eligible: sql<number>`cast(count(*) filter (where metadata_enriched_at is not null) as integer)`,
+        pending: sql<number>`cast(count(*) filter (
+          where metadata_enriched_at is not null and not exists (
+            select 1 from media_embeddings
+            where media_id = series.id and media_type = 'SERIES'
+          )
+        ) as integer)`,
+      }).from(series),
     ])
 
     const mTotal = Number(movieStats[0]?.total ?? 0)
     const mWithAvail = Number(movieStats[0]?.withAvailability ?? 0)
+    const mNeverEnriched = Number(movieStats[0]?.neverEnriched ?? 0)
+    const mPartially = Number(movieStats[0]?.partiallyEnriched ?? 0)
+    const mFully = Number(movieStats[0]?.fullyEnriched ?? 0)
+    const mEnriched = mPartially + mFully
+    const mEligible = Number(movieEmbeddingCount[0]?.eligible ?? 0)
+    const mPending = Number(movieEmbeddingCount[0]?.pending ?? 0)
+
     const sTotal = Number(seriesStats[0]?.total ?? 0)
     const sWithAvail = Number(seriesStats[0]?.withAvailability ?? 0)
+    const sNeverEnriched = Number(seriesStats[0]?.neverEnriched ?? 0)
+    const sPartially = Number(seriesStats[0]?.partiallyEnriched ?? 0)
+    const sFully = Number(seriesStats[0]?.fullyEnriched ?? 0)
+    const sEnriched = sPartially + sFully
+    const sEligible = Number(seriesEmbeddingCount[0]?.eligible ?? 0)
+    const sPending = Number(seriesEmbeddingCount[0]?.pending ?? 0)
 
     return {
       movies: {
@@ -71,16 +140,30 @@ export async function catalogStatsRoutes(app: FastifyInstance): Promise<void> {
         withAvailability: mWithAvail,
         withoutAvailability: mTotal - mWithAvail,
         upcoming: Number(movieStats[0]?.upcoming ?? 0),
-        enriched: Number(movieStats[0]?.enriched ?? 0),
-        embeddingPending: 0,
+        enriched: mEnriched,
+        neverEnriched: mNeverEnriched,
+        partiallyEnriched: mPartially,
+        fullyEnriched: mFully,
+        stale: Number(movieStats[0]?.stale ?? 0),
+        failedLastEnrichment: Number(movieFailureCount[0]?.cnt ?? 0),
+        embeddingEligible: mEligible,
+        embeddingBlocked: mEnriched - mEligible,
+        embeddingPending: mPending,
       },
       series: {
         total: sTotal,
         withAvailability: sWithAvail,
         withoutAvailability: sTotal - sWithAvail,
         upcoming: Number(seriesStats[0]?.upcoming ?? 0),
-        enriched: Number(seriesStats[0]?.enriched ?? 0),
-        embeddingPending: 0,
+        enriched: sEnriched,
+        neverEnriched: sNeverEnriched,
+        partiallyEnriched: sPartially,
+        fullyEnriched: sFully,
+        stale: Number(seriesStats[0]?.stale ?? 0),
+        failedLastEnrichment: Number(seriesFailureCount[0]?.cnt ?? 0),
+        embeddingEligible: sEligible,
+        embeddingBlocked: sEnriched - sEligible,
+        embeddingPending: sPending,
       },
       episodeCount: Number(episodeCountRow[0]?.cnt ?? 0),
       availabilityRows: {

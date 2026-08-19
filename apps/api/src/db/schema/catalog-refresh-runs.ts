@@ -7,6 +7,7 @@ export const catalogRefreshRuns = pgTable(
   'catalog_refresh_runs',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    type: text('type').notNull().default('REFRESH'),
     status: text('status').notNull().default('PENDING'),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp('completed_at', { withTimezone: true }),

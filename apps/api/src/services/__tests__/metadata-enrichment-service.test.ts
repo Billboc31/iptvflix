@@ -58,13 +58,14 @@ function makeUpdateChain() {
 
 function makeInsertChain(onConflictResult: unknown = []) {
   const onConflictDoNothing = vi.fn().mockResolvedValue(onConflictResult)
-  const values = vi.fn().mockReturnValue({ onConflictDoNothing })
+  const onConflictDoUpdate = vi.fn().mockResolvedValue([])
   const returning = vi.fn().mockResolvedValue([])
-  const valuesWithReturning = vi.fn().mockReturnValue({ onConflictDoNothing, returning })
+  const valuesWithAll = vi.fn().mockReturnValue({ onConflictDoNothing, onConflictDoUpdate, returning })
   return {
-    insert: vi.fn().mockReturnValue({ values: valuesWithReturning }),
-    values,
+    insert: vi.fn().mockReturnValue({ values: valuesWithAll }),
+    values: valuesWithAll,
     onConflictDoNothing,
+    onConflictDoUpdate,
   }
 }
 
@@ -203,9 +204,10 @@ describe('MetadataEnrichmentService', () => {
     })
 
     it('returns provider-failed when provider returns null', async () => {
-      const row = { id: MOVIE_ID, tmdbId: TMDB_MOVIE_ID, metadataEnrichedAt: null }
+      const row = { id: MOVIE_ID, tmdbId: TMDB_MOVIE_ID, metadataEnrichedAt: null, title: 'Test' }
       const selectChain = makeSelectChain([row])
-      const db = { ...selectChain } as unknown as Db
+      const insertChain = makeInsertChain()
+      const db = { ...selectChain, insert: insertChain.insert } as unknown as Db
       const provider = makeProvider({ getMovieMetadata: vi.fn().mockResolvedValue(null) })
       const service = new MetadataEnrichmentService(db, provider)
       const result = await service.enrichMovie(MOVIE_ID)
@@ -213,9 +215,10 @@ describe('MetadataEnrichmentService', () => {
     })
 
     it('returns provider-failed when provider throws', async () => {
-      const row = { id: MOVIE_ID, tmdbId: TMDB_MOVIE_ID, metadataEnrichedAt: null }
+      const row = { id: MOVIE_ID, tmdbId: TMDB_MOVIE_ID, metadataEnrichedAt: null, title: 'Test' }
       const selectChain = makeSelectChain([row])
-      const db = { ...selectChain } as unknown as Db
+      const insertChain = makeInsertChain()
+      const db = { ...selectChain, insert: insertChain.insert } as unknown as Db
       const provider = makeProvider({
         getMovieMetadata: vi.fn().mockRejectedValue(new Error('network failure')),
       })
@@ -343,9 +346,10 @@ describe('MetadataEnrichmentService', () => {
     })
 
     it('returns provider-failed when provider throws', async () => {
-      const row = { id: SERIES_ID, tmdbId: TMDB_SERIES_ID, metadataEnrichedAt: null }
+      const row = { id: SERIES_ID, tmdbId: TMDB_SERIES_ID, metadataEnrichedAt: null, title: 'Test Series' }
       const selectChain = makeSelectChain([row])
-      const db = { ...selectChain } as unknown as Db
+      const insertChain = makeInsertChain()
+      const db = { ...selectChain, insert: insertChain.insert } as unknown as Db
       const provider = makeProvider({
         getSeriesMetadata: vi.fn().mockRejectedValue(new Error('network')),
       })
