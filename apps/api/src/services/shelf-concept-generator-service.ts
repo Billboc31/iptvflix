@@ -1,3 +1,4 @@
+// @deprecated — use recommendation-engine (apps/recommendation-engine/src/services/shelf-concept-generator.ts)
 import OpenAI from 'openai'
 import { eq, desc, and, gte, sql, inArray, or, isNull } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'

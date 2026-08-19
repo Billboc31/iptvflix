@@ -4,6 +4,9 @@ import cors from '@fastify/cors'
 import { PORT, LOG_LEVEL, CORS_ORIGIN, OPENAI_API_KEY } from './config.js'
 import { healthRoutes } from './routes/health.js'
 import { queryRoutes } from './routes/query.js'
+import { personalizedRoutes } from './routes/personalized.js'
+import { shelfConceptsRoutes } from './routes/shelf-concepts.js'
+import { shelfInstancesRoutes } from './routes/shelf-instances.js'
 
 const app = Fastify({
   logger: { level: LOG_LEVEL },
@@ -20,9 +23,12 @@ await app.register(cors, { origin: CORS_ORIGIN })
 
 await app.register(healthRoutes)
 await app.register(queryRoutes)
+await app.register(personalizedRoutes)
+await app.register(shelfConceptsRoutes)
+await app.register(shelfInstancesRoutes)
 
 if (!OPENAI_API_KEY) {
-  app.log.warn('OPENAI_API_KEY is not set — llm-planner stage will report unavailable')
+  app.log.warn('OPENAI_API_KEY is not set — llm-planner and semantic-search stages will report unavailable')
 }
 
 process.on('SIGTERM', async () => {

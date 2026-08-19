@@ -1,3 +1,4 @@
+// @deprecated — use recommendation-engine (apps/recommendation-engine/src/pipeline/stages/llm-planner.ts)
 import type { CompactTasteContext, RecommendationQueryPlan } from '@iptvflix/api-contracts'
 import { rawQueryFallbackPlan } from '../query-plan-fallback.js'
 import type { LlmPlannerProvider } from './llm-planner-provider.js'

@@ -1,5 +1,6 @@
 import type { CompactTasteContext, RecommendationQueryPlan } from './query-plan.js'
 export type { CompactTasteContext } from './query-plan.js'
+import type { EngineMetadata } from './engine-metadata.js'
 
 export interface SemanticCandidate {
   mediaId: string
@@ -30,4 +31,5 @@ export interface SemanticQueryResponse {
   compareQuery?: string
   compareResults?: SemanticCandidate[]
   queryPlan?: RecommendationQueryPlan
+  engineMetadata?: EngineMetadata
 }

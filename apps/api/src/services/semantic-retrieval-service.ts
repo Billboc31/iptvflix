@@ -1,3 +1,4 @@
+// @deprecated — use recommendation-engine (apps/recommendation-engine/src/pipeline/stages/semantic-search.ts)
 import { eq, inArray } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import type * as schema from '../db/schema/index.js'

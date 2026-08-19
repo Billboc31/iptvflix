@@ -10,6 +10,7 @@ import {
   OPENAI_API_KEY,
   SHELF_CONCEPT_LLM_MODEL,
 } from '../config/env.js'
+import { RecommendationEngineClient } from '../client/recommendation-engine-client.js'
 
 function buildService(): ShelfConceptGeneratorService {
   const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null
@@ -42,6 +43,11 @@ export async function shelfConceptsRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: 'count must be a number between 1 and 100' })
       }
 
+      const engineResult = await RecommendationEngineClient.generateShelfConcepts({ profileId, count })
+      if (engineResult) {
+        return reply.send(engineResult)
+      }
+
       try {
         const needsRefresh = await service.needsRefresh(profileId)
         let concepts
@@ -68,6 +74,12 @@ export async function shelfConceptsRoutes(app: FastifyInstance): Promise<void> {
     if (!profileId || typeof profileId !== 'string') {
       return reply.status(400).send({ error: 'profileId query param is required' })
     }
+
+    const engineResult = await RecommendationEngineClient.getShelfConcepts(profileId)
+    if (engineResult) {
+      return reply.send(engineResult)
+    }
+
     try {
       const concepts = await service.getActivePool(profileId)
       return reply.send(concepts)

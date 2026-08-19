@@ -1,0 +1,41 @@
+[2026-08-19T09:01:01Z] auto-run start: state=INIT
+[2026-08-19T09:01:01Z] auto-run: running step=planner
+[2026-08-19T09:01:06Z] auto-run: pre-planner rebase onto integration ok
+[2026-08-19T09:01:07Z] prompt: resolved=prompts/generic/planner.md source=generic
+[2026-08-19T09:01:07Z] prompt: generic fallback — injecting runs/T111/ticket.md
+[2026-08-19T09:01:07Z] compose: global-context=docs/ai/global-context.md
+[2026-08-19T09:01:07Z] compose: role=ai/roles/planner.md
+[2026-08-19T09:01:07Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-19T09:01:07Z] compose: skill=ai/skills/architecture-discipline.md
+[2026-08-19T09:01:07Z] compose: skill=ai/skills/documentation.md
+[2026-08-19T09:01:07Z] compose: task (canonical prompt)
+[2026-08-19T09:01:07Z] snapshot: runtime-prompt=runs/T111/prompts/planner-attempt-1.md
+[2026-08-19T09:05:30Z] compose: preferring on-disk runs/T111/plan.md over chatty stdout (agent Write beat meta-report)
+[2026-08-19T09:05:30Z] auto-run: step=planner done rc=0
+[2026-08-19T09:08:12Z] conflict-resolver: git rebase origin/main exit=0
+[2026-08-19T09:08:12Z] conflict-resolver: rebase clean — no conflicts
+[2026-08-19T09:08:12Z] conflict-resolver: running tests
+[2026-08-19T09:08:12Z] conflict-resolver: test-report written: runs/T111/conflict/test-report.md
+[2026-08-19T09:08:12Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-19T10:03:57Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-19T10:03:57Z] auto-run: running step=tester
+[2026-08-19T10:03:59Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-19T10:03:59Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-19T10:03:59Z] prompt: generic fallback — injecting runs/T111/ticket.md
+[2026-08-19T10:03:59Z] compose: global-context=docs/ai/global-context.md
+[2026-08-19T10:03:59Z] compose: role=ai/roles/tester.md
+[2026-08-19T10:03:59Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-19T10:03:59Z] compose: skill=ai/skills/testing.md
+[2026-08-19T10:03:59Z] compose: skill=ai/skills/debugging.md
+[2026-08-19T10:03:59Z] compose: task (canonical prompt)
+[2026-08-19T10:03:59Z] snapshot: runtime-prompt=runs/T111/prompts/tester-attempt-1.md
+[2026-08-19T10:07:26Z] auto-run: step=tester done rc=0
+[2026-08-19T10:07:26Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-19T10:07:26Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-19T10:07:26Z] commit-checkpoint: unstaged runtime garbage: ['runs/T111/daemon.lock', 'runs/T111/runtime.log', 'runs/T111/workflow-status.md']
+[2026-08-19T10:07:26Z] commit-checkpoint: sha=f974dcbe files=3 title='test(T111/workflow): tester — update 3 file(s)'
+[2026-08-19T10:07:26Z] auto-run: auto-push triggered
+[2026-08-19T10:07:26Z] push: tolerating runtime dirty files (not blocking): ['runs/T111/daemon.lock', 'runs/T111/runtime.log', 'runs/T111/workflow-status.md']
+[2026-08-19T10:07:26Z] push: pushing branch=ticket/T111-consolidate-recommendation-logic-into-the-standalo
+[2026-08-19T10:07:28Z] push: done branch=ticket/T111-consolidate-recommendation-logic-into-the-standalo
+[2026-08-19T10:07:29Z] auto-run: TEST_COMPLETE — running PR lifecycle

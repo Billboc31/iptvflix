@@ -12,6 +12,7 @@ import {
 } from '../services/shelf-service.js'
 import { generateShelfFromSeeds, refreshGeneratedShelf } from '../services/shelf-generation-service.js'
 import { NotFoundError, ForbiddenError, ValidationError } from '../errors.js'
+import { RecommendationEngineClient } from '../client/recommendation-engine-client.js'
 
 function handleServiceError(err: unknown, reply: FastifyReply): ReturnType<FastifyReply['send']> {
   if (err instanceof ForbiddenError) return reply.status(403).send({ error: err.message })
@@ -143,8 +144,21 @@ export async function shelvesRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: 'mediaType must be MOVIE or SERIES', validationError: true })
     }
 
+    const profileId = request.profileId!
+    const engineResult = await RecommendationEngineClient.generateShelfInstance({
+      profileId,
+      title,
+      seedMediaIds,
+      mediaType,
+      availableToMe,
+      limit,
+    })
+    if (engineResult) {
+      return reply.status(201).send(engineResult)
+    }
+
     try {
-      const result = await generateShelfFromSeeds(request.profileId!, { title, seedMediaIds, mediaType, availableToMe, limit })
+      const result = await generateShelfFromSeeds(profileId, { title, seedMediaIds, mediaType, availableToMe, limit })
       return reply.status(201).send(result)
     } catch (err) {
       return handleServiceError(err, reply)
@@ -152,8 +166,14 @@ export async function shelvesRoutes(app: FastifyInstance): Promise<void> {
   })
 
   app.post<{ Params: { id: string } }>('/shelves/:id/refresh', async (request, reply) => {
+    const profileId = request.profileId!
+    const engineResult = await RecommendationEngineClient.refreshShelfInstance(request.params.id, profileId)
+    if (engineResult) {
+      return reply.send(engineResult)
+    }
+
     try {
-      const result = await refreshGeneratedShelf(request.params.id, request.profileId!)
+      const result = await refreshGeneratedShelf(request.params.id, profileId)
       return result
     } catch (err) {
       return handleServiceError(err, reply)

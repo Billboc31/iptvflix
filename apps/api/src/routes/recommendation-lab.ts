@@ -43,6 +43,7 @@ import type {
   RecommendationCandidate,
 } from '@iptvflix/api-contracts'
 import { rawQueryFallbackPlan } from '../query-plan-fallback.js'
+import { RecommendationEngineClient } from '../client/recommendation-engine-client.js'
 
 // ---------------------------------------------------------------------------
 // profileContext sanitisation — validate shape and bound string lengths
@@ -376,6 +377,22 @@ function mapScoredToCandidate(
   }
 }
 
+function mapEngineResultToCandidate(
+  r: NonNullable<Awaited<ReturnType<typeof RecommendationEngineClient.query>>>['results'][number],
+): RecommendationCandidate {
+  return {
+    mediaType: r.mediaType === 'movie' ? 'MOVIE' : 'SERIES',
+    mediaId: r.id,
+    title: r.title,
+    year: r.year ?? null,
+    posterPath: r.posterPath ?? null,
+    score: r.score ?? 0,
+    reasons: r.reasons ?? [],
+    source: 'ENGINE' as const,
+    available: true,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
@@ -447,7 +464,67 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
     const retrievalService = new SemanticRetrievalService(db, embeddingService)
 
     if (expandWithLlm) {
-      // Check cache first
+      // Engine is the primary computation source for all LLM-expanded queries.
+      // Fall back to deprecated local services only when the engine is unavailable.
+      const engineResult = await RecommendationEngineClient.query({
+        text: rawQuery,
+        profileId,
+        limit: topK,
+        debug: debugMode,
+      })
+
+      if (engineResult) {
+        const results = engineResult.results.map(mapEngineResultToCandidate)
+        const effectiveCompareQuery = compareQuery ?? rawQuery
+
+        let compareResults = results
+        if (compareQuery) {
+          const compareEngineResult = await RecommendationEngineClient.query({
+            text: compareQuery,
+            profileId,
+            limit: topK,
+            debug: debugMode,
+          })
+          compareResults = compareEngineResult
+            ? compareEngineResult.results.map(mapEngineResultToCandidate)
+            : results
+        }
+
+        // Engine already performs hybrid ranking — no second call needed when
+        // useHybridRanking=true. This also avoids the double LLM cost that
+        // occurred when both expandWithLlm and useHybridRanking were set.
+        const hybridResults: RecommendationCandidate[] | undefined = useHybridRanking ? results : undefined
+        let compareProfileHybridResults: RecommendationCandidate[] | undefined
+
+        if (useHybridRanking && compareProfileId) {
+          const compareProfileEngineResult = await RecommendationEngineClient.query({
+            text: rawQuery,
+            profileId: compareProfileId,
+            limit: topK,
+            debug: debugMode,
+          })
+          if (compareProfileEngineResult) {
+            compareProfileHybridResults = compareProfileEngineResult.results.map(mapEngineResultToCandidate)
+          }
+        }
+
+        return reply.send({
+          query: rawQuery,
+          topK,
+          modelProvider: 'recommendation-engine',
+          modelName: `v${engineResult.engineMetadata.engineVersion}`,
+          results,
+          compareQuery: effectiveCompareQuery,
+          compareResults,
+          queryPlan: engineResult.queryPlan,
+          engineMetadata: engineResult.engineMetadata,
+          ...(hybridResults !== undefined ? { hybridResults } : {}),
+          ...(compareProfileHybridResults !== undefined ? { compareProfileHybridResults } : {}),
+          ...(debugMode ? { scoreModel: SCORE_MODEL_V1 } : {}),
+        })
+      }
+
+      // Engine unavailable — fall back to deprecated local services
       const cacheKey = planCacheKey(rawQuery, profileContext)
       let plan = planCache.get(cacheKey)
 
@@ -466,9 +543,8 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
       ])
 
       // Apply hard filters available in SemanticResult.
-      // Enforced: mediaTypes, minReleaseYear, maxReleaseYear (year field present after enrichWithMetadata).
-      // NOT enforced (no genre/audio data in SemanticResult): excludeGenres, includeGenres,
-      // audioLanguages, maxRuntimeMinutes — shown in QueryPlanPanel as unenforced.
+      // Enforced: mediaTypes, minReleaseYear, maxReleaseYear.
+      // NOT enforced: excludeGenres, includeGenres, audioLanguages, maxRuntimeMinutes.
       const filteredTypes =
         plan.mediaTypes.length > 0 && plan.mediaTypes.length < 2
           ? new Set(plan.mediaTypes)
@@ -495,7 +571,6 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
         modelName: r.modelName,
       })
 
-      // Hybrid ranking block
       let hybridResults: RecommendationCandidate[] | undefined
       let compareProfileHybridResults: RecommendationCandidate[] | undefined
 
@@ -563,29 +638,51 @@ export async function recommendationLabRoutes(app: FastifyInstance): Promise<voi
     let compareProfileHybridResults: RecommendationCandidate[] | undefined
 
     if (useHybridRanking) {
-      const fallbackPlan = rawQueryFallbackPlan(rawQuery)
-      const rankingOpts: RankingOptions = {
+      const engineResult = await RecommendationEngineClient.query({
+        text: rawQuery,
+        profileId,
         limit: topK,
-        explorationLevel,
-        diversityEnabled,
-        alreadyShownIds,
         debug: debugMode,
-      }
+      })
 
-      const [enriched, taste1, taste2] = await Promise.all([
-        enrichAsHybridCandidates(primary, profileId),
-        profileId ? loadTasteSignals(profileId) : Promise.resolve(null),
-        compareProfileId ? loadTasteSignals(compareProfileId) : Promise.resolve(null),
-      ])
+      if (engineResult) {
+        hybridResults = engineResult.results.map(mapEngineResultToCandidate)
+        if (compareProfileId) {
+          const compareEngineResult = await RecommendationEngineClient.query({
+            text: rawQuery,
+            profileId: compareProfileId,
+            limit: topK,
+            debug: debugMode,
+          })
+          if (compareEngineResult) {
+            compareProfileHybridResults = compareEngineResult.results.map(mapEngineResultToCandidate)
+          }
+        }
+      } else {
+        const fallbackPlan = rawQueryFallbackPlan(rawQuery)
+        const rankingOpts: RankingOptions = {
+          limit: topK,
+          explorationLevel,
+          diversityEnabled,
+          alreadyShownIds,
+          debug: debugMode,
+        }
 
-      hybridResults = rankHybrid(enriched, fallbackPlan, taste1, rankingOpts).map(
-        mapScoredToCandidate,
-      )
+        const [enriched, taste1, taste2] = await Promise.all([
+          enrichAsHybridCandidates(primary, profileId),
+          profileId ? loadTasteSignals(profileId) : Promise.resolve(null),
+          compareProfileId ? loadTasteSignals(compareProfileId) : Promise.resolve(null),
+        ])
 
-      if (compareProfileId && taste2 !== undefined) {
-        compareProfileHybridResults = rankHybrid(enriched, fallbackPlan, taste2, rankingOpts).map(
+        hybridResults = rankHybrid(enriched, fallbackPlan, taste1, rankingOpts).map(
           mapScoredToCandidate,
         )
+
+        if (compareProfileId && taste2 !== undefined) {
+          compareProfileHybridResults = rankHybrid(enriched, fallbackPlan, taste2, rankingOpts).map(
+            mapScoredToCandidate,
+          )
+        }
       }
     }
 
