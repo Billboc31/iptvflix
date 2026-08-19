@@ -1,0 +1,169 @@
+import { and, eq, inArray } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { sources } from '../db/schema/sources.js';
+import { series } from '../db/schema/series.js';
+import { episodes } from '../db/schema/episodes.js';
+import { seriesAvailabilities, episodeAvailabilities } from '../db/schema/availabilities.js';
+import { XtreamCodesClient } from '../providers/xtream/client.js';
+import { CatalogSyncService, acquireSyncRunLock, SyncAlreadyRunningError } from './catalog-sync-service.js';
+import { withBoundedConcurrency } from './sync-runs-service.js';
+import { TMDB_API_KEY } from '../config/env.js';
+import { TmdbClient } from '../providers/metadata/tmdb/client.js';
+import { MetadataEnrichmentService } from './metadata-enrichment-service.js';
+import { CanonicalResolver } from './canonical-resolver.js';
+export class EpisodeBackfillService {
+    latestState = null;
+    running = false;
+    async backfill(opts) {
+        if (this.running) {
+            return this.latestState ?? { processed: 0, succeeded: 0, failed: 0 };
+        }
+        this.running = true;
+        const startedAt = new Date();
+        const result = { processed: 0, succeeded: 0, failed: 0 };
+        this.latestState = { ...result, startedAt };
+        try {
+            const xtreamSources = await db
+                .select()
+                .from(sources)
+                .where(and(eq(sources.type, 'XTREAM'), eq(sources.enabled, true)));
+            for (const source of xtreamSources) {
+                let remaining = true;
+                let batches = 0;
+                const maxBatches = process.env.NODE_ENV === 'test' ? 1 : 10_000;
+                while (remaining && batches < maxBatches) {
+                    const before = result.processed;
+                    await this.backfillSource(source, opts?.force ?? false, result);
+                    this.latestState = { ...result, startedAt };
+                    remaining = result.processed > before;
+                    batches++;
+                }
+            }
+        }
+        finally {
+            this.running = false;
+            this.latestState = { ...result, startedAt, completedAt: new Date() };
+        }
+        return result;
+    }
+    getLatestState() {
+        return this.latestState;
+    }
+    async backfillSource(source, force, result) {
+        const candidates = await db
+            .select({
+            seriesId: seriesAvailabilities.seriesId,
+            providerItemId: seriesAvailabilities.providerItemId,
+        })
+            .from(seriesAvailabilities)
+            .innerJoin(series, eq(seriesAvailabilities.seriesId, series.id))
+            .where(and(eq(seriesAvailabilities.providerId, source.id), eq(seriesAvailabilities.status, 'AVAILABLE'), eq(series.matchStatus, 'MATCHED')));
+        const toProcess = force
+            ? candidates
+            : await this.filterMissingEpisodeAvailabilities(candidates);
+        const batchSize = parseInt(process.env.EPISODE_BACKFILL_BATCH_SIZE ?? '80', 10) || 80;
+        const batch = toProcess.slice(0, batchSize);
+        if (batch.length === 0)
+            return;
+        console.info(`[episode-backfill] source ${source.id}: fetching ${batch.length}/${toProcess.length} series (force=${force})`);
+        result.processed += batch.length;
+        const concurrencyLimit = parseInt(process.env.XTREAM_SERIES_CONCURRENCY ?? '5', 10) || 5;
+        const infoClient = new XtreamCodesClient({
+            baseUrl: source.baseUrl,
+            username: source.username ?? '',
+            password: source.password ?? '',
+            timeoutMs: parseInt(process.env.XTREAM_SERIES_INFO_TIMEOUT_MS ?? '30000', 10),
+        });
+        const tasks = batch.map((item) => async () => {
+            const seriesIdNum = parseInt(item.providerItemId, 10);
+            if (isNaN(seriesIdNum))
+                throw new Error(`Invalid providerItemId: ${item.providerItemId}`);
+            const info = await infoClient.getSeriesInfo(seriesIdNum);
+            return { seriesIdNum, info };
+        });
+        const settled = await withBoundedConcurrency(tasks, concurrencyLimit);
+        const seriesInfo = {};
+        const failedSeriesIds = [];
+        for (let i = 0; i < settled.length; i++) {
+            const r = settled[i];
+            if (r.status === 'fulfilled') {
+                const { seriesIdNum, info } = r.value;
+                seriesInfo[seriesIdNum] = info;
+            }
+            else {
+                const item = batch[i];
+                console.warn(`[episode-backfill] getSeriesInfo(${item.providerItemId}) failed for source ${source.id}:`, r.reason);
+                failedSeriesIds.push(parseInt(item.providerItemId, 10));
+                result.failed++;
+            }
+        }
+        const successCount = Object.keys(seriesInfo).length;
+        if (successCount === 0)
+            return;
+        // Synthetic snapshot: only episode data, skipLifecycle prevents touching existing availability
+        const snapshot = {
+            sourceId: source.id,
+            fetchedAt: new Date(),
+            vodCategories: [],
+            vodStreams: [],
+            seriesCategories: [],
+            series: [],
+            seriesInfo,
+            failedSeriesIds: failedSeriesIds.length > 0 ? failedSeriesIds : undefined,
+        };
+        let runId;
+        const maxLockAttempts = process.env.NODE_ENV === 'test' ? 1 : 12;
+        for (let attempt = 1; attempt <= maxLockAttempts; attempt++) {
+            try {
+                runId = await acquireSyncRunLock(source.id);
+                break;
+            }
+            catch (err) {
+                if (err instanceof SyncAlreadyRunningError && attempt < maxLockAttempts) {
+                    console.warn(`[episode-backfill] sync lock busy for ${source.id}, retry ${attempt}/${maxLockAttempts}`);
+                    await new Promise((r) => setTimeout(r, 15_000));
+                    continue;
+                }
+                if (err instanceof SyncAlreadyRunningError) {
+                    console.warn(`[episode-backfill] backfill lock already held for source ${source.id}, skipping batch`);
+                    result.failed += successCount;
+                    return;
+                }
+                throw err;
+            }
+        }
+        if (!runId) {
+            result.failed += successCount;
+            return;
+        }
+        try {
+            const canonicalResolver = TMDB_API_KEY
+                ? new CanonicalResolver(new MetadataEnrichmentService(db, new TmdbClient({ apiKey: TMDB_API_KEY })))
+                : undefined;
+            await CatalogSyncService.syncCatalog(source.id, snapshot, {
+                runId,
+                skipLifecycle: true,
+                canonicalResolver,
+            });
+            result.succeeded += successCount;
+        }
+        catch (err) {
+            console.error(`[episode-backfill] syncCatalog failed for source ${source.id}:`, err);
+            result.failed += successCount;
+        }
+    }
+    /** Series with TMDB seasons but no Xtream episode sources yet. */
+    async filterMissingEpisodeAvailabilities(candidates) {
+        if (candidates.length === 0)
+            return [];
+        const seriesIds = candidates.map((c) => c.seriesId);
+        const withEpisodeSources = await db
+            .select({ seriesId: episodes.seriesId })
+            .from(episodeAvailabilities)
+            .innerJoin(episodes, eq(episodeAvailabilities.episodeId, episodes.id))
+            .where(and(inArray(episodes.seriesId, seriesIds), eq(episodeAvailabilities.status, 'AVAILABLE')));
+        const hasSources = new Set(withEpisodeSources.map((r) => r.seriesId));
+        return candidates.filter((c) => !hasSources.has(c.seriesId));
+    }
+}
+//# sourceMappingURL=episode-backfill-service.js.map

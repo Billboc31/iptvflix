@@ -1,0 +1,1 @@
+{"version":3,"file":"catalog-bootstrap.d.ts","sourceRoot":"","sources":["../../src/routes/catalog-bootstrap.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,eAAe,EAAE,MAAM,SAAS,CAAA;AAI9C,OAAO,EAAE,uBAAuB,EAAgC,MAAM,0CAA0C,CAAA;AAEhH,UAAU,4BAA4B;IACpC,OAAO,EAAE,uBAAuB,CAAA;CACjC;AAED,wBAAsB,sBAAsB,CAC1C,GAAG,EAAE,eAAe,EACpB,IAAI,EAAE,4BAA4B,GACjC,OAAO,CAAC,IAAI,CAAC,CAwBf"}

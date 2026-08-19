@@ -1,0 +1,1 @@
+{"version":3,"file":"embedding-index-mode.d.ts","sourceRoot":"","sources":["../../src/db/embedding-index-mode.ts"],"names":[],"mappings":"AAAA,MAAM,MAAM,kBAAkB,GAAG,UAAU,GAAG,QAAQ,CAAA;AAItD,wBAAgB,qBAAqB,IAAI,kBAAkB,CAE1D;AAED,wBAAgB,qBAAqB,CAAC,IAAI,EAAE,kBAAkB,GAAG,IAAI,CAEpE"}
