@@ -13,10 +13,8 @@ import {
   profileTaste,
   profileMediaExposure,
 } from '../../db/schema.js'
-import type { StageResult, CandidateItem, PipelineContext } from '../types.js'
-import type { RecommendationQueryPlan, ScoreBreakdown } from '@iptvflix/api-contracts'
-
-export const HARD_FILTER_UNKNOWN_POLICY = 'STRICT_EXCLUDE_UNKNOWN' as const
+import type { StageResult, CandidateItem, PipelineContext, ScoreBreakdown } from '../types.js'
+import type { RecommendationQueryPlan } from '@iptvflix/api-contracts'
 
 export const SCORE_MODEL_V1 = {
   version: 'v1',
@@ -103,7 +101,7 @@ function getBlendedWeights(model: typeof SCORE_MODEL_V2, level: ExplorationLevel
   return { ...base }
 }
 
-export export interface EnrichedCandidate extends CandidateItem {
+export interface EnrichedCandidate extends CandidateItem {
   genreIds: string[]
   genreNames: string[]
   available: boolean
@@ -385,11 +383,15 @@ export function computePeopleAffinity(c: EnrichedCandidate, personScores: Record
 
 export function computeKeywordAffinity(c: EnrichedCandidate, keywordScores: Record<string, number>): number {
   if (c.keywords.length === 0) return 0.5
-  const positiveKeys = new Set(Object.entries(keywordScores).filter(([, s]) => s > 0).map(([k]) => k))
-  if (positiveKeys.size === 0) return 0.5
-  const matches = c.keywords.filter((kw) => positiveKeys.has(kw)).length
-  if (matches === 0) return 0.5
-  return matches / Math.min(c.keywords.length, 5)
+  const positiveKeywords = new Set(
+    Object.entries(keywordScores)
+      .filter(([, s]) => s > 0)
+      .map(([k]) => k),
+  )
+  if (positiveKeywords.size === 0) return 0.5
+  const matches = c.keywords.filter((k) => positiveKeywords.has(k))
+  if (matches.length === 0) return 0.5
+  return Math.min(1.0, matches.length / Math.min(c.keywords.length, 5))
 }
 
 export function computeFranchiseAffinity(c: EnrichedCandidate, franchiseScores: Record<string, number>): number {
@@ -569,6 +571,8 @@ function buildReasons(
   languageAffinity: number,
   decadeAffinity: number,
   genreNames: string[],
+  peopleAffinity: number,
+  keywordAffinity: number,
 ): string[] {
   const reasons: string[] = []
   if (semantic > 0.7) reasons.push('strong semantic match')
@@ -577,6 +581,8 @@ function buildReasons(
   else if (genreAffinity > 0.3 && genreNames.length > 0) reasons.push(`${genreNames[0].toLowerCase()} genre affinity`)
   if (languageAffinity > 0.7) reasons.push('preferred language')
   if (decadeAffinity > 0.7) reasons.push('preferred era')
+  if (peopleAffinity > 0.7) reasons.push('liked cast/crew')
+  if (keywordAffinity > 0.7) reasons.push('strong keyword match')
   if (reasons.length === 0) reasons.push('discovery')
   return reasons
 }
@@ -612,6 +618,13 @@ export async function runHybridReranker(
     const plan = ctx.queryPlan
     const weights = getBlendedWeights(SCORE_MODEL_V2, 'exploit')
     const allGenreScores = taste?.genreScores ?? {}
+    const personScores = taste?.personScores ?? {}
+    const keywordScores = taste?.keywordScores ?? {}
+    const franchiseScores = taste?.franchiseScores ?? {}
+    const languageScores = taste?.languageScores ?? {}
+    const countryScores = taste?.countryScores ?? {}
+    const decadeScores = taste?.decadeScores ?? {}
+    const mediaTypePreferences = taste?.mediaTypePreferences ?? {}
 
     const eligible = enriched.filter((c) => passesHardFilters(c, plan))
 
@@ -624,12 +637,12 @@ export async function runHybridReranker(
       const semantic = c.similarity ?? 0
       const genreAffinity = normalizeGenreAffinity(c.genreIds, allGenreScores)
       const themeAffinity = computeThemeAffinity(c, plan.desiredThemes, plan.desiredTone)
-      const peopleAffinity = computePeopleAffinity(c, taste?.personScores ?? {})
-      const keywordAffinity = computeKeywordAffinity(c, taste?.keywordScores ?? {})
-      const franchiseAffinity = computeFranchiseAffinity(c, taste?.franchiseScores ?? {})
-      const languageAffinity = computeLanguageAffinity(c, taste?.languageScores ?? {}, taste?.countryScores ?? {})
-      const decadeAffinity = computeDecadeAffinity(c, taste?.decadeScores ?? {})
-      const mediaTypeAffinity = computeMediaTypeAffinity(c, taste?.mediaTypePreferences ?? {})
+      const peopleAffinity = computePeopleAffinity(c, personScores)
+      const keywordAffinity = computeKeywordAffinity(c, keywordScores)
+      const franchiseAffinity = computeFranchiseAffinity(c, franchiseScores)
+      const languageAffinity = computeLanguageAffinity(c, languageScores, countryScores)
+      const decadeAffinity = computeDecadeAffinity(c, decadeScores)
+      const mediaTypeAffinity = computeMediaTypeAffinity(c, mediaTypePreferences)
       const fresh = computeFreshness(c.year)
       const prior = computeQualityPrior(c.popularity, c.voteAverage)
       const availBonus = c.available ? 1.0 : 0.0
@@ -656,6 +669,8 @@ export async function runHybridReranker(
 
       const finalScore = weighted - alreadyWatchedPenalty - abandonPenalty - dislikedPenalty - avoidPenalty - repetitionPenalty
 
+      const reasons = buildReasons(semantic, genreAffinity, languageAffinity, decadeAffinity, c.genreNames, peopleAffinity, keywordAffinity)
+
       const breakdown: ScoreBreakdown = {
         modelVersion: SCORE_MODEL_V2.version,
         semantic,
@@ -676,7 +691,7 @@ export async function runHybridReranker(
         avoidPenalty,
         repetitionPenalty,
         final: finalScore,
-        reasons: buildReasons(semantic, genreAffinity, languageAffinity, decadeAffinity, c.genreNames),
+        reasons,
       }
 
       return {
