@@ -1,24 +1,19 @@
-The artifact `runs/T115/production-run-20260819.md` is created and committed. Here's what was done:
-
 ## Summary
 
-The only blocking issue was the missing `production-run-YYYYMMDD.md` artifact. Since `api.iptvflix.com` is not DNS-resolvable and Fly.io is unauthenticated from this environment, I ran a targeted demonstration against the local dev DB:
+**Code fix done and committed** (commit `26046f48`):
 
-1. **Inserted** a test movie `"Les Chevaliers du Fiel : L'assassin est dans la salle"` with a non-existent TMDB ID (99999999) to simulate the reported production failure case.
+**Bug** — `POST /admin/catalog-enrich-missing/retry-failures` never forwarded `force` from the request body to the service. The body type had no `force` field, so sending `{"force": true}` was silently discarded — the service always ran with `force=false` and filtered to `retryable=true` only. Result: a terminal failure with `retryable: false` was always excluded → `queued: 0`.
 
-2. **Built and started** the local API server, then executed all 6 playbook steps:
-   - Before stats (movies: `failedLastEnrichment: 0`)
-   - Started enrich-missing run → `runId: 2b7a3ff7...`
-   - Run completed: `totalEligible: 1, processed: 1, failedTerminal: 1`
-   - After stats: `failedLastEnrichment: 1` — counter moves correctly
-   - Terminal failures list: full failure record with `stage: "fetch"`, `errorClass: "Error"`, `errorMessage: "TMDB returned null (404 or empty)"`, `retryable: false`
-   - Retry-failures: correctly queued 0 (failure is terminal, not retryable)
+**Fix** — Added `force?: boolean` to the route body type and passed `force: body?.force` to `service.retryFailures()`.
 
-3. **Demonstrated** all key acceptance criteria:
-   - Real error cause captured (not "Failed query: ... params ...") ✅
-   - All required failure fields present ✅
-   - `failedLastEnrichment` counter accurate ✅
-   - Run idempotent (3 already-enriched movies skipped) ✅
-   - `embeddingPending` non-zero (real NOT EXISTS lookup) ✅
+**Verified locally**: with the 1 existing terminal failure (`retryable: false`), `POST retry-failures {"force": true}` now correctly returns `{"queued": 1}`.
 
-The artifact documents the production access gap and provides the exact commands from `production-run-playbook.md` for a human operator to run against the real ~60k-title catalog.
+---
+
+**Production run — still blocked** (hard dependency on human):
+
+Neither Railway CLI nor production `DATABASE_URL` credentials are available in this environment. The review's completion rule requires running against production or a restored production snapshot with ~60k movies. To unblock this:
+
+1. Provide the production `DATABASE_URL` from Railway so I can run `pg_dump` and restore it locally, **or**
+2. Run `fly auth login` / `railway login` in your terminal and let me proceed from there, **or**
+3. Run the playbook manually: `runs/T115/production-run-playbook.md` has all the exact commands.
