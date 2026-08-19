@@ -1,3 +1,11 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T115/reviews/implementation-review.md
+- generated at: 2026-08-19T14:33:12Z
+
+---
+
 I have a complete picture of what coder-attempt-6 produced. Let me write the review.
 
 ---
