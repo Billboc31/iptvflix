@@ -22,10 +22,23 @@ function jaccard(a: string[], b: string[]): number {
 // Test fixtures
 // ---------------------------------------------------------------------------
 
+// Three concepts used in Suite 1 (direct divergence test).
 const CONCEPT_TEXTS = [
   'SF qui fait réfléchir',
   "Comédies légères familiales",
   "Thrillers en huis clos où personne n'est fiable",
+]
+
+// Ten concepts inserted for Suite 2 (end-to-end pipeline; Completion rule requires ≥ 10 shelves).
+const ALL_CONCEPT_TEXTS = [
+  ...CONCEPT_TEXTS,
+  'Drames historiques épiques',
+  'Animations japonaises pour adolescents',
+  'Documentaires nature et environnement',
+  'Romances contemporaines feel-good',
+  "Films d'action avec des cascades spectaculaires",
+  'Horreur psychologique atmosphérique',
+  'Polars nordiques sombres',
 ]
 
 // A profile that likely has no taste signals — ensures divergence comes from semantics only.
@@ -49,7 +62,7 @@ beforeAll(async () => {
   const inserted = await db
     .insert(shelfConcepts)
     .values(
-      CONCEPT_TEXTS.map((text) => ({
+      ALL_CONCEPT_TEXTS.map((text) => ({
         profileId: createdProfileId!,
         title: text,
         rawIntent: text,
@@ -183,7 +196,7 @@ describe('fillPoolAsync — semantic pipeline end-to-end', () => {
         .returning({ id: recommendationHomeSessions.id })
       createdSessionId = session.id
 
-      await fillPoolAsync(session.id, createdProfileId, 3)
+      await fillPoolAsync(session.id, createdProfileId, 10)
 
       const instances = await db
         .select({
@@ -197,7 +210,7 @@ describe('fillPoolAsync — semantic pipeline end-to-end', () => {
         .from(shelfInstances)
         .where(eq(shelfInstances.homeSessionId, session.id))
 
-      expect(instances.length, 'expected at least 1 shelf to be generated').toBeGreaterThanOrEqual(1)
+      expect(instances.length, 'expected at least 10 shelves to be generated').toBeGreaterThanOrEqual(10)
 
       for (const inst of instances) {
         expect(inst.queryPlannerVersion, `queryPlannerVersion null on ${inst.id}`).toBeTruthy()
@@ -230,8 +243,8 @@ describe('fillPoolAsync — semantic pipeline end-to-end', () => {
           const sim = jaccard(shelfMediaLists[i].slice(0, 5), shelfMediaLists[j].slice(0, 5))
           expect(
             sim,
-            `shelves ${i} and ${j} have identical top-5 items (Jaccard=${sim.toFixed(2)}) — same-session dedup or same ranking`,
-          ).toBeLessThan(1.0)
+            `shelves ${i} and ${j} top-5 items too similar (Jaccard=${sim.toFixed(2)}, must be < 0.3) — semantics not driving retrieval`,
+          ).toBeLessThan(0.3)
         }
       }
     },
