@@ -3,7 +3,5 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T112-activate-production-pgvector-database-and-backfill",
   "issue_number": 234,
-  "updated_at": "2026-08-19T08:59:43Z",
-  "pr_number": 235,
-  "pr_synced": true
+  "updated_at": "2026-08-19T09:02:08Z"
 }
