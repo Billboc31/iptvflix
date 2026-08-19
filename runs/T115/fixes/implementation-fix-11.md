@@ -1,3 +1,11 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T115/reviews/implementation-review.md
+- generated at: 2026-08-19T15:29:07Z
+
+---
+
 # PR Review — T115 — Complete catalog enrichment and refresh failure observability
 
 ## Résumé
