@@ -294,3 +294,16 @@ export const shelfMembers = pgTable(
   },
   (t) => [unique('re_shelf_members_unique').on(t.shelfId, t.mediaType, t.mediaId)],
 )
+
+// ─── Profile media exposure (read-only reference; owned by API migrations) ────
+
+export const profileMediaExposure = pgTable(
+  'profile_media_exposure',
+  {
+    profileId: uuid('profile_id').notNull(),
+    mediaType: text('media_type').notNull(),
+    mediaId: uuid('media_id').notNull(),
+    exposureCount: integer('exposure_count').notNull().default(0),
+    lastExposedAt: timestamp('last_exposed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+)
