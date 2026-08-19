@@ -65,3 +65,8 @@
 [2026-08-19T09:04:55Z] push: pushing branch=ticket/T112-activate-production-pgvector-database-and-backfill
 [2026-08-19T09:04:57Z] push: done branch=ticket/T112-activate-production-pgvector-database-and-backfill
 [2026-08-19T09:04:57Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-19T09:06:14Z] conflict-resolver: [pass 1/3] conflicted=['scripts/migrate-pgvector-db.sh'] | staged=['scripts/migrate-pgvector-db.sh'] | unresolved=[] | continue_rc=1 | next_source=[]
+[2026-08-19T09:06:14Z] conflict-resolver: all conflicts resolved after 1 pass(es)
+[2026-08-19T09:06:14Z] conflict-resolver: running tests
+[2026-08-19T09:06:14Z] conflict-resolver: test-report written: runs/T112/conflict/test-report.md
+[2026-08-19T09:06:14Z] conflict-resolver: staging and committing resolution artifacts
