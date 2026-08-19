@@ -16,8 +16,6 @@ import {
 import type { StageResult, CandidateItem, PipelineContext } from '../types.js'
 import type { RecommendationQueryPlan, ScoreBreakdown } from '@iptvflix/api-contracts'
 
-export const HARD_FILTER_UNKNOWN_POLICY = 'STRICT_EXCLUDE_UNKNOWN' as const
-
 export const SCORE_MODEL_V1 = {
   version: 'v1',
   wSemantic: 0.35,
@@ -103,7 +101,7 @@ function getBlendedWeights(model: typeof SCORE_MODEL_V2, level: ExplorationLevel
   return { ...base }
 }
 
-export export interface EnrichedCandidate extends CandidateItem {
+export interface EnrichedCandidate extends CandidateItem {
   genreIds: string[]
   genreNames: string[]
   available: boolean
@@ -569,6 +567,8 @@ function buildReasons(
   languageAffinity: number,
   decadeAffinity: number,
   genreNames: string[],
+  peopleAffinity: number,
+  keywordAffinity: number,
 ): string[] {
   const reasons: string[] = []
   if (semantic > 0.7) reasons.push('strong semantic match')
@@ -577,6 +577,8 @@ function buildReasons(
   else if (genreAffinity > 0.3 && genreNames.length > 0) reasons.push(`${genreNames[0].toLowerCase()} genre affinity`)
   if (languageAffinity > 0.7) reasons.push('preferred language')
   if (decadeAffinity > 0.7) reasons.push('preferred era')
+  if (peopleAffinity > 0.7) reasons.push('liked cast/crew')
+  if (keywordAffinity > 0.7) reasons.push('strong keyword match')
   if (reasons.length === 0) reasons.push('discovery')
   return reasons
 }
@@ -656,6 +658,8 @@ export async function runHybridReranker(
 
       const finalScore = weighted - alreadyWatchedPenalty - abandonPenalty - dislikedPenalty - avoidPenalty - repetitionPenalty
 
+      const reasons = buildReasons(semantic, genreAffinity, languageAffinity, decadeAffinity, c.genreNames, peopleAffinity, keywordAffinity)
+
       const breakdown: ScoreBreakdown = {
         modelVersion: SCORE_MODEL_V2.version,
         semantic,
@@ -676,7 +680,7 @@ export async function runHybridReranker(
         avoidPenalty,
         repetitionPenalty,
         final: finalScore,
-        reasons: buildReasons(semantic, genreAffinity, languageAffinity, decadeAffinity, c.genreNames),
+        reasons,
       }
 
       return {
