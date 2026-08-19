@@ -429,14 +429,15 @@ export async function resolvePlayback(
   }
 
   const relayBase = getMediaRelayBaseUrl()
+  const relaySecret = MEDIA_RELAY_SECRET
   const useMediaRelay =
     !nativeClient &&
     mediaRelayEnabled &&
-    Boolean(relayBase && MEDIA_RELAY_SECRET)
+    Boolean(relayBase && relaySecret)
   const gatewayUrl = useMediaRelay
       ? buildMediaRelayPlayUrl({
           relayBaseUrl: relayBase!,
-          secret: MEDIA_RELAY_SECRET,
+          secret: relaySecret!,
           providerStreamUrl,
           containerExtension,
           startPositionSeconds,
