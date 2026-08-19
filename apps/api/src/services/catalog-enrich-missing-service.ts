@@ -331,11 +331,13 @@ export class CatalogEnrichMissingService {
     return { rows, total: Number(totalRow[0]?.cnt ?? 0) }
   }
 
-  async retryFailures(opts: { mediaType?: string; ids?: string[] } = {}): Promise<{
+  async retryFailures(opts: { mediaType?: string; ids?: string[]; concurrency?: number } = {}): Promise<{
     runId: string
     queued: number
   }> {
-    const { mediaType, ids } = opts
+    const { mediaType, ids, concurrency = 3 } = opts
+
+    await this.checkNoRunningConflict()
 
     const conditions = []
     if (mediaType) conditions.push(eq(enrichmentFailures.mediaType, mediaType))
@@ -352,9 +354,6 @@ export class CatalogEnrichMissingService {
       return { runId: run.id, queued: 0 }
     }
 
-    // Directly enrich each failure item without starting a new cursor-based run
-    await this.checkNoRunningConflict()
-
     const [run] = await this.db
       .insert(catalogRefreshRuns)
       .values({ type: 'ENRICH_MISSING', status: 'RUNNING', checkpoint: null })
@@ -362,27 +361,24 @@ export class CatalogEnrichMissingService {
 
     const runId = run.id
 
-    void (async () => {
-      try {
-        for (const failure of failures) {
-          const mt = failure.mediaType as 'MOVIE' | 'SERIES'
-          if (mt === 'MOVIE') {
-            await this.enrichWithRetry(() => this.enrichmentService.enrichMovie(failure.mediaId, { force: true, runId }))
-          } else {
-            await this.enrichWithRetry(() => this.enrichmentService.enrichSeries(failure.mediaId, { force: true, runId }))
-          }
-        }
-        await this.db
-          .update(catalogRefreshRuns)
-          .set({ status: 'COMPLETED', completedAt: new Date() })
-          .where(eq(catalogRefreshRuns.id, runId))
-      } catch (err) {
-        await this.db
-          .update(catalogRefreshRuns)
-          .set({ status: 'FAILED', completedAt: new Date(), errorMessage: String(err) })
-          .where(eq(catalogRefreshRuns.id, runId))
+    void runWithConcurrency(failures, concurrency, async (failure) => {
+      const mt = failure.mediaType as 'MOVIE' | 'SERIES'
+      if (mt === 'MOVIE') {
+        await this.enrichWithRetry(() => this.enrichmentService.enrichMovie(failure.mediaId, { force: true, runId }))
+      } else {
+        await this.enrichWithRetry(() => this.enrichmentService.enrichSeries(failure.mediaId, { force: true, runId }))
       }
-    })()
+    }).then(async () => {
+      await this.db
+        .update(catalogRefreshRuns)
+        .set({ status: 'COMPLETED', completedAt: new Date() })
+        .where(eq(catalogRefreshRuns.id, runId))
+    }).catch(async (err) => {
+      await this.db
+        .update(catalogRefreshRuns)
+        .set({ status: 'FAILED', completedAt: new Date(), errorMessage: String(err) })
+        .where(eq(catalogRefreshRuns.id, runId))
+    })
 
     return { runId, queued: failures.length }
   }
