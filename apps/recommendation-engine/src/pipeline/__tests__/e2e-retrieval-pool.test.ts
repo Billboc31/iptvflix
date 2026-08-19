@@ -76,13 +76,15 @@ function toEnriched(s: SeedInfo): EnrichedCandidate {
     score: 1,
     similarity: 1,
     reasons: [],
-    scoreBreakdown: {},
+    scoreBreakdown: undefined,
     genreIds: [],
     genreNames: [],
     available: true,
     collectionId: null,
     directors: [],
+    creditPersonIds: [],
     keywords: [],
+    productionCountries: [],
     durationMinutes: null,
     originalLanguage: s.lang,
     popularity: null,
@@ -99,9 +101,9 @@ const retrievalLimit = Math.min(SEMANTIC_RETRIEVAL_LIMIT, SEMANTIC_RETRIEVAL_MAX
 
 beforeAll(async () => {
   const batchDefs = [
-    ...Array.from({ length: BATCH_A }, (_, i) => ({ title: `T113_E2E_A${i}`, firstAirYear: 2020 as number | undefined, originalLanguage: 'fr' as string | undefined })),
-    ...Array.from({ length: BATCH_B }, (_, i) => ({ title: `T113_E2E_B${i}`, firstAirYear: 2005 as number | undefined, originalLanguage: 'en' as string | undefined })),
-    ...Array.from({ length: BATCH_C }, (_, i) => ({ title: `T113_E2E_C${i}`, firstAirYear: 2018 as number | undefined, originalLanguage: undefined })),
+    ...Array.from({ length: BATCH_A }, (_, i) => ({ id: crypto.randomUUID(), title: `T113_E2E_A${i}`, firstAirYear: 2020 as number | undefined, originalLanguage: 'fr' as string | undefined })),
+    ...Array.from({ length: BATCH_B }, (_, i) => ({ id: crypto.randomUUID(), title: `T113_E2E_B${i}`, firstAirYear: 2005 as number | undefined, originalLanguage: 'en' as string | undefined })),
+    ...Array.from({ length: BATCH_C }, (_, i) => ({ id: crypto.randomUUID(), title: `T113_E2E_C${i}`, firstAirYear: 2018 as number | undefined, originalLanguage: undefined })),
   ]
 
   const inserted = await db.insert(series).values(batchDefs).returning({ id: series.id })

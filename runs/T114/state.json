@@ -3,8 +3,13 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T114-use-full-profiletaste-and-interaction-signals-in-r",
   "issue_number": 241,
-  "updated_at": "2026-08-19T14:04:09Z",
+  "updated_at": "2026-08-19T16:10:00Z",
   "pre_conflict_state": "IMPLEMENTATION_APPROVED",
   "conflict_detected_at": "2026-08-19T13:48:37Z",
-  "conflicted_files": []
+  "conflicted_files": [],
+  "pr_number": 245,
+  "pr_synced": true,
+  "pr_merged": true,
+  "daemon_archived": true,
+  "issue_closed": true
 }
