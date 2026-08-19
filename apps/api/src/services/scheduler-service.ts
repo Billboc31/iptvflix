@@ -11,6 +11,7 @@ import type { TriggerSyncBody } from '@iptvflix/api-contracts'
 import type { DiscoveryCandidatePoolService } from './discovery-candidate-pool-service.js'
 import { type CatalogRefreshService, CatalogRefreshAlreadyRunningError } from './catalog-refresh-service.js'
 import type { SegmentSyncService } from './segment-sync-service.js'
+import type { EpisodeBackfillService } from './episode-backfill-service.js'
 
 async function withBoundedConcurrency<T>(
   tasks: (() => Promise<T>)[],
@@ -48,6 +49,7 @@ interface SchedulerConfig {
   segmentRefreshEnabled?: boolean
   segmentRefreshCadenceHours?: number
   segmentRefreshRecentDays?: number
+  episodeBackfillCadenceMinutes?: number
 }
 
 export class SchedulerService {
@@ -56,6 +58,7 @@ export class SchedulerService {
   private discoveryTimer: ReturnType<typeof setInterval> | null = null
   private catalogRefreshTimer: ReturnType<typeof setInterval> | null = null
   private segmentRefreshTimer: ReturnType<typeof setInterval> | null = null
+  private episodeBackfillTimer: ReturnType<typeof setInterval> | null = null
   private segmentRefreshTickCount = 0
 
   constructor(
@@ -65,6 +68,7 @@ export class SchedulerService {
     private readonly config: SchedulerConfig,
     private readonly catalogRefreshService: CatalogRefreshService | null = null,
     private readonly segmentSyncService: SegmentSyncService | null = null,
+    private readonly episodeBackfillService: EpisodeBackfillService | null = null,
   ) {}
 
   start(): void {
@@ -101,6 +105,14 @@ export class SchedulerService {
           (this.config.segmentRefreshCadenceHours ?? 24) * 3_600_000,
         )
       }
+
+      if (this.episodeBackfillService) {
+        void this.runEpisodeBackfillTick()
+        this.episodeBackfillTimer = setInterval(
+          () => void this.runEpisodeBackfillTick(),
+          (this.config.episodeBackfillCadenceMinutes ?? 120) * 60_000,
+        )
+      }
     }, this.config.startupDelayMs)
   }
 
@@ -124,6 +136,10 @@ export class SchedulerService {
     if (this.segmentRefreshTimer !== null) {
       clearInterval(this.segmentRefreshTimer)
       this.segmentRefreshTimer = null
+    }
+    if (this.episodeBackfillTimer !== null) {
+      clearInterval(this.episodeBackfillTimer)
+      this.episodeBackfillTimer = null
     }
   }
 
@@ -188,6 +204,18 @@ export class SchedulerService {
         return
       }
       console.error('[scheduler] Catalog refresh tick error:', err)
+    }
+  }
+
+  private async runEpisodeBackfillTick(): Promise<void> {
+    if (!this.episodeBackfillService) return
+    try {
+      const result = await this.episodeBackfillService.backfill()
+      if (result.processed > 0) {
+        console.info('[scheduler] episode backfill tick', result)
+      }
+    } catch (err) {
+      console.error('[scheduler] episode backfill tick error:', err)
     }
   }
 

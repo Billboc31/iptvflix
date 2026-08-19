@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 type Props = {
   onClose: () => void
@@ -9,8 +10,18 @@ type Props = {
 
 export default function ContinueWatchingOverflowMenu({ onClose, onDetails, onDismiss, triggerRef }: Props) {
   const menuRef = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
 
-  // Focus first menuitem on open (ARIA Menu Button pattern)
+  useLayoutEffect(() => {
+    const trigger = triggerRef.current
+    if (!trigger) return
+    const rect = trigger.getBoundingClientRect()
+    const menuWidth = 208
+    let left = rect.right - menuWidth
+    left = Math.max(8, Math.min(left, window.innerWidth - menuWidth - 8))
+    setPosition({ top: rect.bottom + 4, left })
+  }, [triggerRef])
+
   useEffect(() => {
     menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
   }, [])
@@ -51,12 +62,15 @@ export default function ContinueWatchingOverflowMenu({ onClose, onDetails, onDis
     }
   }, [onClose, triggerRef])
 
-  return (
+  if (!position) return null
+
+  return createPortal(
     <div
       ref={menuRef}
       role="menu"
       aria-label="Options"
-      className="absolute bottom-full right-0 mb-1 w-52 max-w-[min(208px,90vw)] bg-[#1a1a24] border border-white/10 rounded-lg shadow-xl z-20 py-1"
+      style={{ position: 'fixed', top: position.top, left: position.left, zIndex: 50 }}
+      className="w-52 max-w-[min(208px,90vw)] bg-[#1a1a24] border border-white/10 rounded-lg shadow-xl py-1"
     >
       <button
         type="button"
@@ -74,6 +88,7 @@ export default function ContinueWatchingOverflowMenu({ onClose, onDetails, onDis
       >
         Supprimer de Reprendre
       </button>
-    </div>
+    </div>,
+    document.body,
   )
 }

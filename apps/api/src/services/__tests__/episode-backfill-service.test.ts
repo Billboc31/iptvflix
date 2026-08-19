@@ -134,7 +134,7 @@ describe('EpisodeBackfillService', () => {
     }
   })
 
-  it('skips series that already have seasons when force is false', async () => {
+  it('skips series that already have episode sources when force is false', async () => {
     const [canonicalSeries] = await db
       .insert(seriesTable)
       .values({ title: 'Already Has Seasons', matchStatus: 'MATCHED' })
@@ -149,7 +149,22 @@ describe('EpisodeBackfillService', () => {
       status: 'AVAILABLE',
     })
 
-    await db.insert(seasons).values({ seriesId: canonicalSeries.id, seasonNumber: 1 })
+    const [season] = await db
+      .insert(seasons)
+      .values({ seriesId: canonicalSeries.id, seasonNumber: 1 })
+      .returning()
+    const [episode] = await db
+      .insert(episodes)
+      .values({ seasonId: season.id, seriesId: canonicalSeries.id, episodeNumber: 1 })
+      .returning()
+    await db.insert(episodeAvailabilities).values({
+      episodeId: episode.id,
+      providerId: testSourceId,
+      providerItemId: 'ep-2002-1',
+      firstSeenAt: new Date(),
+      lastSeenAt: new Date(),
+      status: 'AVAILABLE',
+    })
 
     const getSeriesInfo = vi.fn().mockResolvedValue(makeSeriesInfo({ '1': [{ id: 'ep-2002-1', episode_num: 1, title: 'Ep1' }] }))
     MockedXtreamCodesClient.prototype.getSeriesInfo = getSeriesInfo
@@ -159,6 +174,40 @@ describe('EpisodeBackfillService', () => {
 
     expect(result.processed).toBe(0)
     expect(getSeriesInfo).not.toHaveBeenCalled()
+  })
+
+  it('processes series with TMDB seasons but no episode sources', async () => {
+    const [canonicalSeries] = await db
+      .insert(seriesTable)
+      .values({ title: 'TMDB Only Series', matchStatus: 'MATCHED' })
+      .returning()
+
+    await db.insert(seriesAvailabilities).values({
+      seriesId: canonicalSeries.id,
+      providerId: testSourceId,
+      providerItemId: '2007',
+      firstSeenAt: new Date(),
+      lastSeenAt: new Date(),
+      status: 'AVAILABLE',
+    })
+
+    await db.insert(seasons).values({ seriesId: canonicalSeries.id, seasonNumber: 1 })
+
+    MockedXtreamCodesClient.prototype.getSeriesInfo = vi.fn().mockResolvedValue(
+      makeSeriesInfo({ '1': [{ id: 'ep-2007-1', episode_num: 1, title: 'Ep1' }] }),
+    )
+
+    const service = new EpisodeBackfillService()
+    const result = await service.backfill({ force: false })
+
+    expect(result.processed).toBe(1)
+    expect(result.succeeded).toBe(1)
+
+    const epAvRows = await db
+      .select()
+      .from(episodeAvailabilities)
+      .where(eq(episodeAvailabilities.providerItemId, 'ep-2007-1'))
+    expect(epAvRows).toHaveLength(1)
   })
 
   it('processes series with existing seasons when force is true', async () => {

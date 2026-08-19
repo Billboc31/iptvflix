@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { SeasonSummary, EpisodeResponse, DeviceResponse } from '@iptvflix/api-contracts'
 import { getSeriesSeasonEpisodes } from '../../lib/api.js'
 import Spinner from '../ui/Spinner.js'
@@ -18,18 +18,36 @@ export default function SeasonSelector({ seriesId, seasons, profileId, devices, 
   )
   const [episodeCache, setEpisodeCache] = useState<Map<number, EpisodeResponse[]>>(new Map())
   const [loading, setLoading] = useState(false)
+  const [refreshToken, setRefreshToken] = useState(0)
+  const episodeCacheRef = useRef(episodeCache)
+  episodeCacheRef.current = episodeCache
 
   useEffect(() => {
-    if (seasons.length === 0) return
-    if (!seasons.some((s) => s.seasonNumber === selectedSeason)) {
-      setSelectedSeason(seasons[0].seasonNumber)
+    function onVisible() {
+      if (document.visibilityState !== 'visible') return
+      const cached = episodeCacheRef.current.get(selectedSeason)
+      const allUnavailable =
+        cached != null && cached.length > 0 && cached.every((ep) => ep.availabilityCount === 0)
+      if (allUnavailable) setRefreshToken((t) => t + 1)
     }
-  }, [seasons, selectedSeason])
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [selectedSeason])
 
   useEffect(() => {
     if (seasons.length === 0) return
-    if (episodeCache.has(selectedSeason) && (episodeCache.get(selectedSeason)?.length ?? 0) > 0) return
     let cancelled = false
+
+    const cached = episodeCacheRef.current.get(selectedSeason)
+    const stale =
+      cached != null &&
+      cached.length > 0 &&
+      cached.every((ep) => ep.availabilityCount === 0)
+    if (cached != null && cached.length > 0 && !stale) {
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
 
     async function loadEpisodes() {
@@ -37,11 +55,9 @@ export default function SeasonSelector({ seriesId, seasons, profileId, devices, 
         try {
           const eps = await getSeriesSeasonEpisodes(seriesId, selectedSeason, profileId)
           if (cancelled) return
-          if (eps.length > 0) {
-            setEpisodeCache((prev) => new Map([...prev, [selectedSeason, eps]]))
-            setLoading(false)
-            return
-          }
+          setEpisodeCache((prev) => new Map([...prev, [selectedSeason, eps]]))
+          setLoading(false)
+          return
         } catch {
           /* retry while TMDB hydration is still running */
         }
@@ -58,7 +74,14 @@ export default function SeasonSelector({ seriesId, seasons, profileId, devices, 
     return () => {
       cancelled = true
     }
-  }, [seriesId, selectedSeason, profileId, seasons.length])
+  }, [seriesId, selectedSeason, profileId, seasons.length, refreshToken])
+
+  useEffect(() => {
+    if (seasons.length === 0) return
+    if (!seasons.some((s) => s.seasonNumber === selectedSeason)) {
+      setSelectedSeason(seasons[0].seasonNumber)
+    }
+  }, [seasons, selectedSeason])
 
   if (seasons.length === 0) {
     return <p className="text-gray-400 text-sm">Chargement des saisons…</p>

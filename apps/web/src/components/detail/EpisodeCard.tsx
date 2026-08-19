@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { EpisodeResponse, DeviceResponse } from '@iptvflix/api-contracts'
 import { useToast } from '../ui/Toast.js'
@@ -18,6 +18,10 @@ export default function EpisodeCard({ episode, devices = [], progressMs = 0, ser
   const toast = useToast()
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickedVariantId, setPickedVariantId] = useState<string | null>(episode.selectedVariantId)
+
+  useEffect(() => {
+    setPickedVariantId(episode.selectedVariantId)
+  }, [episode.id, episode.selectedVariantId])
 
   const durationLabel = episode.durationMinutes ? `${episode.durationMinutes} min` : null
   const airLabel = episode.airDate
@@ -71,19 +75,25 @@ export default function EpisodeCard({ episode, devices = [], progressMs = 0, ser
             <span className="text-gray-600">Indisponible</span>
           ) : (
             <>
-              {availableVariants.length > 1 && (
-                <select
-                  value={activeVariantId ?? ''}
-                  onChange={(e) => setPickedVariantId(e.target.value || null)}
-                  className="bg-[#1a1a24] border border-white/20 rounded px-1 py-0.5 text-gray-300 text-xs cursor-pointer"
-                  aria-label="Sélectionner la source"
-                >
-                  {availableVariants.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {formatVariantLabel(v, availableVariants)}
-                    </option>
-                  ))}
-                </select>
+              {availableVariants.length > 0 && (
+                availableVariants.length > 1 ? (
+                  <select
+                    value={activeVariantId ?? ''}
+                    onChange={(e) => setPickedVariantId(e.target.value || null)}
+                    className="bg-[#1a1a24] border border-white/20 rounded px-1 py-0.5 text-gray-300 text-xs cursor-pointer"
+                    aria-label="Sélectionner la source"
+                  >
+                    {availableVariants.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {formatVariantLabel(v, availableVariants)}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="text-gray-400">
+                    {formatVariantLabel(availableVariants[0]!, availableVariants)}
+                  </span>
+                )
               )}
               <button
                 type="button"

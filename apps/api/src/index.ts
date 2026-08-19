@@ -137,6 +137,8 @@ await app.register(commandsRoutes)
 let catalogRefreshServiceRef: CatalogRefreshService | null = null
 
 // Protected routes — require valid JWT (authenticate)
+const episodeBackfillService = new EpisodeBackfillService()
+
 await app.register(async function protectedScope(protectedApp) {
   protectedApp.addHook('preHandler', authenticate)
 
@@ -175,7 +177,7 @@ await app.register(async function protectedScope(protectedApp) {
     await protectedApp.register(reconcileRoutes, { reconciliationService })
   }
 
-  const backfillService = new EpisodeBackfillService()
+  const backfillService = episodeBackfillService
   await protectedApp.register(episodeBackfillRoutes, { backfillService })
 
   if (TMDB_API_KEY) {
@@ -278,9 +280,11 @@ const scheduler = new SchedulerService(
     segmentRefreshEnabled: SEGMENT_REFRESH_ENABLED,
     segmentRefreshCadenceHours: SEGMENT_REFRESH_CADENCE_HOURS,
     segmentRefreshRecentDays: SEGMENT_REFRESH_RECENT_DAYS,
+    episodeBackfillCadenceMinutes: parseInt(process.env.EPISODE_BACKFILL_CADENCE_MINUTES ?? '120', 10) || 120,
   },
   catalogRefreshServiceRef,
   segmentSyncService,
+  episodeBackfillService,
 )
 
 try {
@@ -365,6 +369,14 @@ async function bootBackground(): Promise<void> {
   }
 
   scheduler.start()
+
+  setTimeout(() => {
+    void episodeBackfillService.backfill().then((result) => {
+      app.log.info(result, 'startup: episode source backfill completed')
+    }).catch((err) => {
+      app.log.error(err, 'startup: episode source backfill failed')
+    })
+  }, 90_000)
 
   try {
     await Promise.all([checkBinary('ffmpeg'), checkBinary('ffprobe')])

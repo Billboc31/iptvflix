@@ -8,15 +8,19 @@ export default function ContinueWatchingRow() {
   if (loading || items.length === 0) return null
 
   return (
-    <div className="px-8 mt-8">
+    <div className="mt-8">
       <HorizontalRow title="Continuer à regarder">
         {items.map((item) => (
-          <ContinueWatchingCard
+          <div
             key={item.id}
-            item={item}
-            onDismiss={dismissItem}
-            dismissError={item.mediaId === dismissErrorFor ? dismissError : null}
-          />
+            className="relative flex-shrink-0 w-28 md:w-32 lg:w-36 snap-start"
+          >
+            <ContinueWatchingCard
+              item={item}
+              onDismiss={dismissItem}
+              dismissError={item.mediaId === dismissErrorFor ? dismissError : null}
+            />
+          </div>
         ))}
       </HorizontalRow>
     </div>

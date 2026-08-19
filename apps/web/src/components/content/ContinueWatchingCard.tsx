@@ -50,7 +50,7 @@ export default function ContinueWatchingCard({ item, onDismiss, dismissError }: 
       : null
 
   return (
-    <div className="relative flex-shrink-0 w-36">
+    <div className="relative w-full">
       {/* Poster area with interactive overlay */}
       <div className="relative aspect-[2/3] bg-[#1a1a24] rounded-lg overflow-hidden">
         {item.posterUrl ? (
@@ -112,9 +112,12 @@ export default function ContinueWatchingCard({ item, onDismiss, dismissError }: 
           {/* Info button */}
           <button
             type="button"
-            onClick={handleDetails}
+            onClick={(e) => {
+              e.stopPropagation()
+              handleDetails()
+            }}
             aria-label="Voir les détails"
-            className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white rounded flex-shrink-0"
+            className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white rounded flex-shrink-0"
           >
             <svg
               className="w-4 h-4"
@@ -133,11 +136,14 @@ export default function ContinueWatchingCard({ item, onDismiss, dismissError }: 
           <button
             ref={menuTriggerRef}
             type="button"
-            onClick={() => setMenuOpen((o) => !o)}
+            onClick={(e) => {
+              e.stopPropagation()
+              setMenuOpen((o) => !o)
+            }}
             aria-label="Plus d'options"
             aria-haspopup="menu"
             aria-expanded={menuOpen}
-            className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white rounded flex-shrink-0"
+            className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white rounded flex-shrink-0"
           >
             <svg
               className="w-4 h-4"

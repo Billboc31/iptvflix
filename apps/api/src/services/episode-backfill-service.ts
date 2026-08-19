@@ -2,8 +2,8 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { sources } from '../db/schema/sources.js'
 import { series } from '../db/schema/series.js'
-import { seasons } from '../db/schema/seasons.js'
-import { seriesAvailabilities } from '../db/schema/availabilities.js'
+import { episodes } from '../db/schema/episodes.js'
+import { seriesAvailabilities, episodeAvailabilities } from '../db/schema/availabilities.js'
 import { XtreamCodesClient } from '../providers/xtream/client.js'
 import type { XtreamSeriesInfo } from '../providers/xtream/types.js'
 import { CatalogSyncService, acquireSyncRunLock, SyncAlreadyRunningError } from './catalog-sync-service.js'
@@ -80,11 +80,16 @@ export class EpisodeBackfillService {
         ),
       )
 
-    const toProcess = force ? candidates : await this.filterZeroSeason(candidates)
+    const toProcess = force
+      ? candidates
+      : await this.filterMissingEpisodeAvailabilities(candidates)
 
-    if (toProcess.length === 0) return
+    const batchSize = parseInt(process.env.EPISODE_BACKFILL_BATCH_SIZE ?? '50', 10) || 50
+    const batch = toProcess.slice(0, batchSize)
 
-    result.processed += toProcess.length
+    if (batch.length === 0) return
+
+    result.processed += batch.length
 
     const concurrencyLimit = parseInt(process.env.XTREAM_SERIES_CONCURRENCY ?? '5', 10) || 5
     const infoClient = new XtreamCodesClient({
@@ -94,7 +99,7 @@ export class EpisodeBackfillService {
       timeoutMs: parseInt(process.env.XTREAM_SERIES_INFO_TIMEOUT_MS ?? '30000', 10),
     })
 
-    const tasks = toProcess.map((item) => async () => {
+    const tasks = batch.map((item) => async () => {
       const seriesIdNum = parseInt(item.providerItemId, 10)
       if (isNaN(seriesIdNum)) throw new Error(`Invalid providerItemId: ${item.providerItemId}`)
       const info = await infoClient.getSeriesInfo(seriesIdNum)
@@ -112,7 +117,7 @@ export class EpisodeBackfillService {
         const { seriesIdNum, info } = r.value
         seriesInfo[seriesIdNum] = info
       } else {
-        const item = toProcess[i]
+        const item = batch[i]
         console.warn(
           `[episode-backfill] getSeriesInfo(${item.providerItemId}) failed for source ${source.id}:`,
           r.reason,
@@ -165,16 +170,23 @@ export class EpisodeBackfillService {
     }
   }
 
-  private async filterZeroSeason(
+  /** Series with TMDB seasons but no Xtream episode sources yet. */
+  private async filterMissingEpisodeAvailabilities(
     candidates: Array<{ seriesId: string; providerItemId: string }>,
   ): Promise<Array<{ seriesId: string; providerItemId: string }>> {
     if (candidates.length === 0) return []
     const seriesIds = candidates.map((c) => c.seriesId)
-    const withSeasons = await db
-      .select({ seriesId: seasons.seriesId })
-      .from(seasons)
-      .where(inArray(seasons.seriesId, seriesIds))
-    const withSeasonsSet = new Set(withSeasons.map((r) => r.seriesId))
-    return candidates.filter((c) => !withSeasonsSet.has(c.seriesId))
+    const withEpisodeSources = await db
+      .select({ seriesId: episodes.seriesId })
+      .from(episodeAvailabilities)
+      .innerJoin(episodes, eq(episodeAvailabilities.episodeId, episodes.id))
+      .where(
+        and(
+          inArray(episodes.seriesId, seriesIds),
+          eq(episodeAvailabilities.status, 'AVAILABLE'),
+        ),
+      )
+    const hasSources = new Set(withEpisodeSources.map((r) => r.seriesId))
+    return candidates.filter((c) => !hasSources.has(c.seriesId))
   }
 }
