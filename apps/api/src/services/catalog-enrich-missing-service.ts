@@ -101,13 +101,11 @@ export class CatalogEnrichMissingService {
   async countEligible(mediaType: 'MOVIE' | 'SERIES', force: boolean): Promise<number> {
     const table = mediaType === 'MOVIE' ? movies : series
     const threshold = new Date(Date.now() - ENRICH_MISSING_STALE_DAYS * 86_400_000)
-    const where = force
-      ? isNotNull(table.tmdbId)
-      : and(
-          isNotNull(table.tmdbId),
-          eq(table.matchStatus, 'MATCHED'),
-          or(isNull(table.metadataEnrichedAt), lt(table.metadataEnrichedAt, threshold)),
-        )
+    const where = and(
+      isNotNull(table.tmdbId),
+      eq(table.matchStatus, 'MATCHED'),
+      force ? undefined : or(isNull(table.metadataEnrichedAt), lt(table.metadataEnrichedAt, threshold)),
+    )
     const [row] = await this.db.select({ cnt: count() }).from(table).where(where)
     return Number(row?.cnt ?? 0)
   }
@@ -203,14 +201,12 @@ export class CatalogEnrichMissingService {
       while (!checkpoint[key].done) {
         const lastId = checkpoint[key].lastId
 
-        const eligible = force
-          ? and(isNotNull(table.tmdbId), lastId ? gt(table.id, lastId) : undefined)
-          : and(
-              isNotNull(table.tmdbId),
-              eq(table.matchStatus, 'MATCHED'),
-              or(isNull(table.metadataEnrichedAt), lt(table.metadataEnrichedAt, threshold)),
-              lastId ? gt(table.id, lastId) : undefined,
-            )
+        const eligible = and(
+          isNotNull(table.tmdbId),
+          eq(table.matchStatus, 'MATCHED'),
+          force ? undefined : or(isNull(table.metadataEnrichedAt), lt(table.metadataEnrichedAt, threshold)),
+          lastId ? gt(table.id, lastId) : undefined,
+        )
 
         const batch = await this.db
           .select({ id: table.id })
