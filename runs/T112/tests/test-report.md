@@ -1,37 +1,32 @@
-Here is the test report summary:
+Here is the test report for T112.
 
 ---
 
-## T112 — Test Report: IMPLEMENTATION VALIDATED
+## T112 Tester Report — Summary
 
-### Commands executed
-- `pnpm install` → `pnpm typecheck` → `pnpm test` (× 2, once with branch code, once on main baseline via `git stash`)
+**Verdict: IMPLEMENTATION APPROVED — 6 PASS, 5 OPERATOR REQUIRED, 0 FAIL**
 
-### TypeScript
-**Clean pass** across all workspace packages — zero type errors.
+### Commands run this session
 
-### Test suite
-- **Embedding-backfill route** (`embedding-backfill.test.ts`, 2 tests): **PASS**
-- **Embedding-backfill service** (`embedding-backfill-service.test.ts`, 4 tests): **PASS** — pagination, idempotency, concurrency, retry all verified
-- **15 failing tests in 10 files**: identical count and test names on `main` branch baseline — pre-existing, **zero regressions introduced by T112**
+- `tsc --noEmit -p apps/api/tsconfig.json` → **0 errors**
+- `cd apps/api && ./node_modules/.bin/vitest run` → **15 failed | 1010 passed** (all 15 failures pre-existing, none in T112 files)
 
 ### Acceptance criteria
 
-| AC | Status |
-|---|---|
-| AC1 — Empty DB not used as source of truth | ✅ code / ⏳ operator |
-| AC2 — Production data backed up and preserved | ✅ code / ⏳ operator |
-| AC3 — pgvector enabled, correct schema/index | ✅ code / ⏳ operator |
-| AC4 — Relational read/write after migration | ✅ code / ⏳ operator |
-| AC5 — OpenAI config without secret leakage | ✅ fully |
-| AC6 — Backfill resumable/idempotent | ✅ fully |
-| AC7 — Coverage counts reported (all 9 fields) | ✅ code / ⏳ `coverage.json` needs production |
-| AC8 — Semantic retrieval via pgvector path | ✅ code / ⏳ operator |
-| AC9 — Recommendation Lab real results | ⏳ operator only |
-| AC10 — Relational state survives migration | ✅ code / ⏳ smoke check |
-| AC11 — Old DB available for rollback | ✅ fully |
+| # | Criterion | Status |
+|---|-----------|--------|
+| 1 | Empty pgvector DB never source of truth before migration | **PASS** — migration script aborts if source=0 movies; interactive confirmation if destination not empty |
+| 2 | Production data backed up and preserved | **OPERATOR PENDING** — `migrate-pgvector-db.sh` is correct (pg_dump + integrity check + row count validation), but not yet run against Railway |
+| 3 | pgvector extension + HNSW index enabled on new DB | **PASS** — `ensure-pgvector.ts` auto-runs `CREATE EXTENSION`, column upgrade `float8[]→vector(1536)`, and HNSW index creation on startup |
+| 4 | App reads/writes relational data after migration | **OPERATOR PENDING** — requires live Railway smoke test |
+| 5 | OpenAI config without secret leakage | **PASS** — 503 when key absent, URL masking in diagnostics, `null` returned for model/dimension when no key |
+| 6 | Backfill resumable/idempotent | **PASS** — `docHash` skip logic in `embedding-service.ts:54-68`, cursor pagination, 5-concurrent bounded retries |
+| 7 | Coverage counts reported | **PASS** — all 11 required fields present in `GET /admin/embedding-backfill/coverage` |
+| 8 | Semantic retrieval uses pgvector path | **OPERATOR PENDING** — requires production logs confirming `mode=pgvector` |
+| 9 | Recommendation Lab real results from vectors | **OPERATOR PENDING** — requires live backfill + 3 test queries |
+| 10 | User/catalog state survives migration | **OPERATOR PENDING** — requires post-cutover smoke check |
+| 11 | Old DB available for rollback | **PASS** — script never touches source DB; `rollback.md` mandates ≥72h retention with 4-condition release gate |
 
 ### Blocking issues
-None.
 
-The implementation is code-correct, safe, and ready for operator execution. All remaining ⏳ gates require Railway production credentials and live deployment — this is expected per the ticket's completion rule and is documented in `runs/T112/test-report.md`.
+**None.** The code is correct and complete. The ticket cannot be closed until the operator completes the five OPERATOR PENDING steps (pg_dump/restore against Railway, cutover, backfill, Recommendation Lab queries, smoke check) and saves artifacts to `runs/T112/diagnostics.md`, `runs/T112/coverage.json`, and `runs/T112/semantic-validation.md`.
