@@ -1,3 +1,11 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T115/reviews/implementation-review.md
+- generated at: 2026-08-19T15:45:05Z
+
+---
+
 ## PR Review — T115
 
 **Révision** : #13 (review-attempt-13.md). Aucun changement de code depuis la révision #12 — seul l'artefact `production-run-20260819.md` est nouveau.
