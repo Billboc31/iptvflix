@@ -63,6 +63,8 @@ function buildOutput(
     completionRate: number | null
     historyEventCount: number
     tasteVersion: number
+    dislikedMediaIds: string[]
+    notInterestedMediaIds: string[]
   },
 ): ProfileTaste {
   const genreScores: GenreScore[] = Object.entries(genreScoresMap)
@@ -80,6 +82,8 @@ function buildOutput(
     genreScores,
     positiveMediaIds,
     negativeMediaIds,
+    dislikedMediaIds: extra.dislikedMediaIds,
+    notInterestedMediaIds: extra.notInterestedMediaIds,
     signalCount,
     builtAt: builtAt.toISOString(),
     personScores: extra.personScores,
@@ -128,6 +132,8 @@ export async function buildTaste(profileId: string): Promise<ProfileTaste> {
   const genreMetaMap: Record<string, { slug: string; name: string }> = {}
   const positiveSet = new Set<string>()
   const negativeSet = new Set<string>()
+  const dislikedSet = new Set<string>()
+  const notInterestedSet = new Set<string>()
   const personScores: Record<string, number> = {}
   const personMeta: Record<string, { name: string; role: string }> = {}
   const keywordScores: Record<string, number> = {}
@@ -239,8 +245,12 @@ export async function buildTaste(profileId: string): Promise<ProfileTaste> {
     await accumulateMediaFeatures(mediaType, fb.mediaId, weight)
     if (fb.feedback === 'LIKE') {
       positiveSet.add(fb.mediaId)
+    } else if (fb.feedback === 'DISLIKE') {
+      negativeSet.add(fb.mediaId)
+      dislikedSet.add(fb.mediaId)
     } else {
       negativeSet.add(fb.mediaId)
+      notInterestedSet.add(fb.mediaId)
     }
     signalCount++
   }
@@ -311,6 +321,8 @@ export async function buildTaste(profileId: string): Promise<ProfileTaste> {
 
   const sortedPositive = [...positiveSet].sort()
   const sortedNegative = [...negativeSet].sort()
+  const sortedDisliked = [...dislikedSet].sort()
+  const sortedNotInterested = [...notInterestedSet].sort()
 
   const [upserted] = await db
     .insert(profileTaste)
@@ -320,6 +332,8 @@ export async function buildTaste(profileId: string): Promise<ProfileTaste> {
       genreMeta: genreMetaMap,
       positiveMediaIds: sortedPositive,
       negativeMediaIds: sortedNegative,
+      dislikedMediaIds: sortedDisliked,
+      notInterestedMediaIds: sortedNotInterested,
       signalCount,
       builtAt: now,
       personScores,
@@ -341,6 +355,8 @@ export async function buildTaste(profileId: string): Promise<ProfileTaste> {
         genreMeta: genreMetaMap,
         positiveMediaIds: sortedPositive,
         negativeMediaIds: sortedNegative,
+        dislikedMediaIds: sortedDisliked,
+        notInterestedMediaIds: sortedNotInterested,
         signalCount,
         builtAt: now,
         personScores,
@@ -370,6 +386,8 @@ export async function buildTaste(profileId: string): Promise<ProfileTaste> {
     completionRate,
     historyEventCount,
     tasteVersion: upserted?.tasteVersion ?? 1,
+    dislikedMediaIds: sortedDisliked,
+    notInterestedMediaIds: sortedNotInterested,
   })
 }
 
@@ -403,6 +421,8 @@ export async function getTaste(profileId: string): Promise<ProfileTaste> {
       completionRate: row.completionRate ? Number(row.completionRate) : null,
       historyEventCount: row.historyEventCount,
       tasteVersion: row.tasteVersion,
+      dislikedMediaIds: row.dislikedMediaIds ?? [],
+      notInterestedMediaIds: row.notInterestedMediaIds ?? [],
     },
   )
 }

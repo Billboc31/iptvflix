@@ -6,6 +6,11 @@ export type CompactTasteContext = {
   likedPeople: string[]
   recentlyWatched: string[]
   negativeSignals: string[]
+  topKeywords: string[]
+  topFranchises: string[]
+  topLanguages: string[]
+  topDecades: string[]
+  mediaTypePreference: 'movie' | 'series' | null
 }
 
 export type QueryPlanHardFilters = {

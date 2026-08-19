@@ -70,6 +70,13 @@ function sanitizeProfileContext(raw: unknown): CompactTasteContext | null {
     likedPeople: sanitizeStringArray(obj.likedPeople),
     recentlyWatched: sanitizeStringArray(obj.recentlyWatched),
     negativeSignals: sanitizeStringArray(obj.negativeSignals),
+    topKeywords: sanitizeStringArray(obj.topKeywords),
+    topFranchises: sanitizeStringArray(obj.topFranchises),
+    topLanguages: sanitizeStringArray(obj.topLanguages),
+    topDecades: sanitizeStringArray(obj.topDecades),
+    mediaTypePreference: obj.mediaTypePreference === 'movie' || obj.mediaTypePreference === 'series'
+      ? obj.mediaTypePreference
+      : null,
   }
 }
 

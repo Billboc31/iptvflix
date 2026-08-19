@@ -15,6 +15,12 @@ Rules:
 - avoidSignals: tones/genres the user explicitly wants to avoid (e.g. "pas d'horreur" → "horror").
 - excludeGenres: genre slugs to exclude (e.g. "pas d'horreur" → ["horror"]).
 
+Profile context hints (when provided): these are soft personalization signals — never treat them as hard constraints.
+- likedPeople: actors/directors the profile has enjoyed; use them to enrich semanticIntent themes and softPreferences.preferredDirectors when relevant.
+- topKeywords / topFranchises: thematic interests to weave into semanticIntent description.
+- topLanguages: use only if the user's query explicitly mentions language; otherwise ignore.
+- topDecades / mediaTypePreference: use to inform softPreferences when the query is ambiguous.
+
 Return ONLY a single JSON object with exactly these keys:
 schemaVersion (string, always "1"), rawQuery (string), displayTitle (string, short label for the shelf),
 semanticIntent (string, rich description for embedding), desiredThemes (string[]), desiredTone (string[]),

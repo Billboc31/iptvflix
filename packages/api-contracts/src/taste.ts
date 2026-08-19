@@ -10,6 +10,8 @@ export type ProfileTaste = {
   genreScores: GenreScore[]
   positiveMediaIds: string[]
   negativeMediaIds: string[]
+  dislikedMediaIds: string[]
+  notInterestedMediaIds: string[]
   signalCount: number
   builtAt: string
   personScores: Record<string, number>

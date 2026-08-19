@@ -89,6 +89,14 @@ function parseAndNormalize(parsed: unknown, rawQuery: string, latencyMs: number,
   }
 }
 
+function topByScore(scores: Record<string, number>, n: number): string[] {
+  return Object.entries(scores)
+    .filter(([, s]) => s > 0)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, n)
+    .map(([k]) => k)
+}
+
 async function buildCompactContext(profileId: string): Promise<CompactTasteContext | null> {
   try {
     const [row] = await db
@@ -97,6 +105,13 @@ async function buildCompactContext(profileId: string): Promise<CompactTasteConte
         genreMeta: profileTaste.genreMeta,
         positiveMediaIds: profileTaste.positiveMediaIds,
         negativeMediaIds: profileTaste.negativeMediaIds,
+        personScores: profileTaste.personScores,
+        personMeta: profileTaste.personMeta,
+        keywordScores: profileTaste.keywordScores,
+        franchiseScores: profileTaste.franchiseScores,
+        languageScores: profileTaste.languageScores,
+        decadeScores: profileTaste.decadeScores,
+        mediaTypePreferences: profileTaste.mediaTypePreferences,
       })
       .from(profileTaste)
       .where(eq(profileTaste.profileId, profileId))
@@ -105,22 +120,43 @@ async function buildCompactContext(profileId: string): Promise<CompactTasteConte
 
     const scores = (row.genreScores ?? {}) as Record<string, number>
     const meta = (row.genreMeta ?? {}) as Record<string, { name: string; slug: string }>
+    const personScores = (row.personScores ?? {}) as Record<string, number>
+    const personMeta = (row.personMeta ?? {}) as Record<string, { name: string; role: string }>
+    const keywordScores = (row.keywordScores ?? {}) as Record<string, number>
+    const franchiseScores = (row.franchiseScores ?? {}) as Record<string, number>
+    const languageScores = (row.languageScores ?? {}) as Record<string, number>
+    const decadeScores = (row.decadeScores ?? {}) as Record<string, number>
+    const mediaTypePreferences = (row.mediaTypePreferences ?? {}) as Record<string, number>
 
-    const sortedGenreIds = Object.entries(scores)
-      .filter(([, s]) => s > 0)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5)
-      .map(([id]) => id)
-
+    const sortedGenreIds = topByScore(scores, 5)
     const topGenres = sortedGenreIds.map((id) => meta[id]?.name ?? '').filter(Boolean)
     const topThemes = sortedGenreIds.slice(0, 3).map((id) => meta[id]?.slug ?? '').filter(Boolean)
+
+    const topPersonIds = topByScore(personScores, 5)
+    const likedPeople = topPersonIds.map((id) => personMeta[id]?.name ?? '').filter(Boolean)
+
+    const topKeywords = topByScore(keywordScores, 5)
+    const topFranchises = topByScore(franchiseScores, 3)
+    const topLanguages = topByScore(languageScores, 3)
+    const topDecades = topByScore(decadeScores, 2)
+
+    const movieScore = mediaTypePreferences['movie'] ?? 0
+    const seriesScore = mediaTypePreferences['series'] ?? 0
+    let mediaTypePreference: 'movie' | 'series' | null = null
+    if (movieScore > seriesScore) mediaTypePreference = 'movie'
+    else if (seriesScore > movieScore) mediaTypePreference = 'series'
 
     return {
       topGenres,
       topThemes,
-      likedPeople: [],
+      likedPeople,
       recentlyWatched: (row.positiveMediaIds ?? []).slice(0, 5),
       negativeSignals: (row.negativeMediaIds ?? []).slice(0, 3),
+      topKeywords,
+      topFranchises,
+      topLanguages,
+      topDecades,
+      mediaTypePreference,
     }
   } catch {
     return null
