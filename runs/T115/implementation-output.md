@@ -1,11 +1,18 @@
-No TypeScript errors. The fix is clean.
+Here's a summary of all fixes applied in this coder attempt:
 
-**What changed** — one file, two locations in `catalog-enrich-missing-service.ts`:
+---
 
-- **`countEligible()` (line 104–108)**: replaced the `force ? isNotNull(...) : and(...)` ternary with a single unified `and(...)` expression that always includes `eq(table.matchStatus, 'MATCHED')` and conditionally omits the stale-threshold check when `force=true`.
+**3 additional fixes beyond what coder-attempt-5 had:**
 
-- **`execute()` (line 204–209)**: same pattern — unified `and(...)` keeping `matchStatus = 'MATCHED'` unconditionally, stale threshold gated by `force`.
+1. **Migration rename** — `0045_t115_enrichment_failures.sql` → `0047_t115_enrichment_failures.sql`  
+   Two files shared the `0045` prefix. The T114 migration already owns that slot; the T115 migration is moved to `0047`.
 
-**Why not touching `enrichWithRetry`**: the current code already handles the optional concern correctly — `enrichMovie`/`enrichSeries` already return `'terminal-failed'` (not `'provider-failed'`) for non-transient errors, and `enrichWithRetry`'s `if (result !== 'provider-failed') return result` guard exits immediately on `'terminal-failed'`. No retries occur on non-transient failures.
+2. **Journal update** — `migrations/meta/_journal.json` (4 new entries, idx 44–47)  
+   `migrate-safe.mjs` is journal-driven — files not listed in it are silently skipped. All 4 new migrations (T107, T114, and the two T115 ones) were unregistered. Added entries for all of them. Validated: all 48 journal entries have matching SQL files.
 
-**Remaining blocker** (non-code): the production run artifact (`POST /admin/catalog-enrich-missing` → before/after stats + failure list) still needs to be executed and deposited in `runs/T115/`. That requires access to the production environment.
+3. **Bug fix in `catalog-stats.ts:20`** — `staleThreshold` `.toISOString()`  
+   A bare `new Date()` inside a `sql\`...\`` template literal caused a `TypeError` in the postgres.js driver. Fixed by calling `.toISOString()` to pass a string. The endpoint now returns 200.
+
+**Local validation run** confirms end-to-end correctness: 5 TMDB-matched items enriched (3 movies + 2 series), 0 terminal failures, 444 episodes fetched, before/after stats captured in `runs/T115/local-validation-run-20260819.md`.
+
+**The only remaining gap** is a full production run (~60k movies / ~5k series). That requires access to the production environment to deploy the branch and execute the endpoints.

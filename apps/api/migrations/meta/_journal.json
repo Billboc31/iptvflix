@@ -309,6 +309,34 @@
             "when": 0,
             "tag": "0043_t095_continue_watching_dismissals",
             "breakpoints": true
+        },
+        {
+            "idx": 44,
+            "version": "7",
+            "when": 0,
+            "tag": "0044_t107_shelf_served_at",
+            "breakpoints": true
+        },
+        {
+            "idx": 45,
+            "version": "7",
+            "when": 0,
+            "tag": "0045_t114_profile_taste_disliked_not_interested",
+            "breakpoints": true
+        },
+        {
+            "idx": 46,
+            "version": "7",
+            "when": 0,
+            "tag": "0046_t115_catalog_refresh_runs_type",
+            "breakpoints": true
+        },
+        {
+            "idx": 47,
+            "version": "7",
+            "when": 0,
+            "tag": "0047_t115_enrichment_failures",
+            "breakpoints": true
         }
     ]
 }

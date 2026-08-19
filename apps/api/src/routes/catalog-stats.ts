@@ -17,7 +17,7 @@ const STALE_DAYS = 30
 
 export async function catalogStatsRoutes(app: FastifyInstance): Promise<void> {
   app.get('/admin/catalog-stats', async () => {
-    const staleThreshold = new Date(Date.now() - STALE_DAYS * 86_400_000)
+    const staleThreshold = new Date(Date.now() - STALE_DAYS * 86_400_000).toISOString()
 
     const [
       movieStats,
