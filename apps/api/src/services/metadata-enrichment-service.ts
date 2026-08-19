@@ -71,7 +71,7 @@ function classifyError(err: unknown): FailureInfo {
   }
 }
 
-export type EnrichResult = 'enriched' | 'skipped' | 'no-tmdb-id' | 'provider-failed'
+export type EnrichResult = 'enriched' | 'skipped' | 'no-tmdb-id' | 'provider-failed' | 'terminal-failed'
 
 export interface EnrichmentCounters {
   enriched: number
@@ -100,7 +100,7 @@ export class MetadataEnrichmentService {
     stage: 'fetch' | 'map' | 'db_update'
     err: unknown
     runId?: string | null
-  }): Promise<void> {
+  }): Promise<{ retryable: boolean }> {
     const { errorClass, errorCode, errorMessage, retryable } = classifyError(opts.err)
     await this.db
       .insert(enrichmentFailures)
@@ -131,6 +131,7 @@ export class MetadataEnrichmentService {
           runId: sql`EXCLUDED.run_id`,
         },
       })
+    return { retryable }
   }
 
   private async clearFailure(mediaType: 'MOVIE' | 'SERIES', mediaId: string): Promise<void> {
@@ -176,7 +177,7 @@ export class MetadataEnrichmentService {
         this.provider.getMovieCertification(movie.tmdbId),
       ])
     } catch (err) {
-      await this.persistFailure({
+      const { retryable } = await this.persistFailure({
         mediaType: 'MOVIE',
         mediaId: movieId,
         tmdbId: movie.tmdbId,
@@ -185,7 +186,7 @@ export class MetadataEnrichmentService {
         err,
         runId: opts?.runId,
       })
-      return 'provider-failed'
+      return retryable ? 'provider-failed' : 'terminal-failed'
     }
     if (metadata === null) {
       await this.persistFailure({
@@ -197,7 +198,7 @@ export class MetadataEnrichmentService {
         err: new Error('TMDB returned null (404 or empty)'),
         runId: opts?.runId,
       })
-      return 'provider-failed'
+      return 'terminal-failed'
     }
 
     // Upsert collection if movie belongs to one
@@ -259,7 +260,7 @@ export class MetadataEnrichmentService {
         })
         .where(eq(movies.id, movieId))
     } catch (err) {
-      await this.persistFailure({
+      const { retryable } = await this.persistFailure({
         mediaType: 'MOVIE',
         mediaId: movieId,
         tmdbId: movie.tmdbId,
@@ -268,7 +269,7 @@ export class MetadataEnrichmentService {
         err,
         runId: opts?.runId,
       })
-      return 'provider-failed'
+      return retryable ? 'provider-failed' : 'terminal-failed'
     }
 
     await this.upsertGenres(metadata.genres, metadata.genreObjects, async (genreIds) => {
@@ -321,7 +322,7 @@ export class MetadataEnrichmentService {
         this.provider.getSeriesCertification(seriesRow.tmdbId),
       ])
     } catch (err) {
-      await this.persistFailure({
+      const { retryable } = await this.persistFailure({
         mediaType: 'SERIES',
         mediaId: seriesId,
         tmdbId: seriesRow.tmdbId,
@@ -330,7 +331,7 @@ export class MetadataEnrichmentService {
         err,
         runId: opts?.runId,
       })
-      return 'provider-failed'
+      return retryable ? 'provider-failed' : 'terminal-failed'
     }
     if (metadata === null) {
       await this.persistFailure({
@@ -342,7 +343,7 @@ export class MetadataEnrichmentService {
         err: new Error('TMDB returned null (404 or empty)'),
         runId: opts?.runId,
       })
-      return 'provider-failed'
+      return 'terminal-failed'
     }
 
     try {
@@ -379,7 +380,7 @@ export class MetadataEnrichmentService {
         })
         .where(eq(series.id, seriesId))
     } catch (err) {
-      await this.persistFailure({
+      const { retryable } = await this.persistFailure({
         mediaType: 'SERIES',
         mediaId: seriesId,
         tmdbId: seriesRow.tmdbId,
@@ -388,7 +389,7 @@ export class MetadataEnrichmentService {
         err,
         runId: opts?.runId,
       })
-      return 'provider-failed'
+      return retryable ? 'provider-failed' : 'terminal-failed'
     }
 
     await this.upsertGenres(metadata.genres, metadata.genreObjects, async (genreIds) => {

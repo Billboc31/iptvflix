@@ -158,7 +158,7 @@ describe('MetadataEnrichmentService — T115', () => {
       const svc = new MetadataEnrichmentService(db, provider as never)
       const result = await svc.enrichMovie(MOVIE_ID, { force: true })
 
-      expect(result).toBe('provider-failed')
+      expect(result).toBe('terminal-failed')
       // persistFailure should have been called — insert called for enrichment_failures
       expect(insert).toHaveBeenCalled()
       expect(failureValuesCall).toHaveBeenCalledWith(

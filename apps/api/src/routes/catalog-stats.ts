@@ -149,6 +149,8 @@ export async function catalogStatsRoutes(app: FastifyInstance): Promise<void> {
         stale: Number(movieStats[0]?.stale ?? 0),
         failedLastEnrichment: Number(movieFailureCount[0]?.cnt ?? 0),
         embeddingEligible: mEligible,
+        // embeddingBlocked is currently always 0 because eligibility == enriched (metadataEnrichedAt IS NOT NULL).
+        // It will become meaningful when the embedding policy adds stricter field requirements.
         embeddingBlocked: mEnriched - mEligible,
         embeddingPending: mPending,
       },
@@ -164,6 +166,8 @@ export async function catalogStatsRoutes(app: FastifyInstance): Promise<void> {
         stale: Number(seriesStats[0]?.stale ?? 0),
         failedLastEnrichment: Number(seriesFailureCount[0]?.cnt ?? 0),
         embeddingEligible: sEligible,
+        // embeddingBlocked is currently always 0 because eligibility == enriched (metadataEnrichedAt IS NOT NULL).
+        // It will become meaningful when the embedding policy adds stricter field requirements.
         embeddingBlocked: sEnriched - sEligible,
         embeddingPending: sPending,
       },

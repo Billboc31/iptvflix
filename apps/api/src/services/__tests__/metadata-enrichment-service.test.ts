@@ -203,7 +203,7 @@ describe('MetadataEnrichmentService', () => {
       expect(result).toBe('enriched')
     })
 
-    it('returns provider-failed when provider returns null', async () => {
+    it('returns terminal-failed when provider returns null (404)', async () => {
       const row = { id: MOVIE_ID, tmdbId: TMDB_MOVIE_ID, metadataEnrichedAt: null, title: 'Test' }
       const selectChain = makeSelectChain([row])
       const insertChain = makeInsertChain()
@@ -211,10 +211,10 @@ describe('MetadataEnrichmentService', () => {
       const provider = makeProvider({ getMovieMetadata: vi.fn().mockResolvedValue(null) })
       const service = new MetadataEnrichmentService(db, provider)
       const result = await service.enrichMovie(MOVIE_ID)
-      expect(result).toBe('provider-failed')
+      expect(result).toBe('terminal-failed')
     })
 
-    it('returns provider-failed when provider throws', async () => {
+    it('returns terminal-failed when provider throws a non-transient error', async () => {
       const row = { id: MOVIE_ID, tmdbId: TMDB_MOVIE_ID, metadataEnrichedAt: null, title: 'Test' }
       const selectChain = makeSelectChain([row])
       const insertChain = makeInsertChain()
@@ -224,7 +224,8 @@ describe('MetadataEnrichmentService', () => {
       })
       const service = new MetadataEnrichmentService(db, provider)
       const result = await service.enrichMovie(MOVIE_ID)
-      expect(result).toBe('provider-failed')
+      // Generic Error has no transient code/class — classified as terminal
+      expect(result).toBe('terminal-failed')
     })
 
     it('writes metadataProvider=tmdb and metadataEnrichedAt', async () => {
@@ -345,7 +346,7 @@ describe('MetadataEnrichmentService', () => {
       expect(setArgs.metadataProvider).toBe('tmdb')
     })
 
-    it('returns provider-failed when provider throws', async () => {
+    it('returns terminal-failed when provider throws a non-transient error', async () => {
       const row = { id: SERIES_ID, tmdbId: TMDB_SERIES_ID, metadataEnrichedAt: null, title: 'Test Series' }
       const selectChain = makeSelectChain([row])
       const insertChain = makeInsertChain()
@@ -355,7 +356,8 @@ describe('MetadataEnrichmentService', () => {
       })
       const service = new MetadataEnrichmentService(db, provider)
       const result = await service.enrichSeries(SERIES_ID)
-      expect(result).toBe('provider-failed')
+      // Generic Error has no transient code/class — classified as terminal
+      expect(result).toBe('terminal-failed')
     })
 
     it('upserts seasons when series has no existing season rows', async () => {
