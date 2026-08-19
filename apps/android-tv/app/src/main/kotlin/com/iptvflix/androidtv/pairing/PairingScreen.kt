@@ -26,7 +26,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.Button
-import androidx.tv.material3.CircularProgressIndicator
 import androidx.tv.material3.Text
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
@@ -50,11 +49,11 @@ fun PairingScreen(
         contentAlignment = Alignment.Center,
     ) {
         when (val s = state) {
-            is PairingUiState.Loading -> CircularProgressIndicator()
+            is PairingUiState.Loading -> Text("Chargement…", color = Color.White, fontSize = 20.sp)
             is PairingUiState.ShowingCode -> PairingCodeContent(code = s.code, onRetry = null)
             is PairingUiState.Expired -> PairingCodeContent(code = "", onRetry = { vm.startPairing() })
             is PairingUiState.Error -> ErrorContent(message = s.message, onRetry = { vm.startPairing() })
-            is PairingUiState.Approved -> CircularProgressIndicator()
+            is PairingUiState.Approved -> Text("Connexion…", color = Color.White, fontSize = 20.sp)
         }
     }
 }

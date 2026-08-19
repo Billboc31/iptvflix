@@ -1,8 +1,6 @@
 package com.iptvflix.androidtv.home
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,7 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -22,16 +19,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import kotlinx.coroutines.delay
 
 @Composable
 fun HomeScreen(
@@ -66,7 +63,7 @@ fun HomeScreen(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Waiting for play command…",
+                "En attente d'une lecture depuis le téléphone…",
                 color = Color(0xFFAAAAAA),
                 fontSize = 18.sp,
             )
@@ -81,29 +78,30 @@ fun HomeScreen(
     }
 }
 
+@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun ChangeProfileButton(onClick: () -> Unit) {
-    var focused by remember { mutableStateOf(false) }
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (focused) Color(0xFF2D2D42) else Color(0xFF1E1E30))
-            .then(if (focused) Modifier.border(2.dp, Color(0xFFE50914), RoundedCornerShape(8.dp)) else Modifier)
-            .padding(horizontal = 24.dp, vertical = 12.dp)
-            .onFocusChanged { focused = it.isFocused }
-            .focusable(true)
-            .onKeyEvent { event ->
-                if (event.key == Key.Enter || event.key == Key.DirectionCenter) {
-                    onClick()
-                    true
-                } else false
-            },
-        contentAlignment = Alignment.Center,
+    var enabled by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        delay(600)
+        enabled = true
+    }
+
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = Color(0xFF1E1E30),
+            focusedContainerColor = Color(0xFF2D2D42),
+        ),
+        modifier = Modifier.padding(horizontal = 8.dp),
     ) {
         Text(
             "Changer de profil",
-            color = if (focused) Color.White else Color(0xFFAAAAAA),
+            color = Color(0xFFAAAAAA),
             fontSize = 16.sp,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
         )
     }
 }

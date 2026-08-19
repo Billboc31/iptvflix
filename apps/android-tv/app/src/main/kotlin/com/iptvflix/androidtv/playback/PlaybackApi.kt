@@ -24,6 +24,8 @@ data class TrackInfo(
 @Serializable
 data class PlaybackDescriptor(
     val streamUrl: String,
+    val deliveryMode: String = "DIRECT",
+    val containerExtension: String? = null,
     val drmConfig: DrmConfig? = null,
     val tracks: List<TrackInfo> = emptyList(),
     val startPositionMs: Long = 0L,
@@ -33,7 +35,7 @@ data class PlaybackDescriptor(
 private data class PlaybackSessionResponse(
     val gatewayUrl: String,
     val deliveryMode: String,
-    val containerExtension: String,
+    val containerExtension: String? = null,
     val availabilityId: String,
     val startPositionSeconds: Double = 0.0,
 )
@@ -49,6 +51,7 @@ class PlaybackApi(private val apiClient: ApiClient) {
         startPositionMs: Long = 0L,
     ): PlaybackDescriptor {
         val body = buildJsonObject {
+            put("clientType", "android-tv")
             availabilityId?.let { put("availabilityId", it) }
         }.toString()
         val responseBody = apiClient.post("/playback/resolve/$mediaType/$mediaId", body)
@@ -56,10 +59,16 @@ class PlaybackApi(private val apiClient: ApiClient) {
         val resumeMs = (session.startPositionSeconds * 1000).toLong().coerceAtLeast(startPositionMs)
         return PlaybackDescriptor(
             streamUrl = resolveGatewayUrl(session.gatewayUrl),
+            deliveryMode = session.deliveryMode,
+            containerExtension = session.containerExtension,
             startPositionMs = resumeMs,
         )
     }
 
+    /**
+     * Native TV playback: Railway gateway redirects (302) to the Xtream URL.
+     * ExoPlayer follows the redirect and reads the provider stream directly — no Mac relay.
+     */
     private fun resolveGatewayUrl(path: String): String {
         if (path.startsWith("http://") || path.startsWith("https://")) return path
         val base = BuildConfig.API_BASE_URL.trimEnd('/')

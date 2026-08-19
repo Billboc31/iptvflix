@@ -110,16 +110,123 @@ async function resolveWorkingUpstream(url: string, hintedExt: string): Promise<{
   return { url, ext: hintedExt }
 }
 
+async function probeStreamCodecs(url: string): Promise<{ video?: string; audio?: string }> {
+  const readCodec = (stream: 'v:0' | 'a:0') =>
+    new Promise<string>((resolve, reject) => {
+      const child = spawn('ffprobe', [
+        '-v',
+        'error',
+        '-user_agent',
+        UA,
+        '-select_streams',
+        stream,
+        '-show_entries',
+        'stream=codec_name',
+        '-of',
+        'csv=p=0',
+        url,
+      ])
+      let out = ''
+      child.stdout.on('data', (chunk: Buffer) => {
+        out += chunk.toString('utf8')
+      })
+      child.on('close', (code) => {
+        if (code === 0 && out.trim()) resolve(out.trim().toLowerCase())
+        else reject(new Error(`ffprobe ${stream} failed`))
+      })
+    })
+
+  try {
+    const [video, audio] = await Promise.all([
+      readCodec('v:0'),
+      readCodec('a:0').catch(() => ''),
+    ])
+    return { video, audio: audio || undefined }
+  } catch {
+    return {}
+  }
+}
+
+function audioEncodeArgs(audioCodec?: string): string[] {
+  if (audioCodec === 'aac' || audioCodec === 'mp3') {
+    return ['-c:a', 'copy']
+  }
+  return ['-c:a', 'aac', '-ac', '2', '-b:a', '128k']
+}
+
+function attachFfmpegLogging(sessionId: string, child: ChildProcess) {
+  child.stderr?.on('data', (chunk: Buffer) => {
+    const line = chunk.toString('utf8').trim()
+    if (line) console.warn({ sessionId, ffmpeg: line.slice(0, 300) })
+  })
+}
+
+function startRemuxCopy(
+  sessionId: string,
+  upstreamUrl: string,
+  startPositionSeconds: number,
+  audioCodec?: string,
+): RemuxSession {
+  const dir = join(ROOT, sessionId)
+  mkdirSync(dir, { recursive: true })
+  const playlist = join(dir, 'index.m3u8')
+  const segmentPattern = join(dir, 'seg_%03d.ts')
+  const seekArgs: string[] = startPositionSeconds > 30 ? ['-ss', String(Math.floor(startPositionSeconds))] : []
+
+  const child = spawn(
+    'ffmpeg',
+    [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-user_agent',
+      UA,
+      ...seekArgs,
+      '-i',
+      upstreamUrl,
+      '-map',
+      '0:v:0',
+      '-map',
+      '0:a:0?',
+      '-sn',
+      '-dn',
+      '-c:v',
+      'copy',
+      '-bsf:v',
+      'h264_mp4toannexb',
+      ...audioEncodeArgs(audioCodec),
+      '-f',
+      'hls',
+      '-hls_time',
+      '6',
+      '-hls_list_size',
+      '0',
+      '-hls_segment_type',
+      'mpegts',
+      '-hls_flags',
+      'independent_segments',
+      '-hls_segment_filename',
+      segmentPattern,
+      playlist,
+    ],
+    { stdio: ['ignore', 'ignore', 'pipe'] },
+  )
+
+  attachFfmpegLogging(sessionId, child)
+  const session: RemuxSession = { id: sessionId, dir, child, createdAt: Date.now() }
+  remuxSessions.set(sessionId, session)
+  return session
+}
+
 function startRemux(sessionId: string, upstreamUrl: string, startPositionSeconds = 0): RemuxSession {
   const dir = join(ROOT, sessionId)
   mkdirSync(dir, { recursive: true })
   const playlist = join(dir, 'index.m3u8')
-  const segmentPattern = join(dir, 'seg_%03d.m4s')
+  const segmentPattern = join(dir, 'seg_%03d.ts')
 
   const seekArgs: string[] = startPositionSeconds > 30 ? ['-ss', String(Math.floor(startPositionSeconds))] : []
 
-  // Phone browsers (Chrome Android, Safari) cannot play HEVC-in-MPEG-TS.
-  // Transcode to H.264 + AAC fMP4 HLS so iOS/Android can play natively / via hls.js.
+  // Transcode to H.264 + AAC MPEG-TS HLS — lighter segments for Android TV live playback.
   const child = spawn(
     'ffmpeg',
     [
@@ -140,19 +247,23 @@ function startRemux(sessionId: string, upstreamUrl: string, startPositionSeconds
       '-sn',
       '-dn',
       '-vf',
-      'scale=-2:1080',
+      'scale=-2:720',
       '-c:v',
       'h264_videotoolbox',
       '-b:v',
-      '5M',
+      '2.5M',
       '-maxrate',
-      '6M',
+      '3M',
       '-bufsize',
-      '10M',
+      '5M',
       '-profile:v',
       'main',
       '-pix_fmt',
       'yuv420p',
+      '-g',
+      '72',
+      '-keyint_min',
+      '72',
       '-c:a',
       'aac',
       '-ac',
@@ -162,13 +273,11 @@ function startRemux(sessionId: string, upstreamUrl: string, startPositionSeconds
       '-f',
       'hls',
       '-hls_time',
-      '4',
+      '6',
       '-hls_list_size',
       '0',
       '-hls_segment_type',
-      'fmp4',
-      '-hls_fmp4_init_filename',
-      'init.mp4',
+      'mpegts',
       '-hls_flags',
       'independent_segments',
       '-hls_segment_filename',
@@ -178,10 +287,7 @@ function startRemux(sessionId: string, upstreamUrl: string, startPositionSeconds
     { stdio: ['ignore', 'ignore', 'pipe'] },
   )
 
-  child.stderr.on('data', (chunk: Buffer) => {
-    const line = chunk.toString('utf8').trim()
-    if (line) console.warn({ sessionId, ffmpeg: line.slice(0, 300) })
-  })
+  attachFfmpegLogging(sessionId, child)
 
   const session: RemuxSession = { id: sessionId, dir, child, createdAt: Date.now() }
   remuxSessions.set(sessionId, session)
@@ -269,7 +375,12 @@ app.get<{ Querystring: { ticket?: string } }>('/v1/play', async (request, reply)
   // MKV / TS / etc.: remux to HLS on this host (IP not blocked by Cloudflare).
   const sessionId = `r_${createId()}`
   const startPositionSeconds = typeof payload.s === 'number' && Number.isFinite(payload.s) ? payload.s : 0
-  const session = startRemux(sessionId, upstreamUrl, startPositionSeconds)
+  const codecs = await probeStreamCodecs(upstreamUrl)
+  const canCopyVideo = codecs.video === 'h264'
+  request.log.info({ codecs, canCopyVideo }, 'remux mode selected')
+  const session = canCopyVideo
+    ? startRemuxCopy(sessionId, upstreamUrl, startPositionSeconds, codecs.audio)
+    : startRemux(sessionId, upstreamUrl, startPositionSeconds)
   const playlistPath = join(session.dir, 'index.m3u8')
   const ready = await waitForFile(playlistPath, 90_000)
   if (!ready) {
@@ -303,7 +414,7 @@ app.get<{ Params: { sessionId: string; file: string } }>(
 
     const path = join(session.dir, file)
     if (!existsSync(path)) {
-      const ok = await waitForFile(path, 8_000)
+      const ok = await waitForFile(path, 30_000)
       if (!ok) return reply.status(404).send({ error: 'segment_missing' })
     }
 

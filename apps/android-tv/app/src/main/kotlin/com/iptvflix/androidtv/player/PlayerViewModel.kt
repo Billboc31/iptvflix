@@ -27,6 +27,12 @@ import kotlinx.coroutines.withTimeout
 
 private const val TAG = "PlayerViewModel"
 private const val SEEK_STEP_MS = 10_000L
+private const val RESUME_THRESHOLD_MS = 30_000L
+
+private fun isHlsPlayback(descriptor: com.iptvflix.androidtv.playback.PlaybackDescriptor): Boolean {
+    val ext = descriptor.containerExtension?.lowercase()?.removePrefix(".") ?: return false
+    return ext == "m3u8" || ext == "m3u"
+}
 
 sealed class PlayerUiState {
     object Idle : PlayerUiState()
@@ -45,7 +51,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     private val container get() = getApplication<App>()
 
-    val player: ExoPlayer = ExoPlayer.Builder(app).build()
+    val player: ExoPlayer = ExoPlayerFactory.create(app, container.secureStorage)
 
     private val _uiState = MutableStateFlow<PlayerUiState>(PlayerUiState.Idle)
     val uiState: StateFlow<PlayerUiState> = _uiState
@@ -66,6 +72,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private var sessionId: String? = null
     private var hasEmittedPlay = false
     private var sessionEnded = false
+    private var loadedCommandId: String? = null
 
     private fun emitEvent(eventType: String, extra: Map<String, Any?> = emptyMap()) {
         val cmd = currentCommand ?: return
@@ -128,7 +135,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
             override fun onPlayerError(error: PlaybackException) {
                 Log.e(TAG, "Playback error: ${error.errorCodeName}")
-                _uiState.value = PlayerUiState.Error(error.message ?: "Playback failed")
+                _uiState.value = PlayerUiState.Error(error.message ?: "Erreur de lecture")
             }
 
             override fun onTracksChanged(tracks: Tracks) {
@@ -155,6 +162,14 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun load(command: PlaybackCommand) {
+        if (loadedCommandId == command.id &&
+            player.playbackState != Player.STATE_IDLE &&
+            player.playbackState != Player.STATE_ENDED
+        ) {
+            Log.d(TAG, "Skipping duplicate load for command ${command.id}")
+            return
+        }
+        loadedCommandId = command.id
         currentCommand = command
         hasEmittedPlay = false
         sessionId = null
@@ -163,12 +178,16 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             _uiState.value = PlayerUiState.Buffering
             runCatching {
                 val descriptor = PlaybackResolver(PlaybackApi(container.apiClient)).resolve(command)
-                val startMs = maxOf(command.startPositionMs, descriptor.startPositionMs)
+                val startMs = when {
+                    isHlsPlayback(descriptor) && descriptor.startPositionMs > RESUME_THRESHOLD_MS ->
+                        descriptor.startPositionMs
+                    else -> maxOf(command.startPositionMs, descriptor.startPositionMs)
+                }
 
                 val mediaItem = buildMediaItem(descriptor.toMediaItemSpec())
                 player.setMediaItem(mediaItem)
                 player.prepare()
-                player.seekTo(startMs)
+                if (startMs > 0L) player.seekTo(startMs)
                 player.playWhenReady = true
 
                 progressReporter = ProgressReporter(
@@ -204,6 +223,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             emitAbandonIfNeeded(positionMs)
         }
         reporterJob?.cancel()
+        loadedCommandId = null
         player.stop()
         _uiState.value = PlayerUiState.Idle
     }

@@ -25,6 +25,8 @@ export type PlaybackResolveRequest = {
   availabilityId?: string
   /** When true, ignore stored progress and start at 0 (Recommencer). */
   restart?: boolean
+  /** Native clients (e.g. Android TV) fetch Xtream directly — skip media-relay remux. */
+  clientType?: 'web' | 'android-tv'
 }
 
 export type PlaybackSessionResponse = {

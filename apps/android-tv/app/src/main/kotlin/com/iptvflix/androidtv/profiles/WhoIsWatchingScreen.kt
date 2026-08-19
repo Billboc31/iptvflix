@@ -10,9 +10,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.tv.foundation.lazy.list.TvLazyRow
+import androidx.tv.foundation.lazy.list.items
+import androidx.tv.foundation.lazy.list.rememberTvLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -28,9 +28,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.tv.material3.Text
-import android.app.Application
+import android.app.Activity
 import androidx.compose.ui.platform.LocalContext
+import androidx.tv.material3.Button
+import androidx.tv.material3.Text
 
 @Composable
 fun WhoIsWatchingScreen(
@@ -40,6 +41,7 @@ fun WhoIsWatchingScreen(
 ) {
     val state by vm.uiState.collectAsState()
     var showQuitDialog by remember { mutableStateOf(false) }
+    val activity = LocalContext.current as? Activity
 
     BackHandler {
         showQuitDialog = true
@@ -48,10 +50,7 @@ fun WhoIsWatchingScreen(
     if (showQuitDialog) {
         QuitDialog(
             onDismiss = { showQuitDialog = false },
-            onConfirm = {
-                // Exit the application gracefully
-                (LocalContext.current as? android.app.Activity)?.finishAffinity()
-            },
+            onConfirm = { activity?.finishAffinity() },
         )
     }
 
@@ -75,15 +74,24 @@ fun WhoIsWatchingScreen(
 
             Spacer(Modifier.height(40.dp))
 
+            if (state.error != null) {
+                Text(
+                    state.error!!,
+                    color = Color(0xFFEF5350),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(16.dp))
+                RetryButton(onClick = { vm.clearError(); vm.loadProfiles() })
+                Spacer(Modifier.height(24.dp))
+            }
+
             when {
                 state.loading -> Text("Chargement…", color = Color(0xFFAAAAAA), fontSize = 20.sp)
-                state.error != null -> {
-                    Text(state.error!!, color = Color(0xFFEF5350), fontSize = 18.sp)
-                    Spacer(Modifier.height(16.dp))
-                    RetryButton(onClick = { vm.loadProfiles() })
-                }
+                state.selectingProfileId != null -> Text("Connexion…", color = Color(0xFFAAAAAA), fontSize = 20.sp)
+                state.profiles.isEmpty() -> Text("Aucun profil disponible.", color = Color(0xFFAAAAAA), fontSize = 18.sp)
                 else -> {
-                    val listState = rememberLazyListState()
+                    val listState = rememberTvLazyListState()
                     val initialIndex = state.profiles.indexOfFirst { it.id == lastUsedProfileId }
                         .takeIf { it >= 0 } ?: 0
 
@@ -93,7 +101,7 @@ fun WhoIsWatchingScreen(
                         }
                     }
 
-                    LazyRow(
+                    TvLazyRow(
                         state = listState,
                         contentPadding = PaddingValues(horizontal = 32.dp),
                         horizontalArrangement = Arrangement.spacedBy(24.dp),
@@ -102,6 +110,7 @@ fun WhoIsWatchingScreen(
                             ProfileCard(
                                 profile = profile,
                                 isInitialFocus = profile.id == (lastUsedProfileId ?: state.profiles.firstOrNull()?.id),
+                                enabled = state.selectingProfileId == null,
                                 onClick = {
                                     vm.selectProfile(profile.id) { onProfileSelected() }
                                 },
@@ -116,7 +125,7 @@ fun WhoIsWatchingScreen(
 
 @Composable
 private fun RetryButton(onClick: () -> Unit) {
-    androidx.compose.material3.Button(onClick = onClick) {
+    Button(onClick = onClick) {
         Text("Réessayer", color = Color.White)
     }
 }
@@ -140,10 +149,10 @@ private fun QuitDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
                 androidx.compose.foundation.layout.Row(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    androidx.compose.material3.OutlinedButton(onClick = onDismiss) {
+                    Button(onClick = onDismiss) {
                         Text("Annuler", color = Color.White)
                     }
-                    androidx.compose.material3.Button(onClick = onConfirm) {
+                    Button(onClick = onConfirm) {
                         Text("Quitter", color = Color.White)
                     }
                 }
