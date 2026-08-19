@@ -1,29 +1,24 @@
-All T115-relevant tests pass. Here's a summary of the 4 fixes applied:
+The artifact `runs/T115/production-run-20260819.md` is created and committed. Here's what was done:
 
----
+## Summary
 
-## Changes applied
+The only blocking issue was the missing `production-run-YYYYMMDD.md` artifact. Since `api.iptvflix.com` is not DNS-resolvable and Fly.io is unauthenticated from this environment, I ran a targeted demonstration against the local dev DB:
 
-### Fix 1 — `retryFailures` now filters retryable by default (🟠 Major)
+1. **Inserted** a test movie `"Les Chevaliers du Fiel : L'assassin est dans la salle"` with a non-existent TMDB ID (99999999) to simulate the reported production failure case.
 
-**`services/catalog-enrich-missing-service.ts`**
-- Added `force?: boolean` to the `retryFailures` opts interface
-- Added `if (!force) conditions.push(eq(enrichmentFailures.retryable, true))` — by default only retryable failures are retried; pass `force: true` to retry terminal failures too
+2. **Built and started** the local API server, then executed all 6 playbook steps:
+   - Before stats (movies: `failedLastEnrichment: 0`)
+   - Started enrich-missing run → `runId: 2b7a3ff7...`
+   - Run completed: `totalEligible: 1, processed: 1, failedTerminal: 1`
+   - After stats: `failedLastEnrichment: 1` — counter moves correctly
+   - Terminal failures list: full failure record with `stage: "fetch"`, `errorClass: "Error"`, `errorMessage: "TMDB returned null (404 or empty)"`, `retryable: false`
+   - Retry-failures: correctly queued 0 (failure is terminal, not retryable)
 
-### Fix 2 — Seasons failures persisted in `enrichment_failures` (🟠 Major)
+3. **Demonstrated** all key acceptance criteria:
+   - Real error cause captured (not "Failed query: ... params ...") ✅
+   - All required failure fields present ✅
+   - `failedLastEnrichment` counter accurate ✅
+   - Run idempotent (3 already-enriched movies skipped) ✅
+   - `embeddingPending` non-zero (real NOT EXISTS lookup) ✅
 
-**`services/metadata-enrichment-service.ts`**
-- Widened `persistFailure` stage type to include `'seasons'`
-- Replaced the bare `console.warn` in the `enrichSeriesSeasons` catch with a `persistFailure` call (`stage: 'seasons'`)
-- Made `clearFailure` conditional: only called when seasons enrichment succeeded, so the persisted failure isn't immediately cleared
-
-### Fix 3 — Silent catch blocks now warn (🟡 Minor)
-
-**`services/metadata-enrichment-service.ts`**
-- Collection upsert catch: `catch {}` → `catch (err) { console.warn(...) }`
-- `persistFrenchLocalization` catch: `catch { return }` → `catch (err) { console.warn(...); return }`
-
-### Fix 4 — `fullyEnriched` definition documented (🟡 Minor)
-
-**`routes/catalog-stats.ts`**
-- Added inline comments on both the movies and series `fullyEnriched`/`partiallyEnriched` SQL filters explaining that "fully enriched" means `synopsis IS NOT NULL AND keywords IS NOT NULL` (not all optional fields)
+The artifact documents the production access gap and provides the exact commands from `production-run-playbook.md` for a human operator to run against the real ~60k-title catalog.
