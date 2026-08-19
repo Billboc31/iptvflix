@@ -3,5 +3,16 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T112-activate-production-pgvector-database-and-backfill",
   "issue_number": 234,
-  "updated_at": "2026-08-19T09:04:55Z"
+  "updated_at": "2026-08-19T09:06:16Z",
+  "pr_number": 236,
+  "pr_synced": true,
+  "pre_conflict_state": "TEST_COMPLETE",
+  "conflict_detected_at": "2026-08-19T09:05:08Z",
+  "conflict_pr_number": 236,
+  "conflicted_files": [
+    "apps/api/package.json",
+    "apps/api/scripts/diagnose-db.mjs",
+    "apps/api/src/routes/embedding-backfill.ts",
+    "scripts/migrate-pgvector-db.sh"
+  ]
 }
