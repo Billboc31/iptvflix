@@ -29,6 +29,12 @@ export async function catalogEnrichMissingRoutes(
     if (throttleMs !== undefined && (typeof throttleMs !== 'number' || throttleMs < 0)) {
       return reply.status(400).send({ error: 'throttleMs must be >= 0' })
     }
+    const validMediaTypes = ['MOVIE', 'SERIES']
+    if (body?.mediaTypes !== undefined) {
+      if (!Array.isArray(body.mediaTypes) || !body.mediaTypes.every(t => validMediaTypes.includes(t))) {
+        return reply.status(400).send({ error: 'mediaTypes must contain only MOVIE or SERIES' })
+      }
+    }
 
     try {
       const runId = await service.start({
