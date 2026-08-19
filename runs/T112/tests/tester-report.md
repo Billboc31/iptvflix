@@ -1,6 +1,6 @@
 # T112 — Tester Report
 
-**Date**: 2026-08-19  
+**Date**: 2026-08-19 (updated with tester-attempt-3 execution)  
 **Branch**: ticket/T112-activate-production-pgvector-database-and-backfill  
 **Tester**: automated (role: tester)
 
@@ -57,13 +57,11 @@ Tests       2 passed (2)
 
 ### Pre-existing failures (unrelated to T112)
 
-The full API suite has 16 failures, all pre-existing and confirmed present on `main` without T112 changes:
+The full API suite has 15 failures (tester-attempt-3 observed), all pre-existing and confirmed unrelated to T112 changes:
 
 | File | Count | Related to T112? |
 |------|-------|-----------------|
-| `src/routes/auth.test.ts` | 3 | No |
-| `src/routes/__tests__/shelves.test.ts` | 10 | No |
-| `src/lib/__tests__/home-cursor.test.ts` | 1 | No |
+| `src/routes/__tests__/shelves.test.ts` | 13 | No |
 | `src/services/__tests__/shelf-concept-generator-service.test.ts` | 1 | No |
 | `src/services/__tests__/title-matching-service.test.ts` | 1 | No |
 
