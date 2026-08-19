@@ -3,5 +3,8 @@
   "state": "PLAN_APPROVED",
   "branch": "ticket/T111-consolidate-recommendation-logic-into-the-standalo",
   "issue_number": 233,
-  "updated_at": "2026-08-19T09:05:32Z"
+  "updated_at": "2026-08-19T09:08:14Z",
+  "pre_conflict_state": "PLAN_APPROVED",
+  "conflict_detected_at": "2026-08-19T09:06:49Z",
+  "conflicted_files": []
 }
