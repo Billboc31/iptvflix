@@ -49,3 +49,10 @@
 [2026-08-19T11:02:42Z] conflict-resolver: running tests
 [2026-08-19T11:02:42Z] conflict-resolver: test-report written: runs/T110/conflict/test-report.md
 [2026-08-19T11:02:42Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-19T11:02:42Z] conflict-resolver: commit: sha=0aa08360
+[2026-08-19T11:02:42Z] conflict-resolver: git push --force-with-lease origin ticket/T110-wire-shelfconcept-through-queryplan-semantic-retri
+[2026-08-19T11:02:44Z] conflict-resolver: push succeeded
+[2026-08-19T11:02:44Z] conflict-resolver: state → CONFLICT_RESOLVED_REVIEW_NEEDED
+[2026-08-19T11:02:44Z] auto-finalize-conflict: gate disabled for project='iptvflix'
+[2026-08-19T11:02:44Z] conflict-resolver: transition CONFLICT_RESOLVED_REVIEW_NEEDED → TEST_COMPLETE (auto, PROJECT_SETTING)
+[2026-08-19T11:02:45Z] auto-run: TEST_COMPLETE — running PR lifecycle
