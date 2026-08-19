@@ -74,12 +74,14 @@ export async function catalogEnrichMissingRoutes(
     const body = request.body as {
       mediaType?: string
       ids?: string[]
+      force?: boolean
     } | undefined
 
     try {
       const result = await service.retryFailures({
         mediaType: body?.mediaType,
         ids: body?.ids,
+        force: body?.force,
       })
       return reply.status(202).send(result)
     } catch (err) {

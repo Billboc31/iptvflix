@@ -211,11 +211,17 @@ Key delta: `movies.failedLastEnrichment` moved from **0 → 1**, correctly track
 ```
 Correct: the one failure has `retryable: false`, so 0 items are queued for retry.
 
+**Bug identified and fixed (coder-attempt-12)**: The `POST /admin/catalog-enrich-missing/retry-failures` route was not passing the `force` field from the request body to `service.retryFailures()`. The body type definition omitted `force`, so even sending `{"force": true}` was silently ignored — the service always received `force=false` and filtered to `retryable=true` only.
+
+**Fix**: Added `force?: boolean` to the route body type and passed `force: body?.force` to the service call.
+
+**Verified** — After fix, same DB state (1 terminal failure, `retryable: false`):
+
 `POST /admin/catalog-enrich-missing/retry-failures` `{"force": true}` (all failures):
 ```json
-{ "runId": "d94a85c9-1e13-47ab-8986-c2f2e59d4e9f", "queued": 0 }
+{ "runId": "4c794c83-ea2f-43cb-af86-ea05633d1adb", "queued": 1 }
 ```
-The force retry also shows queued: 0 — the failure remains persistent in `enrichment_failures` and is available for future manual review/action.
+Run status after completion: `{ "status": "COMPLETED", "stats": null }` — the force-retry correctly queued and processed the 1 terminal failure (re-attempt against TMDB 99999999 still fails with the same 404, so the failure record is rewritten — expected behaviour for a non-existent TMDB ID).
 
 ---
 
@@ -232,6 +238,7 @@ The force retry also shows queued: 0 — the failure remains persistent in `enri
 | Run idempotent — already-enriched titles skipped | ✅ 3 enriched movies skipped, only 1 new eligible processed |
 | `retryable: false` for terminal TMDB 404 | ✅ Correctly classified |
 | `retry-failures` respects retryable filter by default | ✅ queued: 0 when only failure is terminal |
+| `retry-failures force=true` queues all failures | ✅ queued: 1 after route bug fix (coder-12) |
 | `embeddingPending` not hardcoded to 0 | ✅ Shows 3 movies pending (real NOT EXISTS lookup) |
 
 ### Root cause for "Les Chevaliers du Fiel"
