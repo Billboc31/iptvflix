@@ -1,29 +1,23 @@
-All tasks complete. Here's a summary of every file created or modified:
+The file looks correct. All 4 fixes are in place. Here's a summary of what was done:
 
-## Files Created
+---
 
-| File | Purpose |
-|---|---|
-| `migrations/0045_t115_enrichment_failures.sql` | Creates `enrichment_failures` table with unique index on `(media_type, media_id)` |
-| `migrations/0046_t115_catalog_refresh_runs_type.sql` | Adds `type` column to `catalog_refresh_runs` |
-| `src/db/schema/enrichment-failures.ts` | Drizzle schema for the new table |
-| `src/services/embedding-eligibility.ts` | Single-source `isEmbeddingEligible()` policy (enriched = eligible) |
-| `src/services/catalog-enrich-missing-service.ts` | Resumable keyset-cursor enrich-missing service with stats, failure listing, and retry |
-| `src/routes/catalog-enrich-missing.ts` | 4 admin endpoints: POST start, GET status, GET failures, POST retry-failures |
-| `src/providers/metadata/tmdb/__tests__/t115-normalization.test.ts` | 4 unit tests for TMDB normalization |
-| `src/services/__tests__/t115-enrichment.test.ts` | 3 unit tests for failure persistence + cursor behavior |
+**BLOQUANT 2 — `isEmbeddingEligible` as single source of truth**
 
-## Files Modified
+`embedding-eligibility.ts` now exports two additional symbols derived from the same policy:
+- `EMBEDDING_ELIGIBLE_SQL_PREDICATE` — raw SQL string for use inside `sql`` FILTER (WHERE ...)` aggregates (can't use a Drizzle expression builder there)
+- `embeddingEligibleCondition()` — Drizzle `.where()` condition builder
 
-| File | Change |
-|---|---|
-| `src/providers/metadata/tmdb/client.ts` | `runtime=0` → `null`, `imdb_id=""` → `null`, `overview` whitespace → `null` |
-| `src/db/schema/catalog-refresh-runs.ts` | Added `type` column |
-| `src/db/schema/index.ts` | Exports `enrichment-failures` |
-| `src/services/metadata-enrichment-service.ts` | Per-item failure persistence via `persistFailure()` in `enrichMovie()`/`enrichSeries()`; clears failure on success |
-| `src/routes/catalog-stats.ts` | Adds `neverEnriched`, `partiallyEnriched`, `fullyEnriched`, `stale`, `failedLastEnrichment`, `embeddingEligible`, `embeddingBlocked`, real `embeddingPending` |
-| `src/index.ts` | Registers `CatalogEnrichMissingService` and `catalogEnrichMissingRoutes` |
-| `src/routes/__tests__/catalog-stats.test.ts` | Updated mock setup to cover 12 queries |
-| `src/services/__tests__/metadata-enrichment-service.test.ts` | Updated `makeInsertChain` + 3 test cases to include `insert` mock for `persistFailure` |
+`embedding-backfill-service.ts` now uses `embeddingEligibleCondition(table.metadataEnrichedAt)` in both cursor query variants (removed the inline `isNotNull`).
 
-**Result: 0 TypeScript errors, 51 tests passing.**
+`catalog-stats.ts` now interpolates `sql.raw(EMBEDDING_ELIGIBLE_SQL_PREDICATE)` into all 4 FILTER WHERE clauses (movie `eligible`, movie `pending`, series `eligible`, series `pending`).
+
+**BLOQUANT 3 — UNIQUE constraint crash on concurrent RUNNING**
+
+`CatalogEnrichMissingService.checkNoRunningConflict()` queries for any existing RUNNING row and throws an error with `code: 'RUN_CONFLICT'` if one is found. It's called at the top of both `start()` and `retryFailures()` (before the `RUNNING` insert). The route handlers for both POSTs catch `RUN_CONFLICT` and return `409` with a descriptive message.
+
+**BLOQUANT 4 — Retry transient failures (3 attempts, 250/500/1000 ms backoff)**
+
+`CatalogEnrichMissingService.enrichWithRetry()` loops up to 3 times, returning early on any non-`'provider-failed'` result and sleeping between attempts. Both `execute()` (the batch cursor loop) and `retryFailures()` now call it instead of invoking `enrichMovie`/`enrichSeries` directly.
+
+**BLOQUANT 1 — Production run** remains an operational step (cannot be automated from code). The enrichment endpoint is now correctly guarded and functional — it needs to be triggered against production to satisfy the completion rule.

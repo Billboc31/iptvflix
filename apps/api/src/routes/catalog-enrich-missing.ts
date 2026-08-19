@@ -16,15 +16,21 @@ export async function catalogEnrichMissingRoutes(
       force?: boolean
     } | undefined
 
-    const runId = await service.start({
-      mediaTypes: body?.mediaTypes,
-      batchSize: body?.batchSize,
-      concurrency: body?.concurrency,
-      throttleMs: body?.throttleMs,
-      force: body?.force,
-    })
-
-    return reply.status(202).send({ runId })
+    try {
+      const runId = await service.start({
+        mediaTypes: body?.mediaTypes,
+        batchSize: body?.batchSize,
+        concurrency: body?.concurrency,
+        throttleMs: body?.throttleMs,
+        force: body?.force,
+      })
+      return reply.status(202).send({ runId })
+    } catch (err) {
+      if (err instanceof Error && (err as Error & { code?: string }).code === 'RUN_CONFLICT') {
+        return reply.status(409).send({ error: err.message })
+      }
+      throw err
+    }
   })
 
   app.get('/admin/catalog-enrich-missing/status', async (_request, reply) => {
@@ -57,11 +63,17 @@ export async function catalogEnrichMissingRoutes(
       ids?: string[]
     } | undefined
 
-    const result = await service.retryFailures({
-      mediaType: body?.mediaType,
-      ids: body?.ids,
-    })
-
-    return reply.status(202).send(result)
+    try {
+      const result = await service.retryFailures({
+        mediaType: body?.mediaType,
+        ids: body?.ids,
+      })
+      return reply.status(202).send(result)
+    } catch (err) {
+      if (err instanceof Error && (err as Error & { code?: string }).code === 'RUN_CONFLICT') {
+        return reply.status(409).send({ error: err.message })
+      }
+      throw err
+    }
   })
 }

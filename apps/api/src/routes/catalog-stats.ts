@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { count, isNotNull, isNull, lt, and, or, sql } from 'drizzle-orm'
+import { EMBEDDING_ELIGIBLE_SQL_PREDICATE } from '../services/embedding-eligibility.js'
 import { db } from '../db/client.js'
 import { movies } from '../db/schema/movies.js'
 import { series } from '../db/schema/series.js'
@@ -95,10 +96,11 @@ export async function catalogStatsRoutes(app: FastifyInstance): Promise<void> {
       ),
 
       // Embedding eligible = enriched. Pending = enriched but no embedding row.
+      // Eligibility condition is derived from EMBEDDING_ELIGIBLE_SQL_PREDICATE (see embedding-eligibility.ts).
       db.select({
-        eligible: sql<number>`cast(count(*) filter (where metadata_enriched_at is not null) as integer)`,
+        eligible: sql<number>`cast(count(*) filter (where ${sql.raw(EMBEDDING_ELIGIBLE_SQL_PREDICATE)}) as integer)`,
         pending: sql<number>`cast(count(*) filter (
-          where metadata_enriched_at is not null and not exists (
+          where ${sql.raw(EMBEDDING_ELIGIBLE_SQL_PREDICATE)} and not exists (
             select 1 from media_embeddings
             where media_id = movies.id and media_type = 'MOVIE'
           )
@@ -106,9 +108,9 @@ export async function catalogStatsRoutes(app: FastifyInstance): Promise<void> {
       }).from(movies),
 
       db.select({
-        eligible: sql<number>`cast(count(*) filter (where metadata_enriched_at is not null) as integer)`,
+        eligible: sql<number>`cast(count(*) filter (where ${sql.raw(EMBEDDING_ELIGIBLE_SQL_PREDICATE)}) as integer)`,
         pending: sql<number>`cast(count(*) filter (
-          where metadata_enriched_at is not null and not exists (
+          where ${sql.raw(EMBEDDING_ELIGIBLE_SQL_PREDICATE)} and not exists (
             select 1 from media_embeddings
             where media_id = series.id and media_type = 'SERIES'
           )

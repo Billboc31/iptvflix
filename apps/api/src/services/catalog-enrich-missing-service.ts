@@ -5,11 +5,12 @@ import { movies } from '../db/schema/movies.js'
 import { series } from '../db/schema/series.js'
 import { catalogRefreshRuns } from '../db/schema/catalog-refresh-runs.js'
 import { enrichmentFailures } from '../db/schema/enrichment-failures.js'
-import type { MetadataEnrichmentService } from './metadata-enrichment-service.js'
+import type { MetadataEnrichmentService, EnrichResult } from './metadata-enrichment-service.js'
 
 type Db = PostgresJsDatabase<typeof schema>
 
 const ENRICH_MISSING_STALE_DAYS = 30
+const TRANSIENT_RETRY_DELAYS_MS = [250, 500, 1000]
 
 export interface EnrichMissingOptions {
   mediaTypes?: ('MOVIE' | 'SERIES')[]
@@ -73,6 +74,30 @@ export class CatalogEnrichMissingService {
     private readonly enrichmentService: MetadataEnrichmentService,
   ) {}
 
+  private async checkNoRunningConflict(): Promise<void> {
+    const [existing] = await this.db
+      .select({ id: catalogRefreshRuns.id, type: catalogRefreshRuns.type })
+      .from(catalogRefreshRuns)
+      .where(eq(catalogRefreshRuns.status, 'RUNNING'))
+      .limit(1)
+    if (existing) {
+      const err = new Error(`A ${existing.type} run is already RUNNING (id: ${existing.id})`)
+      Object.assign(err, { code: 'RUN_CONFLICT' })
+      throw err
+    }
+  }
+
+  private async enrichWithRetry(fn: () => Promise<EnrichResult>): Promise<EnrichResult> {
+    for (let attempt = 0; attempt < TRANSIENT_RETRY_DELAYS_MS.length; attempt++) {
+      const result = await fn()
+      if (result !== 'provider-failed') return result
+      if (attempt < TRANSIENT_RETRY_DELAYS_MS.length - 1) {
+        await delay(TRANSIENT_RETRY_DELAYS_MS[attempt])
+      }
+    }
+    return 'provider-failed'
+  }
+
   async countEligible(mediaType: 'MOVIE' | 'SERIES', force: boolean): Promise<number> {
     const table = mediaType === 'MOVIE' ? movies : series
     const threshold = new Date(Date.now() - ENRICH_MISSING_STALE_DAYS * 86_400_000)
@@ -95,6 +120,8 @@ export class CatalogEnrichMissingService {
       throttleMs = 250,
       force = false,
     } = opts
+
+    await this.checkNoRunningConflict()
 
     const [run] = await this.db
       .insert(catalogRefreshRuns)
@@ -202,8 +229,8 @@ export class CatalogEnrichMissingService {
           try {
             const result =
               mediaType === 'MOVIE'
-                ? await this.enrichmentService.enrichMovie(row.id, { force, runId })
-                : await this.enrichmentService.enrichSeries(row.id, { force, runId })
+                ? await this.enrichWithRetry(() => this.enrichmentService.enrichMovie(row.id, { force, runId }))
+                : await this.enrichWithRetry(() => this.enrichmentService.enrichSeries(row.id, { force, runId }))
 
             stats.processed++
             checkpoint[key].processedCount++
@@ -326,6 +353,8 @@ export class CatalogEnrichMissingService {
     }
 
     // Directly enrich each failure item without starting a new cursor-based run
+    await this.checkNoRunningConflict()
+
     const [run] = await this.db
       .insert(catalogRefreshRuns)
       .values({ type: 'ENRICH_MISSING', status: 'RUNNING', checkpoint: null })
@@ -338,9 +367,9 @@ export class CatalogEnrichMissingService {
         for (const failure of failures) {
           const mt = failure.mediaType as 'MOVIE' | 'SERIES'
           if (mt === 'MOVIE') {
-            await this.enrichmentService.enrichMovie(failure.mediaId, { force: true, runId })
+            await this.enrichWithRetry(() => this.enrichmentService.enrichMovie(failure.mediaId, { force: true, runId }))
           } else {
-            await this.enrichmentService.enrichSeries(failure.mediaId, { force: true, runId })
+            await this.enrichWithRetry(() => this.enrichmentService.enrichSeries(failure.mediaId, { force: true, runId }))
           }
         }
         await this.db
