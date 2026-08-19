@@ -1,27 +1,37 @@
-No type errors in the modified files. Here's a summary of all changes made:
+L'implémentation est code-complete depuis la review 15. Le seul bloquant est infrastructure, pas code. Voici l'état exact :
 
 ---
 
-## Changes implemented
+**Fly.io CLI** : installé (`/opt/homebrew/bin/flyctl`) mais **non authentifié**
+**DATABASE_URL** locale : `postgres://localhost:5433/iptvflix` (dev, 6 films — pas production)
+**Production API** : `api.iptvflix.com` — non joignable depuis cet environnement
 
-**5 files modified**, addressing all 5 code-fixable issues from the review:
+---
 
-### `apps/api/src/db/schema/catalog-refresh-runs.ts`
-- Removed the `RefreshCheckpoint` type (which was specific to REFRESH runs, not ENRICH_MISSING)
-- Changed `checkpoint` column type from `$type<RefreshCheckpoint>()` to `$type<unknown>()` — honest about the fact that REFRESH and ENRICH_MISSING write structurally different checkpoint objects
+## Ce qui est bloqué
 
-### `apps/api/src/services/catalog-enrich-missing-service.ts`
-- **`resumeRunId` option**: Added `resumeRunId?: string` to `EnrichMissingOptions`. When provided, `start()` reads the previous run's checkpoint and initializes `lastId` from it, so the cursor resumes from where the interrupted run left off
-- **Race condition fix**: Wrapped the `INSERT ... RETURNING` in `start()` and `retryFailures()` in a try/catch for Postgres error code `23505` (unique constraint), translating it to a `RUN_CONFLICT` error → HTTP 409 instead of 500
-- **Type**: Removed `as any` cast on `set({ checkpoint })` — now valid since the column type is `unknown`
-- **`retrying` doc**: Added JSDoc clarifying it counts retry *attempts*, not unique items
+La completion rule du ticket T115 exige :
 
-### `apps/api/src/routes/catalog-enrich-missing.ts`
-- Added `resumeRunId?: string` to the POST body type and passes it through to `service.start()`
+> *"Run the new enrichment mode against production (or an equivalent restored production snapshot), publish before/after counts, and show the remaining terminal failures with their real causes."*
 
-### `apps/api/src/services/__tests__/t115-enrichment.test.ts`
-- Renamed the misleading "cursor pagination" test to accurately reflect it tests `countEligible`
-- Added a **genuine cursor pagination test** that actually runs `start()`, waits for async execute to complete (via the COMPLETED status update), and verifies two batch queries were made with `enrichMovie` called for each item in the first batch
+Tout le code est prêt. Le playbook exact est à `runs/T115/production-run-playbook.md`. Il reste à exécuter les 6 commandes contre le catalogue de production (~60k films / ~5k séries).
 
-### `apps/api/scripts/diagnose-db.mjs`
-- Added `enrichment_failures` to the `tables` row-count list
+---
+
+## Pour débloquer — choisis une option
+
+**Option A — `fly auth login` dans ton terminal**
+```bash
+flyctl auth login
+```
+Ensuite je peux faire `flyctl proxy` vers la DB de production et exécuter le playbook entièrement.
+
+**Option B — DATABASE_URL de production**
+Donne-moi la `DATABASE_URL` production (ex. `postgres://...@...fly.dev/...`) dans le terminal, je restaure en local ou me connecte directement et exécute le playbook.
+
+**Option C — Tu exécutes le playbook manuellement et tu colles la sortie**
+Les 5 commandes exactes sont dans `runs/T115/production-run-playbook.md`. Tu colles la sortie ici, je génère l'artefact `production-run-YYYYMMDD.md` et le ticket peut être clos.
+
+---
+
+Quelle option te convient le mieux ?
