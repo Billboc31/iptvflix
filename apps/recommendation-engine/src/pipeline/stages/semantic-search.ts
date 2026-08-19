@@ -1,6 +1,6 @@
 import OpenAI from 'openai'
 import { pgClient } from '../../db/client.js'
-import { OPENAI_API_KEY, EMBEDDING_MODEL_PROVIDER, EMBEDDING_MODEL_NAME } from '../../config.js'
+import { OPENAI_API_KEY, EMBEDDING_MODEL_PROVIDER, EMBEDDING_MODEL_NAME, SEMANTIC_RETRIEVAL_LIMIT, SEMANTIC_RETRIEVAL_MAX_CAP } from '../../config.js'
 import type { StageResult, CandidateItem, PipelineContext } from '../types.js'
 
 let pgvectorAvailable: boolean | null = null
@@ -45,7 +45,7 @@ export async function runSemanticSearch(
   }
 
   const semanticIntent = ctx.queryPlan?.semanticIntent ?? ctx.request.text
-  const limit = ctx.request.limit ?? 24
+  const retrievalLimit = Math.min(SEMANTIC_RETRIEVAL_LIMIT, SEMANTIC_RETRIEVAL_MAX_CAP)
   const mediaTypes = ctx.request.mediaTypes ?? ['movie', 'series']
 
   try {
@@ -119,7 +119,7 @@ export async function runSemanticSearch(
         AND me.model_name = ${EMBEDDING_MODEL_NAME}
         AND me.media_type IN (${pgClient.unsafe(allowedTypes)})
       ORDER BY ${pgClient.unsafe(distanceExpr)} ASC
-      LIMIT ${limit}
+      LIMIT ${retrievalLimit}
     `
 
     const candidates: CandidateItem[] = rows.map((row) => ({
@@ -133,7 +133,7 @@ export async function runSemanticSearch(
     }))
 
     ctx.log.info(
-      { requestId: ctx.requestId, stage: 'semantic-search', durationMs: Date.now() - start, candidateCount: candidates.length, usePgvector },
+      { requestId: ctx.requestId, stage: 'semantic-search', durationMs: Date.now() - start, retrievalLimit, candidateCount: candidates.length, usePgvector },
       'stage complete',
     )
 

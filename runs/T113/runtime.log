@@ -1,0 +1,35 @@
+[2026-08-19T13:08:29Z] auto-run start: state=INIT
+[2026-08-19T13:08:29Z] auto-run: running step=planner
+[2026-08-19T13:08:31Z] auto-run: pre-planner rebase onto integration ok
+[2026-08-19T13:08:31Z] prompt: resolved=prompts/generic/planner.md source=generic
+[2026-08-19T13:08:31Z] prompt: generic fallback — injecting runs/T113/ticket.md
+[2026-08-19T13:08:31Z] compose: global-context=docs/ai/global-context.md
+[2026-08-19T13:08:31Z] compose: role=ai/roles/planner.md
+[2026-08-19T13:08:31Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-19T13:08:31Z] compose: skill=ai/skills/architecture-discipline.md
+[2026-08-19T13:08:31Z] compose: skill=ai/skills/documentation.md
+[2026-08-19T13:08:31Z] compose: task (canonical prompt)
+[2026-08-19T13:08:31Z] snapshot: runtime-prompt=runs/T113/prompts/planner-attempt-1.md
+[2026-08-19T13:11:19Z] auto-run: step=planner done rc=0
+[2026-08-19T13:42:41Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-19T13:42:41Z] auto-run: running step=tester
+[2026-08-19T13:42:42Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-19T13:42:42Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-19T13:42:42Z] prompt: generic fallback — injecting runs/T113/ticket.md
+[2026-08-19T13:42:42Z] compose: global-context=docs/ai/global-context.md
+[2026-08-19T13:42:42Z] compose: role=ai/roles/tester.md
+[2026-08-19T13:42:42Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-19T13:42:42Z] compose: skill=ai/skills/testing.md
+[2026-08-19T13:42:42Z] compose: skill=ai/skills/debugging.md
+[2026-08-19T13:42:42Z] compose: task (canonical prompt)
+[2026-08-19T13:42:42Z] snapshot: runtime-prompt=runs/T113/prompts/tester-attempt-1.md
+[2026-08-19T13:45:49Z] auto-run: step=tester done rc=0
+[2026-08-19T13:45:49Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-19T13:45:49Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-19T13:45:49Z] commit-checkpoint: unstaged runtime garbage: ['runs/T113/daemon.lock', 'runs/T113/runtime.log', 'runs/T113/workflow-status.md']
+[2026-08-19T13:45:49Z] commit-checkpoint: sha=1db92e82 files=2 title='test(T113/workflow): tester — update 2 file(s)'
+[2026-08-19T13:45:49Z] auto-run: auto-push triggered
+[2026-08-19T13:45:49Z] push: tolerating runtime dirty files (not blocking): ['runs/T113/daemon.lock', 'runs/T113/runtime.log', 'runs/T113/workflow-status.md']
+[2026-08-19T13:45:49Z] push: pushing branch=ticket/T113-increase-semantic-retrieval-pool-before-filtering
+[2026-08-19T13:45:52Z] push: done branch=ticket/T113-increase-semantic-retrieval-pool-before-filtering
+[2026-08-19T13:45:52Z] auto-run: TEST_COMPLETE — running PR lifecycle

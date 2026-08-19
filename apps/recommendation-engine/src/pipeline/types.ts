@@ -37,6 +37,8 @@ export interface StageResult {
   durationMs: number
   inputCount: number
   outputCount: number
+  filteredCount?: number
+  finalCount?: number
   candidates?: CandidateItem[]
 }
 

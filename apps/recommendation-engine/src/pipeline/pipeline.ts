@@ -102,6 +102,8 @@ export async function runPipeline(
       requestId,
       totalMs,
       candidateCount: results.length,
+      filteredCount: rerankerResult.filteredCount,
+      finalCount: rerankerResult.finalCount,
       enabledStages: stageAvailability.filter((s) => s.available).map((s) => s.name),
     },
     'pipeline complete',
