@@ -34,3 +34,9 @@
 - prev: IMPLEMENTATION_APPROVED
 - step: tester
 - next: TEST_COMPLETE
+
+## 2026-08-19T14:44:29Z
+
+- prev: CONFLICT_RESOLVED_REVIEW_NEEDED
+- step: auto-approve-conflict-resolution
+- next: CONFLICT_RESOLUTION_NEEDED
