@@ -1,39 +1,9 @@
-The situation is clear. The code is 100% complete and verified. The workflow is in a hard deadlock — 16 review cycles, zero new code to write.
+All 23 tests pass, TypeScript compiles clean. 
 
-## Le seul bloquant : accès production
+Two changes made:
 
-L'implémentation est code-complete depuis la review 15. Le blocage est strictement infrastructure. Pour débloquer, trois options :
+**Fix 1** — `catalog-enrich-missing-service.ts:165,169` — `&&` → `||` in the `resumeRunId` checkpoint merge. The old logic reset `done=false` whenever a type was included in the current run, defeating the resume. Now if a type was already done in the previous run it stays done.
 
----
+**Fix 2** — `metadata-enrichment-service.ts:454-459` — when `enrichSeriesSeasons` throws, the function now returns `'terminal-failed'` immediately without calling `onEnriched`. This eliminates the inconsistent state where a series appeared simultaneously in `enriched` and `failedLastEnrichment`.
 
-### Option A — `flyctl auth login` (recommandée)
-
-Dans **ton** terminal (pas ici) :
-```bash
-flyctl auth login
-```
-Ensuite reviens ici et dis "c'est fait". Je ferai `fly proxy` vers la DB production et j'exécuterai le playbook entièrement.
-
----
-
-### Option B — Fournir la DATABASE_URL production
-
-Donne-moi l'URL (ex. `postgres://user:pass@...fly.dev/iptvflix`) en message. Je me connecte directement.
-
----
-
-### Option C — Tu exécutes les 6 commandes et tu colles la sortie
-
-Les commandes exactes sont dans `runs/T115/production-run-playbook.md`. En résumé :
-
-1. **Before stats** : `curl -s -u admin:$ADMIN_PASSWORD https://api.iptvflix.com/admin/catalog-stats | jq .`
-2. **Start run** : `curl -s -X POST -u admin:$ADMIN_PASSWORD -d '{"batchSize":50,"concurrency":3}' https://api.iptvflix.com/admin/catalog-enrich-missing | jq .`
-3. **Monitor** : `watch -n 30 'curl -s -u admin:$ADMIN_PASSWORD https://api.iptvflix.com/admin/catalog-enrich-missing/status | jq .'`
-4. **After stats** : même URL que le step 1
-5. **Terminal failures** : `curl -s -u admin:$ADMIN_PASSWORD "https://api.iptvflix.com/admin/catalog-enrich-missing/failures?limit=200" | jq .`
-
-Tu colles les outputs ici, je génère l'artefact `production-run-20260819.md` et le ticket est clos.
-
----
-
-Quelle option tu choisis ?
+The remaining bloquant (BLOQUANT 3) is the production run artifact — that requires live infrastructure access (`flyctl auth login` or production `DATABASE_URL`) and cannot be resolved in code.

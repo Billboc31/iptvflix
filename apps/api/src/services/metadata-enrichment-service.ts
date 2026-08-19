@@ -451,9 +451,10 @@ export class MetadataEnrichmentService {
       })
     }
 
-    if (!seasonsFailed) {
-      await this.clearFailure('SERIES', seriesId)
+    if (seasonsFailed) {
+      return 'terminal-failed'
     }
+    await this.clearFailure('SERIES', seriesId)
     this.onEnriched?.(seriesId, 'SERIES')
     return 'enriched'
   }

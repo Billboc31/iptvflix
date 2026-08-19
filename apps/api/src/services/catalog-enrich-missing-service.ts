@@ -162,11 +162,11 @@ export class CatalogEnrichMissingService {
       if (prev) {
         if (prev.movies) {
           checkpoint.movies.lastId = prev.movies.done ? null : prev.movies.lastId
-          checkpoint.movies.done = prev.movies.done && !mediaTypes.includes('MOVIE')
+          checkpoint.movies.done = prev.movies.done || !mediaTypes.includes('MOVIE')
         }
         if (prev.series) {
           checkpoint.series.lastId = prev.series.done ? null : prev.series.lastId
-          checkpoint.series.done = prev.series.done && !mediaTypes.includes('SERIES')
+          checkpoint.series.done = prev.series.done || !mediaTypes.includes('SERIES')
         }
       }
     }
