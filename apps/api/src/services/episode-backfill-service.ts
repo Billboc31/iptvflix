@@ -84,11 +84,14 @@ export class EpisodeBackfillService {
       ? candidates
       : await this.filterMissingEpisodeAvailabilities(candidates)
 
-    const batchSize = parseInt(process.env.EPISODE_BACKFILL_BATCH_SIZE ?? '50', 10) || 50
-    const batch = toProcess.slice(0, batchSize)
+    const batchSize = parseInt(process.env.EPISODE_BACKFILL_BATCH_SIZE ?? '0', 10)
+    const batch = batchSize > 0 ? toProcess.slice(0, batchSize) : toProcess
 
     if (batch.length === 0) return
 
+    console.info(
+      `[episode-backfill] source ${source.id}: ${batch.length}/${toProcess.length} series to fetch (force=${force})`,
+    )
     result.processed += batch.length
 
     const concurrencyLimit = parseInt(process.env.XTREAM_SERIES_CONCURRENCY ?? '5', 10) || 5
