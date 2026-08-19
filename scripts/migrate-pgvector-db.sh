@@ -113,6 +113,7 @@ done
 echo ""
 if [ "$ALL_OK" = "true" ]; then
   echo "[migrate] All row counts match. Backup at: ${DUMP_FILE}"
+  echo "[migrate] WARNING: ${DUMP_FILE} is in /tmp/ which is ephemeral — copy to durable storage before ending this session."
   echo "[migrate] NEXT STEP: Apply migrations and activate pgvector on the new DB:"
   echo "  DATABASE_URL=\$NEW_DB_URL node apps/api/scripts/migrate-safe.mjs"
   echo ""

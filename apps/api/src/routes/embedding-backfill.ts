@@ -8,6 +8,7 @@ import { EmbeddingService } from '../services/embedding-service.js'
 import { runBackfill } from '../services/embedding-backfill-service.js'
 import { createDefaultProvider } from '../services/embedding-provider.js'
 import { OPENAI_API_KEY } from '../config/env.js'
+import { getEmbeddingIndexMode } from '../db/embedding-index-mode.js'
 
 export async function embeddingBackfillRoutes(app: FastifyInstance): Promise<void> {
   app.post('/admin/embedding-backfill', async (_request, reply) => {
@@ -59,15 +60,22 @@ export async function embeddingBackfillRoutes(app: FastifyInstance): Promise<voi
     const totalWithLanguage = Number(movieCoverage?.withLanguage ?? 0) + Number(seriesCoverage?.withLanguage ?? 0)
 
     const safe = (n: number) => (total > 0 ? Math.round((n / total) * 100) / 100 : 0)
+    const provider = OPENAI_API_KEY ? createDefaultProvider(OPENAI_API_KEY) : null
 
     return reply.send({
+      totalMovies: movieTotal,
+      totalSeries: seriesTotal,
       total,
       embedded,
+      missing: total - embedded,
       coverageByField: {
         overview: safe(totalWithOverview),
         keywords: safe(totalWithKeywords),
         language: safe(totalWithLanguage),
       },
+      vectorIndexMode: getEmbeddingIndexMode(),
+      embeddingModel: provider?.modelName ?? null,
+      embeddingDimension: provider?.dimension ?? null,
     })
   })
 }
