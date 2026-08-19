@@ -9,6 +9,7 @@ import { ValidationError, ForbiddenError, NotFoundError } from '../errors.js'
 import { getPlaylist, getSegment, SEGMENT_RE } from '../services/hls-session-store.js'
 import { XTREAM_STREAM_HEADERS, fetchXtreamStream } from '../providers/xtream/playback.js'
 import { getPlaybackDiag } from '../services/playback-diag.js'
+import { resolveClientType } from './resolve-client-type.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -51,6 +52,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
   app.post<{
     Params: { mediaType: string; mediaId: string }
     Body: PlaybackResolveRequest
+    Querystring: { clientType?: string }
   }>(
     '/playback/resolve/:mediaType/:mediaId',
     async (request, reply) => {
@@ -65,7 +67,8 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: 'Invalid mediaId', errorCategory: 'STREAM_URL_INVALID' as PlaybackErrorCategory, correlationId })
       }
 
-      const { availabilityId, restart, clientType } = request.body ?? {}
+      const { availabilityId, restart } = request.body ?? {}
+      const clientType = resolveClientType(request)
 
       try {
         const session = await resolvePlayback(

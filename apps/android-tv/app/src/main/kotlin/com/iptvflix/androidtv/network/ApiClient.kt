@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit
 class ApiClient(private val tokenStore: TokenStore) {
 
     val httpClient: OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(UserAgentInterceptor())
         .addInterceptor(TokenInterceptor(tokenStore))
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS) // streaming-safe; callers set per-request timeouts
@@ -23,11 +24,20 @@ class ApiClient(private val tokenStore: TokenStore) {
 
     private val baseUrl = BuildConfig.API_BASE_URL
 
-    fun buildRequest(path: String, method: String = "GET", body: okhttp3.RequestBody? = null): Request =
-        Request.Builder()
+    fun buildRequest(
+        path: String,
+        method: String = "GET",
+        body: okhttp3.RequestBody? = null,
+        clientType: String? = null,
+    ): Request {
+        val builder = Request.Builder()
             .url("$baseUrl$path")
             .method(method, body)
-            .build()
+        if (clientType != null) {
+            builder.header("X-Client-Type", clientType)
+        }
+        return builder.build()
+    }
 
     suspend fun get(path: String): String = withContext(Dispatchers.IO) {
         httpClient.newCall(buildRequest(path)).execute().use { response ->
@@ -36,13 +46,14 @@ class ApiClient(private val tokenStore: TokenStore) {
         }
     }
 
-    suspend fun post(path: String, jsonBody: String = "{}"): String = withContext(Dispatchers.IO) {
-        val body = jsonBody.toRequestBody("application/json".toMediaType())
-        httpClient.newCall(buildRequest(path, "POST", body)).execute().use { response ->
-            if (!response.isSuccessful) throw ApiException(response.code)
-            response.body?.string() ?: ""
+    suspend fun post(path: String, jsonBody: String = "{}", clientType: String? = null): String =
+        withContext(Dispatchers.IO) {
+            val body = jsonBody.toRequestBody("application/json".toMediaType())
+            httpClient.newCall(buildRequest(path, "POST", body, clientType)).execute().use { response ->
+                if (!response.isSuccessful) throw ApiException(response.code)
+                response.body?.string() ?: ""
+            }
         }
-    }
 
     suspend fun put(path: String, jsonBody: String): Boolean = withContext(Dispatchers.IO) {
         val body = jsonBody.toRequestBody("application/json".toMediaType())
@@ -55,6 +66,17 @@ class ApiClient(private val tokenStore: TokenStore) {
 }
 
 class ApiException(val code: Int) : IOException("HTTP $code")
+
+private class UserAgentInterceptor : Interceptor {
+    private val userAgent = "IPTVFlix-AndroidTV/${BuildConfig.VERSION_NAME}"
+
+    override fun intercept(chain: Interceptor.Chain): Response =
+        chain.proceed(
+            chain.request().newBuilder()
+                .header("User-Agent", userAgent)
+                .build(),
+        )
+}
 
 private class TokenInterceptor(private val tokenStore: TokenStore) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
