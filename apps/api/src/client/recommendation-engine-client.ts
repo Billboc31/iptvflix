@@ -1,10 +1,14 @@
-import type { EngineMetadata } from '@iptvflix/api-contracts'
+import type { EngineMetadata, RecommendationQueryPlan } from '@iptvflix/api-contracts'
 import { RECOMMENDATION_ENGINE_URL } from '../config/env.js'
 
 const REQUEST_TIMEOUT_MS = 15_000
 const CIRCUIT_FAILURE_THRESHOLD = 3
 const CIRCUIT_RESET_AFTER_MS = 30_000
 
+// Circuit state is shared across all engine endpoints. A burst of failures on
+// any endpoint (e.g. shelf-concepts) will open the circuit for all endpoints
+// for CIRCUIT_RESET_AFTER_MS. Acceptable for MVP; track under T111 if it
+// becomes a problem in production.
 let failureCount = 0
 let circuitOpenUntil = 0
 
@@ -49,7 +53,23 @@ export interface EngineQueryResult {
     year?: number | null
     posterPath?: string | null
     score?: number
+    reasons?: string[]
     scoreBreakdown?: Record<string, unknown>
+  }>
+  engineMetadata: EngineMetadata
+  queryPlan?: RecommendationQueryPlan
+}
+
+export interface EnginePersonalizedResult {
+  requestId: string
+  results: Array<{
+    id: string
+    mediaType: 'movie' | 'series'
+    title: string
+    year?: number | null
+    posterPath?: string | null
+    score?: number
+    reasons?: string[]
   }>
   engineMetadata: EngineMetadata
 }
@@ -92,6 +112,34 @@ export const RecommendationEngineClient = {
       }
 
       const data = (await response.json()) as EngineQueryResult
+      recordSuccess()
+      return data
+    } catch {
+      recordFailure()
+      return null
+    }
+  },
+
+  async personalized(params: {
+    profileId: string
+    mediaTypes?: ('movie' | 'series')[]
+    limit?: number
+  }): Promise<EnginePersonalizedResult | null> {
+    if (!RECOMMENDATION_ENGINE_URL || isCircuitOpen()) return null
+
+    try {
+      const response = await fetchWithTimeout(`${RECOMMENDATION_ENGINE_URL}/v1/personalized`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      })
+
+      if (!response.ok) {
+        recordFailure()
+        return null
+      }
+
+      const data = (await response.json()) as EnginePersonalizedResult
       recordSuccess()
       return data
     } catch {

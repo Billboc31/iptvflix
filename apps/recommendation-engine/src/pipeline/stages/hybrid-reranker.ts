@@ -440,7 +440,7 @@ export async function runHybridReranker(
       year: c.year,
       posterPath: c.posterPath,
       score: c.score,
-      scoreBreakdown: { reasons: c.reasons } as unknown as Record<string, number>,
+      reasons: c.reasons,
     }))
 
     ctx.log.info(

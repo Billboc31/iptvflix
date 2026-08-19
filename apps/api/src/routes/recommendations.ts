@@ -46,8 +46,7 @@ export async function recommendationRoutes(app: FastifyInstance): Promise<void> 
       : mediaType === 'SERIES' ? ['series' as const]
       : undefined
 
-    const engineResult = await RecommendationEngineClient.query({
-      text: '',
+    const engineResult = await RecommendationEngineClient.personalized({
       profileId,
       mediaTypes,
       limit: limitNum,
@@ -61,8 +60,8 @@ export async function recommendationRoutes(app: FastifyInstance): Promise<void> 
         year: r.year ?? null,
         posterPath: r.posterPath ?? null,
         score: r.score ?? 0,
-        reasons: [],
-        source: 'LOCAL' as const,
+        reasons: r.reasons ?? [],
+        source: 'ENGINE' as const,
         available: true,
       }))
       return reply.status(200).send({

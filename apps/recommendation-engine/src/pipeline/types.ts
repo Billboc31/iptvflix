@@ -1,6 +1,5 @@
 import type { FastifyBaseLogger } from 'fastify'
-import type { RecommendationQueryPlan } from '@iptvflix/api-contracts'
-import type { EngineMetadata } from '@iptvflix/api-contracts'
+import type { RecommendationQueryPlan, EngineMetadata } from '@iptvflix/api-contracts'
 
 export type MediaType = 'movie' | 'series'
 
@@ -20,6 +19,7 @@ export interface CandidateItem {
   posterPath?: string | null
   score?: number
   similarity?: number
+  reasons?: string[]
   scoreBreakdown?: Record<string, number>
 }
 
@@ -63,4 +63,5 @@ export interface QueryResponse {
     profileId?: string
   }
   engineMetadata: EngineMetadata
+  queryPlan?: RecommendationQueryPlan
 }

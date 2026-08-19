@@ -1,6 +1,6 @@
 import type { EngineMetadata } from './engine-metadata.js'
 
-export type RecommendationSource = 'LOCAL' | 'DISCOVERY'
+export type RecommendationSource = 'LOCAL' | 'DISCOVERY' | 'ENGINE'
 
 export interface ScoreBreakdown {
   modelVersion: string

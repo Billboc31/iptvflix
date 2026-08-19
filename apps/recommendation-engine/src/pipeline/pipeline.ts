@@ -127,5 +127,6 @@ export async function runPipeline(
       timingsMs: timingStages,
       fallbackFlags,
     },
+    queryPlan: ctx.queryPlan,
   }
 }
