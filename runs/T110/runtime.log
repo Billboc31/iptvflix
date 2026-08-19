@@ -44,3 +44,8 @@
 [2026-08-19T10:59:01Z] push: pushing branch=ticket/T110-wire-shelfconcept-through-queryplan-semantic-retri
 [2026-08-19T10:59:03Z] push: done branch=ticket/T110-wire-shelfconcept-through-queryplan-semantic-retri
 [2026-08-19T10:59:03Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-19T11:02:42Z] conflict-resolver: [pass 1/3] conflicted=['apps/api/src/__tests__/home-semantic-pipeline.test.ts'] | staged=['apps/api/src/__tests__/home-semantic-pipeline.test.ts'] | unresolved=[] | continue_rc=1 | next_source=[]
+[2026-08-19T11:02:42Z] conflict-resolver: all conflicts resolved after 1 pass(es)
+[2026-08-19T11:02:42Z] conflict-resolver: running tests
+[2026-08-19T11:02:42Z] conflict-resolver: test-report written: runs/T110/conflict/test-report.md
+[2026-08-19T11:02:42Z] conflict-resolver: staging and committing resolution artifacts
