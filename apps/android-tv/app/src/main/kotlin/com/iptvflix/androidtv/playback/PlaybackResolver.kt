@@ -9,5 +9,6 @@ class PlaybackResolver(private val api: PlaybackApi) {
             mediaType = command.mediaType,
             mediaId = command.mediaId,
             availabilityId = command.availabilityId,
+            startPositionMs = command.startPositionMs,
         )
 }

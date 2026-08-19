@@ -163,11 +163,12 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             _uiState.value = PlayerUiState.Buffering
             runCatching {
                 val descriptor = PlaybackResolver(PlaybackApi(container.apiClient)).resolve(command)
+                val startMs = maxOf(command.startPositionMs, descriptor.startPositionMs)
 
                 val mediaItem = buildMediaItem(descriptor.toMediaItemSpec())
                 player.setMediaItem(mediaItem)
                 player.prepare()
-                player.seekTo(command.startPositionMs)
+                player.seekTo(startMs)
                 player.playWhenReady = true
 
                 progressReporter = ProgressReporter(

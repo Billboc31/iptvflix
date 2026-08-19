@@ -5,9 +5,9 @@ interface TokenStore {
     fun getDeviceToken(): String?
     fun clearDeviceToken()
 
-    // Profile JWT — overwrites the device token since the profile JWT is a superset
-    fun saveProfileToken(token: String) = saveDeviceToken(token)
-    fun getProfileToken(): String? = getDeviceToken()
+    // Profile JWT — stored separately so device SSE/commands keep working
+    fun saveProfileToken(token: String)
+    fun getProfileToken(): String?
 
     // Last-used profile ID — UX hint only, not used for authorization
     fun saveLastUsedProfileId(id: String)

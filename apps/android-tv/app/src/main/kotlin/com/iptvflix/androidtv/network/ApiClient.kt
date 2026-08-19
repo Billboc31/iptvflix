@@ -58,7 +58,11 @@ class ApiException(val code: Int) : IOException("HTTP $code")
 
 private class TokenInterceptor(private val tokenStore: TokenStore) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
-        val token = tokenStore.getDeviceToken()
+        val path = chain.request().url.encodedPath
+        val token = when {
+            path.contains("/devices/me/") -> tokenStore.getDeviceToken()
+            else -> tokenStore.getProfileToken() ?: tokenStore.getDeviceToken()
+        }
         val request = if (token != null) {
             chain.request().newBuilder()
                 .header("Authorization", "Bearer $token")

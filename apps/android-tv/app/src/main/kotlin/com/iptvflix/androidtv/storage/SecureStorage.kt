@@ -7,6 +7,7 @@ import androidx.security.crypto.MasterKey
 
 private const val PREFS_FILE = "secure_prefs"
 private const val KEY_DEVICE_TOKEN = "device_token"
+private const val KEY_PROFILE_TOKEN = "profile_token"
 
 private const val UX_PREFS_FILE = "ux_prefs"
 private const val KEY_LAST_PROFILE_ID = "last_profile_id"
@@ -33,8 +34,17 @@ class SecureStorage(context: Context) : TokenStore {
     override fun getDeviceToken(): String? = prefs.getString(KEY_DEVICE_TOKEN, null)
 
     override fun clearDeviceToken() {
-        prefs.edit().remove(KEY_DEVICE_TOKEN).apply()
+        prefs.edit()
+            .remove(KEY_DEVICE_TOKEN)
+            .remove(KEY_PROFILE_TOKEN)
+            .apply()
     }
+
+    override fun saveProfileToken(token: String) {
+        prefs.edit().putString(KEY_PROFILE_TOKEN, token).apply()
+    }
+
+    override fun getProfileToken(): String? = prefs.getString(KEY_PROFILE_TOKEN, null)
 
     override fun saveLastUsedProfileId(id: String) {
         uxPrefs.edit().putString(KEY_LAST_PROFILE_ID, id).apply()
