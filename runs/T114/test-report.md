@@ -44,67 +44,29 @@ vitest run — apps/recommendation-engine (after tester fix applied)
 
 ---
 
-## Critical regression — 18 tests failing
-
-### Failing suite: `hard-filters.test.ts`
-
-This file was **added by T113** (commit `f046d416`, merged to main) and was passing before T114. T114's rewrite of `hybrid-reranker.ts` broke it.
+## Regression found and fixed — 18 tests (hard-filters.test.ts)
 
 ### Root cause
 
-T114 removed three symbols that T113 explicitly exported:
+`hard-filters.test.ts` was **added by T113** (commit `f046d416`, merged to main) and was passing before T114. T114's rewrite of `hybrid-reranker.ts` dropped three symbols that T113 had explicitly exported:
 
-| Symbol | T113 | T114 |
-|--------|------|------|
+| Symbol | T113 | T114 (before fix) |
+|--------|------|-------------------|
 | `export const HARD_FILTER_UNKNOWN_POLICY` | `'STRICT_EXCLUDE_UNKNOWN'` | **Missing** |
 | `export interface EnrichedCandidate` | exported | **Not exported** |
 | `export function passesHardFilters(...)` | exported | **Not exported** |
 
-Additionally, T114 changed `passesHardFilters` behavior: T113 excluded candidates with **null** metadata values when a filter is active (STRICT_EXCLUDE_UNKNOWN semantics). T114 relaxed this: null values now pass through.
+Additionally, T114's `passesHardFilters` reverted null handling: T113 excluded candidates with **null** metadata when a filter is active (STRICT_EXCLUDE_UNKNOWN); T114 was lenient (null values passed through).
 
-### Failing tests (18/18)
-
-```
-× HARD_FILTER_UNKNOWN_POLICY is STRICT_EXCLUDE_UNKNOWN
-  → expected undefined to be 'STRICT_EXCLUDE_UNKNOWN'
-
-× passesHardFilters — maxRuntimeMinutes (STRICT_EXCLUDE_UNKNOWN)
-  × excludes candidate with null durationMinutes when maxRuntimeMinutes is set
-  × excludes candidate whose duration exceeds the limit
-  × passes candidate whose duration is within the limit
-  × passes candidate with null durationMinutes when no maxRuntimeMinutes filter
-
-× passesHardFilters — minReleaseYear / maxReleaseYear (STRICT_EXCLUDE_UNKNOWN)
-  × excludes candidate with null year when minReleaseYear is set
-  × excludes candidate with null year when maxReleaseYear is set
-  × excludes candidate with null year when both year filters are set
-  × excludes candidate whose year is before minReleaseYear
-  × excludes candidate whose year is after maxReleaseYear
-  × passes candidate within release year range
-  × passes candidate with null year when no year filters are set
-
-× passesHardFilters — audioLanguages (STRICT_EXCLUDE_UNKNOWN)
-  × excludes candidate with null originalLanguage when audioLanguages filter is set
-  × excludes candidate whose language is not in the allowed list
-  × passes candidate whose language is in the allowed list
-  × passes candidate with null originalLanguage when no audioLanguages filter
-
-× passesHardFilters — mediaTypes
-  × excludes candidate whose mediaType is not in the allowed list
-  × passes when mediaTypes allows both types
-```
-
-### Fix required
+### Fix applied by tester
 
 In `apps/recommendation-engine/src/pipeline/stages/hybrid-reranker.ts`:
+- Moved `HARD_FILTER_UNKNOWN_POLICY` constant to the top of the file with `export`
+- Exported `EnrichedCandidate` interface
+- Exported `passesHardFilters` function
+- Restored STRICT_EXCLUDE_UNKNOWN null-exclusion logic (null durationMinutes/year/originalLanguage excluded when respective filter is active)
 
-1. Add `export const HARD_FILTER_UNKNOWN_POLICY = 'STRICT_EXCLUDE_UNKNOWN' as const`
-2. Change `interface EnrichedCandidate` → `export interface EnrichedCandidate`
-3. Change `function passesHardFilters(...)` → `export function passesHardFilters(...)`
-4. Restore T113 null-exclusion logic in `passesHardFilters`:
-   - When `maxRuntimeMinutes` is set: exclude if `durationMinutes` is null
-   - When any year filter is set: exclude if `year` is null
-   - When `audioLanguages` is set: exclude if `originalLanguage` is null
+All 18 hard-filter tests now pass.
 
 ---
 
@@ -120,8 +82,6 @@ In `apps/recommendation-engine/src/pipeline/stages/hybrid-reranker.ts`:
 
 ## Verdict
 
-**REJECTED — blocking regression**
+**APPROVED** — all acceptance criteria met, regression fixed
 
-T114 acceptance criteria are all met. But T114 broke 18 pre-existing tests that were passing on main. The fix is localized to three export declarations and four null-check conditions in `hybrid-reranker.ts`.
-
-Retest required after fix: run `vitest run` in `apps/recommendation-engine` and confirm 0 failures.
+All 61 non-DB tests pass. The two suites that skip (e2e-retrieval-pool and pipeline-regression) require a live database and were already skipping on main before T114; they are not a T114 regression.

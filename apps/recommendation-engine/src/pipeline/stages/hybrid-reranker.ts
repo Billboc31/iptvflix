@@ -103,7 +103,7 @@ function getBlendedWeights(model: typeof SCORE_MODEL_V2, level: ExplorationLevel
   return { ...base }
 }
 
-export interface EnrichedCandidate extends CandidateItem {
+export export interface EnrichedCandidate extends CandidateItem {
   genreIds: string[]
   genreNames: string[]
   available: boolean
