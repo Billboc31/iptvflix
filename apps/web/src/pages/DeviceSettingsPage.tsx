@@ -38,6 +38,8 @@ export default function DeviceSettingsPage() {
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         setPairingError('Code inconnu ou expiré.')
+      } else if (err instanceof ApiError) {
+        setPairingError(err.message || 'Erreur lors du jumelage.')
       } else {
         setPairingError('Erreur lors du jumelage.')
       }

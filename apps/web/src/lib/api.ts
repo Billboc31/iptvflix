@@ -379,7 +379,10 @@ export function getPairingCodeDetail(code: string): Promise<PairingCodeDetailRes
 }
 
 export function approvePairingCode(code: string, name?: string): Promise<DeviceResponse> {
-  return request(`/pairing/codes/${code}/approve`, { method: 'POST', body: JSON.stringify({ name }) })
+  return request<{ device: DeviceResponse; deviceToken: string }>(
+    `/pairing/codes/${code}/approve`,
+    { method: 'POST', body: JSON.stringify({ name }) },
+  ).then((res) => res.device)
 }
 
 export function sendPlayOnTvCommand(
