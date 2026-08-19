@@ -12,6 +12,7 @@ import { mediaCredits } from '../db/schema/media-credits.js'
 import { persons } from '../db/schema/persons.js'
 import { enrichmentFailures } from '../db/schema/enrichment-failures.js'
 import type { MetadataProvider, ExternalVideo, ExternalCreditPerson, ExternalSeasonEpisode, ExternalMovieMetadata, ExternalSeriesMetadata } from '../providers/metadata/types.js'
+import { MetadataMappingError } from '../providers/metadata/types.js'
 
 type Db = PostgresJsDatabase<typeof schema>
 
@@ -182,7 +183,7 @@ export class MetadataEnrichmentService {
         mediaId: movieId,
         tmdbId: movie.tmdbId,
         title: movie.title,
-        stage: 'fetch',
+        stage: err instanceof MetadataMappingError ? 'map' : 'fetch',
         err,
         runId: opts?.runId,
       })
@@ -327,7 +328,7 @@ export class MetadataEnrichmentService {
         mediaId: seriesId,
         tmdbId: seriesRow.tmdbId,
         title: seriesRow.title,
-        stage: 'fetch',
+        stage: err instanceof MetadataMappingError ? 'map' : 'fetch',
         err,
         runId: opts?.runId,
       })

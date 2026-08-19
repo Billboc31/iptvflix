@@ -25,6 +25,7 @@ export interface EnrichMissingStats {
   processed: number
   enriched: number
   skipped: number
+  retrying: number
   failedTerminal: number
   remaining: number
   ratePerMinute: number
@@ -87,11 +88,12 @@ export class CatalogEnrichMissingService {
     }
   }
 
-  private async enrichWithRetry(fn: () => Promise<EnrichResult>): Promise<EnrichResult> {
+  private async enrichWithRetry(fn: () => Promise<EnrichResult>, onRetry?: () => void): Promise<EnrichResult> {
     for (let attempt = 0; attempt < TRANSIENT_RETRY_DELAYS_MS.length; attempt++) {
       const result = await fn()
       if (result !== 'provider-failed') return result
       if (attempt < TRANSIENT_RETRY_DELAYS_MS.length - 1) {
+        onRetry?.()
         await delay(TRANSIENT_RETRY_DELAYS_MS[attempt])
       }
     }
@@ -141,6 +143,7 @@ export class CatalogEnrichMissingService {
       processed: 0,
       enriched: 0,
       skipped: 0,
+      retrying: 0,
       failedTerminal: 0,
     }
 
@@ -188,7 +191,7 @@ export class CatalogEnrichMissingService {
     throttleMs: number
     force: boolean
     checkpoint: RunCheckpoint
-    stats: { totalEligible: number; processed: number; enriched: number; skipped: number; failedTerminal: number }
+    stats: { totalEligible: number; processed: number; enriched: number; skipped: number; retrying: number; failedTerminal: number }
     saveCheckpoint: () => Promise<void>
   }): Promise<void> {
     const { runId, mediaTypes, batchSize, concurrency, throttleMs, force, checkpoint, stats, saveCheckpoint } = ctx
@@ -225,8 +228,8 @@ export class CatalogEnrichMissingService {
           try {
             const result =
               mediaType === 'MOVIE'
-                ? await this.enrichWithRetry(() => this.enrichmentService.enrichMovie(row.id, { force, runId }))
-                : await this.enrichWithRetry(() => this.enrichmentService.enrichSeries(row.id, { force, runId }))
+                ? await this.enrichWithRetry(() => this.enrichmentService.enrichMovie(row.id, { force, runId }), () => { stats.retrying++ })
+                : await this.enrichWithRetry(() => this.enrichmentService.enrichSeries(row.id, { force, runId }), () => { stats.retrying++ })
 
             stats.processed++
             checkpoint[key].processedCount++
@@ -282,6 +285,7 @@ export class CatalogEnrichMissingService {
           processed: cp.stats.processed ?? 0,
           enriched: cp.stats.enriched ?? 0,
           skipped: cp.stats.skipped ?? 0,
+          retrying: cp.stats.retrying ?? 0,
           failedTerminal: cp.stats.failedTerminal ?? 0,
           remaining: cp.stats.remaining ?? 0,
           ratePerMinute: cp.stats.ratePerMinute ?? 0,
