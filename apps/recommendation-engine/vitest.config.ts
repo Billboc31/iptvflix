@@ -7,7 +7,7 @@ export default defineConfig({
     include: ['src/**/*.{test,spec}.ts'],
     env: {
       NODE_ENV: 'test',
-      DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://test:test@localhost:5432/test',
+      DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://iptvflix:iptvflix@localhost:5433/iptvflix',
     },
   },
 })
