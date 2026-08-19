@@ -1,9 +1,9 @@
 {
   "ticket_id": "T115",
-  "state": "IMPLEMENTATION_REVIEW_NEEDED",
+  "state": "IMPLEMENTATION_FIX_REQUIRED",
   "branch": "ticket/T115-complete-catalog-enrichment-and-make-refresh-failu",
   "issue_number": 242,
-  "updated_at": "2026-08-19T15:47:13Z",
+  "updated_at": "2026-08-19T15:52:31Z",
   "pre_conflict_state": "IMPLEMENTATION_FIX_REQUIRED",
   "conflict_detected_at": "2026-08-19T14:52:38Z",
   "conflicted_files": []
