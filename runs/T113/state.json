@@ -1,7 +1,7 @@
 {
   "ticket_id": "T113",
-  "state": "IMPLEMENTATION_REVIEW_NEEDED",
+  "state": "IMPLEMENTATION_FIX_REQUIRED",
   "branch": "ticket/T113-increase-semantic-retrieval-pool-before-filtering",
   "issue_number": 240,
-  "updated_at": "2026-08-19T13:19:03Z"
+  "updated_at": "2026-08-19T13:24:18Z"
 }
