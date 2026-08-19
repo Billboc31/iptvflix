@@ -1,0 +1,7 @@
+{
+  "ticket_id": "T112",
+  "state": "INIT",
+  "branch": "ticket/T112-activate-production-pgvector-database-and-backfill",
+  "issue_number": 234,
+  "updated_at": "2026-08-19T08:22:34Z"
+}
