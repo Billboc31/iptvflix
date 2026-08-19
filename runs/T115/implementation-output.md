@@ -1,18 +1,49 @@
-Here's a summary of all fixes applied in this coder attempt:
+The code is complete — no production code was changed in coder-attempt-7 because coder-attempt-6 already resolved all code-level issues. Here is the coder-attempt-7 summary:
 
 ---
 
-**3 additional fixes beyond what coder-attempt-5 had:**
+## Coder Attempt 7 — Summary
 
-1. **Migration rename** — `0045_t115_enrichment_failures.sql` → `0047_t115_enrichment_failures.sql`  
-   Two files shared the `0045` prefix. The T114 migration already owns that slot; the T115 migration is moved to `0047`.
+### No code changes
 
-2. **Journal update** — `migrations/meta/_journal.json` (4 new entries, idx 44–47)  
-   `migrate-safe.mjs` is journal-driven — files not listed in it are silently skipped. All 4 new migrations (T107, T114, and the two T115 ones) were unregistered. Added entries for all of them. Validated: all 48 journal entries have matching SQL files.
+All code-level issues were resolved in coder-attempt-6:
+- TMDB normalization (`runtime=0 → null`, `imdb_id="" → null`, blank `overview → null`) — done
+- `classifyError()` exposes real `errorClass`/`errorCode`/`errorMessage` — done
+- `persistFailure()` / `clearFailure()` upsert with conflict handling — done
+- Keyset cursor, `matchStatus = 'MATCHED'` filters, all migrations + journal — done
+- `catalog-stats.ts` `staleThreshold.toISOString()` TypeError fix — done
+- 8 enrichment stats in `/admin/catalog-stats` — done
 
-3. **Bug fix in `catalog-stats.ts:20`** — `staleThreshold` `.toISOString()`  
-   A bare `new Date()` inside a `sql\`...\`` template literal caused a `TypeError` in the postgres.js driver. Fixed by calling `.toISOString()` to pass a string. The endpoint now returns 200.
+### What coder-attempt-7 adds
 
-**Local validation run** confirms end-to-end correctness: 5 TMDB-matched items enriched (3 movies + 2 series), 0 terminal failures, 444 episodes fetched, before/after stats captured in `runs/T115/local-validation-run-20260819.md`.
+**`runs/T115/production-run-playbook.md`** — a step-by-step runbook for the human operator covering:
+1. Pre-flight migration verification
+2. `GET /admin/catalog-stats` before-state capture
+3. `POST /admin/catalog-enrich-missing` + retry-failures for the 126 known failures
+4. Progress monitoring until `COMPLETED`
+5. After-state capture + terminal failure dump with `errorClass`/`errorCode`/`errorMessage`
+6. Expected output format for the `runs/T115/production-run-YYYYMMDD.md` artifact
 
-**The only remaining gap** is a full production run (~60k movies / ~5k series). That requires access to the production environment to deploy the branch and execute the endpoints.
+### Escalation: human action required
+
+The `IMPLEMENTATION_FIX_REQUIRED` decision cannot be resolved by code. The review itself states:
+
+> "Escalade requise vers un opérateur humain — Cette condition ne peut pas être satisfaite par l'agent AI : l'accès à l'environnement de production est un prérequis humain."
+
+**The single remaining action** is for you (the human operator) to:
+1. Deploy the branch `ticket/T115-complete-catalog-enrichment-and-make-refresh-failu` to production (or connect to a production DB snapshot)
+2. Apply migrations `0044–0047` via `node scripts/migrate-safe.mjs`
+3. Execute the steps in `runs/T115/production-run-playbook.md`
+4. Drop the output into `runs/T115/production-run-YYYYMMDD.md`
+
+That artifact is the only thing needed to satisfy the ticket's completion rule and unblock the final review.
+
+### Files modified
+
+| File | Change |
+|---|---|
+| `runs/T115/production-run-playbook.md` | New — production run step-by-step guide for human operator |
+
+### Known limits
+
+The completion rule cannot be satisfied from this environment. Production access (`DATABASE_URL`, admin credentials, deployed API) must come from the human operator.
