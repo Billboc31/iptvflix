@@ -16,12 +16,25 @@ export async function catalogEnrichMissingRoutes(
       force?: boolean
     } | undefined
 
+    const batchSize = body?.batchSize
+    const concurrency = body?.concurrency
+    const throttleMs = body?.throttleMs
+    if (batchSize !== undefined && (typeof batchSize !== 'number' || batchSize < 1 || batchSize > 500)) {
+      return reply.status(400).send({ error: 'batchSize must be between 1 and 500' })
+    }
+    if (concurrency !== undefined && (typeof concurrency !== 'number' || concurrency < 1 || concurrency > 20)) {
+      return reply.status(400).send({ error: 'concurrency must be between 1 and 20' })
+    }
+    if (throttleMs !== undefined && (typeof throttleMs !== 'number' || throttleMs < 0)) {
+      return reply.status(400).send({ error: 'throttleMs must be >= 0' })
+    }
+
     try {
       const runId = await service.start({
         mediaTypes: body?.mediaTypes,
-        batchSize: body?.batchSize,
-        concurrency: body?.concurrency,
-        throttleMs: body?.throttleMs,
+        batchSize,
+        concurrency,
+        throttleMs,
         force: body?.force,
       })
       return reply.status(202).send({ runId })

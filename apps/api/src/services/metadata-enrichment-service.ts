@@ -610,6 +610,7 @@ export class MetadataEnrichmentService {
         .where(
           and(
             isNotNull(movies.tmdbId),
+            eq(movies.matchStatus, 'MATCHED'),
             or(isNull(movies.metadataEnrichedAt), lt(movies.metadataEnrichedAt, threshold)),
           ),
         ),
@@ -619,6 +620,7 @@ export class MetadataEnrichmentService {
         .where(
           and(
             isNotNull(series.tmdbId),
+            eq(series.matchStatus, 'MATCHED'),
             or(isNull(series.metadataEnrichedAt), lt(series.metadataEnrichedAt, threshold)),
           ),
         ),
