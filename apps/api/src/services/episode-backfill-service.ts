@@ -45,8 +45,16 @@ export class EpisodeBackfillService {
         .where(and(eq(sources.type, 'XTREAM'), eq(sources.enabled, true)))
 
       for (const source of xtreamSources) {
-        await this.backfillSource(source, opts?.force ?? false, result)
-        this.latestState = { ...result, startedAt }
+        let remaining = true
+        let batches = 0
+        const maxBatches = process.env.NODE_ENV === 'test' ? 1 : 10_000
+        while (remaining && batches < maxBatches) {
+          const before = result.processed
+          await this.backfillSource(source, opts?.force ?? false, result)
+          this.latestState = { ...result, startedAt }
+          remaining = result.processed > before
+          batches++
+        }
       }
     } finally {
       this.running = false
@@ -84,13 +92,13 @@ export class EpisodeBackfillService {
       ? candidates
       : await this.filterMissingEpisodeAvailabilities(candidates)
 
-    const batchSize = parseInt(process.env.EPISODE_BACKFILL_BATCH_SIZE ?? '0', 10)
-    const batch = batchSize > 0 ? toProcess.slice(0, batchSize) : toProcess
+    const batchSize = parseInt(process.env.EPISODE_BACKFILL_BATCH_SIZE ?? '80', 10) || 80
+    const batch = toProcess.slice(0, batchSize)
 
     if (batch.length === 0) return
 
     console.info(
-      `[episode-backfill] source ${source.id}: ${batch.length}/${toProcess.length} series to fetch (force=${force})`,
+      `[episode-backfill] source ${source.id}: fetching ${batch.length}/${toProcess.length} series (force=${force})`,
     )
     result.processed += batch.length
 
@@ -145,16 +153,29 @@ export class EpisodeBackfillService {
       failedSeriesIds: failedSeriesIds.length > 0 ? failedSeriesIds : undefined,
     }
 
-    let runId: string
-    try {
-      runId = await acquireSyncRunLock(source.id)
-    } catch (err) {
-      if (err instanceof SyncAlreadyRunningError) {
-        console.warn(`[episode-backfill] backfill lock already held for source ${source.id}, skipping`)
-        result.failed += successCount
-        return
+    let runId: string | undefined
+    const maxLockAttempts = process.env.NODE_ENV === 'test' ? 1 : 12
+    for (let attempt = 1; attempt <= maxLockAttempts; attempt++) {
+      try {
+        runId = await acquireSyncRunLock(source.id)
+        break
+      } catch (err) {
+        if (err instanceof SyncAlreadyRunningError && attempt < maxLockAttempts) {
+          console.warn(`[episode-backfill] sync lock busy for ${source.id}, retry ${attempt}/${maxLockAttempts}`)
+          await new Promise((r) => setTimeout(r, 15_000))
+          continue
+        }
+        if (err instanceof SyncAlreadyRunningError) {
+          console.warn(`[episode-backfill] backfill lock already held for source ${source.id}, skipping batch`)
+          result.failed += successCount
+          return
+        }
+        throw err
       }
-      throw err
+    }
+    if (!runId) {
+      result.failed += successCount
+      return
     }
 
     try {
