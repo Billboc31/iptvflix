@@ -3,5 +3,19 @@
   "state": "TEST_COMPLETE",
   "branch": "ticket/T110-wire-shelfconcept-through-queryplan-semantic-retri",
   "issue_number": 232,
-  "updated_at": "2026-08-19T10:51:07Z"
+  "updated_at": "2026-08-19T11:02:44Z",
+  "pr_number": 239,
+  "pr_synced": true,
+  "pre_conflict_state": "TEST_COMPLETE",
+  "conflict_detected_at": "2026-08-19T10:59:14Z",
+  "conflict_pr_number": 239,
+  "conflicted_files": [
+    "apps/api/src/__tests__/home-semantic-pipeline.test.ts",
+    "apps/api/src/client/recommendation-engine-client.ts",
+    "apps/api/src/routes/shelf-instances.ts",
+    "apps/api/src/services/home-pool-service.ts",
+    "apps/recommendation-engine/src/db/schema.ts",
+    "apps/recommendation-engine/src/pipeline/stages/hybrid-reranker.ts",
+    "apps/recommendation-engine/src/pipeline/types.ts"
+  ]
 }

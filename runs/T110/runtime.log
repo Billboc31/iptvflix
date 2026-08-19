@@ -34,3 +34,25 @@
 [2026-08-19T10:51:08Z] push: pushing branch=ticket/T110-wire-shelfconcept-through-queryplan-semantic-retri
 [2026-08-19T10:51:10Z] push: done branch=ticket/T110-wire-shelfconcept-through-queryplan-semantic-retri
 [2026-08-19T10:51:10Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-19T10:59:01Z] auto-run: step=tester done rc=0
+[2026-08-19T10:59:01Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-19T10:59:01Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-19T10:59:01Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T110/daemon.lock', 'runs/T110/runtime.log', 'runs/T110/workflow-status.md']
+[2026-08-19T10:59:01Z] commit-checkpoint: sha=d3b37b34 files=2 title='test(T110/workflow): tester — update 2 file(s)'
+[2026-08-19T10:59:01Z] auto-run: auto-push triggered
+[2026-08-19T10:59:01Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T110/daemon.lock', 'runs/T110/runtime.log', 'runs/T110/workflow-status.md']
+[2026-08-19T10:59:01Z] push: pushing branch=ticket/T110-wire-shelfconcept-through-queryplan-semantic-retri
+[2026-08-19T10:59:03Z] push: done branch=ticket/T110-wire-shelfconcept-through-queryplan-semantic-retri
+[2026-08-19T10:59:03Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-19T11:02:42Z] conflict-resolver: [pass 1/3] conflicted=['apps/api/src/__tests__/home-semantic-pipeline.test.ts'] | staged=['apps/api/src/__tests__/home-semantic-pipeline.test.ts'] | unresolved=[] | continue_rc=1 | next_source=[]
+[2026-08-19T11:02:42Z] conflict-resolver: all conflicts resolved after 1 pass(es)
+[2026-08-19T11:02:42Z] conflict-resolver: running tests
+[2026-08-19T11:02:42Z] conflict-resolver: test-report written: runs/T110/conflict/test-report.md
+[2026-08-19T11:02:42Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-19T11:02:42Z] conflict-resolver: commit: sha=0aa08360
+[2026-08-19T11:02:42Z] conflict-resolver: git push --force-with-lease origin ticket/T110-wire-shelfconcept-through-queryplan-semantic-retri
+[2026-08-19T11:02:44Z] conflict-resolver: push succeeded
+[2026-08-19T11:02:44Z] conflict-resolver: state → CONFLICT_RESOLVED_REVIEW_NEEDED
+[2026-08-19T11:02:44Z] auto-finalize-conflict: gate disabled for project='iptvflix'
+[2026-08-19T11:02:44Z] conflict-resolver: transition CONFLICT_RESOLVED_REVIEW_NEEDED → TEST_COMPLETE (auto, PROJECT_SETTING)
+[2026-08-19T11:02:45Z] auto-run: TEST_COMPLETE — running PR lifecycle
