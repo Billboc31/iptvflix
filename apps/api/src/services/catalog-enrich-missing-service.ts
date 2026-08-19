@@ -331,17 +331,19 @@ export class CatalogEnrichMissingService {
     return { rows, total: Number(totalRow[0]?.cnt ?? 0) }
   }
 
-  async retryFailures(opts: { mediaType?: string; ids?: string[]; concurrency?: number } = {}): Promise<{
+  async retryFailures(opts: { mediaType?: string; ids?: string[]; concurrency?: number; force?: boolean } = {}): Promise<{
     runId: string
     queued: number
   }> {
-    const { mediaType, ids, concurrency = 3 } = opts
+    const { mediaType, ids, concurrency = 3, force = false } = opts
 
     await this.checkNoRunningConflict()
 
     const conditions = []
     if (mediaType) conditions.push(eq(enrichmentFailures.mediaType, mediaType))
     if (ids && ids.length > 0) conditions.push(inArray(enrichmentFailures.mediaId, ids))
+    // By default only retry retryable failures; pass force=true to retry all (including terminal)
+    if (!force) conditions.push(eq(enrichmentFailures.retryable, true))
 
     const where = conditions.length > 0 ? and(...conditions) : undefined
     const failures = await this.db.select().from(enrichmentFailures).where(where)

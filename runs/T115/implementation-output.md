@@ -1,32 +1,29 @@
-All tests pass. Here's a summary of the two minor fixes applied:
+All T115-relevant tests pass. Here's a summary of the 4 fixes applied:
 
 ---
 
-## Changes made
+## Changes applied
 
-### Minor 1 — `retrying` stat in run-level stats
+### Fix 1 — `retryFailures` now filters retryable by default (🟠 Major)
 
 **`services/catalog-enrich-missing-service.ts`**
-- Added `retrying: number` to `EnrichMissingStats` interface
-- Added `retrying: 0` to the `stats` object initialized in `start()`
-- Added `retrying: number` to the `stats` type in `execute()`'s context parameter
-- Added optional `onRetry?: () => void` callback to `enrichWithRetry()` — called before each retry delay
-- Passed `() => { stats.retrying++ }` to both `enrichWithRetry()` calls in `execute()`
-- Added `retrying: cp.stats.retrying ?? 0` in `getLatestRunStatus()`
+- Added `force?: boolean` to the `retryFailures` opts interface
+- Added `if (!force) conditions.push(eq(enrichmentFailures.retryable, true))` — by default only retryable failures are retried; pass `force: true` to retry terminal failures too
 
-### Minor 3 — `map` stage captured when `mapMovieDetail`/`mapSeriesDetail` throws
-
-**`providers/metadata/types.ts`**
-- Exported new `MetadataMappingError extends Error` class
-
-**`providers/metadata/tmdb/client.ts`**
-- Imported `MetadataMappingError`
-- Split the try/catch in `getMovieMetadata` and `getSeriesMetadata`: `response.json()` failure → `TmdbNetworkError`; `mapMovieDetail`/`mapSeriesDetail` failure → `MetadataMappingError` with the original error message preserved
+### Fix 2 — Seasons failures persisted in `enrichment_failures` (🟠 Major)
 
 **`services/metadata-enrichment-service.ts`**
-- Imported `MetadataMappingError`
-- Changed both fetch-stage catch blocks in `enrichMovie` and `enrichSeries` to use `stage: err instanceof MetadataMappingError ? 'map' : 'fetch'`
+- Widened `persistFailure` stage type to include `'seasons'`
+- Replaced the bare `console.warn` in the `enrichSeriesSeasons` catch with a `persistFailure` call (`stage: 'seasons'`)
+- Made `clearFailure` conditional: only called when seasons enrichment succeeded, so the persisted failure isn't immediately cleared
 
----
+### Fix 3 — Silent catch blocks now warn (🟡 Minor)
 
-**Remaining blocker** (unchanged): The production run artifact (`runs/T115/production-run-YYYYMMDD.md`) still requires a human to execute `POST /admin/catalog-enrich-missing` against production and publish the before/after counts and real failure causes.
+**`services/metadata-enrichment-service.ts`**
+- Collection upsert catch: `catch {}` → `catch (err) { console.warn(...) }`
+- `persistFrenchLocalization` catch: `catch { return }` → `catch (err) { console.warn(...); return }`
+
+### Fix 4 — `fullyEnriched` definition documented (🟡 Minor)
+
+**`routes/catalog-stats.ts`**
+- Added inline comments on both the movies and series `fullyEnriched`/`partiallyEnriched` SQL filters explaining that "fully enriched" means `synopsis IS NOT NULL AND keywords IS NOT NULL` (not all optional fields)

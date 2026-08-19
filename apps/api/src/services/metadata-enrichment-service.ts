@@ -98,7 +98,7 @@ export class MetadataEnrichmentService {
     mediaId: string
     tmdbId?: number | null
     title?: string | null
-    stage: 'fetch' | 'map' | 'db_update'
+    stage: 'fetch' | 'map' | 'db_update' | 'seasons'
     err: unknown
     runId?: string | null
   }): Promise<{ retryable: boolean }> {
@@ -225,8 +225,8 @@ export class MetadataEnrichmentService {
           })
           .returning({ id: collections.id })
         collectionId = collRow?.id ?? null
-      } catch {
-        // collection upsert failure is non-fatal
+      } catch (err) {
+        console.warn(`[enrichment] collection upsert failed for movie ${movieId}:`, err)
       }
     }
 
@@ -434,13 +434,26 @@ export class MetadataEnrichmentService {
       }
     }
 
+    let seasonsFailed = false
     try {
       await this.enrichSeriesSeasons(seriesId)
     } catch (err) {
       console.warn(`[enrichment] enrichSeriesSeasons(${seriesId}) failed:`, err)
+      seasonsFailed = true
+      await this.persistFailure({
+        mediaType: 'SERIES',
+        mediaId: seriesId,
+        tmdbId: seriesRow.tmdbId,
+        title: seriesRow.title,
+        stage: 'seasons',
+        err,
+        runId: opts?.runId,
+      })
     }
 
-    await this.clearFailure('SERIES', seriesId)
+    if (!seasonsFailed) {
+      await this.clearFailure('SERIES', seriesId)
+    }
     this.onEnriched?.(seriesId, 'SERIES')
     return 'enriched'
   }
@@ -752,7 +765,8 @@ export class MetadataEnrichmentService {
         mediaType === 'movie'
           ? await this.provider.getMovieMetadata(tmdbId, { language: 'fr-FR' })
           : await this.provider.getSeriesMetadata(tmdbId, { language: 'fr-FR' })
-    } catch {
+    } catch (err) {
+      console.warn(`[enrichment] persistFrenchLocalization(${mediaType} ${mediaId}) failed:`, err)
       return
     }
     if (!frMetadata) return

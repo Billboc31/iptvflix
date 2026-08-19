@@ -42,9 +42,11 @@ export async function catalogStatsRoutes(app: FastifyInstance): Promise<void> {
           'Rumored','Planned','In Production','Post Production'
         )) as integer)`,
         neverEnriched: sql<number>`cast(count(*) filter (where metadata_enriched_at is null) as integer)`,
+        // partiallyEnriched: enriched but missing synopsis or keywords (minimum narrative fields)
         partiallyEnriched: sql<number>`cast(count(*) filter (
           where metadata_enriched_at is not null and (synopsis is null or keywords is null)
         ) as integer)`,
+        // fullyEnriched: enriched with at least synopsis and keywords present (does not require all optional fields)
         fullyEnriched: sql<number>`cast(count(*) filter (
           where metadata_enriched_at is not null and synopsis is not null and keywords is not null
         ) as integer)`,
@@ -62,9 +64,11 @@ export async function catalogStatsRoutes(app: FastifyInstance): Promise<void> {
           'In Production','Planned','Returning Series'
         )) as integer)`,
         neverEnriched: sql<number>`cast(count(*) filter (where metadata_enriched_at is null) as integer)`,
+        // partiallyEnriched: enriched but missing synopsis or keywords (minimum narrative fields)
         partiallyEnriched: sql<number>`cast(count(*) filter (
           where metadata_enriched_at is not null and (synopsis is null or keywords is null)
         ) as integer)`,
+        // fullyEnriched: enriched with at least synopsis and keywords present (does not require all optional fields)
         fullyEnriched: sql<number>`cast(count(*) filter (
           where metadata_enriched_at is not null and synopsis is not null and keywords is not null
         ) as integer)`,
