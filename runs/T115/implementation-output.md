@@ -1,19 +1,36 @@
-## Summary
+---
 
-**Code fix done and committed** (commit `26046f48`):
+**Situation claire — cycle 14, blocage uniquement humain.**
 
-**Bug** — `POST /admin/catalog-enrich-missing/retry-failures` never forwarded `force` from the request body to the service. The body type had no `force` field, so sending `{"force": true}` was silently discarded — the service always ran with `force=false` and filtered to `retryable=true` only. Result: a terminal failure with `retryable: false` was always excluded → `queued: 0`.
+Il n'y a aucun changement de code à faire. Voici ce que j'ai vérifié dans ce cycle :
 
-**Fix** — Added `force?: boolean` to the route body type and passed `force: body?.force` to `service.retryFailures()`.
+- `fly` est installé (`/opt/homebrew/bin/fly`) mais **non authentifié** — `fly auth whoami` retourne "no access token available"
+- Railway CLI n'est pas installé
+- Aucun `.env.local` ni `DATABASE_URL` dans l'environnement
+- `api.iptvflix.com` n'est pas joignable depuis cet environnement (timeout)
+- Le code est techniquement complet et correct (confirmé par la review)
 
-**Verified locally**: with the 1 existing terminal failure (`retryable: false`), `POST retry-failures {"force": true}` now correctly returns `{"queued": 1}`.
+**Ce qui bloque depuis 13 cycles : la completion rule** exige un run sur le catalogue de production (~60k films), et l'IA n'a pas les credentials.
 
 ---
 
-**Production run — still blocked** (hard dependency on human):
+**Pour débloquer — 3 options, pick one:**
 
-Neither Railway CLI nor production `DATABASE_URL` credentials are available in this environment. The review's completion rule requires running against production or a restored production snapshot with ~60k movies. To unblock this:
+**Option A (la plus simple)** — Donne-moi le DATABASE_URL production depuis Railway :
+```
+DATABASE_URL=postgresql://...
+```
+Je peux alors faire un `pg_dump` + restore local et exécuter tout le playbook.
 
-1. Provide the production `DATABASE_URL` from Railway so I can run `pg_dump` and restore it locally, **or**
-2. Run `fly auth login` / `railway login` in your terminal and let me proceed from there, **or**
-3. Run the playbook manually: `runs/T115/production-run-playbook.md` has all the exact commands.
+**Option B** — Authentifie fly dans ce terminal :
+```bash
+fly auth login
+```
+Une fois connecté, je peux faire `fly proxy` sur la DB de production et exécuter le run directement.
+
+**Option C** — Exécute le playbook toi-même (5 commandes, 5-10 min) :
+Le fichier `runs/T115/production-run-playbook.md` contient les commandes exactes. Copie-colle la sortie ici et je génère l'artefact de completion.
+
+---
+
+Le code n'a pas besoin de nouveaux commits. Le seul livrable manquant est l'artefact `production-run-YYYYMMDD.md` avec de vrais before/after counts sur le catalogue de production.
