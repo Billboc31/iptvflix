@@ -1,7 +1,7 @@
 {
   "ticket_id": "T111",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T111-consolidate-recommendation-logic-into-the-standalo",
   "issue_number": 233,
-  "updated_at": "2026-08-19T08:21:10Z"
+  "updated_at": "2026-08-19T09:05:32Z"
 }
