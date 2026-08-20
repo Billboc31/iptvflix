@@ -58,13 +58,14 @@ function makeUpdateChain() {
 
 function makeInsertChain(onConflictResult: unknown = []) {
   const onConflictDoNothing = vi.fn().mockResolvedValue(onConflictResult)
-  const values = vi.fn().mockReturnValue({ onConflictDoNothing })
+  const onConflictDoUpdate = vi.fn().mockResolvedValue([])
   const returning = vi.fn().mockResolvedValue([])
-  const valuesWithReturning = vi.fn().mockReturnValue({ onConflictDoNothing, returning })
+  const valuesWithAll = vi.fn().mockReturnValue({ onConflictDoNothing, onConflictDoUpdate, returning })
   return {
-    insert: vi.fn().mockReturnValue({ values: valuesWithReturning }),
-    values,
+    insert: vi.fn().mockReturnValue({ values: valuesWithAll }),
+    values: valuesWithAll,
     onConflictDoNothing,
+    onConflictDoUpdate,
   }
 }
 
@@ -202,26 +203,29 @@ describe('MetadataEnrichmentService', () => {
       expect(result).toBe('enriched')
     })
 
-    it('returns provider-failed when provider returns null', async () => {
-      const row = { id: MOVIE_ID, tmdbId: TMDB_MOVIE_ID, metadataEnrichedAt: null }
+    it('returns terminal-failed when provider returns null (404)', async () => {
+      const row = { id: MOVIE_ID, tmdbId: TMDB_MOVIE_ID, metadataEnrichedAt: null, title: 'Test' }
       const selectChain = makeSelectChain([row])
-      const db = { ...selectChain } as unknown as Db
+      const insertChain = makeInsertChain()
+      const db = { ...selectChain, insert: insertChain.insert } as unknown as Db
       const provider = makeProvider({ getMovieMetadata: vi.fn().mockResolvedValue(null) })
       const service = new MetadataEnrichmentService(db, provider)
       const result = await service.enrichMovie(MOVIE_ID)
-      expect(result).toBe('provider-failed')
+      expect(result).toBe('terminal-failed')
     })
 
-    it('returns provider-failed when provider throws', async () => {
-      const row = { id: MOVIE_ID, tmdbId: TMDB_MOVIE_ID, metadataEnrichedAt: null }
+    it('returns terminal-failed when provider throws a non-transient error', async () => {
+      const row = { id: MOVIE_ID, tmdbId: TMDB_MOVIE_ID, metadataEnrichedAt: null, title: 'Test' }
       const selectChain = makeSelectChain([row])
-      const db = { ...selectChain } as unknown as Db
+      const insertChain = makeInsertChain()
+      const db = { ...selectChain, insert: insertChain.insert } as unknown as Db
       const provider = makeProvider({
         getMovieMetadata: vi.fn().mockRejectedValue(new Error('network failure')),
       })
       const service = new MetadataEnrichmentService(db, provider)
       const result = await service.enrichMovie(MOVIE_ID)
-      expect(result).toBe('provider-failed')
+      // Generic Error has no transient code/class — classified as terminal
+      expect(result).toBe('terminal-failed')
     })
 
     it('writes metadataProvider=tmdb and metadataEnrichedAt', async () => {
@@ -342,16 +346,18 @@ describe('MetadataEnrichmentService', () => {
       expect(setArgs.metadataProvider).toBe('tmdb')
     })
 
-    it('returns provider-failed when provider throws', async () => {
-      const row = { id: SERIES_ID, tmdbId: TMDB_SERIES_ID, metadataEnrichedAt: null }
+    it('returns terminal-failed when provider throws a non-transient error', async () => {
+      const row = { id: SERIES_ID, tmdbId: TMDB_SERIES_ID, metadataEnrichedAt: null, title: 'Test Series' }
       const selectChain = makeSelectChain([row])
-      const db = { ...selectChain } as unknown as Db
+      const insertChain = makeInsertChain()
+      const db = { ...selectChain, insert: insertChain.insert } as unknown as Db
       const provider = makeProvider({
         getSeriesMetadata: vi.fn().mockRejectedValue(new Error('network')),
       })
       const service = new MetadataEnrichmentService(db, provider)
       const result = await service.enrichSeries(SERIES_ID)
-      expect(result).toBe('provider-failed')
+      // Generic Error has no transient code/class — classified as terminal
+      expect(result).toBe('terminal-failed')
     })
 
     it('upserts seasons when series has no existing season rows', async () => {

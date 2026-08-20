@@ -1,0 +1,1 @@
+{"version":3,"file":"errors.d.ts","sourceRoot":"","sources":["../../../../src/providers/segments/theintrodb/errors.ts"],"names":[],"mappings":"AAAA,qBAAa,wBAAyB,SAAQ,KAAK;IACjD,QAAQ,CAAC,aAAa,EAAE,MAAM,CAAA;gBAClB,aAAa,SAAK;CAK/B;AAED,qBAAa,sBAAuB,SAAQ,KAAK;gBACnC,OAAO,EAAE,MAAM;CAI5B"}

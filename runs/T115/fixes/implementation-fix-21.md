@@ -1,0 +1,96 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T115/reviews/implementation-review.md
+- generated at: 2026-08-20T20:49:32Z
+
+---
+
+I have a complete picture. Let me write the review.
+
+---
+
+# PR Review — T115 — Complete catalog enrichment and make refresh failures resumable/observable
+
+## Résumé
+
+L'implémentation code est entièrement correcte. Le mineur de la review-21 (retour `'provider-failed'` vs `'terminal-failed'` selon la valeur de `retryable` dans `enrichSeriesSeasons`) a été correctement corrigé par coder-21 ; la documentation playbook a également été mise à jour. Tous les problèmes code détectés sur 21 cycles de review sont résolus. Le seul bloquant restant est structurellement inchangé depuis review-21 : la completion rule du ticket impose un run sur catalogue de production, qui nécessite une authentification humaine (`flyctl auth login`).
+
+---
+
+## Vérifications effectuées
+
+- Lecture de `metadata-enrichment-service.ts:437-459` — correction du retour conditionnel `'provider-failed'` / `'terminal-failed'` selon la valeur `retryable` issue de `persistFailure`.
+- Lecture de `catalog-enrich-missing-service.ts:94-104` — confirmation que `enrichWithRetry` boucle bien sur `result === 'provider-failed'`.
+- Lecture de `production-run-playbook.md` — section "Season enrichment failures — retry behavior" (lignes 175-188) présente, correcte.
+- Lecture de `production-run-20260819.md` — run local sur 6 films dev, confirmé non-équivalent à un run production.
+- Vérification de `catalog-enrich-missing-service.ts:370-428` — `retryFailures` avec `force=false` (défaut), `retryable=true` filtré, retour anticipé si 0 failures.
+- 27 tests pass (rapporté par implementation-output.md).
+
+---
+
+## Points validés
+
+**Fix du mineur review-21 (retour conditionnel season failures)**
+- `metadata-enrichment-service.ts:451` : `seasonsFailureResult = retryable ? 'provider-failed' : 'terminal-failed'`
+- Correct : transient → `enrichWithRetry` relance jusqu'à 3 fois ; permanent → `'terminal-failed'` immédiat.
+- `enrichWithRetry` (ligne 94-104) : loop conditionnel sur `'provider-failed'` — comportement confirmé.
+
+**Documentation playbook (fix mineur review-21)**
+- Section "Season enrichment failures — retry behavior" présente avec commande `retry-failures` et explication `{"force": true}`.
+
+**Tous les points de review-21 validés demeurent vrais**
+- `classifyError()` capture `PostgresError` / code driver / message.
+- Pagination curseur keyset, checkpoint JSONB, idempotence.
+- `enrichment_failures` tous champs ticket présents.
+- Stats catalog : neverEnriched, partiallyEnriched, fullyEnriched, stale, failedLastEnrichment, enrichedWithSeasonFailures, embeddingEligible, embeddingBlocked, embeddingPending (NOT EXISTS réel).
+- `embedding-eligibility.ts` : politique documentée, source unique.
+
+---
+
+## Problèmes détectés
+
+### [BLOQUANT] — Completion rule non satisfaite : run production non exécuté
+
+Le ticket est explicite et non-négociable :
+> "Do not close after unit tests. Run the new enrichment mode against production (or an equivalent restored production snapshot), publish before/after counts, and show the remaining terminal failures with their real causes."
+
+Acceptance criteria #9 :
+> "Run against the real production catalog and demonstrate meaningful reduction of incomplete titles and successful retry/fix of the previous failure population."
+
+Le run `production-run-20260819.md` porte sur 6 films de dev avec un TMDB ID fictif. Il ne satisfait pas ces exigences. Le playbook est prêt mais non exécuté.
+
+**Diagnostic** : Le coder ne peut pas résoudre ce point. `flyctl auth login` n'est pas disponible dans l'environnement IA et le DNS production (`api.iptvflix.com`) n'est pas résolvable. C'est un bloquant opérationnel pur, non un défaut de code.
+
+**Action requise (humain uniquement)** : Exécuter `runs/T115/production-run-playbook.md` sur un environnement connecté à Fly.io :
+1. Vérifier les migrations 0044-0047 appliquées.
+2. Capturer `/admin/catalog-stats` **avant** (BEFORE snapshot sur ~60k films / ~5k séries).
+3. `POST /admin/catalog-enrich-missing` avec `{"batchSize":50,"concurrency":3,"throttleMs":500}`.
+4. Attendre `status: "COMPLETED"`.
+5. Capturer `/admin/catalog-stats` **après** (AFTER snapshot).
+6. `GET /admin/catalog-enrich-missing/failures?limit=200` — liste des failures avec `errorClass`, `errorCode`, `errorMessage` réels.
+7. Publier dans `runs/T115/production-run-YYYYMMDD.md`.
+
+---
+
+## Risques résiduels (inchangés, non bloquants pour le code)
+
+- **Ghost run** : un run ENRICH_MISSING bloqué en `RUNNING` empêche tout nouveau run. Pas de timeout automatique. Risque opérationnel faible.
+- **Rate limit TMDB** : backoff 250/500/1000ms peut être insuffisant pour 60k titres en rafale soutenue. `throttleMs` atténue.
+- **`mediaType` non contraint en DB** : colonne `text` sans CHECK CONSTRAINT ; TypeScript protège mais pas la couche DB.
+
+---
+
+## Décision
+
+L'implémentation code est **complète et correcte**. Le fix de coder-21 sur le retour conditionnel des échecs de saisons est exact. Le cycle de review code est terminé.
+
+Le ticket reste bloqué sur sa completion rule opérationnelle. Aucun changement de code ne peut débloquer cette situation. **L'action requise est humaine et unique** : exécuter le playbook production et publier l'artefact.
+
+Si l'opérateur humain exécute le playbook et publie `runs/T115/production-run-YYYYMMDD.md`, la review suivante peut approuver.
+
+## Actions demandées
+
+1. **[BLOQUANT — HUMAIN REQUIS]** Exécuter `runs/T115/production-run-playbook.md` avec un accès Fly.io authentifié. Publier le rapport dans `runs/T115/production-run-YYYYMMDD.md`.
+
+IMPLEMENTATION_FIX_REQUIRED

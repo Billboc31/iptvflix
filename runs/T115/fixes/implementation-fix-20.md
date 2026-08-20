@@ -1,0 +1,117 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T115/reviews/implementation-review.md
+- generated at: 2026-08-20T20:41:49Z
+
+---
+
+---
+
+# PR Review — T115 — Complete catalog enrichment and make refresh failures resumable/observable
+
+## Résumé
+
+L'implémentation est complète au niveau du code. Les deux majeurs de la review précédente (filtrage `retryFailures` sur `retryable=true` par défaut, persistance des échecs de saisons) ont été corrigés. Tous les mineurs également. Le seul bloquant restant est opérationnel et non-code : la completion rule du ticket exige un passage sur le catalogue de production, qui nécessite une authentification `flyctl` que l'agent IA ne peut pas effectuer.
+
+---
+
+## Vérifications effectuées
+
+- Relecture complète de `catalog-enrich-missing-service.ts` (429 lignes), `metadata-enrichment-service.ts`, `catalog-stats.ts`, `catalog-enrich-missing.ts`, `embedding-eligibility.ts`, `enrichment-failures.ts` (schema).
+- Vérification des corrections des deux majeurs de review-20 : filtrage `retryFailures` (ligne 381) et persistance `enrichSeriesSeasons` (lignes 437-452).
+- Vérification des mineurs corrigés : log `persistFrenchLocalization` (ligne 770), run vide `retryFailures` (retour anticipé ligne 386-388), commentaires `fullyEnriched`, champ `enrichedWithSeasonFailures`.
+- Vérification du rapport de run local (`production-run-20260819.md`) et de `implementation-output.md`.
+- Vérification du playbook de run production (`production-run-playbook.md`).
+
+---
+
+## Points validés
+
+**Failure observability (AC1)**
+- `classifyError()` capture correctement le nom du constructeur (`PostgresError`), le code driver (`23502`), et le message — plus de "Failed query: update...".
+- `persistFailure()` upsert idempotent sur `(media_type, media_id)`, incrémente `retryCount`.
+- Stages `fetch`, `map`, `db_update`, `seasons` correctement distingués.
+- `clearFailure()` appelée sur succès pour chaque media.
+- Test unitaire vérifie la capture de `PostgresError` avec `errorClass`, `errorCode`, `errorMessage`.
+
+**Corrections des majeurs review-20**
+- `retryFailures` : filtre `retryable=true` par défaut (ligne 381), `force=true` pour inclure les terminaux. La route passe bien `force: body?.force`.
+- `enrichSeriesSeasons` : l'échec est maintenant persisté avec `stage: 'seasons'`, `seasonsFailed=true` → retour `'terminal-failed'`.
+
+**Corrections des mineurs review-20**
+- `retryFailures` avec 0 échecs : retourne `{ runId: null, queued: 0 }` sans créer de run COMPLETED.
+- `persistFrenchLocalization` : émet `console.warn` sur échec avec `mediaType` et `mediaId`.
+- `fullyEnriched` : commentaire explicatif dans `catalog-stats.ts` (lignes 47-53, 69-76).
+- `enrichedWithSeasonFailures` : champ ajouté dans les stats séries pour documenter le chevauchement "enriched AND failedLastEnrichment".
+
+**TMDB normalization (AC2)**
+- `runtime: 0` → `null`, `imdb_id: ""` → `null`, `overview: "   "` → `null`.
+- `MetadataMappingError` distingue erreur de mapping vs erreur réseau.
+
+**Enrich-missing mode (AC3/AC4)**
+- Pagination curseur `WHERE id > lastId ORDER BY id LIMIT batchSize` — aucun drift d'offset.
+- Checkpoint JSONB persisté après chaque batch — resumable sur crash.
+- Idempotence : titres frais sautés par défaut.
+- `countEligible` correct pour le total eligible de départ.
+
+**Terminal failure persistence (AC5)**
+- Table `enrichment_failures` : tous les champs du ticket présents (mediaType, mediaId, tmdbId, title, stage, errorClass, errorCode, errorMessage, retryCount, occurredAt, retryable).
+- API : `GET /failures?page=&limit=&mediaType=&retryable=`, `POST /retry-failures`.
+
+**Catalog stats (AC6)**
+- Champs : neverEnriched, partiallyEnriched, fullyEnriched, stale, failedLastEnrichment, enrichedWithSeasonFailures, embeddingEligible, embeddingBlocked, embeddingPending.
+- `embeddingPending` calculé par `NOT EXISTS (SELECT 1 FROM media_embeddings ...)` réel.
+
+**Embedding eligibility (AC8)**
+- `embedding-eligibility.ts` : politique documentée — `metadataEnrichedAt IS NOT NULL` = condition minimale, champs préférés listés mais non bloquants.
+- Cohérence des trois représentations (fonction TS, SQL brut, Drizzle condition) documentée.
+
+---
+
+## Problèmes détectés
+
+### [BLOQUANT] — Completion rule non satisfaite : run production non exécuté
+
+Le ticket est explicite et non-négociable :
+> "Do not close after unit tests. Run the new enrichment mode against production (or an equivalent restored production snapshot), publish before/after counts, and show the remaining terminal failures with their real causes."
+
+Et le dernier acceptance criteria :
+> "Run against the real production catalog and demonstrate meaningful reduction of incomplete titles and successful retry/fix of the previous failure population."
+
+Le run local de `production-run-20260819.md` porte sur **6 films de dev** (dont 1 avec TMDB ID fictif). Il ne constitue pas une production run au sens du ticket. Le `production-run-playbook.md` est prêt mais non exécuté.
+
+**Cause** : `flyctl auth login` requis, DNS production non résolvable depuis l'environnement de l'agent IA. Action humaine obligatoire.
+
+**Action requise** : Un opérateur humain doit exécuter le playbook `runs/T115/production-run-playbook.md` — authentification Fly.io, migrations vérifiées, stats avant/après, liste des failures avec vraies causes — et publier les résultats dans un artefact `runs/T115/production-run-YYYYMMDD.md`.
+
+---
+
+### [MINEUR] — Échecs de saisons retryables non retentés par `enrichWithRetry`
+
+Dans `enrichSeries`, la valeur de `retryable` calculée par `persistFailure` (ligne 443) est **ignorée** — la fonction retourne toujours `'terminal-failed'` sur échec de saisons. En conséquence, `enrichWithRetry` dans `execute()` ne tente pas de relancer le traitement (elle ne rejoue que sur `'provider-failed'`). Un échec réseau transitoire sur `enrichSeriesSeasons` n'est donc pas retenté automatiquement dans le batch courant.
+
+Ce cas est couvert par `POST /retry-failures` (qui sélectionne les `retryable=true`), mais l'opérateur doit le déclencher manuellement. Comportement acceptable en l'état, mais à documenter si ce gap cause de la confusion.
+
+---
+
+## Risques éventuels
+
+- **Ghost run** : si un run ENRICH_MISSING reste en statut RUNNING indéfiniment (crash sans update), aucun nouveau run ne peut démarrer. Pas de timeout/cleanup automatique. Risque opérationnel faible mais réel en production.
+- **Rate limit TMDB** : backoff 250/500/1000ms peut être insuffisant en cas de 429 soutenu sur un catalogue de 60k titres. Le `throttleMs` entre batches atténue, mais pas garantie.
+- **`mediaType` non contraint en DB** : colonne `text` dans `enrichment_failures`, pas de CHECK CONSTRAINT. TypeScript protège mais un bug applicatif passerait inaperçu.
+
+---
+
+## Décision
+
+L'implémentation code est complète et correcte. Tous les problèmes des reviews précédentes sont résolus. Le seul bloquant restant est opérationnel : le ticket impose explicitement un run sur le catalogue de production, que l'agent IA ne peut pas exécuter sans authentification Fly.io humaine.
+
+La review ne peut pas approuver sans cet artefact de validation production.
+
+## Actions demandées
+
+1. **[BLOQUANT]** Exécuter `runs/T115/production-run-playbook.md` sur le catalogue de production avec un opérateur authentifié. Publier dans `runs/T115/production-run-YYYYMMDD.md` : stats before/after (`/admin/catalog-stats`), liste des failures avec vraies causes (`/admin/catalog-enrich-missing/failures`), réduction observable du nombre de titres incomplets.
+2. **[MINEUR, optionnel]** Documenter dans `production-run-playbook.md` ou dans `enrichSeries` que les échecs de saisons transitoires nécessitent un appel manuel à `retry-failures` pour être retraités.
+
+IMPLEMENTATION_FIX_REQUIRED

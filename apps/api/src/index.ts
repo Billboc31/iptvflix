@@ -43,6 +43,7 @@ import { reconcileRoutes, episodeBackfillRoutes } from './routes/reconcile.js'
 import { catalogBootstrapRoutes } from './routes/catalog-bootstrap.js'
 import { catalogRefreshRoutes } from './routes/catalog-refresh.js'
 import { catalogStatsRoutes } from './routes/catalog-stats.js'
+import { catalogEnrichMissingRoutes } from './routes/catalog-enrich-missing.js'
 import { embeddingBackfillRoutes } from './routes/embedding-backfill.js'
 import { recommendationLabRoutes } from './routes/recommendation-lab.js'
 import { shelfConceptsRoutes } from './routes/shelf-concepts.js'
@@ -87,6 +88,7 @@ import { MediaReconciliationService } from './services/media-reconciliation-serv
 import { EpisodeBackfillService } from './services/episode-backfill-service.js'
 import { CatalogBootstrapService } from './services/catalog-bootstrap-service.js'
 import { CatalogRefreshService } from './services/catalog-refresh-service.js'
+import { CatalogEnrichMissingService } from './services/catalog-enrich-missing-service.js'
 import { EmbeddingService } from './services/embedding-service.js'
 import { createDefaultProvider } from './services/embedding-provider.js'
 import { triggerSync, setOnNewEpisodeHook } from './services/sync-runs-service.js'
@@ -198,6 +200,9 @@ await app.register(async function protectedScope(protectedApp) {
     )
     await protectedApp.register(catalogRefreshRoutes, { service: refreshService })
     catalogRefreshServiceRef = refreshService
+
+    const enrichMissingService = new CatalogEnrichMissingService(db, refreshEnrichmentService)
+    await protectedApp.register(catalogEnrichMissingRoutes, { service: enrichMissingService })
   }
 
   await protectedApp.register(catalogStatsRoutes)

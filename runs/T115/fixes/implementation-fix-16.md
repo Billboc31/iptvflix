@@ -1,0 +1,164 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T115/reviews/implementation-review.md
+- generated at: 2026-08-19T16:17:36Z
+
+---
+
+Now I have all the information I need. Let me write the structured review.
+
+---
+
+## PR Review — T115: Complete catalog enrichment and make refresh failures resumable/observable
+
+### Résumé
+
+L'implémentation couvre correctement l'essentiel du ticket : table de persistance des échecs (`enrichment_failures`), service `CatalogEnrichMissingService` avec pagination curseur et reprise, normalisation TMDB, endpoint `/admin/catalog-stats`, politique d'éligibilité aux embeddings. La qualité du code est globalement bonne et la sécurité est respectée. Trois problèmes bloquants ont été identifiés.
+
+---
+
+### Vérifications effectuées
+
+- Lecture complète de `catalog-enrich-missing-service.ts`, `metadata-enrichment-service.ts`, `catalog-stats.ts`, `embedding-eligibility.ts`, `tmdb/client.ts`
+- Vérification des migrations SQL (`0046`, `0047`)
+- Inspection du schéma `enrichment_failures` et `catalog_refresh_runs`
+- Revue des routes API et de la gestion des conflits de run
+- Analyse des tests unitaires `t115-enrichment.test.ts`
+- Confrontation avec les critères d'acceptance du ticket
+
+---
+
+### Points validés
+
+**Observabilité des échecs**
+- `persistFailure()` persiste class d'erreur, code PostgreSQL/driver, message réel, stage (`fetch`, `map`, `db_update`, `seasons`), `retryCount`, `retryable` — exactement ce que le ticket demande.
+- La logique `classifyError()` classe correctement les erreurs réseau/rate-limit comme retryables et les erreurs DB (contraintes) comme terminales.
+- L'upsert sur `(media_type, media_id)` incrémente `retry_count` — correct pour le cas d'usage.
+- `clearFailure()` est appelé après succès — les failures sont nettoyées quand le problème est résolu.
+
+**Normalisation TMDB**
+- `runtime || null` (0 → null), `imdb_id || null` ('' → null), `overview?.trim() || null` (whitespace → null) — tous les cas du ticket couverts dans `mapMovieDetail()`.
+- `mapSeriesDetail()` applique le même pattern pour `overview`.
+
+**Service enrich-missing**
+- Pagination curseur déterministe par `id ASC` avec `gt(table.id, lastId)` — correct.
+- Idempotent : les lignes `metadataEnrichedAt IS NOT NULL` fraîches sont skippées (sauf `force: true`).
+- Concurrence configurable via `runWithConcurrency` avec un implémentation correcte du pool.
+- Retry transient : 3 tentatives avec délais [250ms, 500ms, 1000ms] avant de marquer terminal.
+- `saveCheckpoint()` est appelé après chaque batch — résistant aux interruptions.
+- Conflit de run géré à deux niveaux : check applicatif + index partiel DB sur `(status) WHERE status = 'RUNNING'` + catch `23505` — protection contre les race conditions TOCTOU.
+
+**Catalog stats**
+- Distingue correctement : `total`, `neverEnriched`, `partiallyEnriched`, `fullyEnriched`, `stale`, `failedLastEnrichment`, `embeddingEligible`, `embeddingPending`.
+- `embeddingPending` reflète les titres éligibles sans embedding row — ne rapporte plus 0 incorrectement.
+- 12 requêtes en parallèle via `Promise.all` — efficace.
+
+**Politique d'éligibilité embedding**
+- Documentée explicitement dans `embedding-eligibility.ts` avec un commentaire sur les champs requis vs préférés.
+- Triple forme (fonction TS, prédicat SQL brut, builder Drizzle) pour les différents contextes d'usage.
+
+---
+
+### Problèmes détectés
+
+#### BLOQUANT 1 — Bug dans la logique de merge du checkpoint `resumeRunId`
+
+**Fichier** : `catalog-enrich-missing-service.ts:163-169`
+
+```typescript
+checkpoint.movies.done = prev.movies.done && !mediaTypes.includes('MOVIE')
+```
+
+La condition est inversée. Scénario : run précédent a terminé MOVIE (`prev.movies.done = true`) et le nouvel appel inclut MOVIE (`mediaTypes.includes('MOVIE') = true`).
+
+Résultat actuel : `true && false = false` → movies **recommence depuis le début** (lastId = null) malgré `prev.movies.done = true`.
+
+Résultat attendu : si MOVIE était déjà terminé dans le run précédent, rester `done = true`.
+
+Correction :
+```typescript
+checkpoint.movies.done = prev.movies.done || !mediaTypes.includes('MOVIE')
+checkpoint.series.done = prev.series.done || !mediaTypes.includes('SERIES')
+```
+
+Ce bug rend la fonctionnalité `resumeRunId` inefficace — elle redémarre à zéro pour les types déjà complétés au lieu de reprendre là où le run précédent s'est arrêté.
+
+---
+
+#### BLOQUANT 2 — `enrichSeries` retourne `'enriched'` même quand l'enrichissement des saisons échoue
+
+**Fichier** : `metadata-enrichment-service.ts:437-458`
+
+```typescript
+let seasonsFailed = false
+try {
+  await this.enrichSeriesSeasons(seriesId)
+} catch (err) {
+  seasonsFailed = true
+  await this.persistFailure({ ..., stage: 'seasons', ... })
+}
+
+if (!seasonsFailed) {
+  await this.clearFailure('SERIES', seriesId)
+}
+this.onEnriched?.(seriesId, 'SERIES')  // ← appelé même si seasons failed
+return 'enriched'                        // ← retourné même si seasons failed
+```
+
+Conséquences :
+- Le service `CatalogEnrichMissingService` incrémente `stats.enriched` pour ce titre.
+- `metadataEnrichedAt` est setté → la série ne sera pas re-traitée avant 30 jours.
+- La série apparaît simultanément dans `enriched` ET dans `failedLastEnrichment` de `/admin/catalog-stats`.
+- `onEnriched` est appelé, potentiellement déclenchant des actions (indexation embeddings) sur une série incomplète.
+
+La série avec échec de saisons doit soit retourner `'terminal-failed'` (si les épisodes sont essentiels), soit retourner `'enriched'` mais ne pas appeler `persistFailure` pour ne pas polluer les stats de failures. L'état actuel est incohérent.
+
+---
+
+#### BLOQUANT 3 — Critère de complétion non satisfait
+
+Le ticket spécifie explicitement :
+
+> **Completion rule**: Do not close after unit tests. Run the new enrichment mode against production (or an equivalent restored production snapshot), publish before/after counts, and show the remaining terminal failures with their real causes.
+
+L'implémentation fournit des tests unitaires mais **aucun artefact de run production** : pas de before/after counts, pas de liste des failures terminales avec causes réelles, pas de démonstration de réduction des titres incomplets.
+
+Ce critère est une condition de fermeture du ticket, pas une acceptance criterion optionnelle.
+
+---
+
+### Risques éventuels
+
+**Mineur — `retryFailures` n'update pas `failedCount`**
+(`catalog-enrich-missing-service.ts:419-423`) : le run de retry se termine avec `status: 'COMPLETED'` mais sans `failedCount`. Peu d'impact fonctionnel mais les métriques de run sont incomplètes.
+
+**Mineur — Conflit de run inter-types**
+L'index partiel `catalog_refresh_runs_running_idx` n'autorise qu'un seul RUNNING toutes tables confondues. Un REFRESH en cours bloque l'ENRICH_MISSING et vice versa. C'est safe mais potentiellement surprenant pour l'admin qui veut lancer un enrichissement indépendant pendant un refresh de routine. Devrait au minimum être documenté dans le message d'erreur 409.
+
+**Mineur — `imdbId: null` hardcodé pour les séries**
+(`client.ts:100`) : `mapSeriesDetail` retourne toujours `imdbId: null`. La méthode `getSeriesExternalIds` existe et retourne l'IMDb ID, mais n'est pas intégrée dans l'enrichissement des séries. Si `series.imdbId` a une contrainte NOT NULL en base, cela échouera silencieusement. À vérifier.
+
+**Mineur — Raw SQL avec `sql.raw()` dans catalog-stats**
+(`catalog-stats.ts:105-119`) : `sql.raw(EMBEDDING_ELIGIBLE_SQL_PREDICATE)` injecte une constante statique définie dans le code — pas un risque de sécurité actuel, mais le pattern est à surveiller si le prédicat devenait dynamique.
+
+---
+
+### Décision
+
+- REQUEST_CHANGES
+
+---
+
+### Actions demandées
+
+1. **Corriger le bug `resumeRunId`** dans `catalog-enrich-missing-service.ts:163-169` — inverser la logique `done` pour les deux types media.
+
+2. **Trancher le comportement `enrichSeries` + seasons failure** dans `metadata-enrichment-service.ts:437-458` — soit retourner `'terminal-failed'` avec seasons failure, soit ne pas persister de failure pour que la série n'apparaisse pas dans `failedLastEnrichment`. Supprimer l'appel à `onEnriched` si `seasonsFailed`.
+
+3. **Exécuter le mode `enrich-missing` sur production** et publier :
+   - Counts avant/après (total eligible, enriched, neverEnriched)
+   - Liste des failures terminales avec leur vraie cause (error_class, error_code, error_message, stage)
+   - Confirmation de la réduction vers zéro eligible incomplets
+
+IMPLEMENTATION_FIX_REQUIRED

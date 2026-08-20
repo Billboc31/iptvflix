@@ -1,9 +1,10 @@
-import { isNotNull, asc, and, gt, or, eq, sql } from 'drizzle-orm'
+import { asc, and, gt, or, eq, sql } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import type * as schema from '../db/schema/index.js'
 import { movies } from '../db/schema/movies.js'
 import { series } from '../db/schema/series.js'
 import type { EmbeddingService } from './embedding-service.js'
+import { embeddingEligibleCondition } from './embedding-eligibility.js'
 
 type Db = PostgresJsDatabase<typeof schema>
 
@@ -122,7 +123,7 @@ async function backfillMediaType(
           .from(table)
           .where(
             and(
-              isNotNull(table.metadataEnrichedAt),
+              embeddingEligibleCondition(table.metadataEnrichedAt),
               or(
                 gt(table.createdAt, cursor.createdAt),
                 and(eq(table.createdAt, cursor.createdAt), sql`${table.id} > ${cursor.id}`),
@@ -134,7 +135,7 @@ async function backfillMediaType(
       : db
           .select({ id: table.id, createdAt: table.createdAt })
           .from(table)
-          .where(isNotNull(table.metadataEnrichedAt))
+          .where(embeddingEligibleCondition(table.metadataEnrichedAt))
           .orderBy(asc(table.createdAt), asc(table.id))
           .limit(batchSize))
 

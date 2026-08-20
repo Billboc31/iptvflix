@@ -1,0 +1,105 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T115/reviews/implementation-review.md
+- generated at: 2026-08-20T21:44:31Z
+
+---
+
+Now I have a complete picture. Let me write the review.
+
+---
+
+# PR Review — T115 : Complete catalog enrichment and make refresh failures resumable/observable
+## Attempt 30
+
+## Résumé
+
+L'implémentation est **techniquement complète, correcte, et inchangée depuis la review-24**. Les 33 tests passent. L'ensemble des fichiers source, migrations et routes a été validé dans les cycles précédents. Le seul blocage restant est **opérationnel** : la Completion Rule du ticket exige un run en production que seul un humain avec accès Fly.io peut déclencher. Aucun cycle IA supplémentaire ne peut débloquer cette situation.
+
+---
+
+## Vérifications effectuées
+
+| Fichier | Statut |
+|---|---|
+| `tmdb/client.ts` — `runtime=0` → `null`, `imdb_id=""` → `null`, `overview` blank → `null` | ✓ |
+| `metadata-enrichment-service.ts` — `classifyError()`, `persistFailure()`, `clearFailure()` | ✓ |
+| `catalog-enrich-missing-service.ts` — keyset cursor, checkpoint par batch, retry 3× backoff, idempotence | ✓ |
+| `routes/catalog-enrich-missing.ts` — 4 routes, validation bounds, 202/409/404, `force` passé correctement (fix coder-12) | ✓ |
+| `routes/catalog-stats.ts` — agrégats parallèles, `embeddingPending` via `NOT EXISTS` réel | ✓ |
+| `embedding-eligibility.ts` — source unique partagée stats + backfill | ✓ |
+| `0047_t115_catalog_refresh_runs_type.sql` | ✓ |
+| `0048_t115_enrichment_failures.sql` | ✓ |
+| `index.ts` — routes enregistrées | ✓ |
+
+---
+
+## Points validés
+
+**Normalisation TMDB** — `mapMovieDetail()` et `mapSeriesDetail()` : `raw.runtime || null`, `raw.imdb_id || null`, `raw.overview?.trim() || null` — aucune valeur vide ne peut provoquer une violation de contrainte DB.
+
+**Observabilité des échecs** — `classifyError()` extrait `constructor.name`, code PG, message brut (pas la requête SQL). `persistFailure()` upsert sur `(media_type, media_id)` avec incrément de `retry_count`. Stages : `fetch`, `map`, `db_update`, `seasons`. `clearFailure()` nettoie sur succès.
+
+**Mode enrich-missing** — Pagination keyset (`WHERE id > :lastId`), éligibilité `tmdbId IS NOT NULL AND matchStatus = 'MATCHED' AND (metadataEnrichedAt IS NULL OR stale)`, checkpoint après chaque batch, idempotence via recency check, protection concurrence (`checkNoRunningConflict()` + catch `23505`).
+
+**Routes** — Validation des bornes, 202 Accepted asynchrone, 409 si run déjà actif, `force` propagé (fix coder-12).
+
+**Catalog stats** — `neverEnriched`, `partiallyEnriched`, `fullyEnriched`, `stale`, `failedLastEnrichment`, `embeddingPending` non hardcodé.
+
+**Sécurité** — Aucun secret loggué ; paramètres validés côté route.
+
+---
+
+## Problèmes détectés
+
+### [BLOQUANT — Opérationnel] Completion Rule non satisfaite
+
+Le ticket stipule explicitement :
+
+> **Completion rule** : Do not close after unit tests. Run the new enrichment mode against production (or an equivalent restored production snapshot), publish before/after counts, and show the remaining terminal failures with their real causes.
+
+Et l'acceptance criterion correspondant :
+
+> Run against the real production catalog and demonstrate meaningful reduction of incomplete titles and successful retry/fix of the previous failure population.
+
+Le seul rapport existant (`production-run-20260819.md`) est un run **local dev DB** (6 films, environnement explicitement hors-production) :
+
+> *"Production API (api.iptvflix.com) not DNS-resolvable from this environment; Fly.io unauthenticated."*
+
+Il n'existe aucun `production-run-*.md` avec des données à l'échelle production (~60k films / ~5k séries). Les 126 failures connues n'ont pas été diagnostiquées avec leur vraie cause DB.
+
+**Ce blocage est purement opérationnel. Aucun cycle IA supplémentaire n'est utile ici.**
+
+---
+
+## Risques éventuels (mineurs, non bloquants)
+
+- **`retryFailures()` sans checkpoint live** : statut figé pendant un retry sur grand lot. Acceptable — le ticket ne demande pas de monitoring temps-réel des retries.
+- **Compteur `retrying`** mesure des tentatives, pas des items uniques. Documenté dans le code.
+
+---
+
+## Décision
+
+`IMPLEMENTATION_FIX_REQUIRED` — non pour une raison de code (l'implémentation est correcte et complète), mais parce que le critère d'acceptance opérationnel explicite du ticket n'est pas satisfait. La Completion Rule est non négociable selon les termes du ticket.
+
+---
+
+## Actions demandées
+
+**Humain uniquement — aucun agent IA ne peut exécuter cette étape :**
+
+1. `flyctl auth login` (ou accès direct à `DATABASE_URL`)
+2. Vérifier migrations : `psql $DATABASE_URL -c "SELECT tag FROM drizzle.__drizzle_migrations ORDER BY created_at DESC LIMIT 5"` — confirmer `0047` et `0048` présents
+3. `GET /admin/catalog-stats` → capturer l'état avant (~60k films, ~5k séries attendus)
+4. `POST /admin/catalog-enrich-missing` `{"batchSize":50,"concurrency":3,"throttleMs":500}` → capturer `runId`
+5. Poller `GET /admin/catalog-enrich-missing/status` jusqu'à `"status":"COMPLETED"`
+6. `GET /admin/catalog-stats` → capturer l'état après
+7. `GET /admin/catalog-enrich-missing/failures?limit=200` → capturer les failures terminales avec `errorClass`, `errorCode`, `errorMessage` réels (dont celle pour `Les Chevaliers du Fiel`)
+8. `POST /admin/catalog-enrich-missing/retry-failures {"force":true}` → retenter les 126 failures connues
+9. Créer `runs/T115/production-run-20260820.md` avec ce rapport et commiter sur la branche
+
+Le playbook complet est dans `runs/T115/production-run-playbook.md`.
+
+IMPLEMENTATION_FIX_REQUIRED

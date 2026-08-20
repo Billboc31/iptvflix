@@ -1,0 +1,1 @@
+{"version":3,"file":"query-plan-fallback.d.ts","sourceRoot":"","sources":["../src/query-plan-fallback.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,uBAAuB,EAAE,MAAM,yBAAyB,CAAA;AAEtE,kIAAkI;AAClI,eAAO,MAAM,yBAAyB,EAAG,GAAY,CAAA;AAErD,wBAAgB,oBAAoB,CAAC,QAAQ,EAAE,MAAM,GAAG,uBAAuB,CAgB9E"}

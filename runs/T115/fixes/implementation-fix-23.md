@@ -1,0 +1,99 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T115/reviews/implementation-review.md
+- generated at: 2026-08-20T21:07:31Z
+
+---
+
+I have a complete picture. Let me write the review.
+
+---
+
+# PR Review — T115: Complete Catalog Enrichment and Make Refresh Failures Resumable/Observable
+
+## Résumé
+
+Coder-attempt-23 résout correctement les deux problèmes mineurs identifiés lors de la review précédente. L'implémentation technique est complète, propre et bien testée (33 tests). Le **seul blocage restant** est le **Completion Rule** du ticket, toujours non honoré : aucun run sur le catalogue de production réel n'a été exécuté et aucun résultat avant/après n'a été publié.
+
+---
+
+## Vérifications effectuées
+
+- Lecture du diff complet de coder-attempt-23 (`catalog-enrich-missing-service.ts`, `enrichment-failures.ts`)
+- Relecture du service complet `CatalogEnrichMissingService` pour valider la correction des mineurs
+- Lecture de l'`implementation-output.md` pour comprendre ce qui a été fait
+- Lecture du rapport de run (`production-run-20260819.md`) pour confirmer qu'aucun run production n'a été ajouté
+- Consultation de la review précédente (`reviews/implementation-review.md`) pour vérifier que toutes les demandes ont été traitées
+
+---
+
+## Points validés depuis la review précédente
+
+**[Mineur résolu] `retryFailures()` trace maintenant les stats dans le checkpoint**
+
+Le diff montre :
+- Ajout d'un objet `stats` avec `totalEligible`, `processed`, `enriched`, `skipped`, `retrying`, `failedTerminal`
+- Comptage par item dans les callbacks `onRetry` et dans le try/catch per-item
+- Construction de `finalCheckpoint = { stats: { ...stats, remaining: stats.failedTerminal, ratePerMinute: 0, etaSeconds: null } }` dans le `.then()` handler
+- Mise à jour du run avec `checkpoint: finalCheckpoint` et `failedCount: stats.failedTerminal`
+
+La correction est correcte. `GET /admin/catalog-enrich-missing/status` après un retry run retournera maintenant des stats significatives au lieu de `"stats": null`. La sémantique de `remaining: stats.failedTerminal` est cohérente pour un retry run (= items qui ont encore échoué après le retry). La valeur `ratePerMinute: 0` est acceptable pour un run complété sans suivi de timing.
+
+**[Mineur résolu] `retryCount: 0` — commentaire de clarification ajouté**
+
+```typescript
+// 0 = initial failure, no retry attempted; incremented on each subsequent retry
+retryCount: integer('retry_count').notNull().default(0),
+```
+
+Suffisant. La sémantique est maintenant documentée au niveau du schéma.
+
+**Vérification de la cohérence stats.retrying dans retryFailures()**
+
+Le `stats.retrying++` est passé comme callback `onRetry` à `enrichWithRetry()`, ce qui est cohérent avec le comportement de `execute()`. Le commentaire JSDoc `/** Counts retry *attempts*, not unique items */` dans `EnrichMissingStats` couvre ce comportement. Pas d'incohérence.
+
+---
+
+## Problèmes détectés
+
+### [BLOQUANT] Completion Rule non respectée — run production absent
+
+Le ticket stipule explicitement :
+
+> **Completion rule** : Do not close after unit tests. Run the new enrichment mode against production (or an equivalent restored production snapshot), publish before/after counts, and show the remaining terminal failures with their real causes.
+
+Le rapport `runs/T115/production-run-20260819.md` reste inchangé depuis la review précédente : run sur base locale avec 6 films seulement (dont 1 cas de test artificiel avec TMDB ID `99999999`). Ce run ne constitue pas une validation au sens du Completion Rule.
+
+**Ce que le Completion Rule exige et qui n'est pas démontré :**
+- Stats avant/après sur le catalogue de production réel (~60k films / ~5k séries)
+- Réduction mesurable de `neverEnriched` / `partiallyEnriched` sur le vrai catalogue
+- Causes réelles des 126 échecs de production (notamment `Les Chevaliers du Fiel : L'assassin est dans la salle` avec son vrai TMDB ID — pas le 99999999 artificiel)
+- Comportement de la pagination keyset et du checkpoint sur volume réel
+- Comportement de la migration 0047 sur une table de production non vide
+
+**Ce blocage ne peut pas être levé par un changement de code.** Il requiert une action humaine : exécuter le `production-run-playbook.md` avec accès Fly.io authentifié et publier le rapport résultant dans `runs/T115/production-run-YYYYMMDD.md`.
+
+---
+
+## Risques éventuels
+
+*(Inchangés depuis la review précédente)*
+
+1. **Stats query à l'échelle** : 13 requêtes agrégées parallèles sur 60k lignes sans cache. À monitorer après déploiement.
+2. **Conflict 409 avec refresh planifié** : documenté dans le playbook, comportement correct.
+3. **Rate limiting TMDB** : `throttleMs ≥ 500ms` recommandé pour les runs production sur grande volumétrie.
+
+---
+
+## Décision
+
+Les deux corrections demandées lors de la review précédente sont livrées correctement. L'implémentation technique est finalisée.
+
+Le seul motif de blocage est le **Completion Rule non exécuté** — étape opérationnelle qui requiert un accès Fly.io humain. Le playbook est prêt et complet ; l'implémentation peut être approuvée dès que les résultats du run production (avant/après stats + liste des failures réelles) sont publiés dans `runs/T115/`.
+
+**Action requise (humaine) :** exécuter le playbook `runs/T115/production-run-playbook.md` contre l'environnement de production, attacher le rapport dans `runs/T115/production-run-YYYYMMDD.md`, puis relancer la review.
+
+---
+
+IMPLEMENTATION_FIX_REQUIRED

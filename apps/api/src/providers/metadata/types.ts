@@ -99,6 +99,13 @@ export interface ExternalSeasonEpisode {
   voteCount?: number | null
 }
 
+export class MetadataMappingError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'MetadataMappingError'
+  }
+}
+
 export type DiscoveryFeed = 'popular' | 'trending' | 'upcoming' | 'now_playing' | 'airing_today'
 
 export type DiscoverParams = { genreId?: number; language?: string }

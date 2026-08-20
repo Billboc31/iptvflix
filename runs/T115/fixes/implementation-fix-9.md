@@ -1,0 +1,173 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T115/reviews/implementation-review.md
+- generated at: 2026-08-19T15:04:41Z
+
+---
+
+I have all the information needed. Here is my review.
+
+---
+
+# PR Review — T115 Complete catalog enrichment and refresh failure observability
+
+## Résumé
+
+L'implémentation livre l'ensemble des mécanismes demandés (passe `enrich-missing` resumable, persistance des échecs, stats catalog, politique d'éligibilité embedding, normalisation TMDB). La qualité du code est solide. Cependant, le critère de complétion explicite du ticket — exécuter la passe contre le catalogue de production (~60 k films / ~5 k séries) et publier les compteurs avant/après avec les vraies causes d'échec — n'est pas satisfait. La validation locale porte sur 5 films de dev. C'est un bloquant selon le ticket lui-même.
+
+Plusieurs points mineurs sont aussi identifiés.
+
+---
+
+## Vérifications effectuées
+
+- Lecture complète de `catalog-enrich-missing-service.ts`, `metadata-enrichment-service.ts`, `catalog-stats.ts`, `embedding-eligibility.ts`, `enrichment-failures.ts` (schema), `catalog-refresh-runs.ts` (schema), `tmdb/client.ts`, migrations `0046` et `0047`.
+- Lecture des artefacts de run : `local-validation-run-20260819.md`, `implementation-output.md`.
+- Vérification des tests de normalisation (`t115-normalization.test.ts`).
+- Vérification du `workflow-status.md`.
+
+---
+
+## Points validés
+
+**Architecture et design**
+- Passe `enrich-missing` cursor-based (`gt(table.id, lastId)` + `orderBy(asc(table.id))`), idempotente, avec checkpoint JSONB persisté en DB après chaque batch. Correct.
+- `retryWithTransient` : 3 tentatives avec délais bornés, retryable vs terminal distingués. Correct.
+- Concurrence contrôlée via `runWithConcurrency()`, aucune goroutine incontrôlée.
+- `enrichmentFailures` : tous les champs requis par le ticket présents (`mediaType`, `mediaId`, `tmdbId`, `title`, `stage`, `errorClass`, `errorCode`, `errorMessage`, `retryCount`, `occurredAt`, `retryable`). L'upsert par `(mediaType, mediaId)` est cohérent.
+- `classifyError()` distingue réseau/rate-limit (retryable) vs erreurs DB/mapping (terminal). Correct.
+- `persistFailure()` capture l'erreur DB réelle (et non plus "Failed query: ...") avec le stage `db_update`. Répond au root-cause de la production failure mentionné dans le ticket.
+- `clearFailure()` appelée après succès dans `enrichMovie`/`enrichSeries` — le record d'échec est supprimé quand l'item est enrichi avec succès.
+- `catalog-stats` expose : total, enriched, partial, fully, never, stale, failedLastEnrichment, embeddingEligible, embeddingBlocked, embeddingPending.
+- `embeddingPending` calculé par lookup dans `media_embeddings` — ne retourne plus 0 quand le corpus n'existe pas.
+- Normalisation TMDB : `runtime: 0 → null`, `imdb_id: '' → null`, `overview: '   ' → null` — testée explicitement et comportement intentionnel documenté.
+- Routes admin : POST start, GET status, GET failures (filtres page/mediaType/retryable), POST retry-failures. API complète.
+- Migrations numérotées correctement (`0046`, `0047`), journal mis à jour.
+
+---
+
+## Problèmes détectés
+
+### 🔴 BLOQUANT — Production run non exécutée
+
+Le ticket est explicite :
+
+> **Completion rule**: Do not close after unit tests. Run the new enrichment mode against production (or an equivalent restored production snapshot), publish before/after counts, and show the remaining terminal failures with their real causes.
+
+La validation locale (`local-validation-run-20260819.md`) porte sur **5 films de dev** dont 2 sans `tmdbId`. Elle ne constitue pas une production run, ni un snapshot restauré. L'artefact `production-run-YYYYMMDD.md` n'existe pas.
+
+Les acceptance criteria suivants ne sont pas démontrés :
+- *"Run against the real production catalog and demonstrate meaningful reduction of incomplete titles and successful retry/fix of the previous failure population."*
+- *"Terminal failures are persisted/listable and individually retryable"* — non démontré sur des vrais échecs de production.
+- *"Production refresh failure root causes are observable with the real DB error"* — non démontré sur les 126 vrais échecs.
+
+**Action requise** : Exécuter `POST /admin/catalog-enrich-missing` contre production (ou snapshot restauré), publier le `GET /admin/catalog-stats` avant/après, et `GET /admin/catalog-enrich-missing/failures` avec les causes réelles.
+
+---
+
+### 🟠 MAJEUR — `retryFailures` inclut les échecs terminaux (non-retryable)
+
+`apps/api/src/services/catalog-enrich-missing-service.ts` lignes 343–347 :
+
+```typescript
+const conditions = []
+if (mediaType) conditions.push(eq(enrichmentFailures.mediaType, mediaType))
+if (ids && ids.length > 0) conditions.push(inArray(enrichmentFailures.mediaId, ids))
+const where = conditions.length > 0 ? and(...conditions) : undefined
+const failures = await this.db.select().from(enrichmentFailures).where(where)
+```
+
+Sans filtre sur `retryable`, `retryFailures()` va tenter de ré-enrichir **tous** les échecs, y compris les terminaux (par exemple les 404 TMDB, qui ne passeront jamais). Ce comportement peut être intentionnel ("force retry"), mais il n'est pas documenté et peut entraîner une boucle inutile sur des échecs permanents.
+
+**Action requise** : Soit filtrer par défaut sur `retryable = true` et ajouter un flag `force` explicite pour forcer le retry des terminaux, soit documenter clairement le comportement actuel dans le commentaire ou la réponse API.
+
+---
+
+### 🟠 MAJEUR — Échecs de saisonnement non persistés dans `enrichment_failures`
+
+`apps/api/src/services/metadata-enrichment-service.ts` lignes 438–440 :
+
+```typescript
+} catch (err) {
+  console.warn(`[enrichment] enrichSeriesSeasons(${seriesId}) failed:`, err)
+}
+```
+
+Les échecs d'enrichissement des saisons/épisodes sont seulement loggés en console. Ils n'apparaissent pas dans `GET /admin/catalog-enrich-missing/failures`. Pour les séries, le metadata principal peut être enrichi (`metadataEnrichedAt` mis à jour) mais les saisons/épisodes peuvent être incomplètes sans aucune trace visible dans l'API admin.
+
+**Action requise** : Appeler `persistFailure` avec `stage: 'db_update'` (ou un nouveau stage dédié `seasons`) lorsque `enrichSeriesSeasons` échoue, avec le résultat approprié (`terminal-failed` si non-retryable).
+
+---
+
+### 🟡 MINEUR — Définition "fullyEnriched" trop étroite dans catalog-stats
+
+`apps/api/src/routes/catalog-stats.ts` lignes 48–50 :
+
+```sql
+where metadata_enriched_at is not null and synopsis is not null and keywords is not null
+```
+
+"Fully enriched" ne vérifie que `synopsis` et `keywords`. Un film sans `posterPath`, `voteAverage`, `originalLanguage`, ou `genres` serait compté comme "fully enriched". Cela peut conduire à des stats trompeuses.
+
+**Action requise** (mineur, ne bloque pas si accepté) : Documenter explicitement la définition dans un commentaire de code, ou élargir le critère aux champs considérés obligatoires par la politique d'embedding.
+
+---
+
+### 🟡 MINEUR — `persistFrenchLocalization` et collection upsert échouent silencieusement
+
+`metadata-enrichment-service.ts` lignes 228–230 et 755–756 :
+
+```typescript
+} catch {
+  // collection upsert failure is non-fatal
+}
+// ...
+} catch {
+  return  // persistFrenchLocalization — no log
+}
+```
+
+La French localization n'émet aucun log sur échec. Un item peut sembler enrichi depuis l'API admin sans avoir de titre/synopsis français, sans trace pour diagnostiquer.
+
+**Action requise** (mineur) : Ajouter au minimum un `console.warn` dans les deux blocs catch, avec le mediaId concerné.
+
+---
+
+### 🟡 MINEUR — Race condition TOCTOU dans `checkNoRunningConflict`
+
+`catalog-enrich-missing-service.ts` lignes 78–89 et 124–128 :
+
+```typescript
+await this.checkNoRunningConflict()
+// gap
+const [run] = await this.db.insert(...).values({ status: 'RUNNING' })
+```
+
+La vérification et l'insertion ne sont pas atomiques. Si deux requêtes arrivent simultanément, les deux peuvent passer le check et insérer deux runs RUNNING. Le `unique index on status = 'RUNNING'` dans `catalog-refresh-runs` peut atténuer ce risque si l'index existe, mais sa présence n'est pas vérifiable dans la migration fournie.
+
+**Action requise** (mineur, acceptable en l'état) : Documenter la limitation ou utiliser un lock optimiste (upsert avec contrainte unique + ON CONFLICT).
+
+---
+
+## Risques éventuels
+
+- **Embedding eligibility très permissive** : `metadataEnrichedAt IS NOT NULL` suffit pour être eligible à l'embedding, même si `synopsis` et `genres` sont null. Le ticket précise que c'est un choix explicite ("incomplete titles are embedded with reduced documents"), et c'est documenté dans `embedding-eligibility.ts`. Acceptable, mais à surveiller lors de la génération du corpus.
+- **Trois représentations de `isEmbeddingEligible`** (TS function, raw SQL string, Drizzle condition) : risque de divergence à terme. Pas de test d'équivalence entre les trois.
+- **`totalEligible` calculé au démarrage, pas à la reprise** : en cas de crash et de reprise, les stats de progression peuvent être légèrement imprécises (totalEligible périmé). Non bloquant car purement cosmétique.
+
+---
+
+## Décision
+
+L'implémentation est fonctionnellement correcte et bien conçue. Le bloquant est de nature opérationnelle, pas structurelle : le ticket impose une démonstration sur production et celle-ci n'a pas été réalisée. Le fix sur `retryFailures` (majeur) et la persistance des échecs de saisons (majeur) doivent aussi être adressés.
+
+## Actions demandées
+
+1. **(Bloquant)** Exécuter `POST /admin/catalog-enrich-missing` contre la production ou un snapshot restauré. Publier `catalog-stats` avant/après et la liste des failures avec les vraies causes dans `runs/T115/production-run-YYYYMMDD.md`.
+2. **(Majeur)** Filtrer `retryFailures` sur `retryable = true` par défaut, ou ajouter un flag `force` explicite avec documentation.
+3. **(Majeur)** Appeler `persistFailure` sur échec de `enrichSeriesSeasons` pour rendre ces échecs visibles dans l'API admin.
+4. **(Mineur)** Ajouter des logs dans `persistFrenchLocalization` et le catch de collection upsert.
+5. **(Mineur)** Documenter la définition de `fullyEnriched` (synopsis + keywords seulement) dans un commentaire.
+
+IMPLEMENTATION_FIX_REQUIRED

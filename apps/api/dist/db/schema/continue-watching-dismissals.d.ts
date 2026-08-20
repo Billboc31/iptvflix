@@ -1,0 +1,93 @@
+export declare const continueWatchingDismissals: import("drizzle-orm/pg-core").PgTableWithColumns<{
+    name: "continue_watching_dismissals";
+    schema: undefined;
+    columns: {
+        id: import("drizzle-orm/pg-core").PgColumn<{
+            name: "id";
+            tableName: "continue_watching_dismissals";
+            dataType: "string";
+            columnType: "PgUUID";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: true;
+            isPrimaryKey: true;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        profileId: import("drizzle-orm/pg-core").PgColumn<{
+            name: "profile_id";
+            tableName: "continue_watching_dismissals";
+            dataType: "string";
+            columnType: "PgUUID";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        mediaType: import("drizzle-orm/pg-core").PgColumn<{
+            name: "media_type";
+            tableName: "continue_watching_dismissals";
+            dataType: "string";
+            columnType: "PgEnumColumn";
+            data: "MOVIE" | "EPISODE";
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: ["MOVIE", "EPISODE"];
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        mediaId: import("drizzle-orm/pg-core").PgColumn<{
+            name: "media_id";
+            tableName: "continue_watching_dismissals";
+            dataType: "string";
+            columnType: "PgUUID";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+        dismissedAt: import("drizzle-orm/pg-core").PgColumn<{
+            name: "dismissed_at";
+            tableName: "continue_watching_dismissals";
+            dataType: "date";
+            columnType: "PgTimestamp";
+            data: Date;
+            driverParam: string;
+            notNull: true;
+            hasDefault: true;
+            isPrimaryKey: false;
+            isAutoincrement: false;
+            hasRuntimeDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+            identity: undefined;
+            generated: undefined;
+        }, {}, {}>;
+    };
+    dialect: "pg";
+}>;
+//# sourceMappingURL=continue-watching-dismissals.d.ts.map

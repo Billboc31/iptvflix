@@ -9,6 +9,7 @@ import type {
   DiscoveryFeed,
   DiscoverParams,
 } from '../types.js'
+import { MetadataMappingError } from '../types.js'
 import type {
   TmdbMovieDetail,
   TmdbSeriesDetail,
@@ -50,13 +51,13 @@ function mapMovieDetail(raw: TmdbMovieDetail): Omit<ExternalMovieMetadata, 'cert
     title: raw.title,
     originalTitle: raw.original_title ?? null,
     year: parseYear(raw.release_date),
-    synopsis: raw.overview || null,
+    synopsis: raw.overview?.trim() || null,
     posterPath: raw.poster_path ?? null,
     backdropPath: raw.backdrop_path ?? null,
     genres: raw.genres.map((g) => g.name),
     genreObjects: raw.genres.map((g) => ({ name: g.name, tmdbId: g.id })),
-    runtimeMinutes: raw.runtime ?? null,
-    imdbId: raw.imdb_id ?? null,
+    runtimeMinutes: raw.runtime || null,
+    imdbId: raw.imdb_id || null,
     popularity: raw.popularity ?? null,
     voteAverage: raw.vote_average ?? null,
     voteCount: raw.vote_count ?? null,
@@ -91,7 +92,7 @@ function mapSeriesDetail(raw: TmdbSeriesDetail): Omit<ExternalSeriesMetadata, 'c
     title: raw.name,
     originalTitle: raw.original_name ?? null,
     firstAirYear: parseYear(raw.first_air_date),
-    synopsis: raw.overview || null,
+    synopsis: raw.overview?.trim() || null,
     posterPath: raw.poster_path ?? null,
     backdropPath: raw.backdrop_path ?? null,
     genres: raw.genres.map((g) => g.name),
@@ -190,11 +191,16 @@ export class TmdbClient implements MetadataProvider {
     const response = await this.fetchWithRetry(`${BASE_URL}/movie/${tmdbId}?${params}`)
     if (response.status === 404) return null
     if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
+    let raw: TmdbMovieDetail
     try {
-      const raw = (await response.json()) as TmdbMovieDetail
-      return { ...mapMovieDetail(raw), certification: null }
+      raw = (await response.json()) as TmdbMovieDetail
     } catch {
       throw new TmdbNetworkError('Could not parse TMDB movie response')
+    }
+    try {
+      return { ...mapMovieDetail(raw), certification: null }
+    } catch (err) {
+      throw new MetadataMappingError(`mapMovieDetail: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
@@ -204,11 +210,16 @@ export class TmdbClient implements MetadataProvider {
     const response = await this.fetchWithRetry(`${BASE_URL}/tv/${tmdbId}?${params}`)
     if (response.status === 404) return null
     if (!response.ok) throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`)
+    let raw: TmdbSeriesDetail
     try {
-      const raw = (await response.json()) as TmdbSeriesDetail
-      return { ...mapSeriesDetail(raw), certification: null }
+      raw = (await response.json()) as TmdbSeriesDetail
     } catch {
       throw new TmdbNetworkError('Could not parse TMDB series response')
+    }
+    try {
+      return { ...mapSeriesDetail(raw), certification: null }
+    } catch (err) {
+      throw new MetadataMappingError(`mapSeriesDetail: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 

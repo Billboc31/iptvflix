@@ -1,0 +1,118 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T115/reviews/implementation-review.md
+- generated at: 2026-08-19T13:46:20Z
+
+---
+
+Now I have enough information to write the complete review.
+
+---
+
+# PR Review — T115: Complete catalog enrichment and make refresh failures resumable/observable
+
+## Résumé
+
+L'implémentation couvre l'ensemble des composants fonctionnels demandés : normalisation des valeurs TMDB problématiques, persistance des échecs par item avec les vraies causes d'erreur PostgreSQL, service d'enrichissement manquant avec pagination par curseur, routes admin, extension des stats catalog, et politique d'éligibilité embedding. La qualité du code est bonne et les tests sont présents. **Cependant, la completion rule du ticket est explicitement non satisfaite.**
+
+## Vérifications effectuées
+
+- Code des 8 fichiers modifiés/créés principaux
+- Migration SQL `0045_t115_enrichment_failures.sql`
+- Migration `0046_t115_catalog_refresh_runs_type.sql`
+- Service `catalog-enrich-missing-service.ts` (curseur, retry, checkpoint, conflits)
+- Service `metadata-enrichment-service.ts` (`classifyError`, `persistFailure`, `clearFailure`, `enrichMovie`, `enrichSeries`)
+- Client TMDB : normalisation `runtime || null`, `imdb_id || null`, `overview?.trim() || null`
+- Route `catalog-stats.ts` : nouvelles métriques + `EMBEDDING_ELIGIBLE_SQL_PREDICATE`
+- Service `embedding-eligibility.ts`
+- Artefacts `runs/T115/` — aucun résultat de run production trouvé
+
+## Points validés
+
+**Normalisation TMDB** (`client.ts:53,59`)
+- `runtime === 0` → `null` via `raw.runtime || null`
+- `imdb_id` vide → `null` via `raw.imdb_id || null`
+- `overview` whitespace → `null` via `raw.overview?.trim() || null`
+- Couvre précisément les cas cités dans le ticket.
+
+**Persistance des échecs** (`metadata-enrichment-service.ts:48–133`)
+- `classifyError()` extrait `errorClass`, `errorCode`, `errorMessage` depuis l'erreur réelle (y compris PostgresError avec code `23505`)
+- Upsert avec `ON CONFLICT DO UPDATE` incrémente `retryCount` correctement
+- `stage` distingue `fetch` / `map` / `db_update`
+- `clearFailure()` supprime l'entrée quand l'enrichissement réussit
+
+**Service enrich-missing** (`catalog-enrich-missing-service.ts`)
+- Pagination par keyset (`WHERE id > :lastId ORDER BY id`) — pas d'offset drift, cursor stable
+- `checkNoRunningConflict()` retourne `409` si un run est déjà `RUNNING`
+- `enrichWithRetry()` : 3 tentatives avec backoff `250ms / 500ms / 1000ms`
+- Checkpoint persisted en JSONB dans `catalogRefreshRuns`
+- Idempotent : skip les rows fraîches sauf `force=true`
+- Support MOVIE et SERIES
+
+**Catalog stats** (`catalog-stats.ts`)
+- 8 nouvelles métriques par type (neverEnriched, partiallyEnriched, fullyEnriched, stale, failedLastEnrichment, embeddingEligible, embeddingBlocked, embeddingPending)
+- `embeddingPending` est une vraie requête avec `NOT EXISTS (SELECT 1 FROM media_embeddings ...)` — ne retourne pas `0` hardcodé
+
+**Embedding eligibility** (`embedding-eligibility.ts`)
+- Source unique de vérité avec `isEmbeddingEligible()`, `EMBEDDING_ELIGIBLE_SQL_PREDICATE`, `embeddingEligibleCondition()`
+- Politique documentée dans le JSDoc de la fonction
+- Utilisée dans `catalog-stats.ts` (via `EMBEDDING_ELIGIBLE_SQL_PREDICATE`) et `embedding-backfill.ts` (via `embeddingEligibleCondition()`)
+
+**Routes admin** (`catalog-enrich-missing.ts`)
+- `POST /admin/catalog-enrich-missing` → 202 / 409 si conflit
+- `GET /admin/catalog-enrich-missing/status`
+- `GET /admin/catalog-enrich-missing/failures` (paginé, filtrable)
+- `POST /admin/catalog-enrich-missing/retry-failures`
+
+## Problèmes détectés
+
+### BLOQUANT — Completion rule non satisfaite
+
+Le ticket stipule explicitement :
+
+> **Do not close after unit tests. Run the new enrichment mode against production (or an equivalent restored production snapshot), publish before/after counts, and show the remaining terminal failures with their real causes.**
+
+Aucune trace dans les artefacts (`runs/T115/`) d'un run réel contre la production ou un snapshot. Aucun before/after count. Aucune liste des 126 échecs terminaux avec leurs vraies causes d'erreur PostgreSQL.
+
+Les tests unitaires (51 tests) sont présents et passent, mais ils ne remplacent pas cette validation opérationnelle. Cette condition est non-négociable selon le ticket.
+
+**Action requise** : exécuter le mode `enrich-missing` contre la production (ou snapshot restauré), capturer les stats before/after via `GET /admin/catalog-stats`, et publier la liste des échecs terminaux via `GET /admin/catalog-enrich-missing/failures`.
+
+---
+
+### Mineur — `enrichWithRetry` retente tous les `provider-failed` sans distinguer les erreurs transientes
+
+`enrichWithRetry()` retente systématiquement 3 fois dès que le résultat est `provider-failed`, y compris les violations de contraintes DB (`23505`, `23502`) qui ne sont pas transientes. Le `classifyError()` classe correctement `retryable: false` dans `enrichment_failures`, mais la logique de retry automatique l'ignore.
+
+Impact borné : au plus 3 appels × 1,75 s de délai supplémentaire par item non-transient. Non bloquant, mais le ticket demande explicitement "retry transient failures" — ce pourrait être précisé dans un suivi.
+
+---
+
+### Mineur — `embeddingBlocked` sera toujours 0 avec la politique actuelle
+
+`embeddingBlocked = mEnriched - mEligible`. Or la politique d'éligibilité est `metadata_enriched_at IS NOT NULL`, ce qui est exactement ce que `enriched` compte. Donc `mEligible === mEnriched` toujours, et `embeddingBlocked === 0` toujours. La colonne est exacte mais ne transmet aucune information utile tant que la politique ne requiert pas de champs supplémentaires.
+
+---
+
+### Mineur — `retryFailures` avec 0 échecs insère un run COMPLETED sans vérifier le conflit
+
+`catalog-enrich-missing-service.ts:347–353` : quand `failures.length === 0`, le code insère directement un run `COMPLETED` sans appeler `checkNoRunningConflict()`. Comportement inoffensif (le run passe de null à COMPLETED instantanément), mais sémantiquement incohérent avec la logique de conflit du reste du service.
+
+---
+
+### Mineur — `retryFailures` exécute les items en série
+
+Contrairement à `execute()` qui utilise `runWithConcurrency()`, `retryFailures()` traite chaque item séquentiellement. Pour un lot de 126+ échecs, cela peut être significativement plus lent. Non bloquant pour la correction, mais à noter pour les cas de retry massif.
+
+## Risques éventuels
+
+- **Race condition sur le curseur** : si deux runs `ENRICH_MISSING` démarraient en même temps (impossible grâce à `checkNoRunningConflict()`), les curseurs se marcheraient dessus. La protection est correctement en place.
+- **`enrichPending()` charge toute la table en mémoire** (`metadata-enrichment-service.ts:598`) — méthode pré-existante non modifiée par ce ticket, mais risque OOM sur 60k films si utilisée. Hors scope T115 mais à corriger séparément.
+- **Pas de rate limiting TMDB dans `retryFailures`** — les retries s'enchaînent sans throttle inter-items, contrairement à `execute()` qui respecte `throttleMs`. Risque de rate limit TMDB sur large batch.
+
+## Décision
+
+L'implémentation est techniquement solide et adresse tous les critères fonctionnels. La seule raison de bloquer est la **completion rule explicite du ticket** : un run production avec before/after counts et liste des échecs terminaux réels est requis avant de clore.
+
+IMPLEMENTATION_FIX_REQUIRED

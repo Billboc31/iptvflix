@@ -1,0 +1,1 @@
+{"version":3,"file":"ensure-pgvector.d.ts","sourceRoot":"","sources":["../../src/db/ensure-pgvector.ts"],"names":[],"mappings":"AAEA,OAAO,EAAE,qBAAqB,EAAyB,KAAK,kBAAkB,EAAE,MAAM,2BAA2B,CAAA;AAUjH;;;GAGG;AACH,wBAAsB,wBAAwB,IAAI,OAAO,CAAC,kBAAkB,CAAC,CAsD5E;AAED,OAAO,EAAE,qBAAqB,EAAE,CAAA"}
