@@ -1,3 +1,11 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T115/reviews/implementation-review.md
+- generated at: 2026-08-20T21:34:08Z
+
+---
+
 I have all the information needed. The playbook fix was correctly applied. Let me write the review for attempt 28.
 
 ---
