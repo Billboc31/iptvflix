@@ -30,6 +30,7 @@ export async function catalogStatsRoutes(app: FastifyInstance): Promise<void> {
       oldestSeriesSync,
       movieFailureCount,
       seriesFailureCount,
+      seriesSeasonFailureCount,
       movieEmbeddingCount,
       seriesEmbeddingCount,
     ] = await Promise.all([
@@ -98,6 +99,11 @@ export async function catalogStatsRoutes(app: FastifyInstance): Promise<void> {
       db.select({ cnt: count() }).from(enrichmentFailures).where(
         sql`media_type = 'SERIES'`,
       ),
+      // Series whose main metadata is present (metadataEnrichedAt set) but season/episode
+      // enrichment failed. These appear in both `enriched` and `failedLastEnrichment`.
+      db.select({ cnt: count() }).from(enrichmentFailures).where(
+        sql`media_type = 'SERIES' and stage = 'seasons'`,
+      ),
 
       // Embedding eligible = enriched. Pending = enriched but no embedding row.
       // Eligibility condition is derived from EMBEDDING_ELIGIBLE_SQL_PREDICATE (see embedding-eligibility.ts).
@@ -139,6 +145,7 @@ export async function catalogStatsRoutes(app: FastifyInstance): Promise<void> {
     const sEnriched = sPartially + sFully
     const sEligible = Number(seriesEmbeddingCount[0]?.eligible ?? 0)
     const sPending = Number(seriesEmbeddingCount[0]?.pending ?? 0)
+    const sSeasonFailed = Number(seriesSeasonFailureCount[0]?.cnt ?? 0)
 
     return {
       movies: {
@@ -169,6 +176,9 @@ export async function catalogStatsRoutes(app: FastifyInstance): Promise<void> {
         fullyEnriched: sFully,
         stale: Number(seriesStats[0]?.stale ?? 0),
         failedLastEnrichment: Number(seriesFailureCount[0]?.cnt ?? 0),
+        // enrichedWithSeasonFailures: series whose main metadata is set (counted in `enriched`)
+        // but whose season/episode enrichment failed. These also appear in `failedLastEnrichment`.
+        enrichedWithSeasonFailures: sSeasonFailed,
         embeddingEligible: sEligible,
         // embeddingBlocked is currently always 0 because eligibility == enriched (metadataEnrichedAt IS NOT NULL).
         // It will become meaningful when the embedding policy adds stricter field requirements.

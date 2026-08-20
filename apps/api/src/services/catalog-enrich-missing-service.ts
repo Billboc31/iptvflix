@@ -367,7 +367,7 @@ export class CatalogEnrichMissingService {
   }
 
   async retryFailures(opts: { mediaType?: string; ids?: string[]; concurrency?: number; force?: boolean } = {}): Promise<{
-    runId: string
+    runId: string | null
     queued: number
   }> {
     const { mediaType, ids, concurrency = 3, force = false } = opts
@@ -384,11 +384,7 @@ export class CatalogEnrichMissingService {
     const failures = await this.db.select().from(enrichmentFailures).where(where)
 
     if (failures.length === 0) {
-      const [run] = await this.db
-        .insert(catalogRefreshRuns)
-        .values({ type: 'ENRICH_MISSING', status: 'COMPLETED', completedAt: new Date() })
-        .returning({ id: catalogRefreshRuns.id })
-      return { runId: run.id, queued: 0 }
+      return { runId: null, queued: 0 }
     }
 
     let run: { id: string }
