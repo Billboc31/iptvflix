@@ -1,63 +1,65 @@
-La situation est confirmée : le code T115 est complet (33 tests, migrations correctes), mais l'environnement IA n'a pas accès à la production. Voici exactement ce qu'il faut faire.
+The situation is clear. This workflow has been looping since attempt-12. The code is complete, the tests pass, and the only remaining blocker is a production run that requires your Fly.io credentials — which no AI agent can provide.
+
+Here's the current state and exactly what breaks the loop:
 
 ---
 
-## Blocage opérationnel — action humaine requise
+## Situation : boucle sur attempt-30
 
-L'implémentation est prête depuis l'attempt-12. La seule chose manquante est l'artefact du run en production, que la Completion Rule exige explicitement. Aucun cycle IA supplémentaire ne peut le produire.
+**Code** : complet depuis attempt-12. 33 tests. Migrations 0047/0048. Aucun changement de code n'est nécessaire.
 
-**Ce dont j'ai besoin de toi :**
+**Blocage** : la Completion Rule du ticket T115 exige un run contre la production réelle (~60k films / ~5k séries). L'artefact `production-run-20260820.md` avec des données réelles n'existe pas.
 
-### 1 — Authentifie flyctl
+**Pourquoi ça loop** : le reviewer détecte l'absence de données production → `IMPLEMENTATION_FIX_REQUIRED` → le coder redémarre → same output → repeat.
 
-```bash
-flyctl auth login
-```
+---
 
-### 2 — Récupère les credentials
+## Ce que tu dois faire (toi, pas un agent)
 
-```bash
-# DATABASE_URL de production
-flyctl secrets list --app iptvflix-api 2>/dev/null
-flyctl ssh console --app iptvflix-api -C "printenv DATABASE_URL" 2>/dev/null
+Tu as **3 options** pour briser la boucle :
 
-# Ou directement via proxy
-flyctl proxy 5432 --app iptvflix-db
-export DATABASE_URL="postgres://localhost:5432/..."
-```
-
-### 3 — Exécute le playbook complet
-
-Le playbook est à `runs/T115/production-run-playbook.md`. En résumé :
+### Option A — Run contre la production (recommandé)
 
 ```bash
-export ADMIN_PASSWORD="..."
+# 1. Récupère l'URL admin
+export ADMIN_PASSWORD="<ton password admin>"
+export API="https://api.iptvflix.com"
 
-# Stats avant
-curl -s -u admin:$ADMIN_PASSWORD https://api.iptvflix.com/admin/catalog-stats | jq .
+# 2. Stats avant
+curl -s -u admin:$ADMIN_PASSWORD $API/admin/catalog-stats | jq . > /tmp/before.json
 
-# Lance l'enrich-missing
+# 3. Lance l'enrichissement
 curl -s -X POST \
   -u admin:$ADMIN_PASSWORD \
   -H "Content-Type: application/json" \
   -d '{"batchSize": 50, "concurrency": 3, "throttleMs": 500}' \
-  https://api.iptvflix.com/admin/catalog-enrich-missing | jq .
+  $API/admin/catalog-enrich-missing | jq .
 
-# Poll jusqu'à COMPLETED (toutes les 30s)
-watch -n 30 'curl -s -u admin:$ADMIN_PASSWORD https://api.iptvflix.com/admin/catalog-enrich-missing/status | jq .'
+# 4. Poll jusqu'à COMPLETED
+watch -n 30 'curl -s -u admin:$ADMIN_PASSWORD '$API'/admin/catalog-enrich-missing/status | jq .'
 
-# Stats après
-curl -s -u admin:$ADMIN_PASSWORD https://api.iptvflix.com/admin/catalog-stats | jq .
-
-# Liste des failures terminales
-curl -s -u admin:$ADMIN_PASSWORD \
-  "https://api.iptvflix.com/admin/catalog-enrich-missing/failures?limit=200" | jq .
+# 5. Stats après + failures
+curl -s -u admin:$ADMIN_PASSWORD $API/admin/catalog-stats | jq . > /tmp/after.json
+curl -s -u admin:$ADMIN_PASSWORD "$API/admin/catalog-enrich-missing/failures?limit=200" | jq . > /tmp/failures.json
 ```
 
-### 4 — Donne-moi les outputs
+**Colle-moi les 3 fichiers JSON** → je crée immédiatement `runs/T115/production-run-20260820.md` et commit.
 
-Une fois les commandes exécutées, colle-moi les 4 outputs JSON (before stats, POST response, after stats, failures) et **je crée immédiatement `runs/T115/production-run-20260820.md`** et je commite sur la branche. La review suivante approuvera sans demande de correction supplémentaire.
+### Option B — Restore DB locale
+
+Si tu as un dump de la prod :
+
+```bash
+pg_restore -d postgres://localhost:5432/iptvflix_prod dump.pg
+export DATABASE_URL="postgres://localhost:5432/iptvflix_prod"
+```
+
+Dis-moi que la DB locale est prête → je lance les commandes moi-même.
+
+### Option C — Accepter le run local comme suffisant
+
+Si tu considères que le run de dev du 2026-08-19 (6 films, démonstration des failure paths) suffit pour satisfaire le ticket, dis-le moi explicitement. Je mets à jour le `state.json` en `IMPLEMENTATION_APPROVED` et je commit. La review suivante le marquera comme accepté.
 
 ---
 
-**Alternative** : si tu as un dump de la DB de production que tu peux restaurer localement, je peux adapter le playbook pour pointer vers `localhost` et exécuter moi-même le run.
+**Quelle option tu choisis ?** Si tu vas faire l'Option A maintenant, je génère aussi le template du fichier rapport pendant que tu prépares les commandes.
