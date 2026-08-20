@@ -1,33 +1,36 @@
-The situation is clear and requires my direct assessment: **there is no code fix to apply here.**
+# Coder-attempt-25 — ESCALADE HUMAINE REQUISE
+
+**Aucun changement de code effectué.**
 
 ---
 
-## Situation — coder-attempt-24
+## Situation
 
-L'implémentation technique de T115 est **complète et correcte**. La review-attempt-24 a validé tous les points techniques et n'a trouvé aucune régression. Le seul blocage restant est le **Completion Rule** du ticket — une exigence opérationnelle qui ne peut pas être résolue par du code.
+L'implémentation technique de T115 est **complète et correcte depuis coder-attempt-23**. 33 tests passent. Le workflow tourne en boucle depuis coder-attempt-24 car le reviewer émet `IMPLEMENTATION_FIX_REQUIRED` pour un blocage opérationnel — pas technique.
 
-**Ce qui est bloqué :** Le ticket exige explicitement un run contre le catalogue de production réel (~60k films / ~5k séries) avec publication des résultats avant/après. Ce run nécessite un accès Fly.io authentifié qui n'est pas disponible pour l'agent IA.
+**Le seul blocage :** Le Completion Rule du ticket exige un run contre le catalogue de production réel (~60k films / ~5k séries). Ce run nécessite un accès Fly.io authentifié, indisponible pour l'agent IA.
 
-**Ce qui a déjà été livré (complet) :**
-- Service `CatalogEnrichMissingService` — enrichissement complet, resumable, idempotent
-- Route `POST /admin/catalog-enrich-missing` + `GET /admin/catalog-enrich-missing/status`
-- Route `GET /admin/catalog-enrich-missing/failures` + `POST /admin/catalog-enrich-missing/retry-failures`
+---
+
+## Ce qui est livré (complet depuis coder-attempt-23)
+
+- `CatalogEnrichMissingService` — enrichissement complet, resumable, idempotent
+- `POST /admin/catalog-enrich-missing` + `GET /admin/catalog-enrich-missing/status`
+- `GET /admin/catalog-enrich-missing/failures` + `POST /admin/catalog-enrich-missing/retry-failures`
 - Capture réelle des erreurs PostgreSQL/TMDB (errorClass, errorCode, errorMessage)
 - Normalisation des valeurs TMDB invalides (runtime 0, imdb_id "", overview vide)
-- Catalogue stats enrichi (neverEnriched, partiallyEnriched, fullyEnriched, failedLastEnrichment, embeddingEligible, embeddingPending)
+- Catalog stats enrichi (neverEnriched, partiallyEnriched, fullyEnriched, failedLastEnrichment, embeddingEligible, embeddingPending)
 - 33 tests unitaires passants
-- Stats dans `retryFailures()` sauvegardées dans checkpoint
-- Commentaire `retryCount` dans le schéma
-- Playbook opérationnel complet à `runs/T115/production-run-playbook.md`
+- Playbook opérationnel : `runs/T115/production-run-playbook.md`
 
 ---
 
 ## Action requise — humaine
 
-Pour débloquer le ticket, exécuter le playbook contre la production :
+Le workflow IA ne peut pas débloquer ce ticket. Un opérateur humain avec accès Fly.io doit :
 
 ```bash
-# 1. Vérifier les migrations (0044–0047)
+# 1. Vérifier les migrations (0047, 0048)
 psql $DATABASE_URL -c "SELECT tag FROM drizzle.__drizzle_migrations ORDER BY created_at DESC LIMIT 10;"
 
 # 2. Stats avant
@@ -48,8 +51,10 @@ curl -s -u admin:$ADMIN_PASSWORD https://api.iptvflix.com/admin/catalog-stats | 
 curl -s -u admin:$ADMIN_PASSWORD "https://api.iptvflix.com/admin/catalog-enrich-missing/failures?limit=200" | jq .
 ```
 
-Puis créer `runs/T115/production-run-20260820.md` avec les résultats (template dans le playbook).
+Puis attacher les résultats dans `runs/T115/production-run-20260820.md` (template dans le playbook).
 
 ---
 
-Aucun changement de code n'est effectué dans cet attempt — l'implémentation est finalisée depuis coder-attempt-23. Le workflow est bloqué sur une gate opérationnelle qui requiert ton accès Fly.io.
+## Cycle IA terminé — gate humaine
+
+Ce ticket est bloqué sur une gate opérationnelle, pas technique. Aucun cycle IA supplémentaire ne peut résoudre ce blocage. Arrêter le workflow automatique et escalader à l'opérateur humain.
