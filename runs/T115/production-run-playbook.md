@@ -169,3 +169,19 @@ If new failure classes appear in the terminal failures list, note the `errorClas
 If terminal failures include a `stage: "db_update"` error with `errorClass: "PostgresError"`, inspect the `errorMessage` for the actual constraint name — this is the root cause the ticket was asking to expose (previously only the failed SQL string was logged, not the real error).
 
 If any titles remain permanently unresolvable (e.g., TMDB has no entry for a French IPTV-only title), document them with their `mediaId` and `title` — they can be excluded from the embedding corpus via the `failedLastEnrichment` filter.
+
+---
+
+## Season enrichment failures — retry behavior
+
+Series with a transient network error on `enrichSeriesSeasons` (stage `"seasons"`, `retryable: true`) are automatically retried within the current batch (up to 3 attempts with 250/500/1000ms backoff). Terminal season failures (`retryable: false`) are not retried automatically. In both cases, failed rows appear in `enrichment_failures` with `stage: "seasons"` and can be replayed via:
+
+```bash
+curl -s -X POST \
+  -u admin:$ADMIN_PASSWORD \
+  -H "Content-Type: application/json" \
+  -d '{}' \
+  https://api.iptvflix.com/admin/catalog-enrich-missing/retry-failures | jq .
+```
+
+Use `{"force": true}` to also replay terminal (non-retryable) season failures.

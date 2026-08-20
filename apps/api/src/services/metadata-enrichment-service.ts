@@ -434,13 +434,12 @@ export class MetadataEnrichmentService {
       }
     }
 
-    let seasonsFailed = false
+    let seasonsFailureResult: EnrichResult | null = null
     try {
       await this.enrichSeriesSeasons(seriesId)
     } catch (err) {
       console.warn(`[enrichment] enrichSeriesSeasons(${seriesId}) failed:`, err)
-      seasonsFailed = true
-      await this.persistFailure({
+      const { retryable } = await this.persistFailure({
         mediaType: 'SERIES',
         mediaId: seriesId,
         tmdbId: seriesRow.tmdbId,
@@ -449,10 +448,11 @@ export class MetadataEnrichmentService {
         err,
         runId: opts?.runId,
       })
+      seasonsFailureResult = retryable ? 'provider-failed' : 'terminal-failed'
     }
 
-    if (seasonsFailed) {
-      return 'terminal-failed'
+    if (seasonsFailureResult !== null) {
+      return seasonsFailureResult
     }
     await this.clearFailure('SERIES', seriesId)
     this.onEnriched?.(seriesId, 'SERIES')
