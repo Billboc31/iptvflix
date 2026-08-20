@@ -1,65 +1,55 @@
-The situation is clear. This workflow has been looping since attempt-12. The code is complete, the tests pass, and the only remaining blocker is a production run that requires your Fly.io credentials — which no AI agent can provide.
-
-Here's the current state and exactly what breaks the loop:
+La situation est claire et je ne vais pas démarrer un nouveau cycle de code. Voici l'état actuel après 31 tentatives :
 
 ---
 
-## Situation : boucle sur attempt-30
+## Situation — Boucle brisée, intervention humaine requise
 
-**Code** : complet depuis attempt-12. 33 tests. Migrations 0047/0048. Aucun changement de code n'est nécessaire.
+**Code : complet depuis attempt-12.** 33 tests passent. Migrations 0047/0048 en place. Aucun changement de code n'est nécessaire.
 
-**Blocage** : la Completion Rule du ticket T115 exige un run contre la production réelle (~60k films / ~5k séries). L'artefact `production-run-20260820.md` avec des données réelles n'existe pas.
-
-**Pourquoi ça loop** : le reviewer détecte l'absence de données production → `IMPLEMENTATION_FIX_REQUIRED` → le coder redémarre → same output → repeat.
+**Blocage unique** : la Completion Rule du ticket T115 exige un run contre la production réelle. L'IA ne peut pas exécuter ce run (credentials Fly.io requis).
 
 ---
 
-## Ce que tu dois faire (toi, pas un agent)
+## Tu dois choisir une option
 
-Tu as **3 options** pour briser la boucle :
-
-### Option A — Run contre la production (recommandé)
+### Option A — Run production (recommandé)
 
 ```bash
-# 1. Récupère l'URL admin
 export ADMIN_PASSWORD="<ton password admin>"
 export API="https://api.iptvflix.com"
 
-# 2. Stats avant
+# Stats avant
 curl -s -u admin:$ADMIN_PASSWORD $API/admin/catalog-stats | jq . > /tmp/before.json
 
-# 3. Lance l'enrichissement
+# Lancer l'enrichissement
 curl -s -X POST \
   -u admin:$ADMIN_PASSWORD \
   -H "Content-Type: application/json" \
   -d '{"batchSize": 50, "concurrency": 3, "throttleMs": 500}' \
   $API/admin/catalog-enrich-missing | jq .
 
-# 4. Poll jusqu'à COMPLETED
+# Attendre COMPLETED (poll toutes les 30s)
 watch -n 30 'curl -s -u admin:$ADMIN_PASSWORD '$API'/admin/catalog-enrich-missing/status | jq .'
 
-# 5. Stats après + failures
+# Stats après + failures
 curl -s -u admin:$ADMIN_PASSWORD $API/admin/catalog-stats | jq . > /tmp/after.json
 curl -s -u admin:$ADMIN_PASSWORD "$API/admin/catalog-enrich-missing/failures?limit=200" | jq . > /tmp/failures.json
 ```
 
-**Colle-moi les 3 fichiers JSON** → je crée immédiatement `runs/T115/production-run-20260820.md` et commit.
-
-### Option B — Restore DB locale
-
-Si tu as un dump de la prod :
-
-```bash
-pg_restore -d postgres://localhost:5432/iptvflix_prod dump.pg
-export DATABASE_URL="postgres://localhost:5432/iptvflix_prod"
-```
-
-Dis-moi que la DB locale est prête → je lance les commandes moi-même.
-
-### Option C — Accepter le run local comme suffisant
-
-Si tu considères que le run de dev du 2026-08-19 (6 films, démonstration des failure paths) suffit pour satisfaire le ticket, dis-le moi explicitement. Je mets à jour le `state.json` en `IMPLEMENTATION_APPROVED` et je commit. La review suivante le marquera comme accepté.
+Colle-moi les 3 fichiers JSON → je crée `runs/T115/production-run-20260820.md` et commit immédiatement.
 
 ---
 
-**Quelle option tu choisis ?** Si tu vas faire l'Option A maintenant, je génère aussi le template du fichier rapport pendant que tu prépares les commandes.
+### Option B — DB locale avec dump prod
+
+Si tu as un dump : restaure-le localement et dis-moi que la DB est prête. Je lance les commandes moi-même.
+
+---
+
+### Option C — Accepter le run local comme suffisant
+
+Si le run dev du 2026-08-19 (6 films, démonstration des failure paths) est suffisant pour toi, dis-le **explicitement**. Je mets à jour le state en `IMPLEMENTATION_APPROVED` sans autre cycle.
+
+---
+
+**Quelle option tu choisis ?**
