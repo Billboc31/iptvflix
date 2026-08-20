@@ -19,7 +19,7 @@ The coder AI cannot access the production environment. This playbook gives the h
 ## Pre-flight checklist
 
 - [ ] Branch deployed to production (or production DB restored locally with correct `DATABASE_URL`)
-- [ ] Migrations applied: `node scripts/migrate-safe.mjs` — should apply 0044, 0045, 0046, 0047
+- [ ] Migrations applied: `node scripts/migrate-safe.mjs` — should apply at minimum 0047, 0048
 - [ ] API server running and reachable (confirm `GET /health` returns 200)
 - [ ] TMDB API key configured and valid
 - [ ] Admin credentials available
@@ -29,15 +29,13 @@ The coder AI cannot access the production environment. This playbook gives the h
 ## Step 1 — Verify migrations ran
 
 ```bash
-# Expected: 4 new entries at idx 44-47
+# Expected: 2 new T115 entries
 psql $DATABASE_URL -c "SELECT tag FROM drizzle.__drizzle_migrations ORDER BY created_at DESC LIMIT 10;"
 ```
 
 Expected output includes:
-- `0044_t107_shelf_served_at`
-- `0045_t114_profile_taste_disliked_not_interested`
-- `0046_t115_catalog_refresh_runs_type`
-- `0047_t115_enrichment_failures`
+- `0047_t115_catalog_refresh_runs_type`
+- `0048_t115_enrichment_failures`
 
 Verify the `enrichment_failures` table exists:
 ```bash
