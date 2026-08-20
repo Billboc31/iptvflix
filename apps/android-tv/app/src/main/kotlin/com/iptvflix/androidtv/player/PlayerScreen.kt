@@ -132,7 +132,7 @@ fun PlayerScreen(
                     },
                 )
             },
-            status = {
+            statusContent = {
                 if (showControls || uiState is PlayerUiState.Buffering || uiState is PlayerUiState.Error || visibleActions.isNotEmpty()) {
                     Box(
                         Modifier
@@ -162,8 +162,7 @@ fun PlayerScreen(
                     else -> Unit
                 }
             },
-            actions = {
-                // Cue buttons stay visible even when chrome auto-hides.
+            actionContent = {
                 if (uiState !is PlayerUiState.Error && visibleActions.isNotEmpty()) {
                     PlayerActionOverlays(
                         actions = visibleActions,
@@ -171,7 +170,7 @@ fun PlayerScreen(
                     )
                 }
             },
-            chrome = {
+            chromeContent = {
                 if ((showControls || visibleActions.isNotEmpty()) && uiState !is PlayerUiState.Error) {
                     PlayerChrome(
                         isPlaying = uiState is PlayerUiState.Playing,

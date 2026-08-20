@@ -97,14 +97,14 @@ fun BoxScope.PlayerActionOverlays(
 @Composable
 fun PlayerOverlayStack(
     video: @Composable () -> Unit,
-    status: @Composable BoxScope.() -> Unit,
-    actions: @Composable BoxScope.() -> Unit,
-    chrome: @Composable BoxScope.() -> Unit,
+    statusContent: @Composable BoxScope.() -> Unit,
+    actionContent: @Composable BoxScope.() -> Unit,
+    chromeContent: @Composable BoxScope.() -> Unit,
 ) {
     Box(Modifier = Modifier.fillMaxSize()) {
         video()
-        status()
-        actions()
-        chrome()
+        statusContent()
+        actionContent()
+        chromeContent()
     }
 }
