@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -53,9 +54,14 @@ fun PlayerScreen(
 ) {
     val uiState by vm.uiState.collectAsState()
     val hud by vm.hud.collectAsState()
+    val overlayActions by vm.overlayActions.collectAsState()
     var showControls by remember { mutableStateOf(true) }
     val focusRequester = remember { FocusRequester() }
     var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
+
+    val visibleActions = remember(overlayActions, hud.positionMs) {
+        overlayActions.visibleAt(hud.positionMs)
+    }
 
     LaunchedEffect(command?.id) {
         if (command != null) {
@@ -72,8 +78,11 @@ fun PlayerScreen(
                 onStop()
             }
             is PlayerUiState.Playing -> {
-                delay(6_000)
-                showControls = false
+                // Keep chrome if a cue button is on screen (skip intro needs focus).
+                if (visibleActions.isEmpty()) {
+                    delay(6_000)
+                    showControls = false
+                }
             }
             else -> Unit
         }
@@ -96,6 +105,8 @@ fun PlayerScreen(
                 showControls = true
                 when (event.key) {
                     Key.DirectionCenter, Key.Enter, Key.MediaPlay, Key.MediaPause, Key.MediaPlayPause -> {
+                        // If a skip button is visible, prefer letting it keep focus — OK still toggles play
+                        // when chrome has focus via the root handler.
                         vm.togglePlayPause(); true
                     }
                     Key.DirectionRight -> { vm.seekForward(); true }
@@ -105,60 +116,73 @@ fun PlayerScreen(
                 }
             },
     ) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { ctx ->
-                (LayoutInflater.from(ctx).inflate(R.layout.player_view, null) as PlayerView).also { view ->
-                    view.player = vm.player
-                    playerViewRef = view
+        PlayerOverlayStack(
+            video = {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx ->
+                        (LayoutInflater.from(ctx).inflate(R.layout.player_view, null) as PlayerView).also { view ->
+                            view.player = vm.player
+                            playerViewRef = view
+                        }
+                    },
+                    update = { view ->
+                        if (view.player !== vm.player) view.player = vm.player
+                        playerViewRef = view
+                    },
+                )
+            },
+            status = {
+                if (showControls || uiState is PlayerUiState.Buffering || uiState is PlayerUiState.Error || visibleActions.isNotEmpty()) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .align(Alignment.TopCenter)
+                            .background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent))),
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(160.dp)
+                            .align(Alignment.BottomCenter)
+                            .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xDD000000)))),
+                    )
+                }
+                when (val s = uiState) {
+                    is PlayerUiState.Error -> {
+                        ErrorOverlay(message = s.message, onBack = { vm.stop(); onStop() })
+                    }
+                    is PlayerUiState.Ended -> {
+                        CenterStatus("Lecture terminée", "Retour à l'accueil…")
+                    }
+                    is PlayerUiState.Buffering -> {
+                        CenterStatus("Chargement…", "Préparation du flux")
+                    }
+                    else -> Unit
                 }
             },
-            update = { view ->
-                if (view.player !== vm.player) view.player = vm.player
-                playerViewRef = view
+            actions = {
+                // Cue buttons stay visible even when chrome auto-hides.
+                if (uiState !is PlayerUiState.Error && visibleActions.isNotEmpty()) {
+                    PlayerActionOverlays(
+                        actions = visibleActions,
+                        onAction = vm::onOverlayAction,
+                    )
+                }
+            },
+            chrome = {
+                if ((showControls || visibleActions.isNotEmpty()) && uiState !is PlayerUiState.Error) {
+                    PlayerChrome(
+                        isPlaying = uiState is PlayerUiState.Playing,
+                        isBuffering = uiState is PlayerUiState.Buffering,
+                        mediaType = command?.mediaType,
+                        hud = hud,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+                }
             },
         )
-
-        // Top / bottom gradients so UI stays readable over bright scenes
-        if (showControls || uiState is PlayerUiState.Buffering || uiState is PlayerUiState.Error) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(120.dp)
-                    .align(Alignment.TopCenter)
-                    .background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent))),
-            )
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(160.dp)
-                    .align(Alignment.BottomCenter)
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xDD000000)))),
-            )
-        }
-
-        when (val s = uiState) {
-            is PlayerUiState.Error -> {
-                ErrorOverlay(message = s.message, onBack = { vm.stop(); onStop() })
-            }
-            is PlayerUiState.Ended -> {
-                CenterStatus("Lecture terminée", "Retour à l'accueil…")
-            }
-            is PlayerUiState.Buffering -> {
-                CenterStatus("Chargement…", "Préparation du flux")
-            }
-            else -> Unit
-        }
-
-        if (showControls && uiState !is PlayerUiState.Error) {
-            PlayerChrome(
-                isPlaying = uiState is PlayerUiState.Playing,
-                isBuffering = uiState is PlayerUiState.Buffering,
-                mediaType = command?.mediaType,
-                hud = hud,
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
-        }
     }
 
     LaunchedEffect(Unit) {
@@ -207,7 +231,6 @@ private fun PlayerChrome(
         )
         Spacer(Modifier.height(16.dp))
 
-        // Progress bar
         Box(
             modifier = Modifier
                 .fillMaxWidth()

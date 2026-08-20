@@ -62,6 +62,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private val _hud = MutableStateFlow(PlayerHudState())
     val hud: StateFlow<PlayerHudState> = _hud.asStateFlow()
 
+    /** Cue-driven overlays (skip intro, …). Filled when metadata / API provides markers. */
+    private val _overlayActions = MutableStateFlow<List<PlayerOverlayAction>>(emptyList())
+    val overlayActions: StateFlow<List<PlayerOverlayAction>> = _overlayActions.asStateFlow()
+
     private val _availableTracks = MutableStateFlow<List<TrackInfo>>(emptyList())
     val availableTracks: StateFlow<List<TrackInfo>> = _availableTracks
 
@@ -210,6 +214,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     player.prepare()
                     player.playWhenReady = true
                 }
+                // Placeholder until catalog exposes intro markers:
+                // _overlayActions.value = listOf(PlayerOverlayAction.SkipIntro(untilMs = 90_000, seekToMs = 90_000))
+                _overlayActions.value = emptyList()
 
                 progressReporter = ProgressReporter(
                     mediaType = command.mediaType,
@@ -250,6 +257,24 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun seekBack() {
         viewModelScope.launch(Dispatchers.Main.immediate) {
             player.seekTo(maxOf(0L, player.currentPosition - SEEK_STEP_MS))
+        }
+    }
+
+    fun onOverlayAction(action: PlayerOverlayAction) {
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            when (action) {
+                is PlayerOverlayAction.SkipIntro -> {
+                    player.seekTo(action.seekToMs.coerceAtLeast(0L))
+                    _overlayActions.value = _overlayActions.value.filterNot { it.id == action.id }
+                }
+                is PlayerOverlayAction.SkipRecap -> {
+                    player.seekTo(action.seekToMs.coerceAtLeast(0L))
+                    _overlayActions.value = _overlayActions.value.filterNot { it.id == action.id }
+                }
+                is PlayerOverlayAction.NextEpisode,
+                is PlayerOverlayAction.Custom,
+                -> Log.d(TAG, "Overlay action not wired yet: ${action.id}")
+            }
         }
     }
 
