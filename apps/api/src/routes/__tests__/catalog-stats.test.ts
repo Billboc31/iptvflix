@@ -41,9 +41,9 @@ function setupSelectFromWhere(row: object) {
 
 describe('GET /admin/catalog-stats', () => {
   it('returns valid shape with correct field structure', async () => {
-    // 12 queries: movieStats, seriesStats, episodeCount, movieAvail, seriesAvail, episodeAvail,
+    // 13 queries: movieStats, seriesStats, episodeCount, movieAvail, seriesAvail, episodeAvail,
     // oldestMovieSync, oldestSeriesSync, movieFailureCount, seriesFailureCount,
-    // movieEmbeddingCount, seriesEmbeddingCount
+    // seriesSeasonFailureCount, movieEmbeddingCount, seriesEmbeddingCount
     setupSelectFrom({ total: 150, withAvailability: 40, upcoming: 10, neverEnriched: 70, partiallyEnriched: 20, fullyEnriched: 60, stale: 5 })
     setupSelectFrom({ total: 60, withAvailability: 20, upcoming: 5, neverEnriched: 30, partiallyEnriched: 10, fullyEnriched: 20, stale: 2 })
     setupSelectFrom({ cnt: 500 })
@@ -54,6 +54,7 @@ describe('GET /admin/catalog-stats', () => {
     setupSelectFromWhere({ syncedAt: '2025-02-01T00:00:00.000Z' })
     setupSelectFromWhere({ cnt: 3 })
     setupSelectFromWhere({ cnt: 1 })
+    setupSelectFromWhere({ cnt: 0 })
     setupSelectFrom({ eligible: 80, pending: 50 })
     setupSelectFrom({ eligible: 30, pending: 15 })
 
@@ -97,6 +98,7 @@ describe('GET /admin/catalog-stats', () => {
     setupSelectFrom({ cnt: 0 })
     setupSelectFromWhere({ syncedAt: null })
     setupSelectFromWhere({ syncedAt: null })
+    setupSelectFromWhere({ cnt: 0 })
     setupSelectFromWhere({ cnt: 0 })
     setupSelectFromWhere({ cnt: 0 })
     setupSelectFrom({ eligible: 0, pending: 0 })
