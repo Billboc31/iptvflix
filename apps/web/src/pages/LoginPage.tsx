@@ -1,18 +1,28 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.js'
 import { ApiError } from '../lib/api.js'
+
+function redirectAfterLogin(from: { pathname?: string; search?: string } | undefined): string {
+  const path = from?.pathname
+  if (!path || path === '/login') return '/'
+  return `${path}${from.search ?? ''}`
+}
 
 export default function LoginPage() {
   const { login, isAuthenticated } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const from = (location.state as { from?: { pathname: string; search: string } } | null)?.from
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  const next = redirectAfterLogin(from)
+
   if (isAuthenticated) {
-    navigate('/', { replace: true })
+    navigate(next, { replace: true })
     return null
   }
 
@@ -22,7 +32,7 @@ export default function LoginPage() {
     setIsSubmitting(true)
     try {
       await login(username, password)
-      navigate('/')
+      navigate(next, { replace: true })
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setError('Invalid username or password')

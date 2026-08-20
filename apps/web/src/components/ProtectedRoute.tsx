@@ -1,4 +1,4 @@
-import { Navigate, Outlet } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.js'
 
 interface Props {
@@ -7,6 +7,7 @@ interface Props {
 
 export default function ProtectedRoute({ children }: Props) {
   const { isAuthenticated, isLoading } = useAuth()
+  const location = useLocation()
 
   if (isLoading) {
     return (
@@ -16,7 +17,9 @@ export default function ProtectedRoute({ children }: Props) {
     )
   }
 
-  if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location }} />
+  }
 
   return children ? <>{children}</> : <Outlet />
 }

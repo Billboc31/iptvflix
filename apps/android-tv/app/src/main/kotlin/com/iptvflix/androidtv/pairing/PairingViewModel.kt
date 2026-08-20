@@ -39,6 +39,10 @@ class PairingViewModel(app: Application) : AndroidViewModel(app) {
         pairingJob?.cancel()
         _uiState.value = PairingUiState.Loading
         pairingJob = viewModelScope.launch {
+            if (container.secureStorage.getDeviceToken() != null) {
+                _uiState.value = PairingUiState.Approved
+                return@launch
+            }
             repository.runPairingFlow { state ->
                 _uiState.value = when (state) {
                     is PairingState.Requesting -> PairingUiState.Loading

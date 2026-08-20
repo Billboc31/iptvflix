@@ -43,7 +43,7 @@ class SecureStorage(context: Context) : TokenStore {
     override fun saveDeviceToken(token: String) {
         cachedDeviceToken = token
         deviceTokenLoaded = true
-        prefs.edit().putString(KEY_DEVICE_TOKEN, token).apply()
+        prefs.edit().putString(KEY_DEVICE_TOKEN, token).commit()
     }
 
     override fun getDeviceToken(): String? {
@@ -62,13 +62,13 @@ class SecureStorage(context: Context) : TokenStore {
         prefs.edit()
             .remove(KEY_DEVICE_TOKEN)
             .remove(KEY_PROFILE_TOKEN)
-            .apply()
+            .commit()
     }
 
     override fun saveProfileToken(token: String) {
         cachedProfileToken = token
         profileTokenLoaded = true
-        prefs.edit().putString(KEY_PROFILE_TOKEN, token).apply()
+        prefs.edit().putString(KEY_PROFILE_TOKEN, token).commit()
     }
 
     override fun getProfileToken(): String? {
@@ -82,7 +82,7 @@ class SecureStorage(context: Context) : TokenStore {
     override fun clearProfileToken() {
         cachedProfileToken = null
         profileTokenLoaded = true
-        prefs.edit().remove(KEY_PROFILE_TOKEN).apply()
+        prefs.edit().remove(KEY_PROFILE_TOKEN).commit()
     }
 
     override fun saveLastUsedProfileId(id: String) {

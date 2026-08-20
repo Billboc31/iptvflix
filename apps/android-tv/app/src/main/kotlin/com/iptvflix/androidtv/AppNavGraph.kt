@@ -74,6 +74,7 @@ fun AppNavGraph() {
         )
         Screen.Home -> HomeScreen(
             onRevoked = {
+                secureStorage.clearDeviceToken()
                 pairingGeneration++
                 currentScreen = Screen.Pairing.name
             },

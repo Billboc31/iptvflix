@@ -12,7 +12,7 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
     } catch {
       dbStatus = 'unavailable'
     }
-    reply.header('X-Build-Tag', 'android-tv-direct-v3-20260820')
+    reply.header('X-Build-Tag', 'qr-pairing-v1-20260820')
     return reply.send({ status: 'ok', db: dbStatus })
   })
 }

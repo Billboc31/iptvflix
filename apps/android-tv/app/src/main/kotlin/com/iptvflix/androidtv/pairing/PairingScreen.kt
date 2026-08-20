@@ -31,6 +31,7 @@ import androidx.tv.material3.Text
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
 import com.google.zxing.common.BitMatrix
+import com.iptvflix.androidtv.BuildConfig
 import com.iptvflix.androidtv.ui.TvColors
 import com.iptvflix.androidtv.ui.TvPrimaryButton
 
@@ -62,8 +63,8 @@ fun PairingScreen(
                     Text("Génération du code…", color = TvColors.TextPrimary, fontSize = 22.sp)
                 }
             }
-            is PairingUiState.ShowingCode -> PairingCodeContent(code = s.code, expired = false)
-            is PairingUiState.Expired -> PairingCodeContent(code = "", expired = true, onRetry = { vm.startPairing() })
+            is PairingUiState.ShowingCode -> PairingCodeContent(code = s.code, expired = false, qrValue = pairingUrl(s.code))
+            is PairingUiState.Expired -> PairingCodeContent(code = "", expired = true, qrValue = "", onRetry = { vm.startPairing() })
             is PairingUiState.Error -> ErrorContent(message = s.message, onRetry = { vm.startPairing() })
             is PairingUiState.Approved -> {
                 Text("Appareil connecté !", color = TvColors.Success, fontSize = 22.sp)
@@ -72,10 +73,14 @@ fun PairingScreen(
     }
 }
 
+private fun pairingUrl(code: String): String =
+    "${BuildConfig.WEB_BASE_URL.trimEnd('/')}/settings/devices?code=${code.trim().uppercase()}"
+
 @Composable
 private fun PairingCodeContent(
     code: String,
     expired: Boolean,
+    qrValue: String,
     onRetry: (() -> Unit)? = null,
 ) {
     Column(
@@ -98,7 +103,7 @@ private fun PairingCodeContent(
         Spacer(Modifier.height(8.dp))
         if (!expired) {
             Text(
-                "Sur votre téléphone ou navigateur : Paramètres → Appareils → Saisir le code",
+                "Scannez le QR code pour ouvrir le site et jumeler automatiquement.",
                 color = TvColors.TextMuted,
                 fontSize = 16.sp,
             )
@@ -112,7 +117,7 @@ private fun PairingCodeContent(
                 requestInitialFocus = true,
             )
         } else if (code.isNotBlank()) {
-            QrCodeImage(value = code, size = 200)
+            QrCodeImage(value = qrValue.ifBlank { pairingUrl(code) }, size = 220)
             Spacer(Modifier.height(28.dp))
             Text(
                 code,

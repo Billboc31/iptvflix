@@ -94,7 +94,8 @@ private class TokenInterceptor(private val tokenStore: TokenStore) : Interceptor
     override fun intercept(chain: Interceptor.Chain): Response {
         val path = chain.request().url.encodedPath
         val token = when {
-            path.contains("/devices/me/") -> tokenStore.getDeviceToken()
+            path.startsWith("/pairing/") -> null
+            path.startsWith("/devices/me") -> tokenStore.getDeviceToken()
             else -> tokenStore.getProfileToken() ?: tokenStore.getDeviceToken()
         }
         val request = if (token != null) {
