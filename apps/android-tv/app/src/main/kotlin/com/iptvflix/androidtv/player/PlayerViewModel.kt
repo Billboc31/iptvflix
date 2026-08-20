@@ -83,6 +83,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private var hasEmittedPlay = false
     private var sessionEnded = false
     private var loadedCommandId: String? = null
+    /** Resume target once ExoPlayer knows the duration (progressive MKV). */
+    private var pendingResumeMs: Long = 0L
 
     private fun emitEvent(eventType: String, extra: Map<String, Any?> = emptyMap()) {
         val cmd = currentCommand ?: return
@@ -112,9 +114,17 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     state == Player.STATE_READY -> PlayerUiState.Paused
                     else -> _uiState.value
                 }
+                if (state == Player.STATE_READY) {
+                    maybeApplyResumeSeek()
+                    viewModelScope.launch {
+                        // First durable progress tick once duration is known.
+                        progressReporter?.reportNow()
+                    }
+                }
                 if (state == Player.STATE_ENDED) {
                     sessionEnded = true
                     emitEvent("PLAY_COMPLETED")
+                    viewModelScope.launch { progressReporter?.reportNow() }
                 }
                 refreshHud()
             }
@@ -200,13 +210,17 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         hasEmittedPlay = false
         sessionId = null
         sessionEnded = false
+        pendingResumeMs = 0L
         viewModelScope.launch {
             _uiState.value = PlayerUiState.Buffering
             runCatching {
                 val descriptor = withContext(Dispatchers.IO) {
                     PlaybackResolver(PlaybackApi(container.apiClient)).resolve(command)
                 }
-                // Progressive MKV: never seek-on-start — mid-file seeks crash many Android TV codecs.
+                val desiredStartMs = maxOf(command.startPositionMs, descriptor.startPositionMs)
+                // Defer resume until duration is known — seeking blind on MKV crashes many TVs.
+                pendingResumeMs = if (desiredStartMs > 30_000L) desiredStartMs else 0L
+
                 withContext(Dispatchers.Main) {
                     player.stop()
                     player.clearMediaItems()
@@ -214,8 +228,6 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     player.prepare()
                     player.playWhenReady = true
                 }
-                // Placeholder until catalog exposes intro markers:
-                // _overlayActions.value = listOf(PlayerOverlayAction.SkipIntro(untilMs = 90_000, seekToMs = 90_000))
                 _overlayActions.value = emptyList()
 
                 progressReporter = ProgressReporter(
@@ -231,6 +243,18 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 _uiState.value = PlayerUiState.Error(e.message ?: "Impossible de charger le média")
             }
         }
+    }
+
+    private fun maybeApplyResumeSeek() {
+        val target = pendingResumeMs
+        if (target <= 0L) return
+        val dur = runCatching { player.duration }.getOrDefault(C.TIME_UNSET)
+        if (dur == C.TIME_UNSET || dur <= 0L) return
+        pendingResumeMs = 0L
+        val safeTarget = target.coerceAtMost((dur - 5_000L).coerceAtLeast(0L))
+        Log.d(TAG, "Applying resume seek to ${safeTarget}ms (duration=${dur}ms)")
+        runCatching { player.seekTo(safeTarget) }
+            .onFailure { Log.w(TAG, "Resume seek failed, continuing from start: ${it.message}") }
     }
 
     fun togglePlayPause() {
