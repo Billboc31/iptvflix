@@ -8,7 +8,6 @@ import com.iptvflix.androidtv.App
 import com.iptvflix.androidtv.network.InteractionEventService
 import com.iptvflix.androidtv.network.ApiException
 import com.iptvflix.androidtv.network.ProfileResponse
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -59,7 +58,6 @@ class ProfileViewModel(app: Application) : AndroidViewModel(app) {
                 result.profile
             }.onSuccess {
                 _uiState.value = _uiState.value.copy(selectingProfileId = null, error = null)
-                delay(200)
                 onSuccess()
                 viewModelScope.launch {
                     runCatching {

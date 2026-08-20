@@ -15,12 +15,24 @@ import java.util.concurrent.TimeUnit
 
 class ApiClient(private val tokenStore: TokenStore) {
 
-    val httpClient: OkHttpClient = OkHttpClient.Builder()
+    private val apiHttpClient: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(UserAgentInterceptor())
         .addInterceptor(TokenInterceptor(tokenStore))
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(0, TimeUnit.MILLISECONDS) // streaming-safe; callers set per-request timeouts
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
         .build()
+
+    private val streamHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(UserAgentInterceptor())
+        .addInterceptor(TokenInterceptor(tokenStore))
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
+        .build()
+
+    /** Shared by PlaybackApi redirect resolution and other callers needing custom clients. */
+    val httpClient: OkHttpClient get() = apiHttpClient
 
     private val baseUrl = BuildConfig.API_BASE_URL
 
@@ -40,7 +52,7 @@ class ApiClient(private val tokenStore: TokenStore) {
     }
 
     suspend fun get(path: String): String = withContext(Dispatchers.IO) {
-        httpClient.newCall(buildRequest(path)).execute().use { response ->
+        apiHttpClient.newCall(buildRequest(path)).execute().use { response ->
             if (!response.isSuccessful) throw ApiException(response.code)
             response.body?.string() ?: throw IOException("Empty body")
         }
@@ -49,7 +61,7 @@ class ApiClient(private val tokenStore: TokenStore) {
     suspend fun post(path: String, jsonBody: String = "{}", clientType: String? = null): String =
         withContext(Dispatchers.IO) {
             val body = jsonBody.toRequestBody("application/json".toMediaType())
-            httpClient.newCall(buildRequest(path, "POST", body, clientType)).execute().use { response ->
+            apiHttpClient.newCall(buildRequest(path, "POST", body, clientType)).execute().use { response ->
                 if (!response.isSuccessful) throw ApiException(response.code)
                 response.body?.string() ?: ""
             }
@@ -57,12 +69,12 @@ class ApiClient(private val tokenStore: TokenStore) {
 
     suspend fun put(path: String, jsonBody: String): Boolean = withContext(Dispatchers.IO) {
         val body = jsonBody.toRequestBody("application/json".toMediaType())
-        httpClient.newCall(buildRequest(path, "PUT", body)).execute().use { response ->
+        apiHttpClient.newCall(buildRequest(path, "PUT", body)).execute().use { response ->
             response.isSuccessful
         }
     }
 
-    fun openStream(path: String): Response = httpClient.newCall(buildRequest(path)).execute()
+    fun openStream(path: String): Response = streamHttpClient.newCall(buildRequest(path)).execute()
 }
 
 class ApiException(val code: Int) : IOException("HTTP $code")

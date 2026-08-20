@@ -29,7 +29,7 @@ private fun initialScreen(secureStorage: SecureStorage): Screen = when {
 @Composable
 fun AppNavGraph() {
     val context = LocalContext.current
-    val secureStorage = remember { SecureStorage(context) }
+    val secureStorage = remember { (context.applicationContext as App).secureStorage }
 
     var currentScreen by remember { mutableStateOf(initialScreen(secureStorage).name) }
     var pairingGeneration by remember { mutableIntStateOf(0) }

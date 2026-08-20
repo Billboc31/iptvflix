@@ -11,4 +11,15 @@ class App : Application() {
     val apiClient: ApiClient by lazy { ApiClient(secureStorage) }
     val sseClient: SseClient by lazy { SseClient(apiClient) }
     val profileApiService: ProfileApiService by lazy { ProfileApiService(apiClient) }
+
+    override fun onCreate() {
+        super.onCreate()
+        // Warm token cache once at startup (EncryptedSharedPreferences is slow on TV).
+        Thread {
+            runCatching {
+                secureStorage.getDeviceToken()
+                secureStorage.getProfileToken()
+            }
+        }.start()
+    }
 }
