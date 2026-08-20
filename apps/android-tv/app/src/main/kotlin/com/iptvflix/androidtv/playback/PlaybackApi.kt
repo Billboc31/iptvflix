@@ -13,6 +13,9 @@ import okhttp3.Request
 
 private const val TAG = "PlaybackApi"
 
+private const val XTREAM_USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
 @Serializable
 data class DrmConfig(
     val schemeUuid: String,
@@ -71,7 +74,7 @@ class PlaybackApi(private val apiClient: ApiClient) {
             error("Lecture directe indisponible (serveur en mise à jour). Réessayez dans 2 minutes.")
         }
 
-        val streamUrl = resolveDirectStreamUrl(gatewayUrl, session.containerExtension)
+        val streamUrl = resolveDirectStreamUrl(gatewayUrl)
         val resumeMs = (session.startPositionSeconds * 1000).toLong().coerceAtLeast(startPositionMs)
         return PlaybackDescriptor(
             streamUrl = streamUrl,
@@ -82,40 +85,37 @@ class PlaybackApi(private val apiClient: ApiClient) {
     }
 
     /**
-     * Railway gateway redirects (302) to the Xtream URL.
-     * Resolve the redirect once so ExoPlayer reads the provider stream directly — no Mac relay.
+     * Follow Railway 302 → Xtream CDN → origin (often cleartext HTTP).
+     * ExoPlayer then opens the final URL with a browser UA.
      */
-    private suspend fun resolveDirectStreamUrl(gatewayUrl: String, containerExtension: String?): String {
+    private suspend fun resolveDirectStreamUrl(gatewayUrl: String): String {
         if (!gatewayUrl.contains("/playback/stream/")) return gatewayUrl
         return withContext(Dispatchers.IO) {
-            val noRedirectClient = apiClient.httpClient.newBuilder()
-                .followRedirects(false)
-                .followSslRedirects(false)
+            val client = apiClient.httpClient.newBuilder()
+                .followRedirects(true)
+                .followSslRedirects(true)
                 .build()
 
             val request = Request.Builder()
                 .url(gatewayUrl)
                 .get()
                 .header("Range", "bytes=0-0")
+                .header("User-Agent", XTREAM_USER_AGENT)
+                .header("Accept", "*/*")
                 .header("X-Client-Type", "android-tv")
                 .build()
 
-            noRedirectClient.newCall(request).execute().use { response ->
-                when (response.code) {
-                    301, 302, 303, 307, 308 -> {
-                        val location = response.header("Location")
-                        if (!location.isNullOrBlank()) {
-                            Log.d(TAG, "Resolved Xtream redirect for native playback")
-                            return@withContext location
-                        }
+            client.newCall(request).execute().use { response ->
+                val finalUrl = response.request.url.toString()
+                Log.d(TAG, "Resolved playback URL host=${response.request.url.host} code=${response.code}")
+                when {
+                    response.isSuccessful || response.code == 206 -> finalUrl
+                    response.isRedirect -> response.header("Location") ?: gatewayUrl
+                    else -> {
+                        Log.w(TAG, "Unexpected resolve status ${response.code}, falling back to gateway")
+                        gatewayUrl
                     }
-                    200, 206 -> {
-                        Log.d(TAG, "Gateway serves stream directly")
-                        return@withContext gatewayUrl
-                    }
-                    else -> Log.w(TAG, "Unexpected gateway response ${response.code}, using gateway URL")
                 }
-                gatewayUrl
             }
         }
     }

@@ -14,6 +14,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Response
 import java.util.concurrent.TimeUnit
 
+/** Same UA family as the API / media-relay — Xtream Cloudflare rejects unknown agents. */
+private const val XTREAM_USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
 @UnstableApi
 object ExoPlayerFactory {
 
@@ -21,25 +25,27 @@ object ExoPlayerFactory {
         val apiHost = runCatching { Uri.parse(BuildConfig.API_BASE_URL).host }.getOrNull()
         val httpClient = OkHttpClient.Builder()
             .addInterceptor(PlaybackAuthInterceptor(tokenStore, apiHost))
+            .addInterceptor(XtreamHeaderInterceptor())
             .followRedirects(true)
             .followSslRedirects(true)
-            .connectTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .build()
 
         val dataSourceFactory = OkHttpDataSource.Factory(httpClient)
-            .setUserAgent("IPTVFlix-AndroidTV/1.0")
+            .setUserAgent(XTREAM_USER_AGENT)
 
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(dataSourceFactory)
 
+        // Faster start on TV: smaller min buffer before first frame.
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                60_000,
-                180_000,
-                5_000,
-                10_000,
+                15_000,
+                50_000,
+                1_500,
+                3_000,
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
@@ -48,6 +54,25 @@ object ExoPlayerFactory {
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
             .build()
+    }
+}
+
+private class XtreamHeaderInterceptor : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        // Don't rewrite auth requests to our API.
+        if (request.url.host.contains("railway.app", ignoreCase = true) ||
+            request.url.host.contains("iptvflix", ignoreCase = true)
+        ) {
+            return chain.proceed(request)
+        }
+        return chain.proceed(
+            request.newBuilder()
+                .header("User-Agent", XTREAM_USER_AGENT)
+                .header("Accept", "*/*")
+                .header("Connection", "keep-alive")
+                .build(),
+        )
     }
 }
 

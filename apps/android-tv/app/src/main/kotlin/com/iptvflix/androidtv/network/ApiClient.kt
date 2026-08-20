@@ -91,20 +91,25 @@ private class UserAgentInterceptor : Interceptor {
 }
 
 private class TokenInterceptor(private val tokenStore: TokenStore) : Interceptor {
+    private val apiHost = runCatching { java.net.URI(BuildConfig.API_BASE_URL).host }.getOrNull()
+
     override fun intercept(chain: Interceptor.Chain): Response {
-        val path = chain.request().url.encodedPath
+        val request = chain.request()
+        // Never attach IPTVFlix JWT to Xtream / CDN hosts (breaks Cloudflare / provider auth).
+        if (apiHost == null || request.url.host != apiHost) {
+            return chain.proceed(request)
+        }
+        val path = request.url.encodedPath
         val token = when {
             path.startsWith("/pairing/") -> null
             path.startsWith("/devices/me") -> tokenStore.getDeviceToken()
             else -> tokenStore.getProfileToken() ?: tokenStore.getDeviceToken()
         }
-        val request = if (token != null) {
-            chain.request().newBuilder()
-                .header("Authorization", "Bearer $token")
-                .build()
+        val authed = if (token != null) {
+            request.newBuilder().header("Authorization", "Bearer $token").build()
         } else {
-            chain.request()
+            request
         }
-        return chain.proceed(request)
+        return chain.proceed(authed)
     }
 }

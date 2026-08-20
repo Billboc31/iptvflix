@@ -136,8 +136,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                Log.e(TAG, "Playback error: ${error.errorCodeName}")
-                _uiState.value = PlayerUiState.Error(error.message ?: "Erreur de lecture")
+                Log.e(TAG, "Playback error: ${error.errorCodeName} ${error.message}", error)
+                _uiState.value = PlayerUiState.Error(friendlyPlaybackError(error))
             }
 
             override fun onTracksChanged(tracks: Tracks) {
@@ -180,17 +180,26 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             _uiState.value = PlayerUiState.Buffering
             runCatching {
                 val descriptor = PlaybackResolver(PlaybackApi(container.apiClient)).resolve(command)
+                val desiredStartMs = maxOf(command.startPositionMs, descriptor.startPositionMs)
+                // Progressive MKV/MP4: seek only after the stream is READY.
+                // Seeking immediately often causes long black screens then SOURCE_ERROR.
+                val seekAfterReady = !isHlsPlayback(descriptor) && desiredStartMs > RESUME_THRESHOLD_MS
                 val startMs = when {
-                    isHlsPlayback(descriptor) && descriptor.startPositionMs > RESUME_THRESHOLD_MS ->
-                        descriptor.startPositionMs
-                    else -> maxOf(command.startPositionMs, descriptor.startPositionMs)
+                    isHlsPlayback(descriptor) && desiredStartMs > RESUME_THRESHOLD_MS -> desiredStartMs
+                    seekAfterReady -> 0L
+                    else -> desiredStartMs
                 }
 
                 val mediaItem = buildMediaItem(descriptor.toMediaItemSpec())
+                player.stop()
+                player.clearMediaItems()
                 player.setMediaItem(mediaItem)
                 player.prepare()
-                if (startMs > 0L) player.seekTo(startMs)
                 player.playWhenReady = true
+                if (startMs > 0L) player.seekTo(startMs)
+                if (seekAfterReady) {
+                    scheduleSeekAfterReady(desiredStartMs)
+                }
 
                 progressReporter = ProgressReporter(
                     mediaType = command.mediaType,
@@ -202,9 +211,26 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 reporterJob = viewModelScope.launch { progressReporter!!.start() }
             }.onFailure { e ->
                 Log.e(TAG, "Failed to load: ${e.message}")
-                _uiState.value = PlayerUiState.Error(e.message ?: "Failed to load media")
+                _uiState.value = PlayerUiState.Error(e.message ?: "Impossible de charger le média")
             }
         }
+    }
+
+    private fun scheduleSeekAfterReady(positionMs: Long) {
+        player.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_READY) {
+                    player.removeListener(this)
+                    if (positionMs > 0L && player.duration > 0L) {
+                        player.seekTo(positionMs.coerceAtMost(player.duration - 1_000L).coerceAtLeast(0L))
+                    }
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                player.removeListener(this)
+            }
+        })
     }
 
     fun togglePlayPause() {
@@ -271,3 +297,30 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         super.onCleared()
     }
 }
+
+private fun friendlyPlaybackError(error: PlaybackException): String {
+    val code = error.errorCode
+    val cause = error.cause?.message?.lowercase().orEmpty()
+    val msg = (error.message ?: "").lowercase()
+    return when {
+        code == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+            code == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
+            "Connexion au flux impossible. Vérifiez le Wi‑Fi de la TV."
+        code == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+            msg.contains("403") || cause.contains("403") ->
+            "Source refusée (403). Réessayez dans un instant."
+        code == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
+            msg.contains("404") ->
+            "Source introuvable chez le fournisseur."
+        code == PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED ->
+            "Flux HTTP bloqué. Réinstallez l'app IPTVFlix TV."
+        code == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
+            code == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ->
+            "Format non supporté par cette TV."
+        code == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+            code == PlaybackException.ERROR_CODE_DECODING_FAILED ->
+            "Décodage vidéo impossible sur cette TV."
+        else -> error.message?.takeIf { it.isNotBlank() } ?: "Erreur source / lecture"
+    }
+}
+

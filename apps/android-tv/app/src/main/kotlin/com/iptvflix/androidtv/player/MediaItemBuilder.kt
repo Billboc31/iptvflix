@@ -19,6 +19,8 @@ fun PlaybackDescriptor.toMediaItemSpec(): MediaItemSpec = MediaItemSpec(
     drmSchemeUuid = drmConfig?.let { parseDrmScheme(it) },
     drmLicenseUrl = drmConfig?.licenseUrl,
     useLiveOffset = deliveryMode.contains("HLS", ignoreCase = true),
+    // Let ExoPlayer sniff progressive MKV/MP4 from bytes — forced Matroska MIME
+    // can fail when the provider serves application/octet-stream after redirects.
     mimeType = containerMimeType(containerExtension, deliveryMode),
 )
 
@@ -26,10 +28,8 @@ private fun containerMimeType(containerExtension: String?, deliveryMode: String)
     if (deliveryMode.contains("HLS", ignoreCase = true)) return MimeTypes.APPLICATION_M3U8
     val ext = containerExtension?.lowercase()?.removePrefix(".") ?: return null
     return when (ext) {
-        "mkv" -> MimeTypes.VIDEO_MATROSKA
-        "mp4", "m4v" -> MimeTypes.VIDEO_MP4
-        "ts", "m2ts", "mts" -> MimeTypes.VIDEO_MP2T
         "m3u8", "m3u" -> MimeTypes.APPLICATION_M3U8
+        // Progressive containers: null → ExoPlayer sniffs from stream
         else -> null
     }
 }
