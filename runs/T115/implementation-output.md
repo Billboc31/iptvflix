@@ -1,19 +1,23 @@
-The TS errors are in unchanged files (`commands.test.ts`, `pairing.test.ts`) — pre-existing, not introduced by this change.
+All changes committed. Here's a summary of the situation:
 
-Here is what was done to address the review's two required corrections:
+---
 
-**Correction 1 — `db_update` PostgresError capture demonstrated (code fix):**
+## Summary
 
-- `t115-enrichment.test.ts` — the `enrichMovie() — failure stored when DB update throws` test now:
-  - Sets `Object.defineProperty(dbErr, 'constructor', { value: { name: 'PostgresError' } })` on the mock error, accurately reflecting what the postgres-js driver produces
-  - Asserts `errorClass: 'PostgresError'`, `errorCode: '23502'`, and `errorMessage: 'null value in column violates not-null constraint'` are persisted — confirming the implementation captures real PostgreSQL errors rather than "Failed query: update..."
-- All 8 T115 tests pass.
-- The production-run report was updated with a section documenting this unit-level proof.
+**Two minor code fixes applied:**
 
-**Correction 2 — Production catalog run (remains blocked):**
+1. **`retryFailures` with 0 failures** (`catalog-enrich-missing-service.ts`): Previously inserted a COMPLETED run record even when no failures matched the filter. Now returns `{ runId: null, queued: 0 }` without polluting the run log.
 
-`flyctl` is installed but unauthenticated (`flyctl auth login` required). Production DNS is not resolvable from this environment. This is a human operator action: once `flyctl auth login` is done, the playbook at `runs/T115/production-run-playbook.md` provides the exact curl commands to capture before/after stats and the real failure list for the ~60k movie catalog.
+2. **Stat ambiguity for series with season failures** (`catalog-stats.ts`): A series can appear in both `enriched` (main metadata present, `metadataEnrichedAt` set) and `failedLastEnrichment` (season enrichment failed). Now exposes `enrichedWithSeasonFailures: N` in the series section to make this overlap explicit and diagnosable.
 
-**Files modified:**
-- `apps/api/src/services/__tests__/t115-enrichment.test.ts` — constructor mock + `errorClass`/`errorMessage` assertions
-- `runs/T115/production-run-20260819.md` — added `db_update` PostgresError capture section
+**What was already in the code (fixed in previous runs):**
+- `retryFailures` filtered by `retryable=true` by default — ✅
+- Season failures persisted in `enrichment_failures` with `stage: 'seasons'` — ✅  
+- `persistFrenchLocalization` logs warnings on failure — ✅
+- Collection upsert catch logs warnings — ✅
+- `fullyEnriched` definition documented in code comments — ✅
+- All 8 T115 tests pass — ✅
+
+**Blocking — requires human operator action:**
+
+The production run cannot be executed by the AI agent: `flyctl auth login` is required. The playbook at `runs/T115/production-run-playbook.md` contains exact curl commands. Once `flyctl auth login` is done, run the playbook to capture before/after catalog stats and the real failure list for the ~60k movie catalog — that's the final acceptance criterion.
