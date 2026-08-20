@@ -1,30 +1,63 @@
-**Situation claire** : l'implémentation T115 est complète (33/33 tests, code et migrations corrects). Il n'y a aucun changement de code à faire.
+La situation est confirmée : le code T115 est complet (33 tests, migrations correctes), mais l'environnement IA n'a pas accès à la production. Voici exactement ce qu'il faut faire.
 
-Le seul blocage est la **Completion Rule** du ticket, qui requiert une intervention humaine :
+---
 
+## Blocage opérationnel — action humaine requise
+
+L'implémentation est prête depuis l'attempt-12. La seule chose manquante est l'artefact du run en production, que la Completion Rule exige explicitement. Aucun cycle IA supplémentaire ne peut le produire.
+
+**Ce dont j'ai besoin de toi :**
+
+### 1 — Authentifie flyctl
+
+```bash
+flyctl auth login
 ```
-Completion rule: Do not close after unit tests. Run the new enrichment mode against
-production (or an equivalent restored production snapshot), publish before/after
-counts, and show the remaining terminal failures with their real causes.
+
+### 2 — Récupère les credentials
+
+```bash
+# DATABASE_URL de production
+flyctl secrets list --app iptvflix-api 2>/dev/null
+flyctl ssh console --app iptvflix-api -C "printenv DATABASE_URL" 2>/dev/null
+
+# Ou directement via proxy
+flyctl proxy 5432 --app iptvflix-db
+export DATABASE_URL="postgres://localhost:5432/..."
 ```
 
-## Action requise — toi
+### 3 — Exécute le playbook complet
 
-Le playbook `runs/T115/production-run-playbook.md` détaille exactement les étapes. En résumé :
+Le playbook est à `runs/T115/production-run-playbook.md`. En résumé :
 
-**Pré-requis**
-- Accès Fly.io : `flyctl auth login`
-- `ADMIN_PASSWORD` et `DATABASE_URL` disponibles
+```bash
+export ADMIN_PASSWORD="..."
 
-**Étapes**
-1. Vérifier que les migrations `0047` et `0048` sont appliquées en production
-2. Capturer les stats avant : `GET /admin/catalog-stats`
-3. Lancer l'enrich-missing : `POST /admin/catalog-enrich-missing`
-4. Relancer les 126 failures connues : `POST /admin/catalog-enrich-missing/retry-failures`
-5. Attendre la complétion (`status: "COMPLETED"`)
-6. Capturer les stats après et la liste des failures avec leurs vraies causes
-7. Créer `runs/T115/production-run-20260820.md` avec le rapport
+# Stats avant
+curl -s -u admin:$ADMIN_PASSWORD https://api.iptvflix.com/admin/catalog-stats | jq .
 
-Une fois ce fichier commité sur la branche, la review suivante pourra approuver immédiatement — aucune correction de code n'est attendue.
+# Lance l'enrich-missing
+curl -s -X POST \
+  -u admin:$ADMIN_PASSWORD \
+  -H "Content-Type: application/json" \
+  -d '{"batchSize": 50, "concurrency": 3, "throttleMs": 500}' \
+  https://api.iptvflix.com/admin/catalog-enrich-missing | jq .
 
-Veux-tu que je t'aide à préparer autre chose, ou as-tu besoin de clarifications sur les commandes du playbook ?
+# Poll jusqu'à COMPLETED (toutes les 30s)
+watch -n 30 'curl -s -u admin:$ADMIN_PASSWORD https://api.iptvflix.com/admin/catalog-enrich-missing/status | jq .'
+
+# Stats après
+curl -s -u admin:$ADMIN_PASSWORD https://api.iptvflix.com/admin/catalog-stats | jq .
+
+# Liste des failures terminales
+curl -s -u admin:$ADMIN_PASSWORD \
+  "https://api.iptvflix.com/admin/catalog-enrich-missing/failures?limit=200" | jq .
+```
+
+### 4 — Donne-moi les outputs
+
+Une fois les commandes exécutées, colle-moi les 4 outputs JSON (before stats, POST response, after stats, failures) et **je crée immédiatement `runs/T115/production-run-20260820.md`** et je commite sur la branche. La review suivante approuvera sans demande de correction supplémentaire.
+
+---
+
+**Alternative** : si tu as un dump de la DB de production que tu peux restaurer localement, je peux adapter le playbook pour pointer vers `localhost` et exécuter moi-même le run.
