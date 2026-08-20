@@ -1,5 +1,6 @@
 package com.iptvflix.androidtv.profiles
 
+import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -22,16 +23,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
-import android.app.Activity
-import androidx.compose.ui.platform.LocalContext
-import androidx.tv.material3.Button
 import androidx.tv.material3.Text
+import com.iptvflix.androidtv.ui.TvColors
+import com.iptvflix.androidtv.ui.TvConfirmOverlay
+import com.iptvflix.androidtv.ui.TvPrimaryButton
 
 @Composable
 fun WhoIsWatchingScreen(
@@ -43,21 +43,21 @@ fun WhoIsWatchingScreen(
     var showQuitDialog by remember { mutableStateOf(false) }
     val activity = LocalContext.current as? Activity
 
-    BackHandler {
-        showQuitDialog = true
-    }
+    BackHandler { showQuitDialog = true }
 
     if (showQuitDialog) {
-        QuitDialog(
-            onDismiss = { showQuitDialog = false },
+        TvConfirmOverlay(
+            title = "Quitter IPTVFlix ?",
+            confirmLabel = "Quitter",
             onConfirm = { activity?.finishAffinity() },
+            onDismiss = { showQuitDialog = false },
         )
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0F0F1A)),
+            .background(TvColors.Background),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -67,29 +67,51 @@ fun WhoIsWatchingScreen(
         ) {
             Text(
                 text = "Qui regarde ?",
-                color = Color.White,
-                fontSize = 40.sp,
+                color = TvColors.TextPrimary,
+                fontSize = 44.sp,
                 fontWeight = FontWeight.Bold,
             )
 
-            Spacer(Modifier.height(40.dp))
+            Spacer(Modifier.height(12.dp))
 
-            if (state.error != null) {
-                Text(
-                    state.error!!,
-                    color = Color(0xFFEF5350),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-                Spacer(Modifier.height(16.dp))
-                RetryButton(onClick = { vm.clearError(); vm.loadProfiles() })
-                Spacer(Modifier.height(24.dp))
-            }
+            Text(
+                text = "Sélectionnez un profil avec la télécommande",
+                color = TvColors.TextMuted,
+                fontSize = 18.sp,
+            )
+
+            Spacer(Modifier.height(48.dp))
 
             when {
-                state.loading -> Text("Chargement…", color = Color(0xFFAAAAAA), fontSize = 20.sp)
-                state.selectingProfileId != null -> Text("Connexion…", color = Color(0xFFAAAAAA), fontSize = 20.sp)
-                state.profiles.isEmpty() -> Text("Aucun profil disponible.", color = Color(0xFFAAAAAA), fontSize = 18.sp)
+                state.error != null -> {
+                    Text(
+                        state.error!!,
+                        color = TvColors.Error,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.height(24.dp))
+                    TvPrimaryButton(
+                        label = "Réessayer",
+                        onClick = { vm.clearError(); vm.loadProfiles() },
+                        requestInitialFocus = true,
+                    )
+                }
+                state.loading -> {
+                    Text("Chargement des profils…", color = TvColors.TextSecondary, fontSize = 20.sp)
+                }
+                state.selectingProfileId != null -> {
+                    Text("Connexion au profil…", color = TvColors.TextSecondary, fontSize = 20.sp)
+                }
+                state.profiles.isEmpty() -> {
+                    Text("Aucun profil disponible.", color = TvColors.TextSecondary, fontSize = 18.sp)
+                    Spacer(Modifier.height(24.dp))
+                    TvPrimaryButton(
+                        label = "Réessayer",
+                        onClick = { vm.loadProfiles() },
+                        requestInitialFocus = true,
+                    )
+                }
                 else -> {
                     val listState = rememberTvLazyListState()
                     val initialIndex = state.profiles.indexOfFirst { it.id == lastUsedProfileId }
@@ -104,7 +126,7 @@ fun WhoIsWatchingScreen(
                     TvLazyRow(
                         state = listState,
                         contentPadding = PaddingValues(horizontal = 32.dp),
-                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(32.dp),
                     ) {
                         items(state.profiles, key = { it.id }) { profile ->
                             ProfileCard(
@@ -116,44 +138,6 @@ fun WhoIsWatchingScreen(
                                 },
                             )
                         }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RetryButton(onClick: () -> Unit) {
-    Button(onClick = onClick) {
-        Text("Réessayer", color = Color.White)
-    }
-}
-
-@Composable
-private fun QuitDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss) {
-        Box(
-            modifier = Modifier
-                .background(Color(0xFF1A1A2E))
-                .padding(32.dp),
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    "Quitter l'application ?",
-                    color = Color.White,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-                Spacer(Modifier.height(24.dp))
-                androidx.compose.foundation.layout.Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Button(onClick = onDismiss) {
-                        Text("Annuler", color = Color.White)
-                    }
-                    Button(onClick = onConfirm) {
-                        Text("Quitter", color = Color.White)
                     }
                 }
             }

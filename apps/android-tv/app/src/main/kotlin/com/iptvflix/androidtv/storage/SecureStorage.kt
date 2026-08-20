@@ -46,6 +46,10 @@ class SecureStorage(context: Context) : TokenStore {
 
     override fun getProfileToken(): String? = prefs.getString(KEY_PROFILE_TOKEN, null)
 
+    override fun clearProfileToken() {
+        prefs.edit().remove(KEY_PROFILE_TOKEN).apply()
+    }
+
     override fun saveLastUsedProfileId(id: String) {
         uxPrefs.edit().putString(KEY_LAST_PROFILE_ID, id).apply()
     }

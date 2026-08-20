@@ -31,7 +31,6 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.iptvflix.androidtv.network.ProfileResponse
 import com.iptvflix.androidtv.util.getAvatarRes
-import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -48,7 +47,6 @@ fun ProfileCard(
 
     LaunchedEffect(isInitialFocus) {
         if (isInitialFocus) {
-            delay(150)
             runCatching { focusRequester.requestFocus() }
         }
     }
@@ -92,7 +90,7 @@ fun ProfileCard(
                 fontSize = 20.sp,
             )
             if (profile.isKids) {
-                Text(text = "Kids", color = Color(0xFF4FC3F7), fontSize = 14.sp)
+                Text(text = "Enfants", color = Color(0xFF4FC3F7), fontSize = 14.sp)
             }
         }
     }

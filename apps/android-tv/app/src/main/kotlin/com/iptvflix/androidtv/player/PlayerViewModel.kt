@@ -39,6 +39,7 @@ sealed class PlayerUiState {
     object Buffering : PlayerUiState()
     object Playing : PlayerUiState()
     object Paused : PlayerUiState()
+    object Ended : PlayerUiState()
     data class Error(val message: String) : PlayerUiState()
 }
 
@@ -96,6 +97,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 _uiState.value = when {
+                    state == Player.STATE_ENDED -> PlayerUiState.Ended
                     state == Player.STATE_BUFFERING -> PlayerUiState.Buffering
                     state == Player.STATE_READY && player.playWhenReady -> PlayerUiState.Playing
                     state == Player.STATE_READY -> PlayerUiState.Paused

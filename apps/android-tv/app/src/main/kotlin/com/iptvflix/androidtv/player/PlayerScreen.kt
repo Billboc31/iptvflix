@@ -33,6 +33,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
 import com.iptvflix.androidtv.command.PlaybackCommand
+import com.iptvflix.androidtv.ui.TvColors
 import kotlinx.coroutines.delay
 
 @Composable
@@ -42,26 +43,35 @@ fun PlayerScreen(
     vm: PlayerViewModel = viewModel(),
 ) {
     val uiState by vm.uiState.collectAsState()
-    var showHints by remember { mutableStateOf(false) }
+    var showHints by remember { mutableStateOf(true) }
     var showBuffering by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(command?.id) {
-        if (command != null) vm.load(command)
+        if (command != null) {
+            showHints = true
+            vm.load(command)
+        }
     }
 
     LaunchedEffect(uiState) {
-        if (uiState is PlayerUiState.Buffering) {
-            delay(2_000)
-            if (vm.uiState.value is PlayerUiState.Buffering) showBuffering = true
-        } else {
-            showBuffering = false
+        when (uiState) {
+            is PlayerUiState.Buffering -> {
+                delay(2_000)
+                if (vm.uiState.value is PlayerUiState.Buffering) showBuffering = true
+            }
+            is PlayerUiState.Ended -> {
+                delay(2_500)
+                vm.stop()
+                onStop()
+            }
+            else -> showBuffering = false
         }
     }
 
     LaunchedEffect(showHints) {
         if (showHints) {
-            delay(4_000)
+            delay(5_000)
             showHints = false
         }
     }
@@ -93,20 +103,24 @@ fun PlayerScreen(
                     useController = false
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     setKeepContentOnPlayerReset(true)
+                    isFocusable = false
+                    isFocusableInTouchMode = false
                     player = vm.player
                 }
             },
             update = { view ->
                 view.player = vm.player
                 view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                view.isFocusable = false
+                view.isFocusableInTouchMode = false
             },
         )
 
-        if (showBuffering) {
+        if (showBuffering && uiState !is PlayerUiState.Error && uiState !is PlayerUiState.Ended) {
             Text(
-                "Mise en buffer…",
+                "Chargement…",
                 color = Color(0xCCFFFFFF),
-                fontSize = 16.sp,
+                fontSize = 18.sp,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(24.dp),
@@ -120,15 +134,36 @@ fun PlayerScreen(
                     onBack = { vm.stop(); onStop() },
                 )
             }
+            is PlayerUiState.Ended -> {
+                EndedOverlay()
+            }
             else -> Unit
         }
 
-        if (showHints && uiState !is PlayerUiState.Error) {
+        if (showHints && (uiState is PlayerUiState.Playing || uiState is PlayerUiState.Paused)) {
             ControlsHintOverlay(isPlaying = uiState is PlayerUiState.Playing)
         }
     }
 
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    LaunchedEffect(Unit) {
+        runCatching { focusRequester.requestFocus() }
+    }
+}
+
+@Composable
+private fun EndedOverlay() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x99000000)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Lecture terminée", color = TvColors.TextPrimary, fontSize = 28.sp)
+            Spacer(Modifier.height(8.dp))
+            Text("Retour à l'accueil…", color = TvColors.TextMuted, fontSize = 16.sp)
+        }
+    }
 }
 
 @Composable
@@ -153,10 +188,13 @@ private fun ControlsHintOverlay(isPlaying: Boolean) {
 
 @Composable
 private fun ErrorOverlay(message: String, onBack: () -> Unit) {
+    val focusRequester = remember { FocusRequester() }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xCC000000))
+            .background(Color(0xDD000000))
+            .focusRequester(focusRequester)
             .focusable()
             .onKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown &&
@@ -169,10 +207,15 @@ private fun ErrorOverlay(message: String, onBack: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Erreur de lecture", color = Color(0xFFFF6B6B), fontSize = 24.sp)
-            Text(message, color = Color.White, fontSize = 16.sp)
+            Text("Erreur de lecture", color = TvColors.Error, fontSize = 28.sp)
             Spacer(Modifier.height(12.dp))
-            Text("Retour pour quitter", color = Color(0xFFAAAAAA), fontSize = 14.sp)
+            Text(message, color = TvColors.TextPrimary, fontSize = 18.sp)
+            Spacer(Modifier.height(16.dp))
+            Text("Appuyez sur Retour pour quitter", color = TvColors.TextMuted, fontSize = 15.sp)
         }
+    }
+
+    LaunchedEffect(Unit) {
+        runCatching { focusRequester.requestFocus() }
     }
 }

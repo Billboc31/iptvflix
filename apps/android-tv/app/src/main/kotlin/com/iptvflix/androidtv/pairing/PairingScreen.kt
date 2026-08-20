@@ -15,7 +15,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,73 +27,100 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.tv.material3.Button
 import androidx.tv.material3.Text
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
 import com.google.zxing.common.BitMatrix
+import com.iptvflix.androidtv.ui.TvColors
+import com.iptvflix.androidtv.ui.TvPrimaryButton
 
 @Composable
 fun PairingScreen(
     onPaired: () -> Unit,
-    vm: PairingViewModel = viewModel(),
+    pairingKey: Int = 0,
+    vm: PairingViewModel = viewModel(key = "pairing-$pairingKey"),
 ) {
     val state by vm.uiState.collectAsState()
+    var hasNavigated by remember(pairingKey) { mutableStateOf(false) }
 
     LaunchedEffect(state) {
-        if (state is PairingUiState.Approved) onPaired()
+        if (state is PairingUiState.Approved && !hasNavigated) {
+            hasNavigated = true
+            onPaired()
+        }
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF1A1A2E)),
+            .background(TvColors.Background),
         contentAlignment = Alignment.Center,
     ) {
         when (val s = state) {
-            is PairingUiState.Loading -> Text("Chargement…", color = Color.White, fontSize = 20.sp)
-            is PairingUiState.ShowingCode -> PairingCodeContent(code = s.code, onRetry = null)
-            is PairingUiState.Expired -> PairingCodeContent(code = "", onRetry = { vm.startPairing() })
+            is PairingUiState.Loading -> {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Génération du code…", color = TvColors.TextPrimary, fontSize = 22.sp)
+                }
+            }
+            is PairingUiState.ShowingCode -> PairingCodeContent(code = s.code, expired = false)
+            is PairingUiState.Expired -> PairingCodeContent(code = "", expired = true, onRetry = { vm.startPairing() })
             is PairingUiState.Error -> ErrorContent(message = s.message, onRetry = { vm.startPairing() })
-            is PairingUiState.Approved -> Text("Connexion…", color = Color.White, fontSize = 20.sp)
+            is PairingUiState.Approved -> {
+                Text("Appareil connecté !", color = TvColors.Success, fontSize = 22.sp)
+            }
         }
     }
 }
 
 @Composable
-private fun PairingCodeContent(code: String, onRetry: (() -> Unit)?) {
+private fun PairingCodeContent(
+    code: String,
+    expired: Boolean,
+    onRetry: (() -> Unit)? = null,
+) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
         modifier = Modifier.padding(32.dp),
     ) {
-        if (onRetry != null) {
-            Text("Code expired", color = Color.White, fontSize = 24.sp)
-            Spacer(Modifier.height(16.dp))
-            Button(onClick = onRetry) { Text("Request new code") }
-        } else {
+        Text(
+            "Connecter la TV",
+            color = TvColors.Accent,
+            fontSize = 40.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            if (expired) "Le code a expiré" else "Associez cet appareil à votre compte IPTVFlix",
+            color = if (expired) TvColors.Warning else TvColors.TextSecondary,
+            fontSize = 20.sp,
+        )
+        Spacer(Modifier.height(8.dp))
+        if (!expired) {
             Text(
-                "Pair IPTVFlix",
-                color = Color.White,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Open IPTVFlix on your phone or browser and enter the code below.",
-                color = Color(0xFFAAAAAA),
+                "Sur votre téléphone ou navigateur : Paramètres → Appareils → Saisir le code",
+                color = TvColors.TextMuted,
                 fontSize = 16.sp,
             )
-            Spacer(Modifier.height(32.dp))
+        }
+        Spacer(Modifier.height(36.dp))
+
+        if (expired && onRetry != null) {
+            TvPrimaryButton(
+                label = "Nouveau code",
+                onClick = onRetry,
+                requestInitialFocus = true,
+            )
+        } else if (code.isNotBlank()) {
             QrCodeImage(value = code, size = 200)
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(28.dp))
             Text(
                 code,
-                color = Color.White,
-                fontSize = 48.sp,
+                color = TvColors.TextPrimary,
+                fontSize = 52.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
-                letterSpacing = 8.sp,
+                letterSpacing = 10.sp,
             )
         }
     }
@@ -100,9 +129,15 @@ private fun PairingCodeContent(code: String, onRetry: (() -> Unit)?) {
 @Composable
 private fun ErrorContent(message: String, onRetry: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Could not connect: $message", color = Color(0xFFFF6B6B), fontSize = 18.sp)
-        Spacer(Modifier.height(16.dp))
-        Button(onClick = onRetry) { Text("Retry") }
+        Text("Connexion impossible", color = TvColors.Error, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(12.dp))
+        Text(message, color = TvColors.TextSecondary, fontSize = 18.sp)
+        Spacer(Modifier.height(28.dp))
+        TvPrimaryButton(
+            label = "Réessayer",
+            onClick = onRetry,
+            requestInitialFocus = true,
+        )
     }
 }
 
@@ -112,8 +147,11 @@ private fun QrCodeImage(value: String, size: Int) {
     if (bitmap != null) {
         Image(
             bitmap = bitmap.asImageBitmap(),
-            contentDescription = "QR code for pairing",
-            modifier = Modifier.size(size.dp),
+            contentDescription = "QR code de jumelage",
+            modifier = Modifier
+                .size(size.dp)
+                .background(Color.White)
+                .padding(8.dp),
         )
     }
 }
