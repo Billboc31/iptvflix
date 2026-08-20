@@ -1,14 +1,20 @@
 package com.iptvflix.androidtv.player
 
+import android.view.LayoutInflater
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -17,21 +23,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
+import com.iptvflix.androidtv.R
 import com.iptvflix.androidtv.command.PlaybackCommand
 import com.iptvflix.androidtv.ui.TvColors
 import kotlinx.coroutines.delay
@@ -43,36 +52,36 @@ fun PlayerScreen(
     vm: PlayerViewModel = viewModel(),
 ) {
     val uiState by vm.uiState.collectAsState()
-    var showHints by remember { mutableStateOf(true) }
-    var showBuffering by remember { mutableStateOf(false) }
+    val hud by vm.hud.collectAsState()
+    var showControls by remember { mutableStateOf(true) }
     val focusRequester = remember { FocusRequester() }
+    var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
 
     LaunchedEffect(command?.id) {
         if (command != null) {
-            showHints = true
+            showControls = true
             vm.load(command)
         }
     }
 
     LaunchedEffect(uiState) {
         when (uiState) {
-            is PlayerUiState.Buffering -> {
-                delay(2_000)
-                if (vm.uiState.value is PlayerUiState.Buffering) showBuffering = true
-            }
             is PlayerUiState.Ended -> {
-                delay(2_500)
+                delay(2_000)
                 vm.stop()
                 onStop()
             }
-            else -> showBuffering = false
+            is PlayerUiState.Playing -> {
+                delay(6_000)
+                showControls = false
+            }
+            else -> Unit
         }
     }
 
-    LaunchedEffect(showHints) {
-        if (showHints) {
-            delay(5_000)
-            showHints = false
+    DisposableEffect(Unit) {
+        onDispose {
+            playerViewRef?.player = null
         }
     }
 
@@ -84,9 +93,9 @@ fun PlayerScreen(
             .focusable()
             .onKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
-                showHints = true
+                showControls = true
                 when (event.key) {
-                    Key.DirectionCenter, Key.MediaPlay, Key.MediaPause, Key.MediaPlayPause -> {
+                    Key.DirectionCenter, Key.Enter, Key.MediaPlay, Key.MediaPause, Key.MediaPlayPause -> {
                         vm.togglePlayPause(); true
                     }
                     Key.DirectionRight -> { vm.seekForward(); true }
@@ -99,49 +108,56 @@ fun PlayerScreen(
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
-                PlayerView(ctx).apply {
-                    useController = false
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    setKeepContentOnPlayerReset(true)
-                    isFocusable = false
-                    isFocusableInTouchMode = false
-                    player = vm.player
+                (LayoutInflater.from(ctx).inflate(R.layout.player_view, null) as PlayerView).also { view ->
+                    view.player = vm.player
+                    playerViewRef = view
                 }
             },
             update = { view ->
-                view.player = vm.player
-                view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                view.isFocusable = false
-                view.isFocusableInTouchMode = false
+                if (view.player !== vm.player) view.player = vm.player
+                playerViewRef = view
             },
         )
 
-        if (showBuffering && uiState !is PlayerUiState.Error && uiState !is PlayerUiState.Ended) {
-            Text(
-                "Chargement…",
-                color = Color(0xCCFFFFFF),
-                fontSize = 18.sp,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(24.dp),
+        // Top / bottom gradients so UI stays readable over bright scenes
+        if (showControls || uiState is PlayerUiState.Buffering || uiState is PlayerUiState.Error) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .align(Alignment.TopCenter)
+                    .background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent))),
+            )
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xDD000000)))),
             )
         }
 
         when (val s = uiState) {
             is PlayerUiState.Error -> {
-                ErrorOverlay(
-                    message = s.message,
-                    onBack = { vm.stop(); onStop() },
-                )
+                ErrorOverlay(message = s.message, onBack = { vm.stop(); onStop() })
             }
             is PlayerUiState.Ended -> {
-                EndedOverlay()
+                CenterStatus("Lecture terminée", "Retour à l'accueil…")
+            }
+            is PlayerUiState.Buffering -> {
+                CenterStatus("Chargement…", "Préparation du flux")
             }
             else -> Unit
         }
 
-        if (showHints && (uiState is PlayerUiState.Playing || uiState is PlayerUiState.Paused)) {
-            ControlsHintOverlay(isPlaying = uiState is PlayerUiState.Playing)
+        if (showControls && uiState !is PlayerUiState.Error) {
+            PlayerChrome(
+                isPlaying = uiState is PlayerUiState.Playing,
+                isBuffering = uiState is PlayerUiState.Buffering,
+                mediaType = command?.mediaType,
+                hud = hud,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
     }
 
@@ -151,37 +167,94 @@ fun PlayerScreen(
 }
 
 @Composable
-private fun EndedOverlay() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0x99000000)),
-        contentAlignment = Alignment.Center,
+private fun PlayerChrome(
+    isPlaying: Boolean,
+    isBuffering: Boolean,
+    mediaType: String?,
+    hud: PlayerHudState,
+    modifier: Modifier = Modifier,
+) {
+    val progress = if (hud.durationMs > 0L) {
+        (hud.positionMs.toFloat() / hud.durationMs.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 48.dp, vertical = 36.dp),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Lecture terminée", color = TvColors.TextPrimary, fontSize = 28.sp)
-            Spacer(Modifier.height(8.dp))
-            Text("Retour à l'accueil…", color = TvColors.TextMuted, fontSize = 16.sp)
+        Text(
+            text = when (mediaType?.lowercase()) {
+                "episode" -> "Série"
+                else -> "Film"
+            },
+            color = TvColors.Accent,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = when {
+                isBuffering -> "Chargement…"
+                isPlaying -> "Lecture en cours"
+                else -> "Pause"
+            },
+            color = Color.White,
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(16.dp))
+
+        // Progress bar
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(Color(0x55FFFFFF)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress)
+                    .height(6.dp)
+                    .background(TvColors.Accent),
+            )
         }
+        Spacer(Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(formatTime(hud.positionMs), color = Color(0xCCFFFFFF), fontSize = 14.sp)
+            Text(
+                if (hud.durationMs > 0L) formatTime(hud.durationMs) else "--:--",
+                color = Color(0xCCFFFFFF),
+                fontSize = 14.sp,
+            )
+        }
+        Spacer(Modifier.height(14.dp))
+        Text(
+            "OK pause/lecture   ·   ◀ ▶ ±10 s   ·   Retour quitter",
+            color = Color(0x99FFFFFF),
+            fontSize = 15.sp,
+        )
     }
 }
 
 @Composable
-private fun ControlsHintOverlay(isPlaying: Boolean) {
+private fun CenterStatus(title: String, subtitle: String) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(32.dp),
-        contentAlignment = Alignment.BottomCenter,
+            .background(Color(0x66000000)),
+        contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                if (isPlaying) "Lecture en cours" else "Pause",
-                color = Color(0xE6FFFFFF),
-                fontSize = 16.sp,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text("◀ ▶ ±10 s   ·   OK pause   ·   Retour quitter", color = Color(0x99CCCCCC), fontSize = 13.sp)
+            Text(title, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Text(subtitle, color = Color(0xCCFFFFFF), fontSize = 16.sp)
         }
     }
 }
@@ -193,7 +266,7 @@ private fun ErrorOverlay(message: String, onBack: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xDD000000))
+            .background(Color(0xEE000000))
             .focusRequester(focusRequester)
             .focusable()
             .onKeyEvent { event ->
@@ -206,16 +279,24 @@ private fun ErrorOverlay(message: String, onBack: () -> Unit) {
             },
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Erreur de lecture", color = TvColors.Error, fontSize = 28.sp)
-            Spacer(Modifier.height(12.dp))
-            Text(message, color = TvColors.TextPrimary, fontSize = 18.sp)
-            Spacer(Modifier.height(16.dp))
-            Text("Appuyez sur Retour pour quitter", color = TvColors.TextMuted, fontSize = 15.sp)
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(48.dp)) {
+            Text("Erreur de lecture", color = TvColors.Error, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(14.dp))
+            Text(message, color = Color.White, fontSize = 18.sp)
+            Spacer(Modifier.height(20.dp))
+            Text("Appuyez sur Retour pour quitter", color = Color(0x99FFFFFF), fontSize = 15.sp)
         }
     }
 
     LaunchedEffect(Unit) {
         runCatching { focusRequester.requestFocus() }
     }
+}
+
+private fun formatTime(ms: Long): String {
+    val totalSec = (ms / 1000L).coerceAtLeast(0L)
+    val h = totalSec / 3600L
+    val m = (totalSec % 3600L) / 60L
+    val s = totalSec % 60L
+    return if (h > 0L) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
 }

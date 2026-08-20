@@ -17,22 +17,18 @@ import com.iptvflix.androidtv.playback.PlaybackApi
 import com.iptvflix.androidtv.playback.PlaybackResolver
 import com.iptvflix.androidtv.playback.TrackInfo
 import com.iptvflix.androidtv.progress.ProgressReporter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 
 private const val TAG = "PlayerViewModel"
 private const val SEEK_STEP_MS = 10_000L
-private const val RESUME_THRESHOLD_MS = 30_000L
-
-private fun isHlsPlayback(descriptor: com.iptvflix.androidtv.playback.PlaybackDescriptor): Boolean {
-    val ext = descriptor.containerExtension?.lowercase()?.removePrefix(".") ?: return false
-    return ext == "m3u8" || ext == "m3u"
-}
 
 sealed class PlayerUiState {
     object Idle : PlayerUiState()
@@ -48,6 +44,12 @@ private data class ExoTrackRef(
     val trackIndex: Int,
 )
 
+data class PlayerHudState(
+    val positionMs: Long = 0L,
+    val durationMs: Long = 0L,
+    val bufferedPercent: Int = 0,
+)
+
 class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     private val container get() = getApplication<App>()
@@ -57,14 +59,17 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private val _uiState = MutableStateFlow<PlayerUiState>(PlayerUiState.Idle)
     val uiState: StateFlow<PlayerUiState> = _uiState
 
+    private val _hud = MutableStateFlow(PlayerHudState())
+    val hud: StateFlow<PlayerHudState> = _hud.asStateFlow()
+
     private val _availableTracks = MutableStateFlow<List<TrackInfo>>(emptyList())
     val availableTracks: StateFlow<List<TrackInfo>> = _availableTracks
 
-    // Populated by onTracksChanged; read on main thread only (player listener runs on main looper)
     private var exoTracksMap = mapOf<String, ExoTrackRef>()
 
     private var progressReporter: ProgressReporter? = null
     private var reporterJob: Job? = null
+    private var hudJob: Job? = null
 
     private val interactionEvents: InteractionEventService by lazy {
         InteractionEventService(container.apiClient)
@@ -85,7 +90,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     put("mediaId", cmd.mediaId)
                     put("clientType", "android-tv")
                     sessionId?.let { put("sessionId", it) }
-                    put("positionMs", player.currentPosition)
+                    put("positionMs", runCatching { player.currentPosition }.getOrDefault(0L))
                     putAll(extra)
                 }
                 interactionEvents.emit(params)
@@ -107,6 +112,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     sessionEnded = true
                     emitEvent("PLAY_COMPLETED")
                 }
+                refreshHud()
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -161,6 +167,20 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 _availableTracks.value = infoList
             }
         })
+        hudJob = viewModelScope.launch {
+            while (true) {
+                delay(500)
+                refreshHud()
+            }
+        }
+    }
+
+    private fun refreshHud() {
+        val pos = runCatching { player.currentPosition }.getOrDefault(0L).coerceAtLeast(0L)
+        val dur = runCatching { player.duration }.getOrDefault(C.TIME_UNSET)
+        val durationMs = if (dur == C.TIME_UNSET || dur < 0L) 0L else dur
+        val buffered = runCatching { player.bufferedPercentage }.getOrDefault(0)
+        _hud.value = PlayerHudState(positionMs = pos, durationMs = durationMs, bufferedPercent = buffered)
     }
 
     fun load(command: PlaybackCommand) {
@@ -179,26 +199,16 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _uiState.value = PlayerUiState.Buffering
             runCatching {
-                val descriptor = PlaybackResolver(PlaybackApi(container.apiClient)).resolve(command)
-                val desiredStartMs = maxOf(command.startPositionMs, descriptor.startPositionMs)
-                // Progressive MKV/MP4: seek only after the stream is READY.
-                // Seeking immediately often causes long black screens then SOURCE_ERROR.
-                val seekAfterReady = !isHlsPlayback(descriptor) && desiredStartMs > RESUME_THRESHOLD_MS
-                val startMs = when {
-                    isHlsPlayback(descriptor) && desiredStartMs > RESUME_THRESHOLD_MS -> desiredStartMs
-                    seekAfterReady -> 0L
-                    else -> desiredStartMs
+                val descriptor = withContext(Dispatchers.IO) {
+                    PlaybackResolver(PlaybackApi(container.apiClient)).resolve(command)
                 }
-
-                val mediaItem = buildMediaItem(descriptor.toMediaItemSpec())
-                player.stop()
-                player.clearMediaItems()
-                player.setMediaItem(mediaItem)
-                player.prepare()
-                player.playWhenReady = true
-                if (startMs > 0L) player.seekTo(startMs)
-                if (seekAfterReady) {
-                    scheduleSeekAfterReady(desiredStartMs)
+                // Progressive MKV: never seek-on-start — mid-file seeks crash many Android TV codecs.
+                withContext(Dispatchers.Main) {
+                    player.stop()
+                    player.clearMediaItems()
+                    player.setMediaItem(buildMediaItem(descriptor.toMediaItemSpec()))
+                    player.prepare()
+                    player.playWhenReady = true
                 }
 
                 progressReporter = ProgressReporter(
@@ -210,50 +220,51 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 reporterJob?.cancel()
                 reporterJob = viewModelScope.launch { progressReporter!!.start() }
             }.onFailure { e ->
-                Log.e(TAG, "Failed to load: ${e.message}")
+                Log.e(TAG, "Failed to load: ${e.message}", e)
                 _uiState.value = PlayerUiState.Error(e.message ?: "Impossible de charger le média")
             }
         }
     }
 
-    private fun scheduleSeekAfterReady(positionMs: Long) {
-        player.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) {
-                    player.removeListener(this)
-                    if (positionMs > 0L && player.duration > 0L) {
-                        player.seekTo(positionMs.coerceAtMost(player.duration - 1_000L).coerceAtLeast(0L))
-                    }
-                }
-            }
-
-            override fun onPlayerError(error: PlaybackException) {
-                player.removeListener(this)
-            }
-        })
-    }
-
     fun togglePlayPause() {
-        player.playWhenReady = !player.playWhenReady
-        if (!player.playWhenReady) {
-            viewModelScope.launch { progressReporter?.reportNow() }
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            player.playWhenReady = !player.playWhenReady
+            if (!player.playWhenReady) {
+                progressReporter?.reportNow()
+            }
         }
     }
 
-    fun seekForward() = player.seekTo(player.currentPosition + SEEK_STEP_MS)
+    fun seekForward() {
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            val target = player.currentPosition + SEEK_STEP_MS
+            val dur = player.duration
+            if (dur != C.TIME_UNSET && dur > 0L) {
+                player.seekTo(target.coerceAtMost(dur))
+            } else {
+                player.seekTo(target)
+            }
+        }
+    }
 
-    fun seekBack() = player.seekTo(maxOf(0L, player.currentPosition - SEEK_STEP_MS))
+    fun seekBack() {
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            player.seekTo(maxOf(0L, player.currentPosition - SEEK_STEP_MS))
+        }
+    }
 
     fun stop() {
-        val positionMs = player.currentPosition
+        val positionMs = runCatching { player.currentPosition }.getOrDefault(0L)
         viewModelScope.launch(NonCancellable) {
             progressReporter?.reportNow()
             emitAbandonIfNeeded(positionMs)
         }
         reporterJob?.cancel()
         loadedCommandId = null
-        player.stop()
-        _uiState.value = PlayerUiState.Idle
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            runCatching { player.stop() }
+            _uiState.value = PlayerUiState.Idle
+        }
     }
 
     private suspend fun emitAbandonIfNeeded(positionMs: Long) {
@@ -283,17 +294,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
-        val positionMs = player.currentPosition
-        // runBlocking with NonCancellable ensures final progress/abandon are flushed
-        // before viewModelScope cancels — without this the coroutines are dropped silently.
-        runBlocking(NonCancellable) {
-            runCatching { withTimeout(2_000L) {
-                progressReporter?.reportNow()
-                emitAbandonIfNeeded(positionMs)
-            } }
-        }
+        hudJob?.cancel()
         reporterJob?.cancel()
-        player.release()
+        runCatching { player.release() }
         super.onCleared()
     }
 }
@@ -323,4 +326,3 @@ private fun friendlyPlaybackError(error: PlaybackException): String {
         else -> error.message?.takeIf { it.isNotBlank() } ?: "Erreur source / lecture"
     }
 }
-

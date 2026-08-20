@@ -39,13 +39,13 @@ object ExoPlayerFactory {
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(dataSourceFactory)
 
-        // Faster start on TV: smaller min buffer before first frame.
+        // Keep buffers modest — large MKV buffers OOM / crash low-end Android TV boxes.
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                15_000,
-                50_000,
-                1_500,
-                3_000,
+                8_000,
+                25_000,
+                1_000,
+                2_000,
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()

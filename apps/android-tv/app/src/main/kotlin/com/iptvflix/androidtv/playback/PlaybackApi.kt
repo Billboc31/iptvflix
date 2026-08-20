@@ -13,9 +13,6 @@ import okhttp3.Request
 
 private const val TAG = "PlaybackApi"
 
-private const val XTREAM_USER_AGENT =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-
 @Serializable
 data class DrmConfig(
     val schemeUuid: String,
@@ -74,7 +71,9 @@ class PlaybackApi(private val apiClient: ApiClient) {
             error("Lecture directe indisponible (serveur en mise à jour). Réessayez dans 2 minutes.")
         }
 
-        val streamUrl = resolveDirectStreamUrl(gatewayUrl)
+        // Only resolve the Railway 302 → provider URL. Do NOT download bytes here —
+        // following CDN redirects with Range can poison the session and crash ExoPlayer.
+        val streamUrl = resolveGatewayRedirect(gatewayUrl)
         val resumeMs = (session.startPositionSeconds * 1000).toLong().coerceAtLeast(startPositionMs)
         return PlaybackDescriptor(
             streamUrl = streamUrl,
@@ -84,37 +83,42 @@ class PlaybackApi(private val apiClient: ApiClient) {
         )
     }
 
-    /**
-     * Follow Railway 302 → Xtream CDN → origin (often cleartext HTTP).
-     * ExoPlayer then opens the final URL with a browser UA.
-     */
-    private suspend fun resolveDirectStreamUrl(gatewayUrl: String): String {
+    private suspend fun resolveGatewayRedirect(gatewayUrl: String): String {
         if (!gatewayUrl.contains("/playback/stream/")) return gatewayUrl
         return withContext(Dispatchers.IO) {
             val client = apiClient.httpClient.newBuilder()
-                .followRedirects(true)
-                .followSslRedirects(true)
+                .followRedirects(false)
+                .followSslRedirects(false)
                 .build()
 
             val request = Request.Builder()
                 .url(gatewayUrl)
-                .get()
-                .header("Range", "bytes=0-0")
-                .header("User-Agent", XTREAM_USER_AGENT)
-                .header("Accept", "*/*")
+                .head()
                 .header("X-Client-Type", "android-tv")
                 .build()
 
-            client.newCall(request).execute().use { response ->
-                val finalUrl = response.request.url.toString()
-                Log.d(TAG, "Resolved playback URL host=${response.request.url.host} code=${response.code}")
-                when {
-                    response.isSuccessful || response.code == 206 -> finalUrl
-                    response.isRedirect -> response.header("Location") ?: gatewayUrl
-                    else -> {
-                        Log.w(TAG, "Unexpected resolve status ${response.code}, falling back to gateway")
-                        gatewayUrl
+            runCatching {
+                client.newCall(request).execute().use { response ->
+                    when (response.code) {
+                        301, 302, 303, 307, 308 -> {
+                            val location = response.header("Location")
+                            if (!location.isNullOrBlank()) {
+                                Log.d(TAG, "Gateway redirect → ${response.request.url.host}")
+                                return@withContext location
+                            }
+                        }
                     }
+                    gatewayUrl
+                }
+            }.getOrElse {
+                // Some gateways reject HEAD — fall back to GET without following.
+                val getReq = Request.Builder()
+                    .url(gatewayUrl)
+                    .get()
+                    .header("X-Client-Type", "android-tv")
+                    .build()
+                client.newCall(getReq).execute().use { response ->
+                    response.header("Location")?.takeIf { it.isNotBlank() } ?: gatewayUrl
                 }
             }
         }

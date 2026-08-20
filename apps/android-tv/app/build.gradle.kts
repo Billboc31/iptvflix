@@ -13,8 +13,8 @@ android {
         applicationId = "com.iptvflix.androidtv"
         minSdk = 23
         targetSdk = 34
-        versionCode = 6
-        versionName = "0.0.6"
+        versionCode = 7
+        versionName = "0.0.7"
         buildConfigField("String", "API_BASE_URL", "\"https://iptvflixapi-production.up.railway.app\"")
         buildConfigField("String", "WEB_BASE_URL", "\"https://iptvflix-production.up.railway.app\"")
     }
