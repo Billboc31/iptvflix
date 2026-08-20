@@ -91,7 +91,7 @@ fun BoxScope.PlayerActionOverlays(
  * Z-order for the player surface:
  * 1. Video (TextureView / ExoPlayer)
  * 2. Dim / status overlays (buffering, error)
- * 3. [content] Action overlays (skip intro, …) — focusable TV buttons
+ * 3. Action overlays (skip intro, …) — focusable TV buttons
  * 4. Chrome HUD (progress / hints)
  */
 @Composable
@@ -101,10 +101,10 @@ fun PlayerOverlayStack(
     actionContent: @Composable BoxScope.() -> Unit,
     chromeContent: @Composable BoxScope.() -> Unit,
 ) {
-    Box(Modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize()) {
         video()
-        statusContent()
-        actionContent()
-        chromeContent()
+        Box(modifier = Modifier.fillMaxSize(), content = statusContent)
+        Box(modifier = Modifier.fillMaxSize(), content = actionContent)
+        Box(modifier = Modifier.fillMaxSize(), content = chromeContent)
     }
 }
