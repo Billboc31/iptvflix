@@ -405,17 +405,34 @@ export class CatalogEnrichMissingService {
 
     const runId = run.id
 
+    const stats = {
+      totalEligible: failures.length,
+      processed: 0,
+      enriched: 0,
+      skipped: 0,
+      retrying: 0,
+      failedTerminal: 0,
+    }
+
     void runWithConcurrency(failures, concurrency, async (failure) => {
       const mt = failure.mediaType as 'MOVIE' | 'SERIES'
-      if (mt === 'MOVIE') {
-        await this.enrichWithRetry(() => this.enrichmentService.enrichMovie(failure.mediaId, { force: true, runId }))
-      } else {
-        await this.enrichWithRetry(() => this.enrichmentService.enrichSeries(failure.mediaId, { force: true, runId }))
+      try {
+        const result = mt === 'MOVIE'
+          ? await this.enrichWithRetry(() => this.enrichmentService.enrichMovie(failure.mediaId, { force: true, runId }), () => { stats.retrying++ })
+          : await this.enrichWithRetry(() => this.enrichmentService.enrichSeries(failure.mediaId, { force: true, runId }), () => { stats.retrying++ })
+        stats.processed++
+        if (result === 'enriched') stats.enriched++
+        else if (result === 'skipped' || result === 'no-tmdb-id') stats.skipped++
+        else stats.failedTerminal++
+      } catch {
+        stats.processed++
+        stats.failedTerminal++
       }
     }).then(async () => {
+      const finalCheckpoint = { stats: { ...stats, remaining: stats.failedTerminal, ratePerMinute: 0, etaSeconds: null } }
       await this.db
         .update(catalogRefreshRuns)
-        .set({ status: 'COMPLETED', completedAt: new Date() })
+        .set({ status: 'COMPLETED', completedAt: new Date(), checkpoint: finalCheckpoint, failedCount: stats.failedTerminal })
         .where(eq(catalogRefreshRuns.id, runId))
     }).catch(async (err) => {
       await this.db

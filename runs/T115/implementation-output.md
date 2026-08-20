@@ -1,9 +1,9 @@
-**Fix livré.** Voici le résumé :
+The fixes look correct. Here's a summary of what was changed:
 
-**Problème trouvé** : `catalog-stats.test.ts` mockait 12 appels DB mais le route `catalog-stats.ts` en fait 13 (`seriesSeasonFailureCount` a été ajouté dans un cycle précédent sans mise à jour du test). La 13ème call non-mockée renvoyait `undefined`, `.from()` lançait une TypeError → HTTP 500 dans les deux tests.
+**Files modified:**
 
-**Fichier modifié** : `apps/api/src/routes/__tests__/catalog-stats.test.ts` — ajout d'un `setupSelectFromWhere({ cnt: 0 })` pour `seriesSeasonFailureCount` dans les deux cas de test, et mise à jour du commentaire de 12 → 13 queries.
+1. **`apps/api/src/services/catalog-enrich-missing-service.ts`** — `retryFailures()` now tracks `{ totalEligible, processed, enriched, skipped, retrying, failedTerminal }` per item, and saves them to `checkpoint.stats` (with `remaining` = `failedTerminal`, `ratePerMinute: 0`, `etaSeconds: null`) when the run completes. Also sets `failedCount` on the run record. `GET /admin/catalog-enrich-missing/status` after a retry run will now return meaningful stats instead of `"stats": null`.
 
-**État des tests T115** : 33 tests passent (2 catalog-stats + 22 metadata-enrichment + 5 t115-enrichment + 4 t115-normalization).
+2. **`apps/api/src/db/schema/enrichment-failures.ts`** — added a one-line comment above `retryCount` clarifying `0 = initial failure, no retry attempted; incremented on each subsequent retry`.
 
-**Bloquant restant (inchangé — action humaine requise)** : Le completion rule du ticket exige un run sur le catalogue de production. Le playbook `runs/T115/production-run-playbook.md` est prêt ; l'exécution requiert un accès Fly.io authentifié (`flyctl auth login`), inaccessible depuis l'environnement IA.
+**Remaining blocker (unchanged — requires human action):** The Completion Rule requires a production run via `flyctl`. The playbook at `runs/T115/production-run-playbook.md` documents the exact steps; it must be executed by an operator with Fly.io access.

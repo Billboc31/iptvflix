@@ -12,6 +12,7 @@ export const enrichmentFailures = pgTable(
     errorClass: text('error_class'),
     errorCode: text('error_code'),
     errorMessage: text('error_message').notNull(),
+    // 0 = initial failure, no retry attempted; incremented on each subsequent retry
     retryCount: integer('retry_count').notNull().default(0),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
     retryable: boolean('retryable').notNull().default(false),
