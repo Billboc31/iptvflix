@@ -16,6 +16,11 @@ class PairingStateMachineTest {
         override fun saveDeviceToken(token: String) { this.token = token }
         override fun getDeviceToken(): String? = token
         override fun clearDeviceToken() { token = null }
+        override fun saveProfileToken(token: String) {}
+        override fun getProfileToken(): String? = null
+        override fun clearProfileToken() {}
+        override fun saveLastUsedProfileId(id: String) {}
+        override fun getLastUsedProfileId(): String? = null
     }
 
     private fun fakeApi(

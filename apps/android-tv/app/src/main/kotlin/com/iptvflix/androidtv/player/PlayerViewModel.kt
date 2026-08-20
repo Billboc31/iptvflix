@@ -17,13 +17,15 @@ import com.iptvflix.androidtv.playback.PlaybackApi
 import com.iptvflix.androidtv.playback.PlaybackResolver
 import com.iptvflix.androidtv.playback.TrackInfo
 import com.iptvflix.androidtv.progress.ProgressReporter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 
 private const val TAG = "PlayerViewModel"
 private const val SEEK_STEP_MS = 10_000L
@@ -33,6 +35,7 @@ sealed class PlayerUiState {
     object Buffering : PlayerUiState()
     object Playing : PlayerUiState()
     object Paused : PlayerUiState()
+    object Ended : PlayerUiState()
     data class Error(val message: String) : PlayerUiState()
 }
 
@@ -41,23 +44,36 @@ private data class ExoTrackRef(
     val trackIndex: Int,
 )
 
+data class PlayerHudState(
+    val positionMs: Long = 0L,
+    val durationMs: Long = 0L,
+    val bufferedPercent: Int = 0,
+)
+
 class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     private val container get() = getApplication<App>()
 
-    val player: ExoPlayer = ExoPlayer.Builder(app).build()
+    val player: ExoPlayer = ExoPlayerFactory.create(app, container.secureStorage)
 
     private val _uiState = MutableStateFlow<PlayerUiState>(PlayerUiState.Idle)
     val uiState: StateFlow<PlayerUiState> = _uiState
 
+    private val _hud = MutableStateFlow(PlayerHudState())
+    val hud: StateFlow<PlayerHudState> = _hud.asStateFlow()
+
+    /** Cue-driven overlays (skip intro, …). Filled when metadata / API provides markers. */
+    private val _overlayActions = MutableStateFlow<List<PlayerOverlayAction>>(emptyList())
+    val overlayActions: StateFlow<List<PlayerOverlayAction>> = _overlayActions.asStateFlow()
+
     private val _availableTracks = MutableStateFlow<List<TrackInfo>>(emptyList())
     val availableTracks: StateFlow<List<TrackInfo>> = _availableTracks
 
-    // Populated by onTracksChanged; read on main thread only (player listener runs on main looper)
     private var exoTracksMap = mapOf<String, ExoTrackRef>()
 
     private var progressReporter: ProgressReporter? = null
     private var reporterJob: Job? = null
+    private var hudJob: Job? = null
 
     private val interactionEvents: InteractionEventService by lazy {
         InteractionEventService(container.apiClient)
@@ -66,6 +82,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private var sessionId: String? = null
     private var hasEmittedPlay = false
     private var sessionEnded = false
+    private var loadedCommandId: String? = null
+    /** Resume target once ExoPlayer knows the duration (progressive MKV). */
+    private var pendingResumeMs: Long = 0L
 
     private fun emitEvent(eventType: String, extra: Map<String, Any?> = emptyMap()) {
         val cmd = currentCommand ?: return
@@ -77,7 +96,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     put("mediaId", cmd.mediaId)
                     put("clientType", "android-tv")
                     sessionId?.let { put("sessionId", it) }
-                    put("positionMs", player.currentPosition)
+                    put("positionMs", runCatching { player.currentPosition }.getOrDefault(0L))
                     putAll(extra)
                 }
                 interactionEvents.emit(params)
@@ -89,15 +108,25 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 _uiState.value = when {
+                    state == Player.STATE_ENDED -> PlayerUiState.Ended
                     state == Player.STATE_BUFFERING -> PlayerUiState.Buffering
                     state == Player.STATE_READY && player.playWhenReady -> PlayerUiState.Playing
                     state == Player.STATE_READY -> PlayerUiState.Paused
                     else -> _uiState.value
                 }
+                if (state == Player.STATE_READY) {
+                    maybeApplyResumeSeek()
+                    viewModelScope.launch {
+                        // First durable progress tick once duration is known.
+                        progressReporter?.reportNow()
+                    }
+                }
                 if (state == Player.STATE_ENDED) {
                     sessionEnded = true
                     emitEvent("PLAY_COMPLETED")
+                    viewModelScope.launch { progressReporter?.reportNow() }
                 }
+                refreshHud()
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -127,8 +156,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                Log.e(TAG, "Playback error: ${error.errorCodeName}")
-                _uiState.value = PlayerUiState.Error(error.message ?: "Playback failed")
+                Log.e(TAG, "Playback error: ${error.errorCodeName} ${error.message}", error)
+                _uiState.value = PlayerUiState.Error(friendlyPlaybackError(error))
             }
 
             override fun onTracksChanged(tracks: Tracks) {
@@ -152,23 +181,54 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 _availableTracks.value = infoList
             }
         })
+        hudJob = viewModelScope.launch {
+            while (true) {
+                delay(500)
+                refreshHud()
+            }
+        }
+    }
+
+    private fun refreshHud() {
+        val pos = runCatching { player.currentPosition }.getOrDefault(0L).coerceAtLeast(0L)
+        val dur = runCatching { player.duration }.getOrDefault(C.TIME_UNSET)
+        val durationMs = if (dur == C.TIME_UNSET || dur < 0L) 0L else dur
+        val buffered = runCatching { player.bufferedPercentage }.getOrDefault(0)
+        _hud.value = PlayerHudState(positionMs = pos, durationMs = durationMs, bufferedPercent = buffered)
     }
 
     fun load(command: PlaybackCommand) {
+        if (loadedCommandId == command.id &&
+            player.playbackState != Player.STATE_IDLE &&
+            player.playbackState != Player.STATE_ENDED
+        ) {
+            Log.d(TAG, "Skipping duplicate load for command ${command.id}")
+            return
+        }
+        loadedCommandId = command.id
         currentCommand = command
         hasEmittedPlay = false
         sessionId = null
         sessionEnded = false
+        pendingResumeMs = 0L
         viewModelScope.launch {
             _uiState.value = PlayerUiState.Buffering
             runCatching {
-                val descriptor = PlaybackResolver(PlaybackApi(container.apiClient)).resolve(command)
+                val descriptor = withContext(Dispatchers.IO) {
+                    PlaybackResolver(PlaybackApi(container.apiClient)).resolve(command)
+                }
+                val desiredStartMs = maxOf(command.startPositionMs, descriptor.startPositionMs)
+                // Defer resume until duration is known — seeking blind on MKV crashes many TVs.
+                pendingResumeMs = if (desiredStartMs > 30_000L) desiredStartMs else 0L
 
-                val mediaItem = buildMediaItem(descriptor.toMediaItemSpec())
-                player.setMediaItem(mediaItem)
-                player.prepare()
-                player.seekTo(command.startPositionMs)
-                player.playWhenReady = true
+                withContext(Dispatchers.Main) {
+                    player.stop()
+                    player.clearMediaItems()
+                    player.setMediaItem(buildMediaItem(descriptor.toMediaItemSpec()))
+                    player.prepare()
+                    player.playWhenReady = true
+                }
+                _overlayActions.value = emptyList()
 
                 progressReporter = ProgressReporter(
                     mediaType = command.mediaType,
@@ -179,32 +239,81 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 reporterJob?.cancel()
                 reporterJob = viewModelScope.launch { progressReporter!!.start() }
             }.onFailure { e ->
-                Log.e(TAG, "Failed to load: ${e.message}")
-                _uiState.value = PlayerUiState.Error(e.message ?: "Failed to load media")
+                Log.e(TAG, "Failed to load: ${e.message}", e)
+                _uiState.value = PlayerUiState.Error(e.message ?: "Impossible de charger le média")
             }
         }
     }
 
+    private fun maybeApplyResumeSeek() {
+        val target = pendingResumeMs
+        if (target <= 0L) return
+        val dur = runCatching { player.duration }.getOrDefault(C.TIME_UNSET)
+        if (dur == C.TIME_UNSET || dur <= 0L) return
+        pendingResumeMs = 0L
+        val safeTarget = target.coerceAtMost((dur - 5_000L).coerceAtLeast(0L))
+        Log.d(TAG, "Applying resume seek to ${safeTarget}ms (duration=${dur}ms)")
+        runCatching { player.seekTo(safeTarget) }
+            .onFailure { Log.w(TAG, "Resume seek failed, continuing from start: ${it.message}") }
+    }
+
     fun togglePlayPause() {
-        player.playWhenReady = !player.playWhenReady
-        if (!player.playWhenReady) {
-            viewModelScope.launch { progressReporter?.reportNow() }
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            player.playWhenReady = !player.playWhenReady
+            if (!player.playWhenReady) {
+                progressReporter?.reportNow()
+            }
         }
     }
 
-    fun seekForward() = player.seekTo(player.currentPosition + SEEK_STEP_MS)
+    fun seekForward() {
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            val target = player.currentPosition + SEEK_STEP_MS
+            val dur = player.duration
+            if (dur != C.TIME_UNSET && dur > 0L) {
+                player.seekTo(target.coerceAtMost(dur))
+            } else {
+                player.seekTo(target)
+            }
+        }
+    }
 
-    fun seekBack() = player.seekTo(maxOf(0L, player.currentPosition - SEEK_STEP_MS))
+    fun seekBack() {
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            player.seekTo(maxOf(0L, player.currentPosition - SEEK_STEP_MS))
+        }
+    }
+
+    fun onOverlayAction(action: PlayerOverlayAction) {
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            when (action) {
+                is PlayerOverlayAction.SkipIntro -> {
+                    player.seekTo(action.seekToMs.coerceAtLeast(0L))
+                    _overlayActions.value = _overlayActions.value.filterNot { it.id == action.id }
+                }
+                is PlayerOverlayAction.SkipRecap -> {
+                    player.seekTo(action.seekToMs.coerceAtLeast(0L))
+                    _overlayActions.value = _overlayActions.value.filterNot { it.id == action.id }
+                }
+                is PlayerOverlayAction.NextEpisode,
+                is PlayerOverlayAction.Custom,
+                -> Log.d(TAG, "Overlay action not wired yet: ${action.id}")
+            }
+        }
+    }
 
     fun stop() {
-        val positionMs = player.currentPosition
+        val positionMs = runCatching { player.currentPosition }.getOrDefault(0L)
         viewModelScope.launch(NonCancellable) {
             progressReporter?.reportNow()
             emitAbandonIfNeeded(positionMs)
         }
         reporterJob?.cancel()
-        player.stop()
-        _uiState.value = PlayerUiState.Idle
+        loadedCommandId = null
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            runCatching { player.stop() }
+            _uiState.value = PlayerUiState.Idle
+        }
     }
 
     private suspend fun emitAbandonIfNeeded(positionMs: Long) {
@@ -234,17 +343,35 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
-        val positionMs = player.currentPosition
-        // runBlocking with NonCancellable ensures final progress/abandon are flushed
-        // before viewModelScope cancels — without this the coroutines are dropped silently.
-        runBlocking(NonCancellable) {
-            runCatching { withTimeout(2_000L) {
-                progressReporter?.reportNow()
-                emitAbandonIfNeeded(positionMs)
-            } }
-        }
+        hudJob?.cancel()
         reporterJob?.cancel()
-        player.release()
+        runCatching { player.release() }
         super.onCleared()
+    }
+}
+
+private fun friendlyPlaybackError(error: PlaybackException): String {
+    val code = error.errorCode
+    val cause = error.cause?.message?.lowercase().orEmpty()
+    val msg = (error.message ?: "").lowercase()
+    return when {
+        code == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+            code == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
+            "Connexion au flux impossible. Vérifiez le Wi‑Fi de la TV."
+        code == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+            msg.contains("403") || cause.contains("403") ->
+            "Source refusée (403). Réessayez dans un instant."
+        code == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
+            msg.contains("404") ->
+            "Source introuvable chez le fournisseur."
+        code == PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED ->
+            "Flux HTTP bloqué. Réinstallez l'app IPTVFlix TV."
+        code == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
+            code == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ->
+            "Format non supporté par cette TV."
+        code == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+            code == PlaybackException.ERROR_CODE_DECODING_FAILED ->
+            "Décodage vidéo impossible sur cette TV."
+        else -> error.message?.takeIf { it.isNotBlank() } ?: "Erreur source / lecture"
     }
 }

@@ -49,7 +49,7 @@ describe('DeviceSettingsPage', () => {
     await user.click(screen.getByRole('button', { name: /jumeler/i }))
 
     await waitFor(() => {
-      expect(screen.getByText(/salon tv.*jumelé/i)).toBeInTheDocument()
+      expect(screen.getByText(/jumelé avec succès/i)).toBeInTheDocument()
     })
   })
 

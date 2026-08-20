@@ -13,9 +13,10 @@ android {
         applicationId = "com.iptvflix.androidtv"
         minSdk = 23
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.0.1"
-        buildConfigField("String", "API_BASE_URL", "\"https://api.iptvflix.example.com\"")
+        versionCode = 8
+        versionName = "0.0.8"
+        buildConfigField("String", "API_BASE_URL", "\"https://iptvflixapi-production.up.railway.app\"")
+        buildConfigField("String", "WEB_BASE_URL", "\"https://iptvflix-production.up.railway.app\"")
     }
 
     buildTypes {
@@ -36,6 +37,9 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+        freeCompilerArgs += listOf(
+            "-opt-in=androidx.tv.material3.ExperimentalTvMaterial3Api",
+        )
     }
 
     testOptions {
@@ -47,6 +51,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     // Compose
     implementation(libs.compose.runtime)
+    implementation(libs.compose.runtime.saveable)
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)
     implementation(libs.compose.activity)
@@ -57,6 +62,8 @@ dependencies {
     implementation(libs.lifecycle.runtime.ktx)
     // Media3
     implementation(libs.media3.exoplayer)
+    implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.datasource.okhttp)
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
     // Coroutines

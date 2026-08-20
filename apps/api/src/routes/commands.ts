@@ -18,6 +18,16 @@ import { eq, and } from 'drizzle-orm'
 const SSE_HEARTBEAT_INTERVAL_MS = 25_000
 
 export async function commandsRoutes(app: FastifyInstance): Promise<void> {
+  app.get('/devices/me', async (request, reply) => {
+    const device = await authenticateDevice(request, reply)
+    if (!device) return
+    return {
+      id: device.id,
+      name: device.name,
+      lastSeenAt: device.lastSeenAt?.toISOString() ?? null,
+    }
+  })
+
   // Web — send a playback command to a specific paired device
   app.post<{ Params: { id: string }; Body: PlaybackCommandRequest }>(
     '/devices/:id/commands',

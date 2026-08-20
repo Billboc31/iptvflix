@@ -111,10 +111,11 @@ export async function resolvePlayback(
   mediaId: string,
   explicitAvailabilityId?: string,
   correlationId = 'unknown',
-  opts?: { restart?: boolean },
+  opts?: { restart?: boolean; clientType?: 'web' | 'android-tv' },
 ): Promise<PlaybackSessionResponse> {
   const t0 = Date.now()
-  console.info({ correlationId, step: 'resolve_start', mediaType, mediaId }, 'playback-resolver: resolve_start')
+  const nativeClient = opts?.clientType === 'android-tv'
+  console.info({ correlationId, step: 'resolve_start', mediaType, mediaId, clientType: opts?.clientType ?? 'web' }, 'playback-resolver: resolve_start')
 
   const [allRows, prefs] = await Promise.all([
     fetchAvailabilities(mediaType, mediaId),
@@ -428,29 +429,33 @@ export async function resolvePlayback(
   }
 
   const relayBase = getMediaRelayBaseUrl()
-  const gatewayUrl =
-    mediaRelayEnabled && relayBase && MEDIA_RELAY_SECRET
+  const relaySecret = MEDIA_RELAY_SECRET
+  const useMediaRelay =
+    !nativeClient &&
+    mediaRelayEnabled &&
+    Boolean(relayBase && relaySecret)
+  const gatewayUrl = useMediaRelay
       ? buildMediaRelayPlayUrl({
-          relayBaseUrl: relayBase,
-          secret: MEDIA_RELAY_SECRET,
+          relayBaseUrl: relayBase!,
+          secret: relaySecret!,
           providerStreamUrl,
           containerExtension,
           startPositionSeconds,
         })
       : `/playback/stream/${sessionId}`
 
-  // Relay remuxes mkv/ts → HLS; tell the web player to use hls.js even though
-  // the Railway session stays DIRECT (no ffmpeg on Railway).
+  // Relay remuxes mkv/ts → HLS for web browsers. Native TV apps read Xtream directly.
   const clientDeliveryMode: DeliveryMode =
-    mediaRelayEnabled && needsRelayRemux(containerExtension) ? 'HLS_REMUX' : deliveryMode
+    useMediaRelay && needsRelayRemux(containerExtension) ? 'HLS_REMUX' : deliveryMode
 
   console.info({
     correlationId,
     step: 'gateway_url_issued',
     sessionId,
-    gatewayUrl: mediaRelayEnabled ? '[media-relay]' : gatewayUrl,
+    gatewayUrl: useMediaRelay ? '[media-relay]' : gatewayUrl,
     deliveryMode: clientDeliveryMode,
-    mediaRelay: mediaRelayEnabled,
+    mediaRelay: useMediaRelay,
+    nativeClient,
     durationMs: Date.now() - t0,
   }, 'playback-resolver: gateway_url_issued')
   return {

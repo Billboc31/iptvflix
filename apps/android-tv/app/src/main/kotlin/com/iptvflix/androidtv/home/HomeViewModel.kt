@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.iptvflix.androidtv.App
 import com.iptvflix.androidtv.network.ApiException
 import com.iptvflix.androidtv.network.InteractionEventService
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,17 +51,37 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     val uiState: StateFlow<HomeUiState> = _uiState
 
     init {
-        viewModelScope.launch { fetchDeviceInfo() }
-        viewModelScope.launch { fetchContinueWatching() }
+        viewModelScope.launch { loadInitialData() }
         viewModelScope.launch { monitorConnection() }
     }
 
-    private suspend fun fetchDeviceInfo() {
+    private suspend fun loadInitialData() {
+        coroutineScope {
+            val continueDeferred = async { fetchContinueWatching() }
+            fetchDeviceAndConnection()
+            continueDeferred.await()
+        }
+    }
+
+    private suspend fun fetchDeviceAndConnection() {
         runCatching {
             val body = container.apiClient.get("/devices/me")
             val info = json.decodeFromString<DeviceInfo>(body)
-            _uiState.value = _uiState.value.copy(deviceName = info.name)
-        }.onFailure { Log.w(TAG, "Device info fetch failed: ${it.message}") }
+            _uiState.value = _uiState.value.copy(
+                deviceName = info.name,
+                connectionStatus = ConnectionStatus.Connected,
+            )
+            emitHomeOpenedOnce()
+        }.onFailure { err ->
+            Log.w(TAG, "Initial device fetch failed: ${err.message}")
+            if (err is ApiException && err.code == 401) {
+                _uiState.value = _uiState.value.copy(
+                    connectionStatus = ConnectionStatus.Revoked("Device access was revoked"),
+                )
+            } else {
+                _uiState.value = _uiState.value.copy(connectionStatus = ConnectionStatus.Reconnecting)
+            }
+        }
     }
 
     private suspend fun fetchContinueWatching() {
@@ -76,17 +98,13 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun monitorConnection() {
+        delay(30_000)
         while (true) {
             try {
                 container.apiClient.get("/devices/me")
                 _uiState.value = _uiState.value.copy(connectionStatus = ConnectionStatus.Connected)
-                if (!hasEmittedHomeOpened) {
-                    hasEmittedHomeOpened = true
-                    runCatching {
-                        interactionEvents.emit(mapOf("eventType" to "HOME_OPENED", "clientType" to "android-tv"))
-                    }
-                }
-                delay(30_000)
+                emitHomeOpenedOnce()
+                delay(60_000)
             } catch (e: ApiException) {
                 if (e.code == 401) {
                     _uiState.value = _uiState.value.copy(
@@ -95,11 +113,19 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                     return
                 }
                 _uiState.value = _uiState.value.copy(connectionStatus = ConnectionStatus.Reconnecting)
-                delay(10_000)
+                delay(15_000)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(connectionStatus = ConnectionStatus.Reconnecting)
-                delay(10_000)
+                delay(15_000)
             }
+        }
+    }
+
+    private suspend fun emitHomeOpenedOnce() {
+        if (hasEmittedHomeOpened) return
+        hasEmittedHomeOpened = true
+        runCatching {
+            interactionEvents.emit(mapOf("eventType" to "HOME_OPENED", "clientType" to "android-tv"))
         }
     }
 }

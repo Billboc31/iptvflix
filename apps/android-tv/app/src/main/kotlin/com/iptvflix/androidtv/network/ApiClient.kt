@@ -15,57 +15,101 @@ import java.util.concurrent.TimeUnit
 
 class ApiClient(private val tokenStore: TokenStore) {
 
-    val httpClient: OkHttpClient = OkHttpClient.Builder()
+    private val apiHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(UserAgentInterceptor())
         .addInterceptor(TokenInterceptor(tokenStore))
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(0, TimeUnit.MILLISECONDS) // streaming-safe; callers set per-request timeouts
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
         .build()
+
+    private val streamHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(UserAgentInterceptor())
+        .addInterceptor(TokenInterceptor(tokenStore))
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
+        .build()
+
+    /** Shared by PlaybackApi redirect resolution and other callers needing custom clients. */
+    val httpClient: OkHttpClient get() = apiHttpClient
 
     private val baseUrl = BuildConfig.API_BASE_URL
 
-    fun buildRequest(path: String, method: String = "GET", body: okhttp3.RequestBody? = null): Request =
-        Request.Builder()
+    fun buildRequest(
+        path: String,
+        method: String = "GET",
+        body: okhttp3.RequestBody? = null,
+        clientType: String? = null,
+    ): Request {
+        val builder = Request.Builder()
             .url("$baseUrl$path")
             .method(method, body)
-            .build()
+        if (clientType != null) {
+            builder.header("X-Client-Type", clientType)
+        }
+        return builder.build()
+    }
 
     suspend fun get(path: String): String = withContext(Dispatchers.IO) {
-        httpClient.newCall(buildRequest(path)).execute().use { response ->
+        apiHttpClient.newCall(buildRequest(path)).execute().use { response ->
             if (!response.isSuccessful) throw ApiException(response.code)
             response.body?.string() ?: throw IOException("Empty body")
         }
     }
 
-    suspend fun post(path: String, jsonBody: String = "{}"): String = withContext(Dispatchers.IO) {
-        val body = jsonBody.toRequestBody("application/json".toMediaType())
-        httpClient.newCall(buildRequest(path, "POST", body)).execute().use { response ->
-            if (!response.isSuccessful) throw ApiException(response.code)
-            response.body?.string() ?: ""
+    suspend fun post(path: String, jsonBody: String = "{}", clientType: String? = null): String =
+        withContext(Dispatchers.IO) {
+            val body = jsonBody.toRequestBody("application/json".toMediaType())
+            apiHttpClient.newCall(buildRequest(path, "POST", body, clientType)).execute().use { response ->
+                if (!response.isSuccessful) throw ApiException(response.code)
+                response.body?.string() ?: ""
+            }
         }
-    }
 
     suspend fun put(path: String, jsonBody: String): Boolean = withContext(Dispatchers.IO) {
         val body = jsonBody.toRequestBody("application/json".toMediaType())
-        httpClient.newCall(buildRequest(path, "PUT", body)).execute().use { response ->
+        apiHttpClient.newCall(buildRequest(path, "PUT", body)).execute().use { response ->
             response.isSuccessful
         }
     }
 
-    fun openStream(path: String): Response = httpClient.newCall(buildRequest(path)).execute()
+    fun openStream(path: String): Response = streamHttpClient.newCall(buildRequest(path)).execute()
 }
 
 class ApiException(val code: Int) : IOException("HTTP $code")
 
-private class TokenInterceptor(private val tokenStore: TokenStore) : Interceptor {
-    override fun intercept(chain: Interceptor.Chain): Response {
-        val token = tokenStore.getDeviceToken()
-        val request = if (token != null) {
+private class UserAgentInterceptor : Interceptor {
+    private val userAgent = "IPTVFlix-AndroidTV/${BuildConfig.VERSION_NAME}"
+
+    override fun intercept(chain: Interceptor.Chain): Response =
+        chain.proceed(
             chain.request().newBuilder()
-                .header("Authorization", "Bearer $token")
-                .build()
-        } else {
-            chain.request()
+                .header("User-Agent", userAgent)
+                .build(),
+        )
+}
+
+private class TokenInterceptor(private val tokenStore: TokenStore) : Interceptor {
+    private val apiHost = runCatching { java.net.URI(BuildConfig.API_BASE_URL).host }.getOrNull()
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        // Never attach IPTVFlix JWT to Xtream / CDN hosts (breaks Cloudflare / provider auth).
+        if (apiHost == null || request.url.host != apiHost) {
+            return chain.proceed(request)
         }
-        return chain.proceed(request)
+        val path = request.url.encodedPath
+        val token = when {
+            path.startsWith("/pairing/") -> null
+            path.startsWith("/devices/me") -> tokenStore.getDeviceToken()
+            else -> tokenStore.getProfileToken() ?: tokenStore.getDeviceToken()
+        }
+        val authed = if (token != null) {
+            request.newBuilder().header("Authorization", "Bearer $token").build()
+        } else {
+            request
+        }
+        return chain.proceed(authed)
     }
 }

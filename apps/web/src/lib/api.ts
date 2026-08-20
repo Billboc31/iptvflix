@@ -378,11 +378,16 @@ export function getPairingCodeDetail(code: string): Promise<PairingCodeDetailRes
   return request(`/pairing/codes/${code}`)
 }
 
-export function approvePairingCode(code: string, name?: string): Promise<DeviceResponse> {
-  return request<{ device: DeviceResponse; deviceToken: string }>(
+export async function approvePairingCode(code: string, name?: string): Promise<DeviceResponse> {
+  const res = await request<Record<string, unknown>>(
     `/pairing/codes/${code}/approve`,
     { method: 'POST', body: JSON.stringify({ name }) },
-  ).then((res) => res.device)
+  )
+  const nested = res?.device
+  if (nested && typeof nested === 'object' && 'id' in nested && 'name' in nested) {
+    return nested as DeviceResponse
+  }
+  return res as unknown as DeviceResponse
 }
 
 export function sendPlayOnTvCommand(

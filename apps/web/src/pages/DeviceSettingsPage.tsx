@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { useDevices } from '../hooks/useDevices.js'
 import { getPairingCodeDetail, ApiError } from '../lib/api.js'
 import DeviceListItem from '../components/devices/DeviceListItem.js'
@@ -7,16 +8,19 @@ import Spinner from '../components/ui/Spinner.js'
 
 export default function DeviceSettingsPage() {
   const { devices, isLoading, approve, rename, revoke } = useDevices()
+  const location = useLocation()
+  const [, setSearchParams] = useSearchParams()
+  const codeFromUrl = new URLSearchParams(location.search).get('code')?.trim() ?? ''
 
   const [pairingCode, setPairingCode] = useState('')
   const [pairingName, setPairingName] = useState('')
   const [pairingError, setPairingError] = useState<string | null>(null)
   const [pairingSuccess, setPairingSuccess] = useState<string | null>(null)
   const [pairing, setPairing] = useState(false)
+  const qrAutoTried = useRef(false)
 
-  async function handlePair(e: React.FormEvent) {
-    e.preventDefault()
-    const code = pairingCode.trim().toUpperCase()
+  async function pairCode(rawCode: string, fromQr = false) {
+    const code = rawCode.trim().toUpperCase()
     if (!code) return
     setPairingError(null)
     setPairingSuccess(null)
@@ -28,13 +32,17 @@ export default function DeviceSettingsPage() {
         return
       }
       if (detail.status === 'approved') {
-        setPairingError('Ce code a déjà été utilisé.')
+        setPairingError(fromQr ? 'Cette TV est déjà jumelée.' : 'Ce code a déjà été utilisé.')
         return
       }
-      const device = await approve(code, pairingName.trim() || undefined)
-      setPairingSuccess(`${device.name} a été jumelé avec succès.`)
+      const device = await approve(code, pairingName.trim() || (fromQr ? 'Android TV' : undefined))
+      const label = device?.name?.trim() || 'Appareil TV'
+      setPairingSuccess(`${label} a été jumelé avec succès.`)
       setPairingCode('')
       setPairingName('')
+      if (fromQr) {
+        setSearchParams({}, { replace: true })
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         setPairingError('Code inconnu ou expiré.')
@@ -48,6 +56,19 @@ export default function DeviceSettingsPage() {
     }
   }
 
+  useEffect(() => {
+    if (!codeFromUrl || isLoading || qrAutoTried.current) return
+    qrAutoTried.current = true
+    setPairingCode(codeFromUrl.toUpperCase())
+    void pairCode(codeFromUrl, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codeFromUrl, isLoading])
+
+  async function handlePair(e: React.FormEvent) {
+    e.preventDefault()
+    await pairCode(pairingCode)
+  }
+
   return (
     <div className="max-w-xl mx-auto px-6 py-8">
       <h1 className="text-2xl font-bold text-white mb-2">Appareils TV</h1>
@@ -55,7 +76,6 @@ export default function DeviceSettingsPage() {
         Gérez vos appareils TV jumelés et approuvez de nouveaux jumelages.
       </p>
 
-      {/* Paired TVs */}
       <section className="mb-10">
         <h2 className="text-lg font-semibold text-white mb-4">Appareils jumelés</h2>
         {isLoading ? (
@@ -80,12 +100,14 @@ export default function DeviceSettingsPage() {
         )}
       </section>
 
-      {/* Pair a new TV */}
       <section>
         <h2 className="text-lg font-semibold text-white mb-4">Jumeler un nouvel appareil</h2>
         <p className="text-gray-400 text-sm mb-4">
-          Ouvrez l'application sur votre TV Android pour afficher le code de jumelage.
+          Scannez le QR code affiché sur la TV, ou saisissez le code manuellement.
         </p>
+        {pairing && codeFromUrl && (
+          <p className="text-sky-300 text-sm mb-4">Jumelage automatique en cours…</p>
+        )}
         <form onSubmit={(e) => void handlePair(e)} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">
