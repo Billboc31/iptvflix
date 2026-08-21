@@ -57,6 +57,8 @@ data class HomeUiState(
     val deviceName: String = "IPTVFlix TV",
     val connectionStatus: ConnectionStatus = ConnectionStatus.Reconnecting,
     val continueWatching: List<ContinueWatchingUi> = emptyList(),
+    val profileName: String? = null,
+    val profileAvatarKey: String? = null,
 )
 
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
@@ -82,8 +84,23 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun loadInitialData() {
         coroutineScope {
             val continueDeferred = async { fetchContinueWatching() }
+            val profileDeferred = async { fetchCurrentProfile() }
             fetchDeviceAndConnection()
             continueDeferred.await()
+            profileDeferred.await()
+        }
+    }
+
+    private suspend fun fetchCurrentProfile() {
+        runCatching {
+            container.profileApiService.getCurrentProfile()
+        }.onSuccess { profile ->
+            _uiState.value = _uiState.value.copy(
+                profileName = profile.name,
+                profileAvatarKey = profile.avatarKey,
+            )
+        }.onFailure { err ->
+            Log.w(TAG, "Current profile fetch failed: ${err.message}")
         }
     }
 

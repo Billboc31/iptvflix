@@ -2,9 +2,13 @@ package com.iptvflix.androidtv.home
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +19,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +40,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.foundation.lazy.list.TvLazyRow
 import androidx.tv.foundation.lazy.list.items
+import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
@@ -50,7 +60,7 @@ import com.iptvflix.androidtv.App
 import com.iptvflix.androidtv.command.PlaybackCommand
 import com.iptvflix.androidtv.ui.TvColors
 import com.iptvflix.androidtv.ui.TvConfirmOverlay
-import com.iptvflix.androidtv.ui.TvPrimaryButton
+import com.iptvflix.androidtv.util.getAvatarRes
 import java.util.UUID
 
 @Composable
@@ -110,7 +120,18 @@ fun HomeScreen(
                     fontSize = 34.sp,
                     fontWeight = FontWeight.Bold,
                 )
-                ConnectionBadge(state.connectionStatus)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    ConnectionBadge(state.connectionStatus)
+                    ProfileAvatarButton(
+                        name = state.profileName,
+                        avatarKey = state.profileAvatarKey,
+                        onClick = onChangeProfile,
+                        requestInitialFocus = state.continueWatching.isEmpty(),
+                    )
+                }
             }
 
             Spacer(Modifier.height(28.dp))
@@ -193,17 +214,83 @@ fun HomeScreen(
             if (state.continueWatching.isNotEmpty()) {
                 Spacer(Modifier.weight(1f))
             }
+        }
+    }
+}
 
-            Row(
+@Composable
+private fun ProfileAvatarButton(
+    name: String?,
+    avatarKey: String?,
+    onClick: () -> Unit,
+    requestInitialFocus: Boolean = false,
+) {
+    val focusRequester = remember { FocusRequester() }
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+    val label = name?.takeIf { it.isNotBlank() } ?: "Profil"
+
+    LaunchedEffect(requestInitialFocus) {
+        if (requestInitialFocus) runCatching { focusRequester.requestFocus() }
+    }
+
+    Surface(
+        onClick = onClick,
+        interactionSource = interactionSource,
+        modifier = Modifier
+            .focusRequester(focusRequester)
+            .semantics { contentDescription = "Changer de profil — $label" }
+            .pointerInput(onClick) { detectTapGestures(onTap = { onClick() }) },
+        shape = ClickableSurfaceDefaults.shape(shape = CircleShape),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = Color.Transparent,
+            focusedContainerColor = Color.Transparent,
+            pressedContainerColor = Color.Transparent,
+            contentColor = TvColors.TextPrimary,
+            focusedContentColor = TvColors.TextPrimary,
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(
+                border = BorderStroke(0.dp, Color.Transparent),
+                shape = CircleShape,
+            ),
+            focusedBorder = Border(
+                border = BorderStroke(3.dp, Color.White),
+                shape = CircleShape,
+            ),
+        ),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+        ) {
+            Image(
+                painter = painterResource(id = getAvatarRes(avatarKey)),
+                contentDescription = null,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 56.dp),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                TvPrimaryButton(
-                    label = "Changer de profil",
-                    onClick = onChangeProfile,
-                    requestInitialFocus = state.continueWatching.isEmpty(),
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .then(
+                        if (focused) Modifier.border(2.dp, TvColors.Accent, CircleShape)
+                        else Modifier.border(1.dp, Color(0x44FFFFFF), CircleShape),
+                    ),
+            )
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(
+                    label,
+                    color = if (focused) Color.White else TvColors.TextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "Changer",
+                    color = if (focused) Color(0xFFEEEEEE) else TvColors.TextMuted,
+                    fontSize = 12.sp,
+                    maxLines = 1,
                 )
             }
         }

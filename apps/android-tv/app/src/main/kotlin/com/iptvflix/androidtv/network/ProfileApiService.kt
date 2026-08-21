@@ -29,6 +29,11 @@ class ProfileApiService(private val apiClient: ApiClient) {
         return json.decodeFromString(body)
     }
 
+    suspend fun getCurrentProfile(): ProfileResponse {
+        val body = apiClient.get("/profiles/me")
+        return json.decodeFromString(body)
+    }
+
     suspend fun selectProfile(profileId: String): SelectProfileResponse {
         val body = apiClient.post("/profiles/$profileId/select")
         return json.decodeFromString(body)
