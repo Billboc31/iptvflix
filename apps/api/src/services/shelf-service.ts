@@ -244,8 +244,11 @@ async function evaluateMovies(rules: ShelfRuleDefinition, profileId: string): Pr
               and(
                 eq(viewingProgress.profileId, profileId),
                 eq(viewingProgress.mediaType, 'MOVIE'),
-                sql`${viewingProgress.progressSeconds} >= ${viewingProgress.durationSeconds} * 0.05`,
-                sql`${viewingProgress.progressSeconds} < ${viewingProgress.durationSeconds} * 0.90`,
+                sql`${viewingProgress.progressSeconds} >= 2`,
+                sql`(
+                  ${viewingProgress.progressSeconds} < ${viewingProgress.durationSeconds} * 0.90
+                  OR ${viewingProgress.durationSeconds} < 600
+                )`,
               ),
             ),
         )
@@ -260,6 +263,7 @@ async function evaluateMovies(rules: ShelfRuleDefinition, profileId: string): Pr
               and(
                 eq(viewingProgress.profileId, profileId),
                 eq(viewingProgress.mediaType, 'MOVIE'),
+                sql`${viewingProgress.durationSeconds} >= 600`,
                 sql`${viewingProgress.progressSeconds} >= ${viewingProgress.durationSeconds} * 0.90`,
               ),
             ),

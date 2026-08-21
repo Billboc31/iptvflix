@@ -51,18 +51,42 @@ export async function upsertProgress(
 ): Promise<ViewingProgressRow> {
   await validateMediaId(mediaType, mediaId)
 
+  // Ignore "completed" writes against tiny durations — HLS/Exo often report a
+  // fragment length and that used to wipe Continuer à regarder (progress≈duration).
+  let safeProgress = progressSeconds
+  let safeDuration = durationSeconds
+  if (
+    safeDuration > 0 &&
+    safeDuration < CW_MIN_CREDIBLE_DURATION_SECONDS &&
+    safeProgress >= safeDuration * CW_COMPLETED_RATIO
+  ) {
+    // Keep a started marker without marking the title complete.
+    safeProgress = Math.min(safeProgress, Math.max(CW_MIN_PROGRESS_SECONDS, Math.floor(safeDuration * 0.5)))
+  }
+
   const now = new Date()
   // HLS/IPTV often reports a fragment duration much shorter than the title.
   // Never shrink a longer duration already stored, otherwise a 10s playlist
   // "ended" event would mark the title complete and drop it from Continue Watching.
   const [row] = await db
     .insert(viewingProgress)
-    .values({ profileId, mediaType, mediaId, progressSeconds, durationSeconds, lastWatchedAt: now, updatedAt: now })
+    .values({
+      profileId,
+      mediaType,
+      mediaId,
+      progressSeconds: safeProgress,
+      durationSeconds: safeDuration,
+      lastWatchedAt: now,
+      updatedAt: now,
+    })
     .onConflictDoUpdate({
       target: [viewingProgress.profileId, viewingProgress.mediaType, viewingProgress.mediaId],
       set: {
         durationSeconds: sql`GREATEST(${viewingProgress.durationSeconds}, EXCLUDED.duration_seconds)`,
-        progressSeconds: sql`LEAST(${progressSeconds}, GREATEST(${viewingProgress.durationSeconds}, EXCLUDED.duration_seconds))`,
+        progressSeconds: sql`LEAST(
+          EXCLUDED.progress_seconds,
+          GREATEST(${viewingProgress.durationSeconds}, EXCLUDED.duration_seconds)
+        )`,
         lastWatchedAt: now,
         updatedAt: now,
       },
@@ -116,12 +140,12 @@ export async function listContinueWatching(profileId: string): Promise<ContinueW
   }
   const inProgress = and(
     eq(viewingProgress.profileId, profileId),
-    // Started (≥2s). Exclude only *credible* completions: long enough title + ≥90%.
-    // Short/bogus IPTV durations (e.g. 2s fragment) used to mark titles complete and empty CW.
+    // Started (≥2s). Keep titles unless they look like a real finish:
+    // long-enough duration AND ≥90% watched. Short/bogus IPTV durations stay visible.
     sql`${viewingProgress.progressSeconds} >= ${CW_MIN_PROGRESS_SECONDS}`,
-    sql`not (
-      ${viewingProgress.durationSeconds} >= 600
-      and ${viewingProgress.progressSeconds} >= ${viewingProgress.durationSeconds} * 0.90
+    sql`(
+      ${viewingProgress.progressSeconds} < ${viewingProgress.durationSeconds} * 0.90
+      OR ${viewingProgress.durationSeconds} < ${CW_MIN_CREDIBLE_DURATION_SECONDS}
     )`,
   )
 
