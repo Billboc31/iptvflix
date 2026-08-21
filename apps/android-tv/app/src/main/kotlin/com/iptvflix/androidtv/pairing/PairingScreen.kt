@@ -64,8 +64,16 @@ fun PairingScreen(
                 }
             }
             is PairingUiState.ShowingCode -> PairingCodeContent(code = s.code, expired = false, qrValue = pairingUrl(s.code))
-            is PairingUiState.Expired -> PairingCodeContent(code = "", expired = true, qrValue = "", onRetry = { vm.startPairing() })
-            is PairingUiState.Error -> ErrorContent(message = s.message, onRetry = { vm.startPairing() })
+            is PairingUiState.Expired -> PairingCodeContent(
+                code = "",
+                expired = true,
+                qrValue = "",
+                onRetry = { vm.startPairing() },
+            )
+            is PairingUiState.Error -> ErrorContent(
+                message = s.message,
+                onRetry = { vm.startPairing() },
+            )
             is PairingUiState.Approved -> {
                 Text("Appareil connecté !", color = TvColors.Success, fontSize = 22.sp)
             }
@@ -111,6 +119,13 @@ private fun PairingCodeContent(
         Spacer(Modifier.height(36.dp))
 
         if (expired && onRetry != null) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Le code est valable 5 minutes. Clique ou appuie sur Entrée pour en générer un autre.",
+                color = TvColors.TextMuted,
+                fontSize = 15.sp,
+            )
+            Spacer(Modifier.height(20.dp))
             TvPrimaryButton(
                 label = "Nouveau code",
                 onClick = onRetry,

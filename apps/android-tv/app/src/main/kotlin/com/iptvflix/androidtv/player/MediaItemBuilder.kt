@@ -1,5 +1,6 @@
 package com.iptvflix.androidtv.player
 
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import com.iptvflix.androidtv.playback.DrmConfig
@@ -12,9 +13,19 @@ data class MediaItemSpec(
     val drmLicenseUrl: String?,
     val useLiveOffset: Boolean = false,
     val mimeType: String? = null,
+    val subtitleUris: List<SubtitleSidecar> = emptyList(),
 )
 
-fun PlaybackDescriptor.toMediaItemSpec(): MediaItemSpec = MediaItemSpec(
+data class SubtitleSidecar(
+    val uri: String,
+    val mimeType: String = MimeTypes.APPLICATION_SUBRIP,
+    val language: String? = null,
+    val label: String? = null,
+)
+
+fun PlaybackDescriptor.toMediaItemSpec(
+    subtitleUris: List<SubtitleSidecar> = emptyList(),
+): MediaItemSpec = MediaItemSpec(
     uri = streamUrl,
     drmSchemeUuid = drmConfig?.let { parseDrmScheme(it) },
     drmLicenseUrl = drmConfig?.licenseUrl,
@@ -22,6 +33,7 @@ fun PlaybackDescriptor.toMediaItemSpec(): MediaItemSpec = MediaItemSpec(
     // Let ExoPlayer sniff progressive MKV/MP4 from bytes — forced Matroska MIME
     // can fail when the provider serves application/octet-stream after redirects.
     mimeType = containerMimeType(containerExtension, deliveryMode),
+    subtitleUris = subtitleUris,
 )
 
 private fun containerMimeType(containerExtension: String?, deliveryMode: String): String? {
@@ -37,6 +49,18 @@ private fun containerMimeType(containerExtension: String?, deliveryMode: String)
 fun buildMediaItem(spec: MediaItemSpec): MediaItem {
     val builder = MediaItem.Builder().setUri(spec.uri)
     spec.mimeType?.let { builder.setMimeType(it) }
+    if (spec.subtitleUris.isNotEmpty()) {
+        builder.setSubtitleConfigurations(
+            spec.subtitleUris.map { sub ->
+                MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(sub.uri))
+                    .setMimeType(sub.mimeType)
+                    .setLanguage(sub.language)
+                    .setLabel(sub.label)
+                    .setSelectionFlags(0)
+                    .build()
+            },
+        )
+    }
     if (spec.useLiveOffset) {
         builder.setLiveConfiguration(
             MediaItem.LiveConfiguration.Builder()

@@ -24,6 +24,7 @@ object ExoPlayerFactory {
     fun create(context: Context, tokenStore: TokenStore): ExoPlayer {
         val apiHost = runCatching { Uri.parse(BuildConfig.API_BASE_URL).host }.getOrNull()
         val httpClient = OkHttpClient.Builder()
+            .dns(com.iptvflix.androidtv.network.Ipv4OnlyDns)
             .addInterceptor(PlaybackAuthInterceptor(tokenStore, apiHost))
             .addInterceptor(XtreamHeaderInterceptor())
             .followRedirects(true)

@@ -83,6 +83,10 @@ fun AppNavGraph() {
                 commandVm.clearCommand()
                 currentScreen = Screen.WhoIsWatching.name
             },
+            onResumeLastPlayed = { cmd ->
+                commandVm.playLocal(cmd)
+                currentScreen = Screen.Player.name
+            },
         )
         Screen.Player -> PlayerScreen(
             command = commandVm.currentCommand(),

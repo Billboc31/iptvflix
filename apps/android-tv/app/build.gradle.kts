@@ -13,8 +13,8 @@ android {
         applicationId = "com.iptvflix.androidtv"
         minSdk = 23
         targetSdk = 34
-        versionCode = 8
-        versionName = "0.0.8"
+        versionCode = 21
+        versionName = "0.0.21"
         buildConfigField("String", "API_BASE_URL", "\"https://iptvflixapi-production.up.railway.app\"")
         buildConfigField("String", "WEB_BASE_URL", "\"https://iptvflix-production.up.railway.app\"")
     }
@@ -77,6 +77,7 @@ dependencies {
     implementation(libs.security.crypto)
     // QR code generation
     implementation(libs.zxing.core)
+    implementation(libs.coil.compose)
     // Tests
     testImplementation(libs.junit)
     testImplementation(libs.mockk)

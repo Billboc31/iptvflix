@@ -4,6 +4,7 @@ import com.iptvflix.androidtv.BuildConfig
 import com.iptvflix.androidtv.storage.TokenStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Dns
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -11,30 +12,34 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
+import java.net.Inet4Address
+import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
 class ApiClient(private val tokenStore: TokenStore) {
 
-    private val apiHttpClient: OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(UserAgentInterceptor())
-        .addInterceptor(TokenInterceptor(tokenStore))
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .writeTimeout(15, TimeUnit.SECONDS)
+    private val apiHttpClient: OkHttpClient = baseClientBuilder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .writeTimeout(20, TimeUnit.SECONDS)
         .build()
 
-    private val streamHttpClient: OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(UserAgentInterceptor())
-        .addInterceptor(TokenInterceptor(tokenStore))
-        .connectTimeout(10, TimeUnit.SECONDS)
+    private val streamHttpClient: OkHttpClient = baseClientBuilder()
+        .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
-        .writeTimeout(15, TimeUnit.SECONDS)
+        .writeTimeout(20, TimeUnit.SECONDS)
         .build()
 
     /** Shared by PlaybackApi redirect resolution and other callers needing custom clients. */
     val httpClient: OkHttpClient get() = apiHttpClient
 
     private val baseUrl = BuildConfig.API_BASE_URL
+
+    private fun baseClientBuilder(): OkHttpClient.Builder =
+        OkHttpClient.Builder()
+            .dns(Ipv4OnlyDns)
+            .addInterceptor(UserAgentInterceptor())
+            .addInterceptor(TokenInterceptor(tokenStore))
 
     fun buildRequest(
         path: String,
@@ -78,6 +83,18 @@ class ApiClient(private val tokenStore: TokenStore) {
 }
 
 class ApiException(val code: Int) : IOException("HTTP $code")
+
+/**
+ * Emulator networks often break on IPv6 (or race Happy-Eyeballs).
+ * Keep IPv4 only when available. Shared by ApiClient + ExoPlayer OkHttp.
+ */
+object Ipv4OnlyDns : Dns {
+    override fun lookup(hostname: String): List<InetAddress> {
+        val addresses = Dns.SYSTEM.lookup(hostname)
+        val ipv4 = addresses.filterIsInstance<Inet4Address>()
+        return ipv4.ifEmpty { addresses }
+    }
+}
 
 private class UserAgentInterceptor : Interceptor {
     private val userAgent = "IPTVFlix-AndroidTV/${BuildConfig.VERSION_NAME}"

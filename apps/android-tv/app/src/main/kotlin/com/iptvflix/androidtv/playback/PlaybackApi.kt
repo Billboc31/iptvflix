@@ -35,6 +35,8 @@ data class PlaybackDescriptor(
     val drmConfig: DrmConfig? = null,
     val tracks: List<TrackInfo> = emptyList(),
     val startPositionMs: Long = 0L,
+    val availabilityId: String? = null,
+    val alternatives: List<AvailabilityVariant> = emptyList(),
 )
 
 @Serializable
@@ -44,6 +46,7 @@ private data class PlaybackSessionResponse(
     val containerExtension: String? = null,
     val availabilityId: String,
     val startPositionSeconds: Double = 0.0,
+    val alternatives: List<AvailabilityVariant> = emptyList(),
 )
 
 class PlaybackApi(private val apiClient: ApiClient) {
@@ -75,11 +78,26 @@ class PlaybackApi(private val apiClient: ApiClient) {
         // following CDN redirects with Range can poison the session and crash ExoPlayer.
         val streamUrl = resolveGatewayRedirect(gatewayUrl)
         val resumeMs = (session.startPositionSeconds * 1000).toLong().coerceAtLeast(startPositionMs)
+        val selected = session.alternatives.find { it.id == session.availabilityId }
+        val alternatives = buildList {
+            if (selected != null) add(selected)
+            session.alternatives.filter { it.id != session.availabilityId }.forEach { add(it) }
+            if (isEmpty() && session.availabilityId.isNotBlank()) {
+                add(
+                    AvailabilityVariant(
+                        id = session.availabilityId,
+                        rawTitle = "Source actuelle",
+                    ),
+                )
+            }
+        }
         return PlaybackDescriptor(
             streamUrl = streamUrl,
             deliveryMode = session.deliveryMode,
             containerExtension = session.containerExtension,
             startPositionMs = resumeMs,
+            availabilityId = session.availabilityId,
+            alternatives = alternatives,
         )
     }
 

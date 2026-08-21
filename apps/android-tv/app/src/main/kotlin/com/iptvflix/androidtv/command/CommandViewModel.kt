@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.iptvflix.androidtv.App
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,7 +34,8 @@ class CommandViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
-        viewModelScope.launch {
+        // Storage + SSE must stay off Main (blocking OkHttp reads caused ANRs on click).
+        viewModelScope.launch(Dispatchers.IO) {
             while (container.secureStorage.getDeviceToken() == null && !_isRevoked.value) {
                 delay(500)
             }
@@ -46,6 +48,12 @@ class CommandViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun currentCommand(): PlaybackCommand? = _current
+
+    /** Local resume (home « dernière lecture ») — same path as SSE commands. */
+    fun playLocal(command: PlaybackCommand) {
+        _current = command
+        _latestCommand.value = command
+    }
 
     fun clearCommand() {
         _current = null

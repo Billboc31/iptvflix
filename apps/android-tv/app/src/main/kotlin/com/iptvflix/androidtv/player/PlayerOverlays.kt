@@ -1,16 +1,26 @@
 package com.iptvflix.androidtv.player
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.iptvflix.androidtv.ui.TvPrimaryButton
+import androidx.compose.ui.unit.sp
+import androidx.tv.material3.Border
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.Surface
+import androidx.tv.material3.Text
 
 /**
  * Action overlays drawn above the video (below or beside the chrome HUD).
@@ -67,8 +77,8 @@ fun BoxScope.PlayerActionOverlays(
     Row(
         modifier = modifier
             .align(Alignment.BottomEnd)
-            .padding(end = 48.dp, bottom = 180.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(end = 56.dp, bottom = 120.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         actions.forEach { action ->
@@ -78,12 +88,45 @@ fun BoxScope.PlayerActionOverlays(
                 is PlayerOverlayAction.NextEpisode -> action.label
                 is PlayerOverlayAction.Custom -> action.label
             }
-            TvPrimaryButton(
+            SkipStyleButton(
                 label = label,
                 onClick = { onAction(action) },
-                requestInitialFocus = action is PlayerOverlayAction.SkipIntro || action is PlayerOverlayAction.SkipRecap,
             )
         }
+    }
+}
+
+@Composable
+private fun SkipStyleButton(
+    label: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.pointerInput(onClick) {
+            detectTapGestures(onTap = { onClick() })
+        },
+        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(2.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = Color(0x66000000),
+            focusedContainerColor = Color.White,
+            pressedContainerColor = Color(0xFFEEEEEE),
+            contentColor = Color.White,
+            focusedContentColor = Color.Black,
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(border = BorderStroke(2.dp, Color.White), shape = RoundedCornerShape(2.dp)),
+            focusedBorder = Border(border = BorderStroke(2.dp, Color.White), shape = RoundedCornerShape(2.dp)),
+        ),
+    ) {
+        Text(
+            text = label.uppercase(),
+            modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.8.sp,
+        )
     }
 }
 

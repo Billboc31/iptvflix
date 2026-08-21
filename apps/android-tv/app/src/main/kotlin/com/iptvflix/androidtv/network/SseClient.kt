@@ -5,21 +5,23 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
 import java.io.IOException
 
 class UnauthorizedException : IOException("Unauthorized — device token rejected")
 
 class SseClient(private val apiClient: ApiClient) {
 
+    /**
+     * Long-lived SSE read. Must never run on Main — [okio.Source] reads block the caller
+     * and previously caused ANRs on the emulator when clicking UI.
+     */
     fun commandStream(): Flow<String> = flow {
         var attempt = 0
         while (currentCoroutineContext().isActive) {
             try {
-                val response = withContext(Dispatchers.IO) {
-                    apiClient.openStream("/devices/me/commands/stream")
-                }
+                val response = apiClient.openStream("/devices/me/commands/stream")
                 if (response.code == 401) {
                     response.close()
                     throw UnauthorizedException()
@@ -31,8 +33,9 @@ class SseClient(private val apiClient: ApiClient) {
                 response.use {
                     val source = it.body?.source() ?: throw IOException("No SSE body")
                     attempt = 0
-                    while (!source.exhausted() && currentCoroutineContext().isActive) {
-                        val line = withContext(Dispatchers.IO) { source.readUtf8Line() } ?: break
+                    // Do NOT call source.exhausted() — on an idle SSE stream it blocks forever.
+                    while (currentCoroutineContext().isActive) {
+                        val line = source.readUtf8Line() ?: break
                         if (line.startsWith("data:")) {
                             val data = line.removePrefix("data:").trim()
                             if (data.isNotEmpty() && data != "keep-alive") {
@@ -51,7 +54,7 @@ class SseClient(private val apiClient: ApiClient) {
                 delay(backoffMs)
             }
         }
-    }
+    }.flowOn(Dispatchers.IO)
 
     companion object {
         private const val MAX_ATTEMPT = 6

@@ -1,10 +1,14 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import dns from 'node:dns'
 import { createReadStream, existsSync, mkdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import Fastify from 'fastify'
 import { verifyRelayTicket } from './ticket.js'
+
+// Cloudflare IPTV panels often return HTTP 458 on IPv6. Prefer IPv4 for Node fetch.
+dns.setDefaultResultOrder('ipv4first')
 
 const PORT = Number(process.env.PORT ?? 8080)
 const SECRET = process.env.MEDIA_RELAY_SECRET
@@ -60,13 +64,48 @@ function needsRemux(ext: string): boolean {
   return e === 'mkv' || e === 'ts' || e === 'm2ts' || e === 'avi' || e === 'hevc' || e === ''
 }
 
-async function fetchUpstream(url: string, range?: string): Promise<Response> {
+async function fetchUpstream(
+  url: string,
+  range?: string,
+  redirect: 'follow' | 'manual' | 'error' = 'follow',
+): Promise<Response> {
   const headers: Record<string, string> = {
     'User-Agent': UA,
     Accept: '*/*',
   }
   if (range) headers.Range = range
-  return fetch(url, { headers, redirect: 'follow' })
+  return fetch(url, { headers, redirect })
+}
+
+/**
+ * Follow panel redirects but do NOT fetch the final CDN URL — those tokens
+ * are often single-use, and ffmpeg must be the first client to open them.
+ */
+async function resolvePlayableUrl(url: string): Promise<string> {
+  let current = url
+  for (let i = 0; i < 8; i++) {
+    try {
+      const res = await fetchUpstream(current, 'bytes=0-0', 'manual')
+      void res.body?.cancel?.()
+      await res.arrayBuffer().catch(() => undefined)
+      if (res.status >= 300 && res.status < 400) {
+        const loc = res.headers.get('location')
+        if (!loc) return current
+        const next = new URL(loc, current).toString()
+        const curHost = new URL(current).hostname
+        const nextUrl = new URL(next)
+        if (nextUrl.hostname !== curHost || nextUrl.protocol === 'http:') {
+          return next
+        }
+        current = next
+        continue
+      }
+      return current
+    } catch {
+      return current
+    }
+  }
+  return current
 }
 
 /** Swap movie/series file extension: …/123.ts → …/123.mkv */
@@ -96,13 +135,14 @@ async function resolveWorkingUpstream(url: string, hintedExt: string): Promise<{
 
   for (const c of candidates) {
     try {
-      const res = await fetchUpstream(c.url, 'bytes=0-1')
-      if (res.status === 200 || res.status === 206) {
-        // Drain tiny body so the socket can close cleanly
-        await res.arrayBuffer().catch(() => undefined)
-        return c
-      }
+      // Manual redirect: a 302 from the panel means this extension is valid.
+      const res = await fetchUpstream(c.url, 'bytes=0-1', 'manual')
+      const ok =
+        res.status === 200 ||
+        res.status === 206 ||
+        (res.status >= 300 && res.status < 400)
       await res.arrayBuffer().catch(() => undefined)
+      if (ok) return c
     } catch {
       /* try next */
     }
@@ -161,6 +201,32 @@ function attachFfmpegLogging(sessionId: string, child: ChildProcess) {
   })
 }
 
+/** Feed ffmpeg via Node fetch (IPv4-first) so Cloudflare never sees ffmpeg's IPv6. */
+function pipeUpstreamToFfmpeg(sessionId: string, upstreamUrl: string, child: ChildProcess) {
+  void (async () => {
+    try {
+      const res = await fetchUpstream(upstreamUrl)
+      if (!res.ok || !res.body) {
+        console.warn({ sessionId, status: res.status }, 'upstream pipe: bad status')
+        child.stdin?.destroy()
+        return
+      }
+      const nodeStream = Readable.fromWeb(res.body as import('stream/web').ReadableStream)
+      nodeStream.on('error', (err) => {
+        console.warn({ sessionId, err: String(err) }, 'upstream pipe stream error')
+        child.stdin?.destroy()
+      })
+      child.stdin?.on('error', () => {
+        nodeStream.destroy()
+      })
+      nodeStream.pipe(child.stdin!)
+    } catch (err) {
+      console.warn({ sessionId, err: String(err) }, 'upstream pipe failed')
+      child.stdin?.destroy()
+    }
+  })()
+}
+
 function startRemuxCopy(
   sessionId: string,
   upstreamUrl: string,
@@ -171,6 +237,7 @@ function startRemuxCopy(
   mkdirSync(dir, { recursive: true })
   const playlist = join(dir, 'index.m3u8')
   const segmentPattern = join(dir, 'seg_%03d.ts')
+  // -ss after -i: input comes from a pipe (not seekable).
   const seekArgs: string[] = startPositionSeconds > 30 ? ['-ss', String(Math.floor(startPositionSeconds))] : []
 
   const child = spawn(
@@ -179,11 +246,9 @@ function startRemuxCopy(
       '-hide_banner',
       '-loglevel',
       'error',
-      '-user_agent',
-      UA,
-      ...seekArgs,
       '-i',
-      upstreamUrl,
+      'pipe:0',
+      ...seekArgs,
       '-map',
       '0:v:0',
       '-map',
@@ -209,10 +274,11 @@ function startRemuxCopy(
       segmentPattern,
       playlist,
     ],
-    { stdio: ['ignore', 'ignore', 'pipe'] },
+    { stdio: ['pipe', 'ignore', 'pipe'] },
   )
 
   attachFfmpegLogging(sessionId, child)
+  pipeUpstreamToFfmpeg(sessionId, upstreamUrl, child)
   const session: RemuxSession = { id: sessionId, dir, child, createdAt: Date.now() }
   remuxSessions.set(sessionId, session)
   return session
@@ -223,23 +289,20 @@ function startRemux(sessionId: string, upstreamUrl: string, startPositionSeconds
   mkdirSync(dir, { recursive: true })
   const playlist = join(dir, 'index.m3u8')
   const segmentPattern = join(dir, 'seg_%03d.ts')
-
   const seekArgs: string[] = startPositionSeconds > 30 ? ['-ss', String(Math.floor(startPositionSeconds))] : []
 
-  // Transcode to H.264 + AAC MPEG-TS HLS — lighter segments for Android TV live playback.
+  // Transcode to H.264 + AAC MPEG-TS HLS — lighter segments for mobile web.
   const child = spawn(
     'ffmpeg',
     [
       '-hide_banner',
       '-loglevel',
       'error',
-      '-user_agent',
-      UA,
       '-hwaccel',
       'videotoolbox',
-      ...seekArgs,
       '-i',
-      upstreamUrl,
+      'pipe:0',
+      ...seekArgs,
       '-map',
       '0:v:0',
       '-map',
@@ -284,10 +347,11 @@ function startRemux(sessionId: string, upstreamUrl: string, startPositionSeconds
       segmentPattern,
       playlist,
     ],
-    { stdio: ['ignore', 'ignore', 'pipe'] },
+    { stdio: ['pipe', 'ignore', 'pipe'] },
   )
 
   attachFfmpegLogging(sessionId, child)
+  pipeUpstreamToFfmpeg(sessionId, upstreamUrl, child)
 
   const session: RemuxSession = { id: sessionId, dir, child, createdAt: Date.now() }
   remuxSessions.set(sessionId, session)
@@ -336,6 +400,8 @@ app.get<{ Querystring: { ticket?: string } }>('/v1/play', async (request, reply)
   const hintedExt = (payload.e || 'mp4').toLowerCase().replace(/^\./, '')
   const resolved = await resolveWorkingUpstream(payload.u, hintedExt)
   const ext = resolved.ext
+  // Keep the panel URL — Node fetch (IPv4 + redirect follow) pipes into ffmpeg.
+  // Do not pre-open the CDN redirect target (single-use tokens).
   const upstreamUrl = resolved.url
   request.log.info({ hintedExt, resolvedExt: ext }, 'upstream extension resolved')
 
@@ -373,16 +439,14 @@ app.get<{ Querystring: { ticket?: string } }>('/v1/play', async (request, reply)
   }
 
   // MKV / TS / etc.: remux to HLS on this host (IP not blocked by Cloudflare).
+  // Feed ffmpeg through Node fetch (IPv4) — do not ffprobe first (CDN tokens are single-use).
   const sessionId = `r_${createId()}`
   const startPositionSeconds = typeof payload.s === 'number' && Number.isFinite(payload.s) ? payload.s : 0
-  const codecs = await probeStreamCodecs(upstreamUrl)
-  const canCopyVideo = codecs.video === 'h264'
-  request.log.info({ codecs, canCopyVideo }, 'remux mode selected')
-  const session = canCopyVideo
-    ? startRemuxCopy(sessionId, upstreamUrl, startPositionSeconds, codecs.audio)
-    : startRemux(sessionId, upstreamUrl, startPositionSeconds)
+  // Prefer stream-copy; fall back to transcode if playlist never appears.
+  let session = startRemuxCopy(sessionId, upstreamUrl, startPositionSeconds, 'aac')
+  request.log.info({ mode: 'copy' }, 'remux mode selected')
   const playlistPath = join(session.dir, 'index.m3u8')
-  const ready = await waitForFile(playlistPath, 90_000)
+  let ready = await waitForFile(playlistPath, 25_000)
   if (!ready) {
     try {
       session.child.kill('SIGKILL')
@@ -390,7 +454,19 @@ app.get<{ Querystring: { ticket?: string } }>('/v1/play', async (request, reply)
       /* ignore */
     }
     remuxSessions.delete(sessionId)
-    return reply.status(504).send({ error: 'remux_timeout' })
+    const retryId = `r_${createId()}`
+    session = startRemux(retryId, upstreamUrl, startPositionSeconds)
+    request.log.info({ mode: 'transcode' }, 'remux mode selected')
+    ready = await waitForFile(join(session.dir, 'index.m3u8'), 90_000)
+    if (!ready) {
+      try {
+        session.child.kill('SIGKILL')
+      } catch {
+        /* ignore */
+      }
+      remuxSessions.delete(retryId)
+      return reply.status(504).send({ error: 'remux_timeout' })
+    }
   }
 
   reply.header('Cache-Control', 'no-store')
@@ -398,7 +474,9 @@ app.get<{ Querystring: { ticket?: string } }>('/v1/play', async (request, reply)
   const host = String(forwardedHost ?? request.headers.host ?? '').split(',')[0]!.trim()
   const isLocal = !host || host.startsWith('127.') || host.startsWith('localhost') || host.startsWith('[::1]')
   const proto = isLocal ? 'http' : 'https'
-  const location = host ? `${proto}://${host}/v1/hls/${sessionId}/index.m3u8` : `/v1/hls/${sessionId}/index.m3u8`
+  const location = host
+    ? `${proto}://${host}/v1/hls/${session.id}/index.m3u8`
+    : `/v1/hls/${session.id}/index.m3u8`
   return reply.redirect(location)
 })
 

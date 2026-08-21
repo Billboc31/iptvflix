@@ -25,6 +25,13 @@ private data class DeviceInfo(val name: String = "TV")
 private data class ContinueWatchingItem(
     val title: String,
     val posterUrl: String? = null,
+    val mediaType: String,
+    val mediaId: String,
+    val progressSeconds: Long = 0L,
+    val durationSeconds: Long = 0L,
+    val episodeTitle: String? = null,
+    val seasonNumber: Int? = null,
+    val episodeNumber: Int? = null,
 )
 
 sealed class ConnectionStatus {
@@ -33,11 +40,20 @@ sealed class ConnectionStatus {
     data class Revoked(val reason: String) : ConnectionStatus()
 }
 
+data class ContinueWatchingUi(
+    val title: String,
+    val subtitle: String? = null,
+    val posterUrl: String? = null,
+    val mediaType: String,
+    val mediaId: String,
+    val startPositionMs: Long,
+    val progressFraction: Float,
+)
+
 data class HomeUiState(
     val deviceName: String = "IPTVFlix TV",
     val connectionStatus: ConnectionStatus = ConnectionStatus.Reconnecting,
-    val lastPlayedTitle: String? = null,
-    val lastPlayedPosterUrl: String? = null,
+    val continueWatching: List<ContinueWatchingUi> = emptyList(),
 )
 
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
@@ -53,6 +69,11 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     init {
         viewModelScope.launch { loadInitialData() }
         viewModelScope.launch { monitorConnection() }
+    }
+
+    /** Call when Home is shown again (e.g. after leaving the player). */
+    fun refreshContinueWatching() {
+        viewModelScope.launch { fetchContinueWatching() }
     }
 
     private suspend fun loadInitialData() {
@@ -88,12 +109,33 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         runCatching {
             val body = container.apiClient.get("/continue-watching")
             val items = json.decodeFromString<List<ContinueWatchingItem>>(body)
-            items.firstOrNull()?.let { item ->
-                _uiState.value = _uiState.value.copy(
-                    lastPlayedTitle = item.title,
-                    lastPlayedPosterUrl = item.posterUrl,
-                )
-            }
+            _uiState.value = _uiState.value.copy(
+                continueWatching = items.map { item ->
+                    val fraction = if (item.durationSeconds > 0L) {
+                        (item.progressSeconds.toFloat() / item.durationSeconds.toFloat()).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    }
+                    val subtitle = when {
+                        item.mediaType.equals("EPISODE", ignoreCase = true) &&
+                            item.seasonNumber != null && item.episodeNumber != null -> {
+                            val ep = item.episodeTitle?.takeIf { it.isNotBlank() }
+                            "S${item.seasonNumber} E${item.episodeNumber}" +
+                                (ep?.let { " · $it" } ?: "")
+                        }
+                        else -> null
+                    }
+                    ContinueWatchingUi(
+                        title = item.title,
+                        subtitle = subtitle,
+                        posterUrl = item.posterUrl,
+                        mediaType = item.mediaType.lowercase(),
+                        mediaId = item.mediaId,
+                        startPositionMs = (item.progressSeconds * 1000L).coerceAtLeast(0L),
+                        progressFraction = fraction,
+                    )
+                },
+            )
         }.onFailure { Log.w(TAG, "Continue-watching fetch failed: ${it.message}") }
     }
 
