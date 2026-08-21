@@ -30,6 +30,7 @@ private data class ContinueWatchingItem(
     val progressSeconds: Long = 0L,
     val durationSeconds: Long = 0L,
     val episodeTitle: String? = null,
+    val seriesId: String? = null,
     val seasonNumber: Int? = null,
     val episodeNumber: Int? = null,
 )
@@ -48,6 +49,8 @@ data class ContinueWatchingUi(
     val mediaId: String,
     val startPositionMs: Long,
     val progressFraction: Float,
+    val seriesId: String? = null,
+    val seasonNumber: Int? = null,
 )
 
 data class HomeUiState(
@@ -133,6 +136,8 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                         mediaId = item.mediaId,
                         startPositionMs = (item.progressSeconds * 1000L).coerceAtLeast(0L),
                         progressFraction = fraction,
+                        seriesId = item.seriesId,
+                        seasonNumber = item.seasonNumber,
                     )
                 },
             )

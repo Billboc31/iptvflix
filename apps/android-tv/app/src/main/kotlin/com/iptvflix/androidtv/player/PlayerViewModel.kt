@@ -14,11 +14,15 @@ import com.iptvflix.androidtv.App
 import com.iptvflix.androidtv.command.PlaybackCommand
 import com.iptvflix.androidtv.network.InteractionEventService
 import com.iptvflix.androidtv.playback.AvailabilityVariant
+import com.iptvflix.androidtv.playback.CatalogApi
+import com.iptvflix.androidtv.playback.EpisodeListItem
 import com.iptvflix.androidtv.playback.PlaybackApi
 import com.iptvflix.androidtv.playback.PlaybackResolver
+import com.iptvflix.androidtv.playback.SeasonSummary
 import com.iptvflix.androidtv.playback.SegmentsApi
 import com.iptvflix.androidtv.playback.TrackInfo
 import com.iptvflix.androidtv.progress.ProgressReporter
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -48,7 +52,20 @@ enum class PlayerPanel {
     Sources,
     Audio,
     Subtitles,
+    Episodes,
 }
+
+data class EpisodeBrowserState(
+    val seriesId: String? = null,
+    val seasonNumber: Int? = null,
+    val seasons: List<SeasonSummary> = emptyList(),
+    val episodes: List<EpisodeListItem> = emptyList(),
+    val currentEpisodeId: String? = null,
+    val nextEpisodeId: String? = null,
+    val loading: Boolean = false,
+    val posterUrl: String? = null,
+    val episodeLabel: String? = null,
+)
 
 private data class ExoTrackRef(
     val group: Tracks.Group,
@@ -102,12 +119,17 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private val _subtitleMessage = MutableStateFlow<String?>(null)
     val subtitleMessage: StateFlow<String?> = _subtitleMessage.asStateFlow()
 
+    private val _episodeBrowser = MutableStateFlow(EpisodeBrowserState())
+    val episodeBrowser: StateFlow<EpisodeBrowserState> = _episodeBrowser.asStateFlow()
+
     private var exoTracksMap = mapOf<String, ExoTrackRef>()
 
     private var progressReporter: ProgressReporter? = null
     private var reporterJob: Job? = null
     private var hudJob: Job? = null
     private var scrubCommitJob: Job? = null
+    private var episodeNavJob: Job? = null
+    private var nearEndNextShown = false
 
     private val interactionEvents: InteractionEventService by lazy {
         InteractionEventService(container.apiClient)
@@ -119,6 +141,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private var loadedCommandId: String? = null
     private var pendingResumeMs: Long = 0L
     private var scrubHoldTicks: Int = 0
+    private var contentPosterUrl: String? = null
 
     private fun emitEvent(eventType: String, extra: Map<String, Any?> = emptyMap()) {
         val cmd = currentCommand ?: return
@@ -244,6 +267,19 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val durationMs = if (dur == C.TIME_UNSET || dur < 0L) 0L else dur
         val buffered = runCatching { player.bufferedPercentage }.getOrDefault(0)
         _hud.value = PlayerHudState(positionMs = pos, durationMs = durationMs, bufferedPercent = buffered)
+        maybeShowNearEndNextEpisode(pos, durationMs)
+    }
+
+    private fun maybeShowNearEndNextEpisode(positionMs: Long, durationMs: Long) {
+        if (nearEndNextShown || durationMs <= 0L) return
+        val nextId = _episodeBrowser.value.nextEpisodeId ?: return
+        if (nextId.isBlank()) return
+        if (positionMs < (durationMs * 0.90).toLong()) return
+        nearEndNextShown = true
+        val already = _overlayActions.value.any { it is PlayerOverlayAction.NextEpisode }
+        if (!already) {
+            _overlayActions.value = _overlayActions.value + PlayerOverlayAction.NextEpisode()
+        }
     }
 
     fun load(command: PlaybackCommand) {
@@ -261,9 +297,19 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         sessionEnded = false
         pendingResumeMs = 0L
         scrubHoldTicks = 0
+        nearEndNextShown = false
+        contentPosterUrl = command.posterUrl
         _scrub.value = ScrubState()
         _openPanel.value = PlayerPanel.None
         _subtitleMessage.value = null
+        _episodeBrowser.value = EpisodeBrowserState(
+            seriesId = command.seriesId,
+            seasonNumber = command.seasonNumber,
+            currentEpisodeId = command.mediaId.takeIf {
+                command.mediaType.equals("episode", ignoreCase = true)
+            },
+            posterUrl = command.posterUrl,
+        )
         viewModelScope.launch {
             _uiState.value = PlayerUiState.Buffering
             runCatching {
@@ -319,11 +365,151 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 reporterJob?.cancel()
                 reporterJob = viewModelScope.launch { progressReporter!!.start() }
+
+                if (command.mediaType.equals("episode", ignoreCase = true)) {
+                    loadEpisodeNavigation(command)
+                }
             }.onFailure { e ->
                 Log.e(TAG, "Failed to load: ${e.message}", e)
                 _uiState.value = PlayerUiState.Error(e.message ?: "Impossible de charger le média")
             }
         }
+    }
+
+    private fun loadEpisodeNavigation(command: PlaybackCommand) {
+        episodeNavJob?.cancel()
+        episodeNavJob = viewModelScope.launch {
+            _episodeBrowser.value = _episodeBrowser.value.copy(loading = true)
+            runCatching {
+                val catalog = CatalogApi(container.apiClient)
+                val profileId = container.secureStorage.getLastUsedProfileId()
+                var seriesId = command.seriesId
+                var seasonNumber = command.seasonNumber
+                var posterUrl = command.posterUrl
+                var episodeLabel: String? = null
+
+                if (seriesId.isNullOrBlank() || seasonNumber == null) {
+                    val ctx = withContext(Dispatchers.IO) {
+                        catalog.getEpisodeContext(command.mediaId)
+                    }
+                    seriesId = ctx.seriesId
+                    seasonNumber = ctx.seasonNumber
+                    posterUrl = posterUrl ?: ctx.posterUrl
+                    episodeLabel = formatEpisodeLabel(ctx.seasonNumber, ctx.episodeNumber, ctx.title)
+                    contentPosterUrl = contentPosterUrl ?: ctx.posterUrl
+                }
+
+                val sid = seriesId ?: return@runCatching
+                val season = seasonNumber ?: return@runCatching
+
+                val seasons = withContext(Dispatchers.IO) {
+                    runCatching { catalog.getSeriesSeasons(sid) }.getOrDefault(emptyList())
+                }
+                val episodes = withContext(Dispatchers.IO) {
+                    catalog.getSeasonEpisodes(sid, season, profileId)
+                }
+                val idx = episodes.indexOfFirst { it.id == command.mediaId }
+                val current = episodes.getOrNull(idx)
+                val next = episodes.getOrNull(idx + 1)
+                if (episodeLabel == null && current != null) {
+                    episodeLabel = formatEpisodeLabel(season, current.episodeNumber, current.title)
+                }
+                val scrubPoster = posterUrl
+                    ?: current?.posterUrl
+                    ?: episodes.firstOrNull()?.posterUrl
+                contentPosterUrl = contentPosterUrl ?: scrubPoster
+
+                _episodeBrowser.value = EpisodeBrowserState(
+                    seriesId = sid,
+                    seasonNumber = season,
+                    seasons = seasons.ifEmpty {
+                        listOf(SeasonSummary(seasonNumber = season, episodeCount = episodes.size))
+                    },
+                    episodes = episodes,
+                    currentEpisodeId = command.mediaId,
+                    nextEpisodeId = next?.id,
+                    loading = false,
+                    posterUrl = scrubPoster,
+                    episodeLabel = episodeLabel,
+                )
+            }.onFailure { e ->
+                Log.w(TAG, "Episode navigation load failed: ${e.message}")
+                _episodeBrowser.value = _episodeBrowser.value.copy(loading = false)
+            }
+        }
+    }
+
+    fun selectSeason(seasonNumber: Int) {
+        val seriesId = _episodeBrowser.value.seriesId ?: return
+        if (seasonNumber == _episodeBrowser.value.seasonNumber &&
+            _episodeBrowser.value.episodes.isNotEmpty()
+        ) {
+            return
+        }
+        viewModelScope.launch {
+            _episodeBrowser.value = _episodeBrowser.value.copy(loading = true, seasonNumber = seasonNumber)
+            runCatching {
+                val catalog = CatalogApi(container.apiClient)
+                val profileId = container.secureStorage.getLastUsedProfileId()
+                val episodes = withContext(Dispatchers.IO) {
+                    catalog.getSeasonEpisodes(seriesId, seasonNumber, profileId)
+                }
+                val currentId = currentCommand?.mediaId
+                val idx = episodes.indexOfFirst { it.id == currentId }
+                val next = if (idx >= 0) episodes.getOrNull(idx + 1) else null
+                _episodeBrowser.value = _episodeBrowser.value.copy(
+                    seasonNumber = seasonNumber,
+                    episodes = episodes,
+                    nextEpisodeId = next?.id,
+                    loading = false,
+                )
+            }.onFailure { e ->
+                Log.w(TAG, "selectSeason failed: ${e.message}")
+                _episodeBrowser.value = _episodeBrowser.value.copy(loading = false)
+            }
+        }
+    }
+
+    fun playEpisode(episode: EpisodeListItem) {
+        val browser = _episodeBrowser.value
+        val seriesId = browser.seriesId ?: return
+        if (episode.id == currentCommand?.mediaId) {
+            closePanel()
+            return
+        }
+        if (episode.availabilityStatus.equals("UNAVAILABLE", ignoreCase = true) &&
+            episode.availabilityCount <= 0
+        ) {
+            return
+        }
+        emitEvent("NEXT_EPISODE_MANUAL", mapOf("targetMediaId" to episode.id))
+        viewModelScope.launch {
+            progressReporter?.reportNow()
+        }
+        val season = browser.seasonNumber
+        val title = formatEpisodeLabel(season, episode.episodeNumber, episode.title)
+            ?: episode.title
+            ?: currentCommand?.title
+        load(
+            PlaybackCommand(
+                id = "ep-${UUID.randomUUID()}",
+                mediaType = "episode",
+                mediaId = episode.id,
+                availabilityId = episode.selectedVariantId
+                    ?: container.lastAvailabilityStore.get("episode", episode.id),
+                startPositionMs = 0L,
+                title = title,
+                seriesId = seriesId,
+                seasonNumber = season,
+                posterUrl = episode.posterUrl ?: browser.posterUrl,
+            ),
+        )
+    }
+
+    fun playNextEpisode() {
+        val nextId = _episodeBrowser.value.nextEpisodeId ?: return
+        val episode = _episodeBrowser.value.episodes.find { it.id == nextId } ?: return
+        playEpisode(episode)
     }
 
     fun switchVariant(variantId: String) {
@@ -491,9 +677,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     _overlayActions.value = _overlayActions.value.filterNot { it.id == action.id }
                     emitEvent("SKIP_RECAP")
                 }
-                is PlayerOverlayAction.NextEpisode,
-                is PlayerOverlayAction.Custom,
-                -> Log.d(TAG, "Overlay action not wired yet: ${action.id}")
+                is PlayerOverlayAction.NextEpisode -> {
+                    emitEvent("NEXT_EPISODE_MANUAL")
+                    playNextEpisode()
+                }
+                is PlayerOverlayAction.Custom -> Log.d(TAG, "Overlay action not wired yet: ${action.id}")
             }
         }
     }
@@ -514,6 +702,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         }
         reporterJob?.cancel()
         scrubCommitJob?.cancel()
+        episodeNavJob?.cancel()
         loadedCommandId = null
         viewModelScope.launch(Dispatchers.Main.immediate) {
             runCatching { player.stop() }
@@ -590,9 +779,19 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         hudJob?.cancel()
         reporterJob?.cancel()
         scrubCommitJob?.cancel()
+        episodeNavJob?.cancel()
         runCatching { player.release() }
         super.onCleared()
     }
+}
+
+private fun formatEpisodeLabel(seasonNumber: Int?, episodeNumber: Int?, title: String?): String? {
+    if (seasonNumber == null || episodeNumber == null) {
+        return title?.takeIf { it.isNotBlank() }
+    }
+    val base = "S${seasonNumber.toString().padStart(2, '0')}E${episodeNumber.toString().padStart(2, '0')}"
+    val epTitle = title?.takeIf { it.isNotBlank() }
+    return if (epTitle != null) "$base · $epTitle" else base
 }
 
 private fun friendlyPlaybackError(error: PlaybackException): String {

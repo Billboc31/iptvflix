@@ -11,6 +11,11 @@ data class PlaybackCommand(
     val startPositionMs: Long = 0L,
     /** Optional display title (local resume / future SSE). */
     val title: String? = null,
+    /** Episode context when known (continue-watching / local switch). */
+    val seriesId: String? = null,
+    val seasonNumber: Int? = null,
+    /** Artwork for scrub preview card (poster / still). */
+    val posterUrl: String? = null,
 )
 
 sealed class CommandState {

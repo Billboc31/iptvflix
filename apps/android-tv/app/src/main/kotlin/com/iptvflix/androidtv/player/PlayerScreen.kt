@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,6 +59,11 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -72,9 +79,13 @@ import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.iptvflix.androidtv.R
 import com.iptvflix.androidtv.command.PlaybackCommand
 import com.iptvflix.androidtv.playback.AvailabilityVariant
+import com.iptvflix.androidtv.playback.EpisodeListItem
+import com.iptvflix.androidtv.playback.SeasonSummary
 import com.iptvflix.androidtv.playback.TrackInfo
 import com.iptvflix.androidtv.playback.label
 import com.iptvflix.androidtv.ui.TvColors
@@ -102,9 +113,11 @@ fun PlayerScreen(
     val selectedTrackIds by vm.selectedTrackIds.collectAsState()
     val openPanel by vm.openPanel.collectAsState()
     val subtitleMessage by vm.subtitleMessage.collectAsState()
+    val episodeBrowser by vm.episodeBrowser.collectAsState()
     var showControls by remember { mutableStateOf(true) }
     var interactionTick by remember { mutableIntStateOf(0) }
-    val focusRequester = remember { FocusRequester() }
+    val rootFocusRequester = remember { FocusRequester() }
+    val playFocusRequester = remember { FocusRequester() }
     var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
 
     val visibleActions = remember(overlayActions, hud.positionMs, scrub) {
@@ -132,6 +145,18 @@ fun PlayerScreen(
         }
     }
 
+    // When chrome first appears, focus Play once — do NOT re-steal focus on every key.
+    var chromeFocusGeneration by remember { mutableIntStateOf(0) }
+    LaunchedEffect(showControls, openPanel) {
+        if (!showControls || openPanel != PlayerPanel.None) return@LaunchedEffect
+        chromeFocusGeneration++
+        val gen = chromeFocusGeneration
+        delay(40)
+        if (gen == chromeFocusGeneration) {
+            runCatching { playFocusRequester.requestFocus() }
+        }
+    }
+
     LaunchedEffect(interactionTick, uiState, scrub.active, openPanel) {
         when (uiState) {
             is PlayerUiState.Ended -> {
@@ -141,11 +166,13 @@ fun PlayerScreen(
             }
             is PlayerUiState.Playing -> {
                 if (scrub.active) return@LaunchedEffect
+                if (openPanel != PlayerPanel.None) return@LaunchedEffect
                 delay(AUTO_HIDE_MS)
-                if (openPanel != PlayerPanel.None) vm.closePanel()
+                if (openPanel != PlayerPanel.None) return@LaunchedEffect
                 showControls = false
+                runCatching { rootFocusRequester.requestFocus() }
             }
-            is PlayerUiState.Error -> Unit // keep chrome + panels visible
+            is PlayerUiState.Error -> Unit
             else -> Unit
         }
     }
@@ -158,7 +185,7 @@ fun PlayerScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .focusRequester(focusRequester)
+            .focusRequester(rootFocusRequester)
             .focusable()
             .pointerInput(Unit) {
                 detectTapGestures(
@@ -175,25 +202,58 @@ fun PlayerScreen(
             }
             .onKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
-                bumpInteraction()
-                if (openPanel != PlayerPanel.None && event.key == Key.Back) {
-                    vm.closePanel()
-                    return@onKeyEvent true
+
+                // Back must be handled before bumpInteraction — otherwise showing
+                // chrome first makes "overlay hidden → exit" impossible.
+                if (event.key == Key.Back || event.key == Key.Escape) {
+                    return@onKeyEvent when {
+                        openPanel != PlayerPanel.None -> {
+                            vm.closePanel()
+                            bumpInteraction()
+                            true
+                        }
+                        showControls -> {
+                            showControls = false
+                            runCatching { rootFocusRequester.requestFocus() }
+                            true
+                        }
+                        else -> {
+                            vm.stop()
+                            onStop()
+                            true
+                        }
+                    }
                 }
+
+                val controlsUp = showControls || openPanel != PlayerPanel.None
+
+                // With chrome/panel visible: let D-pad move focus between buttons.
+                if (controlsUp) {
+                    bumpInteraction()
+                    return@onKeyEvent when (event.key) {
+                        Key.DirectionLeft,
+                        Key.DirectionRight,
+                        Key.DirectionUp,
+                        Key.DirectionDown,
+                        Key.DirectionCenter,
+                        Key.Enter,
+                        -> false
+                        Key.MediaPlay, Key.MediaPause, Key.MediaPlayPause -> {
+                            vm.togglePlayPause(); true
+                        }
+                        else -> false
+                    }
+                }
+
+                // Chrome hidden: any other key shows it; L/R still seek.
+                bumpInteraction()
                 when (event.key) {
                     Key.DirectionCenter, Key.Enter, Key.MediaPlay, Key.MediaPause, Key.MediaPlayPause -> {
                         vm.togglePlayPause(); true
                     }
                     Key.DirectionRight -> { vm.seekForward(); true }
                     Key.DirectionLeft -> { vm.seekBack(); true }
-                    Key.Back, Key.Escape -> {
-                        when {
-                            openPanel != PlayerPanel.None -> { vm.closePanel(); true }
-                            showControls -> { showControls = false; true }
-                            else -> { vm.stop(); onStop(); true }
-                        }
-                    }
-                    else -> false
+                    else -> true
                 }
             },
     ) {
@@ -271,11 +331,12 @@ fun PlayerScreen(
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     NetflixPlayerChrome(
-                        title = command?.title,
+                        title = episodeBrowser.episodeLabel ?: command?.title,
                         isPlaying = uiState is PlayerUiState.Playing,
                         isBuffering = uiState is PlayerUiState.Buffering,
                         hud = hud,
                         scrub = scrub,
+                        scrubPosterUrl = episodeBrowser.posterUrl ?: command?.posterUrl,
                         variants = variants,
                         selectedVariantId = selectedVariantId,
                         audioTracks = tracks.filter { it.type == "audio" },
@@ -283,6 +344,10 @@ fun PlayerScreen(
                         selectedTrackIds = selectedTrackIds,
                         openPanel = openPanel,
                         subtitleMessage = subtitleMessage,
+                        episodeBrowser = episodeBrowser,
+                        showEpisodesButton = command?.mediaType.equals("episode", ignoreCase = true) == true &&
+                            (episodeBrowser.seriesId != null || episodeBrowser.episodes.isNotEmpty()),
+                        playFocusRequester = playFocusRequester,
                         onBack = { vm.stop(); onStop() },
                         onPlayPause = { bumpInteraction(); vm.togglePlayPause() },
                         onSeekBack = { bumpInteraction(); vm.seekBack() },
@@ -296,11 +361,14 @@ fun PlayerScreen(
                             vm.openPanel(PlayerPanel.Subtitles)
                         },
                         onOpenSources = { bumpInteraction(); vm.openPanel(PlayerPanel.Sources) },
+                        onOpenEpisodes = { bumpInteraction(); vm.openPanel(PlayerPanel.Episodes) },
                         onSelectVariant = { bumpInteraction(); vm.switchVariant(it) },
                         onSelectTrack = { bumpInteraction(); vm.enableSubtitlesAndSelect(it) },
                         onSelectAudio = { bumpInteraction(); vm.selectTrack(it) },
                         onDisableSubtitles = { bumpInteraction(); vm.disableSubtitles() },
                         onSearchOnlineSubtitles = { bumpInteraction(); vm.searchOnlineSubtitles() },
+                        onSelectSeason = { bumpInteraction(); vm.selectSeason(it) },
+                        onSelectEpisode = { bumpInteraction(); vm.playEpisode(it) },
                         onClosePanel = { bumpInteraction(); vm.closePanel() },
                     )
                 }
@@ -309,7 +377,7 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(Unit) {
-        runCatching { focusRequester.requestFocus() }
+        runCatching { rootFocusRequester.requestFocus() }
     }
 }
 
@@ -320,6 +388,7 @@ private fun NetflixPlayerChrome(
     isBuffering: Boolean,
     hud: PlayerHudState,
     scrub: ScrubState,
+    scrubPosterUrl: String?,
     variants: List<AvailabilityVariant>,
     selectedVariantId: String?,
     audioTracks: List<TrackInfo>,
@@ -327,6 +396,9 @@ private fun NetflixPlayerChrome(
     selectedTrackIds: Map<String, String>,
     openPanel: PlayerPanel,
     subtitleMessage: String?,
+    episodeBrowser: EpisodeBrowserState,
+    showEpisodesButton: Boolean,
+    playFocusRequester: FocusRequester,
     onBack: () -> Unit,
     onPlayPause: () -> Unit,
     onSeekBack: () -> Unit,
@@ -337,11 +409,14 @@ private fun NetflixPlayerChrome(
     onScrubTap: (Float) -> Unit,
     onOpenLanguages: () -> Unit,
     onOpenSources: () -> Unit,
+    onOpenEpisodes: () -> Unit,
     onSelectVariant: (String) -> Unit,
     onSelectTrack: (String) -> Unit,
     onSelectAudio: (String) -> Unit,
     onDisableSubtitles: () -> Unit,
     onSearchOnlineSubtitles: () -> Unit,
+    onSelectSeason: (Int) -> Unit,
+    onSelectEpisode: (EpisodeListItem) -> Unit,
     onClosePanel: () -> Unit,
 ) {
     val displayMs = if (scrub.active) scrub.previewMs else hud.positionMs
@@ -353,6 +428,9 @@ private fun NetflixPlayerChrome(
     val remainingMs = (hud.durationMs - displayMs).coerceAtLeast(0L)
     val showLanguages = openPanel == PlayerPanel.Audio || openPanel == PlayerPanel.Subtitles
     val displayTitle = title?.takeIf { it.isNotBlank() }
+    val hideBottomChrome = showLanguages ||
+        openPanel == PlayerPanel.Sources ||
+        openPanel == PlayerPanel.Episodes
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Top: back + IPTVFlix + film title
@@ -418,8 +496,18 @@ private fun NetflixPlayerChrome(
             )
         }
 
+        if (openPanel == PlayerPanel.Episodes) {
+            EpisodesPanel(
+                browser = episodeBrowser,
+                onSelectSeason = onSelectSeason,
+                onSelectEpisode = onSelectEpisode,
+                onClose = onClosePanel,
+                modifier = Modifier.align(Alignment.CenterEnd),
+            )
+        }
+
         // Bottom chrome (Netflix layout)
-        if (!showLanguages && openPanel != PlayerPanel.Sources) {
+        if (!hideBottomChrome) {
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -432,10 +520,13 @@ private fun NetflixPlayerChrome(
                     displayMs = displayMs,
                     remainingLabel = if (hud.durationMs > 0L) formatTime(remainingMs) else "--:--",
                     scrubbing = scrub.active,
+                    scrubPosterUrl = scrubPosterUrl,
                     onScrubStart = onScrubStart,
                     onScrubUpdate = onScrubUpdate,
                     onScrubEnd = onScrubEnd,
                     onScrubTap = onScrubTap,
+                    onNudgeBack = onSeekBack,
+                    onNudgeForward = onSeekForward,
                 )
 
                 Spacer(Modifier.height(14.dp))
@@ -448,7 +539,10 @@ private fun NetflixPlayerChrome(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        IconHit(onClick = onPlayPause) {
+                        IconHit(
+                            onClick = onPlayPause,
+                            focusRequester = playFocusRequester,
+                        ) {
                             if (isBuffering) {
                                 Text("…", color = HudWhite, fontSize = 22.sp)
                             } else if (isPlaying) {
@@ -471,6 +565,14 @@ private fun NetflixPlayerChrome(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        if (showEpisodesButton) {
+                            LabeledIconAction(
+                                label = "Épisodes",
+                                onClick = onOpenEpisodes,
+                            ) {
+                                Glyph.Episodes(iconMod = Modifier.size(22.dp), color = HudWhite)
+                            }
+                        }
                         if (variants.size > 1) {
                             LabeledIconAction(
                                 label = "Sources",
@@ -499,16 +601,54 @@ private fun ProgressRail(
     displayMs: Long,
     remainingLabel: String,
     scrubbing: Boolean,
+    scrubPosterUrl: String?,
     onScrubStart: (Float) -> Unit,
     onScrubUpdate: (Float) -> Unit,
     onScrubEnd: () -> Unit,
     onScrubTap: (Float) -> Unit,
+    onNudgeBack: () -> Unit,
+    onNudgeForward: () -> Unit,
 ) {
     val safe = progress.coerceIn(0f, 1f)
     val previewWidth = 160.dp
     val timeLabelWidth = 72.dp
     val railHeight = if (scrubbing) 132.dp else 48.dp
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
 
+    Surface(
+        onClick = { /* focus only — scrub with D-pad */ },
+        interactionSource = interactionSource,
+        modifier = Modifier
+            .fillMaxWidth()
+            .onKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                when (event.key) {
+                    Key.DirectionLeft -> {
+                        onNudgeBack()
+                        true
+                    }
+                    Key.DirectionRight -> {
+                        onNudgeForward()
+                        true
+                    }
+                    else -> false
+                }
+            },
+        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(4.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = Color.Transparent,
+            focusedContainerColor = Color.Transparent,
+            pressedContainerColor = Color.Transparent,
+            contentColor = HudWhite,
+            focusedContentColor = HudWhite,
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(border = BorderStroke(0.dp, Color.Transparent), shape = RoundedCornerShape(4.dp)),
+            focusedBorder = Border(border = BorderStroke(0.dp, Color.Transparent), shape = RoundedCornerShape(4.dp)),
+        ),
+    ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Bottom,
@@ -527,7 +667,8 @@ private fun ProgressRail(
             val trackTop = if (scrubbing) 102.dp else 12.dp
 
             if (scrubbing) {
-                // Time-preview card above the thumb (real film frames = future sprite pipeline).
+                // Poster + time card (real film-frame sprites = future pipeline).
+                val context = LocalContext.current
                 Column(
                     modifier = Modifier
                         .offset(x = previewX, y = 0.dp)
@@ -543,10 +684,26 @@ private fun ProgressRail(
                             .border(2.dp, Color.White, RoundedCornerShape(2.dp)),
                         contentAlignment = Alignment.Center,
                     ) {
+                        if (!scrubPosterUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(context)
+                                    .data(scrubPosterUrl)
+                                    .crossfade(false)
+                                    .build(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color(0x66000000)),
+                            )
+                        }
                         Text(
                             formatTime(displayMs),
                             color = Color.White,
-                            fontSize = 22.sp,
+                            fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                         )
                     }
@@ -585,9 +742,9 @@ private fun ProgressRail(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(4.dp)
+                        .height(if (focused || scrubbing) 6.dp else 4.dp)
                         .clip(RoundedCornerShape(2.dp))
-                        .background(Color(0x55FFFFFF)),
+                        .background(if (focused) Color(0x88FFFFFF) else Color(0x55FFFFFF)),
                 ) {
                     if (bufferedPercent > 0) {
                         Box(
@@ -612,10 +769,17 @@ private fun ProgressRail(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(if (scrubbing) 18.dp else 14.dp)
+                            .size(14.dp)
                             .offset(x = 7.dp)
                             .clip(CircleShape)
-                            .background(NetflixRed),
+                            .background(NetflixRed)
+                            .then(
+                                if (focused || scrubbing) {
+                                    Modifier.border(2.dp, Color.White, CircleShape)
+                                } else {
+                                    Modifier
+                                },
+                            ),
                     )
                 }
             }
@@ -636,11 +800,12 @@ private fun ProgressRail(
         Spacer(Modifier.width(14.dp))
         Text(
             remainingLabel,
-            color = HudWhite,
+            color = if (focused) HudWhite else HudMuted,
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
             modifier = Modifier.padding(bottom = 4.dp),
         )
+    }
     }
 }
 
@@ -689,10 +854,11 @@ private fun LanguagesPanel(
                 if (audioTracks.isEmpty()) {
                     Text("Aucune piste audio", color = HudMuted, fontSize = 15.sp)
                 } else {
-                    audioTracks.forEach { track ->
+                    audioTracks.forEachIndexed { index, track ->
                         CheckOption(
                             label = track.label,
                             selected = selectedTrackIds["audio"] == track.id,
+                            requestInitialFocus = index == 0,
                             onClick = { onSelectAudio(track.id) },
                         )
                     }
@@ -709,6 +875,7 @@ private fun LanguagesPanel(
                 CheckOption(
                     label = "désactivés",
                     selected = selectedTrackIds["subtitle"] == null,
+                    requestInitialFocus = audioTracks.isEmpty(),
                     onClick = onDisableSubtitles,
                 )
                 subtitleTracks.forEach { track ->
@@ -731,6 +898,246 @@ private fun LanguagesPanel(
                         modifier = Modifier.padding(top = 12.dp),
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EpisodesPanel(
+    browser: EpisodeBrowserState,
+    onSelectSeason: (Int) -> Unit,
+    onSelectEpisode: (EpisodeListItem) -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val listState = rememberLazyListState()
+    val currentIndex = remember(browser.episodes, browser.currentEpisodeId) {
+        browser.episodes.indexOfFirst { it.id == browser.currentEpisodeId }.coerceAtLeast(0)
+    }
+    LaunchedEffect(browser.seasonNumber, currentIndex) {
+        if (browser.episodes.isNotEmpty()) {
+            runCatching { listState.scrollToItem(currentIndex) }
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxHeight(0.88f)
+            .fillMaxWidth(0.42f)
+            .clip(RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp))
+            .background(PanelScrim)
+            .padding(horizontal = 22.dp, vertical = 20.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Épisodes", color = HudWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            IconHit(onClick = onClose) {
+                Glyph.Back(iconMod = Modifier.size(22.dp), color = HudWhite)
+            }
+        }
+
+        if (browser.seasons.size > 1) {
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                browser.seasons
+                    .sortedBy { it.seasonNumber }
+                    .forEach { season ->
+                        SeasonChip(
+                            season = season,
+                            selected = season.seasonNumber == browser.seasonNumber,
+                            onClick = { onSelectSeason(season.seasonNumber) },
+                        )
+                    }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        when {
+            browser.loading && browser.episodes.isEmpty() -> {
+                Text("Chargement…", color = HudMuted, fontSize = 15.sp)
+            }
+            browser.episodes.isEmpty() -> {
+                Text("Aucun épisode disponible", color = HudMuted, fontSize = 15.sp)
+            }
+            else -> {
+                LazyColumn(
+                    state = listState,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    itemsIndexed(
+                        items = browser.episodes,
+                        key = { _, ep -> ep.id },
+                    ) { index, episode ->
+                        EpisodeRow(
+                            episode = episode,
+                            selected = episode.id == browser.currentEpisodeId,
+                            requestInitialFocus = index == currentIndex,
+                            onClick = { onSelectEpisode(episode) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SeasonChip(
+    season: SeasonSummary,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+    Surface(
+        onClick = onClick,
+        interactionSource = interactionSource,
+        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(4.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = when {
+                focused -> NetflixRed
+                selected -> Color(0x33FFFFFF)
+                else -> Color(0x22FFFFFF)
+            },
+            focusedContainerColor = NetflixRed,
+            pressedContainerColor = Color(0xFFB20710),
+            contentColor = HudWhite,
+            focusedContentColor = HudWhite,
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(
+                border = BorderStroke(1.dp, if (selected) Color(0x66FFFFFF) else Color.Transparent),
+                shape = RoundedCornerShape(4.dp),
+            ),
+            focusedBorder = Border(
+                border = BorderStroke(2.dp, Color.White),
+                shape = RoundedCornerShape(4.dp),
+            ),
+        ),
+    ) {
+        Text(
+            text = "S${season.seasonNumber}",
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            fontSize = 14.sp,
+            fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium,
+            color = HudWhite,
+        )
+    }
+}
+
+@Composable
+private fun EpisodeRow(
+    episode: EpisodeListItem,
+    selected: Boolean,
+    requestInitialFocus: Boolean,
+    onClick: () -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+    val context = LocalContext.current
+    val available = episode.availabilityCount > 0 ||
+        episode.availabilityStatus.equals("AVAILABLE", ignoreCase = true)
+    LaunchedEffect(requestInitialFocus) {
+        if (requestInitialFocus) runCatching { focusRequester.requestFocus() }
+    }
+
+    Surface(
+        onClick = { if (available) onClick() },
+        interactionSource = interactionSource,
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester),
+        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(6.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = when {
+                focused -> NetflixRed
+                selected -> Color(0x33FFFFFF)
+                else -> Color.Transparent
+            },
+            focusedContainerColor = NetflixRed,
+            pressedContainerColor = Color(0xFFB20710),
+            contentColor = HudWhite,
+            focusedContentColor = HudWhite,
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(
+                border = BorderStroke(1.dp, if (selected) Color(0x66FFFFFF) else Color.Transparent),
+                shape = RoundedCornerShape(6.dp),
+            ),
+            focusedBorder = Border(
+                border = BorderStroke(2.dp, Color.White),
+                shape = RoundedCornerShape(6.dp),
+            ),
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(96.dp)
+                    .height(54.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color(0xFF2A2A2A)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (!episode.posterUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(episode.posterUrl)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Text(
+                        "E${episode.episodeNumber}",
+                        color = HudMuted,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = buildString {
+                        append("${episode.episodeNumber}. ")
+                        append(episode.title?.takeIf { it.isNotBlank() } ?: "Épisode ${episode.episodeNumber}")
+                    },
+                    color = if (available) HudWhite else HudMuted,
+                    fontSize = 15.sp,
+                    fontWeight = if (focused || selected) FontWeight.Bold else FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                val meta = buildList {
+                    episode.durationMinutes?.takeIf { it > 0 }?.let { add("${it} min") }
+                    when (episode.watchState?.lowercase()) {
+                        "in_progress" -> add("En cours")
+                        "watched" -> add("Vu")
+                        else -> Unit
+                    }
+                    if (!available) add("Indisponible")
+                }.joinToString(" · ")
+                if (meta.isNotBlank()) {
+                    Text(meta, color = HudMuted, fontSize = 12.sp, maxLines = 1)
+                }
+            }
+            if (selected) {
+                Text("▶", color = HudWhite, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -764,11 +1171,12 @@ private fun SourcesPanel(
             }
         }
         Spacer(Modifier.height(18.dp))
-        variants.forEach { variant ->
+        variants.forEachIndexed { index, variant ->
             val audioCount = if (variant.id == selectedVariantId) embeddedAudioTrackCount else 0
             CheckOption(
                 label = variant.label(variants, embeddedAudioTrackCount = audioCount),
                 selected = variant.id == selectedVariantId,
+                requestInitialFocus = index == 0,
                 onClick = { onSelectVariant(variant.id) },
             )
         }
@@ -780,25 +1188,48 @@ private fun CheckOption(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
+    requestInitialFocus: Boolean = false,
 ) {
+    val focusRequester = remember { FocusRequester() }
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+    LaunchedEffect(requestInitialFocus) {
+        if (requestInitialFocus) runCatching { focusRequester.requestFocus() }
+    }
     Surface(
         onClick = onClick,
+        interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 3.dp)
+            .focusRequester(focusRequester)
             .pointerInput(onClick) { detectTapGestures(onTap = { onClick() }) },
-        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(2.dp)),
+        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(6.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color.Transparent,
-            focusedContainerColor = Color(0x33FFFFFF),
-            pressedContainerColor = Color(0x22FFFFFF),
+            containerColor = when {
+                focused -> Color(0xFFE50914)
+                selected -> Color(0x33FFFFFF)
+                else -> Color.Transparent
+            },
+            focusedContainerColor = Color(0xFFE50914),
+            pressedContainerColor = Color(0xFFB20710),
             contentColor = HudWhite,
             focusedContentColor = HudWhite,
         ),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(
+                border = BorderStroke(1.dp, if (selected) Color(0x66FFFFFF) else Color.Transparent),
+                shape = RoundedCornerShape(6.dp),
+            ),
+            focusedBorder = Border(
+                border = BorderStroke(2.dp, Color.White),
+                shape = RoundedCornerShape(6.dp),
+            ),
+        ),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(modifier = Modifier.size(22.dp), contentAlignment = Alignment.Center) {
@@ -811,9 +1242,9 @@ private fun CheckOption(
                 label,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                fontSize = 16.sp,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (selected) HudWhite else HudMuted,
+                fontSize = 17.sp,
+                fontWeight = if (focused || selected) FontWeight.Bold else FontWeight.Normal,
+                color = if (focused || selected) HudWhite else HudMuted,
             )
         }
     }
@@ -825,32 +1256,39 @@ private fun LabeledIconAction(
     onClick: () -> Unit,
     icon: @Composable () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
     Surface(
         onClick = onClick,
+        interactionSource = interactionSource,
         modifier = Modifier.pointerInput(onClick) { detectTapGestures(onTap = { onClick() }) },
-        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(4.dp)),
+        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(8.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color.Transparent,
-            focusedContainerColor = Color(0x33FFFFFF),
-            pressedContainerColor = Color(0x22FFFFFF),
+            containerColor = if (focused) Color(0xFFE50914) else Color.Transparent,
+            focusedContainerColor = Color(0xFFE50914),
+            pressedContainerColor = Color(0xFFB20710),
             contentColor = HudWhite,
             focusedContentColor = HudWhite,
         ),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(border = BorderStroke(0.dp, Color.Transparent), shape = RoundedCornerShape(8.dp)),
+            focusedBorder = Border(border = BorderStroke(2.dp, Color.White), shape = RoundedCornerShape(8.dp)),
+        ),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.size(22.dp), contentAlignment = Alignment.Center) {
                 icon()
             }
             Text(
                 label,
-                color = HudMuted,
+                color = if (focused) HudWhite else HudMuted,
                 fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
+                fontWeight = if (focused) FontWeight.Bold else FontWeight.Medium,
             )
         }
     }
@@ -860,25 +1298,30 @@ private fun LabeledIconAction(
 private fun IconHit(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null,
     content: @Composable () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
     Surface(
         onClick = onClick,
+        interactionSource = interactionSource,
         modifier = modifier
-            .size(48.dp)
+            .size(44.dp)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .pointerInput(onClick) { detectTapGestures(onTap = { onClick() }) },
         shape = ClickableSurfaceDefaults.shape(shape = CircleShape),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color.Transparent,
-            focusedContainerColor = Color(0x33FFFFFF),
-            pressedContainerColor = Color(0x22FFFFFF),
+            containerColor = if (focused) Color(0xFFE50914) else Color.Transparent,
+            focusedContainerColor = Color(0xFFE50914),
+            pressedContainerColor = Color(0xFFB20710),
             contentColor = HudWhite,
             focusedContentColor = HudWhite,
         ),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.15f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
         border = ClickableSurfaceDefaults.border(
             border = Border(border = BorderStroke(0.dp, Color.Transparent), shape = CircleShape),
-            focusedBorder = Border(border = BorderStroke(0.dp, Color.Transparent), shape = CircleShape),
+            focusedBorder = Border(border = BorderStroke(2.dp, Color.White), shape = CircleShape),
         ),
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
@@ -1005,6 +1448,36 @@ private object Glyph {
                 close()
             }
             drawPath(tail, color = color)
+        }
+    }
+
+    @Composable
+    fun Episodes(iconMod: Modifier, color: Color) {
+        Canvas(modifier = iconMod) {
+            val stroke = Stroke(width = size.minDimension * 0.10f, cap = StrokeCap.Round)
+            val gap = size.height * 0.08f
+            val h = size.height * 0.18f
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(size.width * 0.16f, size.height * 0.16f),
+                size = Size(size.width * 0.68f, h),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f),
+                style = stroke,
+            )
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(size.width * 0.16f, size.height * 0.16f + h + gap),
+                size = Size(size.width * 0.68f, h),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f),
+                style = stroke,
+            )
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(size.width * 0.16f, size.height * 0.16f + 2 * (h + gap)),
+                size = Size(size.width * 0.48f, h),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f),
+                style = stroke,
+            )
         }
     }
 

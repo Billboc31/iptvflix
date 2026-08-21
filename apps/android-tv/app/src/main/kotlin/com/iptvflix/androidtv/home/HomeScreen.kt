@@ -168,6 +168,9 @@ fun HomeScreen(
                                         ),
                                         startPositionMs = item.startPositionMs,
                                         title = item.title,
+                                        seriesId = item.seriesId,
+                                        seasonNumber = item.seasonNumber,
+                                        posterUrl = item.posterUrl,
                                     ),
                                 )
                             },

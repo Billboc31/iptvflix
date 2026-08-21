@@ -1,10 +1,57 @@
 import type { FastifyInstance } from 'fastify'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/client.js'
+import { episodes } from '../db/schema/episodes.js'
+import { seasons } from '../db/schema/seasons.js'
+import { series as seriesTable } from '../db/schema/series.js'
 import { segmentSelections } from '../db/schema/segment-selections.js'
-import type { EpisodeSegmentsResponse } from '@iptvflix/api-contracts'
+import { resolveMediaImageUrl } from '../lib/tmdb-image.js'
+import type { EpisodeContextResponse, EpisodeSegmentsResponse } from '@iptvflix/api-contracts'
+
+function displayEpisodeTitle(title: string | null | undefined): string | null {
+  if (title == null) return null
+  const trimmed = title.trim()
+  if (!trimmed) return null
+  if (/^S\d{1,2}E\d{1,3}$/i.test(trimmed)) return null
+  return trimmed
+}
 
 export async function episodeSegmentsRoutes(app: FastifyInstance): Promise<void> {
+  app.get<{ Params: { id: string } }>('/episodes/:id', async (request, reply) => {
+    const { id } = request.params
+
+    const [row] = await db
+      .select({
+        id: episodes.id,
+        seriesId: episodes.seriesId,
+        seasonNumber: seasons.seasonNumber,
+        episodeNumber: episodes.episodeNumber,
+        title: episodes.title,
+        posterPath: episodes.posterPath,
+        seasonPosterPath: seasons.posterPath,
+        seriesPosterPath: seriesTable.posterPath,
+      })
+      .from(episodes)
+      .innerJoin(seasons, eq(seasons.id, episodes.seasonId))
+      .innerJoin(seriesTable, eq(seriesTable.id, episodes.seriesId))
+      .where(eq(episodes.id, id))
+      .limit(1)
+
+    if (!row) {
+      return reply.status(404).send({ error: 'Episode not found' })
+    }
+
+    const response: EpisodeContextResponse = {
+      id: row.id,
+      seriesId: row.seriesId,
+      seasonNumber: row.seasonNumber,
+      episodeNumber: row.episodeNumber,
+      title: displayEpisodeTitle(row.title),
+      posterUrl: resolveMediaImageUrl(row.posterPath ?? row.seasonPosterPath ?? row.seriesPosterPath),
+    }
+    return reply.send(response)
+  })
+
   app.get<{ Params: { id: string } }>('/episodes/:id/segments', async (request, reply) => {
     const { id } = request.params
 
