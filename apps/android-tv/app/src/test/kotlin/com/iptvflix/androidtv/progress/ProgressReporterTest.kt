@@ -114,4 +114,16 @@ class ProgressReporterTest {
             )
         }
     }
+
+    @Test
+    fun `reportNow skips unreliable short duration`() = runTest {
+        val player = makePlayer(isPlaying = true, positionMs = 2_000L, durationMs = 5_000L)
+        val apiClient = mockk<ApiClient>()
+        coEvery { apiClient.put(any(), any()) } returns true
+
+        val reporter = ProgressReporter("episode", "ep-short", player, apiClient)
+        reporter.reportNow()
+
+        coVerify(exactly = 0) { apiClient.put(any(), any()) }
+    }
 }

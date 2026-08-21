@@ -15,6 +15,11 @@ private const val REPORT_INTERVAL_MS = 10_000L
 private const val FLOOR_SLACK_S = 15
 /** Align with API CW_MIN_PROGRESS_SECONDS — seed so CW keeps the title after a quick quit. */
 private const val CW_SEED_SECONDS = 2
+/**
+ * Exo/HLS often reports a tiny fragment duration at start. Writing progress against
+ * that marks the title 100% complete and drops it from Continuer à regarder.
+ */
+private const val MIN_RELIABLE_DURATION_MS = 120_000L
 
 class ProgressReporter(
     mediaType: String,
@@ -85,6 +90,14 @@ class ProgressReporter(
         // and ExoPlayer often reports TIME_UNSET for progressive MKV at start.
         if (durationMs <= 0L) {
             Log.d(TAG, "Skip progress: duration unknown (pos=${positionMs}ms)")
+            return
+        }
+        if (durationMs < MIN_RELIABLE_DURATION_MS) {
+            Log.d(
+                TAG,
+                "Skip progress: duration ${durationMs}ms looks like a fragment " +
+                    "(need ≥${MIN_RELIABLE_DURATION_MS}ms)",
+            )
             return
         }
 

@@ -72,22 +72,24 @@ fun AppNavGraph() {
             lastUsedProfileId = secureStorage.getLastUsedProfileId(),
             onProfileSelected = { currentScreen = Screen.Home.name },
         )
-        Screen.Home -> HomeScreen(
-            onRevoked = {
-                secureStorage.clearDeviceToken()
-                pairingGeneration++
-                currentScreen = Screen.Pairing.name
-            },
-            onChangeProfile = {
-                secureStorage.clearProfileToken()
-                commandVm.clearCommand()
-                currentScreen = Screen.WhoIsWatching.name
-            },
-            onResumeLastPlayed = { cmd ->
-                commandVm.playLocal(cmd)
-                currentScreen = Screen.Player.name
-            },
-        )
+        Screen.Home -> key(secureStorage.getLastUsedProfileId() ?: "home") {
+            HomeScreen(
+                onRevoked = {
+                    secureStorage.clearDeviceToken()
+                    pairingGeneration++
+                    currentScreen = Screen.Pairing.name
+                },
+                onChangeProfile = {
+                    secureStorage.clearProfileToken()
+                    commandVm.clearCommand()
+                    currentScreen = Screen.WhoIsWatching.name
+                },
+                onResumeLastPlayed = { cmd ->
+                    commandVm.playLocal(cmd)
+                    currentScreen = Screen.Player.name
+                },
+            )
+        }
         Screen.Player -> PlayerScreen(
             command = commandVm.currentCommand(),
             onStop = {

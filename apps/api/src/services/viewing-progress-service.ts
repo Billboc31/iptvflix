@@ -6,15 +6,17 @@ import { NotFoundError } from '../errors.js'
 import type { ProgressMediaType, ViewingProgressRow, ContinueWatchingItem } from '@iptvflix/api-contracts'
 
 // Continue Watching eligibility:
-// Started:   progressSeconds >= CW_MIN_PROGRESS_SECONDS (2s — intentional play, not a mis-tap)
-// In progress: started AND progressSeconds < durationSeconds * 0.90
-// Completed: progressSeconds / durationSeconds >= 0.90 (hidden from CW)
+// Started:   progressSeconds >= CW_MIN_PROGRESS_SECONDS (2s)
+// Completed: durationSeconds >= 600 AND progress >= 90% of duration
+//            (short/bogus IPTV durations must NOT hide titles from CW)
 //
-// Historically we used a 5% floor, but after "next episode" users often quit within
-// seconds — that left nothing in CW (previous episode ≥90%, new one <5%).
+// Historically we used a pure 5%–90% ratio window; after "next episode" + flaky
+// Exo durations, titles vanished from Continuer à regarder.
 
 export const CW_MIN_PROGRESS_SECONDS = 2
 export const CW_COMPLETED_RATIO = 0.9
+/** Durations below this are treated as unreliable for "completed" detection. */
+export const CW_MIN_CREDIBLE_DURATION_SECONDS = 600
 
 type ProgressRow = typeof viewingProgress.$inferSelect
 
@@ -114,8 +116,13 @@ export async function listContinueWatching(profileId: string): Promise<ContinueW
   }
   const inProgress = and(
     eq(viewingProgress.profileId, profileId),
+    // Started (≥2s). Exclude only *credible* completions: long enough title + ≥90%.
+    // Short/bogus IPTV durations (e.g. 2s fragment) used to mark titles complete and empty CW.
     sql`${viewingProgress.progressSeconds} >= ${CW_MIN_PROGRESS_SECONDS}`,
-    sql`${viewingProgress.progressSeconds} < ${viewingProgress.durationSeconds} * ${CW_COMPLETED_RATIO}`,
+    sql`not (
+      ${viewingProgress.durationSeconds} >= 600
+      and ${viewingProgress.progressSeconds} >= ${viewingProgress.durationSeconds} * 0.90
+    )`,
   )
 
   let rows: Array<{

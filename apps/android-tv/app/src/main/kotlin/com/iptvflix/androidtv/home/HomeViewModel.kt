@@ -129,6 +129,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         runCatching {
             val body = container.apiClient.get("/continue-watching")
             val items = json.decodeFromString<List<ContinueWatchingItem>>(body)
+            Log.i(TAG, "Continue-watching: ${items.size} item(s)")
             _uiState.value = _uiState.value.copy(
                 continueWatching = items.map { item ->
                     val fraction = if (item.durationSeconds > 0L) {
@@ -158,7 +159,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 },
             )
-        }.onFailure { Log.w(TAG, "Continue-watching fetch failed: ${it.message}") }
+        }.onFailure { Log.w(TAG, "Continue-watching fetch failed: ${it.message}", it) }
     }
 
     private suspend fun monitorConnection() {
