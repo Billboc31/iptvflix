@@ -484,7 +484,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         }
         emitEvent("NEXT_EPISODE_MANUAL", mapOf("targetMediaId" to episode.id))
         viewModelScope.launch {
+            // Flush current episode, then seed the next so CW keeps the series
+            // even if the user quits before ExoPlayer reports a duration.
             progressReporter?.reportNow()
+            seedEpisodeStarted(episode)
         }
         val season = browser.seasonNumber
         val title = formatEpisodeLabel(season, episode.episodeNumber, episode.title)
@@ -504,6 +507,17 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 posterUrl = episode.posterUrl ?: browser.posterUrl,
             ),
         )
+    }
+
+    /** Ensure new episode is CW-eligible (≥2s) as soon as we switch to it. */
+    private suspend fun seedEpisodeStarted(episode: EpisodeListItem) {
+        val durationSeconds = ((episode.durationMinutes ?: 45).coerceAtLeast(1) * 60)
+        val body = """{"progressSeconds":2,"durationSeconds":$durationSeconds}"""
+        runCatching {
+            withContext(Dispatchers.IO) {
+                container.apiClient.put("/progress/EPISODE/${episode.id}", body)
+            }
+        }.onFailure { Log.w(TAG, "seedEpisodeStarted failed: ${it.message}") }
     }
 
     fun playNextEpisode() {

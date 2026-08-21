@@ -191,22 +191,22 @@ describe('PUT /progress/:mediaType/:mediaId', () => {
     expect(mockDb.insert).toHaveBeenCalledTimes(1)
   })
 
-  it('clears dismissal when progress reaches ≥5% threshold', async () => {
-    const row = makeProgressRow(10, 120, new Date('2024-01-01T10:00:00Z')) // ~8.3%
+  it('clears dismissal when progress reaches Continue Watching threshold (≥2s)', async () => {
+    const row = makeProgressRow(2, 120, new Date('2024-01-01T10:00:00Z'))
     setupValidationSelect([mockMovieRow])
     setupUpsert(row)
 
     await app.inject({
       method: 'PUT',
       url: `/progress/MOVIE/${MOVIE_ID}`,
-      payload: { progressSeconds: 10, durationSeconds: 120 },
+      payload: { progressSeconds: 2, durationSeconds: 120 },
     })
 
     expect(mockDb.delete).toHaveBeenCalledTimes(1)
   })
 
-  it('does not clear dismissal when progress is below 5% threshold', async () => {
-    const row = makeProgressRow(3, 120, new Date('2024-01-01T10:00:00Z')) // 2.5%
+  it('does not clear dismissal when progress is below 2s threshold', async () => {
+    const row = makeProgressRow(1, 120, new Date('2024-01-01T10:00:00Z'))
     setupValidationSelect([mockMovieRow])
     setupUpsert(row)
     // Override beforeEach delete mock — delete should NOT be called
@@ -215,7 +215,7 @@ describe('PUT /progress/:mediaType/:mediaId', () => {
     await app.inject({
       method: 'PUT',
       url: `/progress/MOVIE/${MOVIE_ID}`,
-      payload: { progressSeconds: 3, durationSeconds: 120 },
+      payload: { progressSeconds: 1, durationSeconds: 120 },
     })
 
     expect(mockDb.delete).not.toHaveBeenCalled()

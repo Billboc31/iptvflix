@@ -5,11 +5,16 @@ import { viewingProgress, movies, episodes, seasons, series, continueWatchingDis
 import { NotFoundError } from '../errors.js'
 import type { ProgressMediaType, ViewingProgressRow, ContinueWatchingItem } from '@iptvflix/api-contracts'
 
-// State thresholds:
-// Never started:   progressSeconds / durationSeconds < 0.05
-// In progress:     0.05 <= progressSeconds / durationSeconds < 0.90
-// Completed:       progressSeconds / durationSeconds >= 0.90
-// Only "in progress" items appear in Continue Watching.
+// Continue Watching eligibility:
+// Started:   progressSeconds >= CW_MIN_PROGRESS_SECONDS (2s — intentional play, not a mis-tap)
+// In progress: started AND progressSeconds < durationSeconds * 0.90
+// Completed: progressSeconds / durationSeconds >= 0.90 (hidden from CW)
+//
+// Historically we used a 5% floor, but after "next episode" users often quit within
+// seconds — that left nothing in CW (previous episode ≥90%, new one <5%).
+
+export const CW_MIN_PROGRESS_SECONDS = 2
+export const CW_COMPLETED_RATIO = 0.9
 
 type ProgressRow = typeof viewingProgress.$inferSelect
 
@@ -62,8 +67,8 @@ export async function upsertProgress(
     })
     .returning()
 
-  // Clear dismissal when the item reaches meaningful progress (≥5%), allowing re-entry into CW.
-  if (row.progressSeconds >= row.durationSeconds * 0.05) {
+  // Clear dismissal once the item is eligible for Continue Watching again.
+  if (row.progressSeconds >= CW_MIN_PROGRESS_SECONDS) {
     try {
       await db
         .delete(continueWatchingDismissals)
@@ -109,8 +114,8 @@ export async function listContinueWatching(profileId: string): Promise<ContinueW
   }
   const inProgress = and(
     eq(viewingProgress.profileId, profileId),
-    sql`${viewingProgress.progressSeconds} >= ${viewingProgress.durationSeconds} * 0.05`,
-    sql`${viewingProgress.progressSeconds} < ${viewingProgress.durationSeconds} * 0.90`,
+    sql`${viewingProgress.progressSeconds} >= ${CW_MIN_PROGRESS_SECONDS}`,
+    sql`${viewingProgress.progressSeconds} < ${viewingProgress.durationSeconds} * ${CW_COMPLETED_RATIO}`,
   )
 
   let rows: Array<{

@@ -9,10 +9,12 @@ import kotlinx.coroutines.delay
 import kotlin.math.max
 
 private const val TAG = "ProgressReporter"
-private const val FIRST_REPORT_MS = 5_000L
+private const val FIRST_REPORT_MS = 1_500L
 private const val REPORT_INTERVAL_MS = 10_000L
 /** Match web useProgressSync: ignore accidental regressions below the floor. */
 private const val FLOOR_SLACK_S = 15
+/** Align with API CW_MIN_PROGRESS_SECONDS — seed so CW keeps the title after a quick quit. */
+private const val CW_SEED_SECONDS = 2
 
 class ProgressReporter(
     mediaType: String,
@@ -93,23 +95,28 @@ class ProgressReporter(
             Log.d(
                 TAG,
                 "Skip regressive progress ${progressSeconds}s < floor ${floorSeconds}s " +
-                    "(keeps continue-watching ≥5%)",
+                    "(keeps continue-watching)",
             )
             return
         }
 
         val durationSeconds = (durationMs / 1000L).toInt().coerceAtLeast(1)
-        val clampedProgress = progressSeconds.coerceIn(1, durationSeconds)
+        // Bump tiny positions to the CW eligibility floor so "next episode → quit"
+        // still leaves the title in Continuer à regarder.
+        val effectiveProgress = when {
+            force && progressSeconds in 1 until CW_SEED_SECONDS -> CW_SEED_SECONDS
+            else -> progressSeconds
+        }.coerceIn(1, durationSeconds)
 
         val path = "/progress/$apiMediaType/$mediaId"
-        val body = """{"progressSeconds":$clampedProgress,"durationSeconds":$durationSeconds}"""
+        val body = """{"progressSeconds":$effectiveProgress,"durationSeconds":$durationSeconds}"""
         runCatching {
             val ok = apiClient.put(path, body)
             if (!ok) {
                 Log.w(TAG, "Progress PUT rejected for $path body=$body")
             } else {
-                floorSeconds = max(floorSeconds, clampedProgress)
-                Log.d(TAG, "Progress saved $clampedProgress/$durationSeconds ($apiMediaType)")
+                floorSeconds = max(floorSeconds, effectiveProgress)
+                Log.d(TAG, "Progress saved $effectiveProgress/$durationSeconds ($apiMediaType)")
             }
         }.onFailure { e ->
             Log.w(TAG, "Progress report failed: ${e.message}")

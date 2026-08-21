@@ -99,24 +99,18 @@ class ProgressReporterTest {
     }
 
     @Test
-    fun `reportAt flushes explicit stop position even below floor`() = runTest {
-        val player = makePlayer(isPlaying = false, positionMs = 0L, durationMs = 7_200_000L)
+    fun `reportNow bumps tiny progress to CW seed of 2 seconds`() = runTest {
+        val player = makePlayer(isPlaying = true, positionMs = 800L, durationMs = 2_400_000L)
         val apiClient = mockk<ApiClient>()
         coEvery { apiClient.put(any(), any()) } returns true
 
-        val reporter = ProgressReporter(
-            mediaType = "movie",
-            mediaId = "passengers",
-            player = player,
-            apiClient = apiClient,
-            initialFloorSeconds = 3_600,
-        )
-        reporter.reportAt(positionMs = 1_800_000L, durationMs = 7_200_000L)
+        val reporter = ProgressReporter("episode", "ep-seed", player, apiClient)
+        reporter.reportNow()
 
         coVerify(exactly = 1) {
             apiClient.put(
-                match { it.contains("/progress/MOVIE/passengers") },
-                match { it.contains("\"progressSeconds\":1800") },
+                match { it.contains("/progress/EPISODE/ep-seed") },
+                match { it.contains("\"progressSeconds\":2") },
             )
         }
     }
