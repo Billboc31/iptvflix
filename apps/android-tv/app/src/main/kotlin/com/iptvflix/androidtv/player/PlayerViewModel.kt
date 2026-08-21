@@ -17,9 +17,11 @@ import com.iptvflix.androidtv.playback.AvailabilityVariant
 import com.iptvflix.androidtv.playback.CatalogApi
 import com.iptvflix.androidtv.playback.EpisodeListItem
 import com.iptvflix.androidtv.playback.PlaybackApi
+import com.iptvflix.androidtv.playback.PlaybackDescriptor
 import com.iptvflix.androidtv.playback.PlaybackResolver
 import com.iptvflix.androidtv.playback.SeasonSummary
 import com.iptvflix.androidtv.playback.SegmentsApi
+import com.iptvflix.androidtv.playback.StreamExtensionFallback
 import com.iptvflix.androidtv.playback.TrackInfo
 import com.iptvflix.androidtv.progress.ProgressReporter
 import java.util.UUID
@@ -142,6 +144,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private var pendingResumeMs: Long = 0L
     private var scrubHoldTicks: Int = 0
     private var contentPosterUrl: String? = null
+    private var currentStreamUrl: String? = null
+    private var currentDeliveryMode: String = "DIRECT"
+    private val triedStreamExtensions = mutableSetOf<String>()
 
     private fun emitEvent(eventType: String, extra: Map<String, Any?> = emptyMap()) {
         val cmd = currentCommand ?: return
@@ -222,6 +227,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
             override fun onPlayerError(error: PlaybackException) {
                 Log.e(TAG, "Playback error: ${error.errorCodeName} ${error.message}", error)
+                if (tryExtensionFallback(error)) return
                 _uiState.value = PlayerUiState.Error(friendlyPlaybackError(error))
                 // Keep Sources reachable so the user can pick a playable stream (e.g. non-4K).
                 _openPanel.value = PlayerPanel.Sources
@@ -299,6 +305,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         scrubHoldTicks = 0
         nearEndNextShown = false
         contentPosterUrl = command.posterUrl
+        currentStreamUrl = null
+        currentDeliveryMode = "DIRECT"
+        triedStreamExtensions.clear()
         _scrub.value = ScrubState()
         _openPanel.value = PlayerPanel.None
         _subtitleMessage.value = null
@@ -324,6 +333,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
                 _variants.value = descriptor.alternatives
                 _selectedVariantId.value = descriptor.availabilityId ?: command.availabilityId
+                currentStreamUrl = descriptor.streamUrl
+                currentDeliveryMode = descriptor.deliveryMode
+                StreamExtensionFallback.extractExtension(descriptor.streamUrl)?.let {
+                    triedStreamExtensions.add(it)
+                }
 
                 withContext(Dispatchers.Main) {
                     player.stop()
@@ -544,6 +558,35 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 startPositionMs = positionMs,
             ),
         )
+    }
+
+    /**
+     * Xtream HTTP 551 often means "this container extension is refused".
+     * Silently try mkv → mp4 → ts → m3u8 before showing the Sources panel.
+     */
+    private fun tryExtensionFallback(error: PlaybackException): Boolean {
+        if (!isProviderContainerRefusal(error)) return false
+        val url = currentStreamUrl ?: return false
+        val next = StreamExtensionFallback.next(url, triedStreamExtensions) ?: return false
+        val (nextUrl, ext) = next
+        triedStreamExtensions.add(ext)
+        currentStreamUrl = nextUrl
+        Log.w(TAG, "Provider refused stream — retrying with .$ext")
+        _uiState.value = PlayerUiState.Buffering
+        _openPanel.value = PlayerPanel.None
+        val spec = PlaybackDescriptor(
+            streamUrl = nextUrl,
+            deliveryMode = if (ext == "m3u8") "HLS" else currentDeliveryMode,
+            containerExtension = ext,
+        ).toMediaItemSpec()
+        return runCatching {
+            player.stop()
+            player.clearMediaItems()
+            player.setMediaItem(buildMediaItem(spec))
+            player.prepare()
+            player.playWhenReady = true
+            true
+        }.getOrDefault(false)
     }
 
     /** @return true when a resume seek was issued (progress must not be reported at t=0). */
@@ -808,6 +851,13 @@ private fun formatEpisodeLabel(seasonNumber: Int?, episodeNumber: Int?, title: S
     return if (epTitle != null) "$base · $epTitle" else base
 }
 
+private fun isProviderContainerRefusal(error: PlaybackException): Boolean {
+    val cause = error.cause?.message.orEmpty()
+    val msg = error.message.orEmpty()
+    val blob = "$cause $msg".lowercase()
+    return blob.contains("551") || blob.contains("response code: 551")
+}
+
 private fun friendlyPlaybackError(error: PlaybackException): String {
     val code = error.errorCode
     val cause = error.cause?.message?.lowercase().orEmpty()
@@ -816,6 +866,8 @@ private fun friendlyPlaybackError(error: PlaybackException): String {
         code == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
             code == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
             "Connexion au flux impossible. Vérifiez le Wi‑Fi de la TV."
+        msg.contains("551") || cause.contains("551") ->
+            "Source indisponible chez le fournisseur (551). Essayez l'autre source."
         code == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
             msg.contains("403") || cause.contains("403") ->
             "Source refusée (403). Réessayez dans un instant."

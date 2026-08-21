@@ -187,8 +187,9 @@ export async function resolvePlayback(
   // residential probes showed .mkv/.mp4 as the working shapes.
   let containerExtension = selected.containerExtension ?? 'ts'
   // Catalog often stores "ts" even when only .mkv/.mp4 bytes work (T087).
-  // Prefer mkv so the media relay can remux instead of hanging on 551 .ts.
-  if (source.type === 'XTREAM') {
+  // Prefer mkv for media-relay remux (web). Native TV ExoPlayer can play the
+  // catalog extension directly — forcing .mkv there causes HTTP 551 on some panels.
+  if (source.type === 'XTREAM' && !nativeClient) {
     const rawExt = containerExtension.toLowerCase().replace(/^\./, '')
     if (!rawExt || rawExt === 'ts' || rawExt === 'm2ts' || rawExt === 'm3u8' || rawExt === 'm3u') {
       containerExtension = 'mkv'

@@ -121,7 +121,10 @@ class PlaybackApi(private val apiClient: ApiClient) {
                         301, 302, 303, 307, 308 -> {
                             val location = response.header("Location")
                             if (!location.isNullOrBlank()) {
-                                Log.d(TAG, "Gateway redirect → ${response.request.url.host}")
+                                val host = runCatching {
+                                    java.net.URI(location).host
+                                }.getOrNull() ?: location.take(64)
+                                Log.d(TAG, "Gateway redirect → $host")
                                 return@withContext location
                             }
                         }
