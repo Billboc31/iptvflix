@@ -80,7 +80,10 @@ export async function shelfConceptsRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({ error: 'ShelfConcept not found' })
       }
 
-      const plan = buildQueryPlanFromShelfConcept(concept)
+      const plan = buildQueryPlanFromShelfConcept({
+        ...concept,
+        desiredMediaTypes: concept.desiredMediaTypes as string[] | null,
+      })
       const mediaTypes = plan.mediaTypes.map((t) => t.toLowerCase() as 'movie' | 'series')
 
       // Raw vector mode: top-50 semantic results without reranking
