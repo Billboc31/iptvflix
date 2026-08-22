@@ -100,6 +100,8 @@ export const MEDIA_RELAY_URL: string | undefined = process.env.MEDIA_RELAY_URL?.
 
 /** Standalone recommendation-engine base URL. When set, API delegates computation to it. */
 export const RECOMMENDATION_ENGINE_URL: string | undefined = process.env.RECOMMENDATION_ENGINE_URL?.replace(/\/$/, '') || undefined
+/** Timeout for the heavy preview pipeline (vector retrieval + full SCORE_MODEL run). Default: 45 s. */
+export const RECOMMENDATION_PREVIEW_TIMEOUT_MS = Number(process.env.RECOMMENDATION_PREVIEW_TIMEOUT_MS ?? 45_000)
 export const MEDIA_RELAY_SECRET: string | undefined = process.env.MEDIA_RELAY_SECRET || undefined
 export const MEDIA_RELAY_ENABLED = Boolean(MEDIA_RELAY_URL && MEDIA_RELAY_SECRET)
 

@@ -1,7 +1,7 @@
 {
   "ticket_id": "T118",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T118-diagnostiquer-et-fiabiliser-la-preview-shelfconcep",
   "issue_number": 252,
-  "updated_at": "2026-08-22T16:58:29Z"
+  "updated_at": "2026-08-22T17:07:39Z"
 }

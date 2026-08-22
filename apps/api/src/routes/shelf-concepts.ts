@@ -99,11 +99,22 @@ export async function shelfConceptsRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const result = await RecommendationEngineClient.previewShelfConcept(id, { profileId, debug })
-      if (!result) {
-        return reply.status(502).send({ error: 'Recommendation engine unavailable' })
+      if (!result.ok) {
+        switch (result.kind) {
+          case 'not-found':
+            return reply.status(404).send({ error: 'Recommendation preview endpoint not deployed' })
+          case 'timeout':
+            return reply.status(504).send({ error: 'Recommendation preview timed out' })
+          case 'circuit-open':
+            return reply.status(503).send({ error: 'Recommendation engine circuit open' })
+          case 'server-error':
+            return reply.status(502).send({ error: `Recommendation engine error (HTTP ${result.status ?? 'unknown'})` })
+          default:
+            return reply.status(502).send({ error: 'Recommendation engine unreachable' })
+        }
       }
 
-      return reply.send(result)
+      return reply.send(result.data)
     },
   )
 
