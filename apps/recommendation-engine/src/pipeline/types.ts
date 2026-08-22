@@ -50,6 +50,7 @@ export interface PipelineContext {
   startedAt: number
   log: FastifyBaseLogger
   queryPlan?: RecommendationQueryPlan
+  candidatePoolSize?: number
 }
 
 export interface QueryResponse {

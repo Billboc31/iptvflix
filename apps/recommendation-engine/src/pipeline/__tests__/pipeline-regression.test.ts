@@ -2,10 +2,12 @@ import 'dotenv/config'
 import { describe, it, expect, vi } from 'vitest'
 import type { FastifyBaseLogger } from 'fastify'
 import { runPipeline } from '../pipeline.js'
+import { runRecommendationFromPlan } from '../recommendation-service.js'
+import type { RecommendationQueryPlan } from '@iptvflix/api-contracts'
 
 // These tests require a populated embedding index and OPENAI_API_KEY.
 // They are skipped automatically when OPENAI_API_KEY is not configured.
-const canRun = !!process.env.OPENAI_API_KEY
+const canRun = !!process.env.OPENAI_API_KEY && !!process.env.DATABASE_URL
 
 const mockLog = {
   info: vi.fn(),
@@ -17,6 +19,71 @@ const mockLog = {
   silent: vi.fn(),
   child: vi.fn(),
 } as unknown as FastifyBaseLogger
+
+function makeRegressionPlan(intent: string): RecommendationQueryPlan {
+  return {
+    schemaVersion: '1',
+    rawQuery: intent,
+    displayTitle: intent,
+    semanticIntent: intent,
+    desiredThemes: [],
+    desiredTone: [],
+    avoidSignals: [],
+    mediaTypes: ['MOVIE', 'SERIES'],
+    hardFilters: {},
+    softPreferences: {},
+    userConstraints: [],
+    plannerFallback: true,
+    plannerMeta: null,
+  }
+}
+
+describe('T117 — non-regression: runRecommendationFromPlan on reference intents', () => {
+  it.skipIf(!canRun)(
+    '"Aventures à travers le temps" — returns ≥ 5 results',
+    async () => {
+      const result = await runRecommendationFromPlan(
+        makeRegressionPlan('Aventures à travers le temps'),
+        { mediaTypes: ['movie', 'series'], limit: 10 },
+        'regression-aventures',
+        mockLog,
+      )
+      expect(result.results.length, 'must return at least 5 results').toBeGreaterThanOrEqual(5)
+      expect(result.results.every((r) => r.title && r.id), 'all results must have id and title').toBe(true)
+    },
+    30_000,
+  )
+
+  it.skipIf(!canRun)(
+    '"Épopées modernes" — returns ≥ 5 results',
+    async () => {
+      const result = await runRecommendationFromPlan(
+        makeRegressionPlan('Épopées modernes'),
+        { mediaTypes: ['movie', 'series'], limit: 10 },
+        'regression-epopees',
+        mockLog,
+      )
+      expect(result.results.length, 'must return at least 5 results').toBeGreaterThanOrEqual(5)
+      expect(result.results.every((r) => r.title && r.id), 'all results must have id and title').toBe(true)
+    },
+    30_000,
+  )
+
+  it.skipIf(!canRun)(
+    '"film qui retourne le cerveau" — returns ≥ 5 results',
+    async () => {
+      const result = await runRecommendationFromPlan(
+        makeRegressionPlan('film qui retourne le cerveau'),
+        { mediaTypes: ['movie', 'series'], limit: 10 },
+        'regression-cerveau',
+        mockLog,
+      )
+      expect(result.results.length, 'must return at least 5 results').toBeGreaterThanOrEqual(5)
+      expect(result.results.every((r) => r.title && r.id), 'all results must have id and title').toBe(true)
+    },
+    30_000,
+  )
+})
 
 describe('pipeline regression — retrieval pool larger than final shelf', () => {
   it.skipIf(!canRun)(

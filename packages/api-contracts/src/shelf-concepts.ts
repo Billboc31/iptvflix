@@ -1,3 +1,6 @@
+import type { ScoreBreakdown } from './recommendations.js'
+import type { RecommendationQueryPlan } from './query-plan.js'
+
 export type ShelfConceptGenerationType = 'PERSONALIZED' | 'EXPLORATION' | 'DISCOVERY' | 'FIXED' | 'EDITORIAL'
 export type ShelfConceptFreshnessPolicy = 'AVAILABLE_NOW' | 'NEW_RELEASES' | 'ALL'
 
@@ -54,4 +57,11 @@ export type GenerateShelfConceptsResponse = {
 
 export type ShelfConceptFeedbackBody = {
   signal: 'good' | 'bad'
+}
+
+export type ShelfConceptPreviewResponse = {
+  rawVector: Array<{ id: string; title: string; vectorScore: number }>
+  finalPersonalized: Array<{ id: string; title: string; finalScore: number; scoreBreakdown?: ScoreBreakdown }>
+  candidatePoolSize: number
+  queryPlan: RecommendationQueryPlan
 }

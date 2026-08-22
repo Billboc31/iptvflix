@@ -141,6 +141,23 @@ describe('buildSeedQueryPlan', () => {
   })
 })
 
+describe('buildSeedQueryPlan — seed validation', () => {
+  it('throws ValidationError when a requested movie seed ID is missing from the database', async () => {
+    // Only return 2 of the 3 seeds — mov-c is missing
+    mockSelectWhere([
+      { id: 'mov-a', title: 'Blade Runner', originalLanguage: 'en', year: 1982, keywords: ['dystopia'] },
+      { id: 'mov-b', title: 'Metropolis', originalLanguage: 'de', year: 1927, keywords: ['futurism'] },
+    ])
+    mockSelectWhere(MOVIE_GENRE_ROWS)
+    mockSelectFrom(GENRE_ROWS)
+    mockSelectWhere(CREDIT_ROWS)
+
+    await expect(
+      buildSeedQueryPlan(SEED_MOVIE_IDS, ['movie']),
+    ).rejects.toThrow('Seed not found: MOVIE:mov-c')
+  })
+})
+
 describe('generateShelfFromSeeds — seed exclusion', () => {
   it('seed IDs do not appear in the generated shelf members', async () => {
     // buildSeedQueryPlan DB calls

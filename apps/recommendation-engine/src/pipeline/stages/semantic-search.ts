@@ -45,7 +45,10 @@ export async function runSemanticSearch(
   }
 
   const semanticIntent = ctx.queryPlan?.semanticIntent ?? ctx.request.text
-  const retrievalLimit = Math.min(SEMANTIC_RETRIEVAL_LIMIT, SEMANTIC_RETRIEVAL_MAX_CAP)
+  const retrievalLimit = Math.min(
+    ctx.candidatePoolSize ?? SEMANTIC_RETRIEVAL_LIMIT,
+    SEMANTIC_RETRIEVAL_MAX_CAP,
+  )
   const mediaTypes = ctx.request.mediaTypes ?? ['movie', 'series']
 
   try {

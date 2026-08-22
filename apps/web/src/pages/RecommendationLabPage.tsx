@@ -6,12 +6,14 @@ import type {
   ShelfConcept,
   ShelfConceptProfileContext,
   ShelfConceptGenerationType,
+  ShelfConceptPreviewResponse,
 } from '@iptvflix/api-contracts'
 import {
   semanticQuery,
   generateShelfConcepts,
   sendShelfConceptFeedback,
   listProfiles,
+  previewShelfConcept,
 } from '../lib/api.js'
 import type { ProfileResponse } from '@iptvflix/api-contracts'
 import Spinner from '../components/ui/Spinner.js'
@@ -225,10 +227,12 @@ function ConceptCard({
   concept,
   onFeedback,
   onPreview,
+  canPreview,
 }: {
   concept: ShelfConcept
   onFeedback: (id: string, signal: 'good' | 'bad') => void
   onPreview: (concept: ShelfConcept) => void
+  canPreview: boolean
 }) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/3 p-4 space-y-3">
@@ -271,7 +275,8 @@ function ConceptCard({
       <div className="flex items-center gap-2 pt-1 border-t border-white/5">
         <button
           onClick={() => onPreview(concept)}
-          className="px-3 py-1 text-xs rounded bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-colors"
+          disabled={!canPreview}
+          className={`px-3 py-1 text-xs rounded transition-colors ${canPreview ? 'bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white' : 'bg-white/3 text-gray-600 cursor-not-allowed'}`}
         >
           Prévisualiser
         </button>
@@ -333,7 +338,7 @@ function ShelfConceptsTab() {
   const [concepts, setConcepts] = useState<ShelfConcept[]>([])
   const [profileContext, setProfileContext] = useState<ShelfConceptProfileContext | null>(null)
   const [previewConcept, setPreviewConcept] = useState<ShelfConcept | null>(null)
-  const [previewResults, setPreviewResults] = useState<SemanticCandidate[] | null>(null)
+  const [previewResponse, setPreviewResponse] = useState<ShelfConceptPreviewResponse | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
 
   useEffect(() => {
@@ -372,19 +377,20 @@ function ShelfConceptsTab() {
 
   const handlePreview = useCallback(
     async (concept: ShelfConcept) => {
+      if (!selectedProfileId) return
       setPreviewConcept(concept)
-      setPreviewResults(null)
+      setPreviewResponse(null)
       setPreviewLoading(true)
       try {
-        const res = await semanticQuery({ query: concept.semanticIntent, topK: 5 })
-        setPreviewResults(res.results)
+        const res = await previewShelfConcept(concept.id, { profileId: selectedProfileId, debug: true })
+        setPreviewResponse(res)
       } catch (err) {
         toast.show(err instanceof Error ? err.message : 'Erreur prévisualisation', 'error')
       } finally {
         setPreviewLoading(false)
       }
     },
-    [toast],
+    [selectedProfileId, toast],
   )
 
   return (
@@ -445,12 +451,16 @@ function ShelfConceptsTab() {
             <p className="text-xs text-gray-500 uppercase tracking-wide">
               {concepts.length} concept{concepts.length > 1 ? 's' : ''} générés
             </p>
+            {!selectedProfileId && (
+              <p className="text-xs text-yellow-500/80 italic">Sélectionnez un profil pour prévisualiser.</p>
+            )}
             {concepts.map((c) => (
               <ConceptCard
                 key={c.id}
                 concept={c}
                 onFeedback={handleFeedback}
                 onPreview={handlePreview}
+                canPreview={!!selectedProfileId}
               />
             ))}
           </div>
@@ -466,8 +476,65 @@ function ShelfConceptsTab() {
                   <Spinner />
                 </div>
               )}
-              {previewResults && !previewLoading && (
-                <ResultList results={previewResults} model="openai" label="Top 5 résultats" />
+              {previewResponse && !previewLoading && (
+                <div className="space-y-6">
+                  {/* Raw vector section */}
+                  <div>
+                    <p className="text-xs font-semibold text-[#e50914] uppercase tracking-wide mb-1">Raw vector</p>
+                    <p className="text-xs text-gray-500 mb-2">Candidats sémantiques : {previewResponse.candidatePoolSize}</p>
+                    <div className="space-y-2">
+                      {previewResponse.rawVector.slice(0, 20).map((item, i) => {
+                        const pct = Math.round(item.vectorScore * 100)
+                        const color = pct >= 70 ? 'text-green-400' : pct >= 50 ? 'text-yellow-400' : 'text-gray-400'
+                        return (
+                          <div key={item.id} className="flex gap-3 p-3 rounded-lg bg-white/5">
+                            <div className="shrink-0 text-xs text-gray-500 w-5 pt-1 text-right">{i + 1}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-white truncate">{item.title}</div>
+                              <div className="mt-1 flex items-center gap-1.5">
+                                <span className={`text-xs font-mono font-semibold ${color}`}>{pct}%</span>
+                                <span className="text-xs text-gray-600">score vectoriel</span>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Final personnalisé section */}
+                  <div>
+                    <p className="text-xs font-semibold text-[#e50914] uppercase tracking-wide mb-1">Final personnalisé</p>
+                    <div className="space-y-2">
+                      {previewResponse.finalPersonalized.slice(0, 20).map((item, i) => {
+                        const pct = Math.round(item.finalScore * 100)
+                        const color = pct >= 70 ? 'text-green-400' : pct >= 50 ? 'text-yellow-400' : 'text-gray-400'
+                        return (
+                          <div key={item.id} className="flex gap-3 p-3 rounded-lg bg-white/5">
+                            <div className="shrink-0 text-xs text-gray-500 w-5 pt-1 text-right">{i + 1}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-white truncate">{item.title}</div>
+                              <div className="mt-1 flex items-center gap-1.5">
+                                <span className={`text-xs font-mono font-semibold ${color}`}>{pct}%</span>
+                                <span className="text-xs text-gray-600">score final</span>
+                              </div>
+                              {item.scoreBreakdown?.reasons && item.scoreBreakdown.reasons.length > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {item.scoreBreakdown.reasons.slice(0, 3).map((r) => (
+                                    <span key={r} className="px-1.5 py-0.5 rounded text-xs bg-white/5 text-gray-500">{r}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Query plan */}
+                  <QueryPlanPanel plan={previewResponse.queryPlan} />
+                </div>
               )}
             </div>
           )}
