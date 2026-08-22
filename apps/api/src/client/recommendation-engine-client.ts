@@ -1,5 +1,9 @@
 import type { EngineMetadata, RecommendationQueryPlan, ShelfConceptPreviewResponse } from '@iptvflix/api-contracts'
-import { RECOMMENDATION_ENGINE_URL } from '../config/env.js'
+import { RECOMMENDATION_ENGINE_URL, RECOMMENDATION_PREVIEW_TIMEOUT_MS } from '../config/env.js'
+
+export type EnginePreviewResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; kind: 'not-found' | 'server-error' | 'timeout' | 'unreachable' | 'circuit-open'; status?: number; message?: string }
 
 const REQUEST_TIMEOUT_MS = 15_000
 const CIRCUIT_FAILURE_THRESHOLD = 3
@@ -34,9 +38,9 @@ function recordFailure(): void {
   }
 }
 
-async function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     return await fetch(url, { ...options, signal: controller.signal })
   } finally {
@@ -267,22 +271,51 @@ export const RecommendationEngineClient = {
     }
   },
 
-  async previewShelfConcept(conceptId: string, body: { profileId: string; debug?: boolean }): Promise<ShelfConceptPreviewResponse | null> {
-    if (!RECOMMENDATION_ENGINE_URL || isCircuitOpen()) return null
+  async previewShelfConcept(conceptId: string, body: { profileId: string; debug?: boolean }): Promise<EnginePreviewResult<ShelfConceptPreviewResponse>> {
+    if (!RECOMMENDATION_ENGINE_URL) return { ok: false, kind: 'unreachable' }
+    if (isCircuitOpen()) return { ok: false, kind: 'circuit-open' }
+
+    const endpoint = `${RECOMMENDATION_ENGINE_URL}/v1/shelf-concepts/${conceptId}/preview`
+    const startMs = Date.now()
 
     try {
-      const response = await fetchWithTimeout(`${RECOMMENDATION_ENGINE_URL}/v1/shelf-concepts/${conceptId}/preview`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!response.ok) { recordFailure(); return null }
+      const response = await fetchWithTimeout(
+        endpoint,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+        RECOMMENDATION_PREVIEW_TIMEOUT_MS,
+      )
+      const durationMs = Date.now() - startMs
+
+      if (!response.ok) {
+        const rawBody = await response.text().catch(() => '')
+        const truncatedBody = rawBody.slice(0, 500)
+        recordFailure()
+
+        if (response.status === 404) {
+          console.error('[recommendation-engine] preview failed', { endpoint, status: 404, durationMs, kind: 'not-found', body: truncatedBody })
+          return { ok: false, kind: 'not-found', status: 404 }
+        }
+
+        console.error('[recommendation-engine] preview failed', { endpoint, status: response.status, durationMs, kind: 'server-error', body: truncatedBody })
+        return { ok: false, kind: 'server-error', status: response.status, message: truncatedBody }
+      }
+
       const data = (await response.json()) as ShelfConceptPreviewResponse
       recordSuccess()
-      return data
-    } catch {
+      console.info('[recommendation-engine] preview succeeded', { endpoint, status: response.status, durationMs })
+      return { ok: true, data }
+    } catch (err) {
+      const durationMs = Date.now() - startMs
       recordFailure()
-      return null
+
+      if (err instanceof Error && err.name === 'AbortError') {
+        console.error('[recommendation-engine] preview timed out', { endpoint, durationMs, kind: 'timeout' })
+        return { ok: false, kind: 'timeout' }
+      }
+
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[recommendation-engine] preview unreachable', { endpoint, durationMs, kind: 'unreachable', error: message })
+      return { ok: false, kind: 'unreachable' }
     }
   },
 
