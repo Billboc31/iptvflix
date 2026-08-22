@@ -1,4 +1,4 @@
-import { eq, inArray, and, gt, sql } from 'drizzle-orm'
+import { eq, inArray, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import {
   shelves,
@@ -7,12 +7,13 @@ import {
   series,
   movieGenres,
   seriesGenres,
-  movieAvailabilities,
-  seriesAvailabilities,
-  discoveryCandidate,
-  profileTaste,
+  genres,
+  mediaCredits,
 } from '../db/schema.js'
-import type { GenerateShelfBody, GeneratedShelfRules, GenerateShelfResponse, SeedMediaRef } from '@iptvflix/api-contracts'
+import { runRecommendationFromPlan } from '../pipeline/recommendation-service.js'
+import type { GenerateShelfBody, GeneratedShelfRules, GenerateShelfResponse, SeedMediaRef, RecommendationQueryPlan } from '@iptvflix/api-contracts'
+import type { MediaType } from '../pipeline/types.js'
+import type { FastifyBaseLogger } from 'fastify'
 
 class ValidationError extends Error { constructor(message: string) { super(message); this.name = 'ValidationError' } }
 class NotFoundError extends Error { constructor(resource: string, id: string) { super(`${resource} ${id} not found`); this.name = 'NotFoundError' } }
@@ -20,131 +21,116 @@ class ForbiddenError extends Error { constructor() { super('Forbidden'); this.na
 
 export { ValidationError, NotFoundError, ForbiddenError }
 
-// ─── Simple genre-based ranking (local implementation for shelf seeds) ─────────
+// ─── Build a RecommendationQueryPlan from seed media metadata ────────────────
 
-type InternalCandidate = {
-  mediaId: string
-  title: string
-  year: number | null
-  posterPath: string | null
-  mediaType: 'MOVIE' | 'SERIES'
-  source: 'LOCAL' | 'DISCOVERY'
-  genreIds: string[]
-  popularity: number | null
-  voteAverage: number | null
+type SeedPlanResult = {
+  plan: RecommendationQueryPlan
+  inferredGenreIds: string[]
+  seedTitles: string[]
 }
 
-async function rankCandidatesForShelf(
-  profileId: string,
-  opts: { mediaType?: 'MOVIE' | 'SERIES'; availableToMe?: boolean; limit: number; preferGenreIds?: string[] },
-): Promise<InternalCandidate[]> {
-  const [tasteRows, movieRows, seriesRows, movieGenreRows, seriesGenreRows, discoveryRows, availMovieRows, availSeriesRows] = await Promise.all([
-    db.select({ genreScores: profileTaste.genreScores, positiveMediaIds: profileTaste.positiveMediaIds, negativeMediaIds: profileTaste.negativeMediaIds, signalCount: profileTaste.signalCount })
-      .from(profileTaste).where(eq(profileTaste.profileId, profileId)),
-    !opts.mediaType || opts.mediaType === 'MOVIE'
-      ? db.select({ id: movies.id, title: movies.title, year: movies.year, posterPath: movies.posterPath, popularity: movies.popularity, voteAverage: movies.voteAverage }).from(movies)
+export async function buildSeedQueryPlan(
+  seedMediaIds: SeedMediaRef[],
+  mediaTypes: MediaType[],
+): Promise<SeedPlanResult> {
+  const seedMovieIds = seedMediaIds.filter((s) => s.mediaType === 'MOVIE').map((s) => s.mediaId)
+  const seedSeriesIds = seedMediaIds.filter((s) => s.mediaType === 'SERIES').map((s) => s.mediaId)
+
+  const [movieRows, seriesRows, movieGenreRows, seriesGenreRows, genreRows, creditRows] = await Promise.all([
+    seedMovieIds.length > 0
+      ? db.select({ id: movies.id, title: movies.title, originalLanguage: movies.originalLanguage, year: movies.year, keywords: movies.keywords }).from(movies).where(inArray(movies.id, seedMovieIds))
       : Promise.resolve([]),
-    !opts.mediaType || opts.mediaType === 'SERIES'
-      ? db.select({ id: series.id, title: series.title, year: series.firstAirYear, posterPath: series.posterPath, popularity: series.popularity, voteAverage: series.voteAverage }).from(series)
+    seedSeriesIds.length > 0
+      ? db.select({ id: series.id, title: series.title, originalLanguage: series.originalLanguage, year: series.firstAirYear, keywords: series.keywords }).from(series).where(inArray(series.id, seedSeriesIds))
       : Promise.resolve([]),
-    db.select({ movieId: movieGenres.movieId, genreId: movieGenres.genreId }).from(movieGenres),
-    db.select({ seriesId: seriesGenres.seriesId, genreId: seriesGenres.genreId }).from(seriesGenres),
-    db.select({ id: discoveryCandidate.id, title: discoveryCandidate.title, year: discoveryCandidate.year, posterPath: discoveryCandidate.posterPath, mediaType: discoveryCandidate.mediaType, canonicalMovieId: discoveryCandidate.canonicalMovieId, canonicalSeriesId: discoveryCandidate.canonicalSeriesId, popularity: discoveryCandidate.popularity, voteAverage: discoveryCandidate.voteAverage }).from(discoveryCandidate).where(gt(discoveryCandidate.expiresAt, new Date())),
-    db.select({ movieId: movieAvailabilities.movieId }).from(movieAvailabilities).where(eq(movieAvailabilities.status, 'AVAILABLE')),
-    db.select({ seriesId: seriesAvailabilities.seriesId }).from(seriesAvailabilities).where(eq(seriesAvailabilities.status, 'AVAILABLE')),
+    seedMovieIds.length > 0
+      ? db.select({ movieId: movieGenres.movieId, genreId: movieGenres.genreId }).from(movieGenres).where(inArray(movieGenres.movieId, seedMovieIds))
+      : Promise.resolve([]),
+    seedSeriesIds.length > 0
+      ? db.select({ seriesId: seriesGenres.seriesId, genreId: seriesGenres.genreId }).from(seriesGenres).where(inArray(seriesGenres.seriesId, seedSeriesIds))
+      : Promise.resolve([]),
+    db.select({ id: genres.id, name: genres.name }).from(genres),
+    [...seedMovieIds, ...seedSeriesIds].length > 0
+      ? db.select({ mediaId: mediaCredits.mediaId, name: mediaCredits.name, role: mediaCredits.role }).from(mediaCredits).where(inArray(mediaCredits.mediaId, [...seedMovieIds, ...seedSeriesIds]))
+      : Promise.resolve([]),
   ])
 
-  const tasteRow = tasteRows[0]
-  const coldStart = !tasteRow || tasteRow.signalCount === 0
-  const genreScores = (tasteRow?.genreScores ?? {}) as Record<string, number>
-  const negativeMediaIds = new Set<string>(tasteRow?.negativeMediaIds ?? [])
-  const preferGenreSet = new Set<string>(opts.preferGenreIds ?? [])
+  // Seed titles for explanation
+  const movieById = new Map(movieRows.map((m) => [m.id, m]))
+  const seriesById = new Map(seriesRows.map((s) => [s.id, s]))
+  const seedTitles = seedMediaIds.map((s) =>
+    s.mediaType === 'MOVIE' ? (movieById.get(s.mediaId)?.title ?? '') : (seriesById.get(s.mediaId)?.title ?? ''),
+  ).filter(Boolean)
 
-  const movieGenreMap = new Map<string, string[]>()
-  for (const { movieId, genreId } of movieGenreRows) {
-    const list = movieGenreMap.get(movieId) ?? []
-    list.push(genreId)
-    movieGenreMap.set(movieId, list)
-  }
-  const seriesGenreMap = new Map<string, string[]>()
-  for (const { seriesId, genreId } of seriesGenreRows) {
-    const list = seriesGenreMap.get(seriesId) ?? []
-    list.push(genreId)
-    seriesGenreMap.set(seriesId, list)
-  }
+  // Aggregate genre IDs by frequency
+  const genreNameMap = new Map(genreRows.map((g) => [g.id, g.name]))
+  const genreCount = new Map<string, number>()
+  for (const { genreId } of movieGenreRows) genreCount.set(genreId, (genreCount.get(genreId) ?? 0) + 1)
+  for (const { genreId } of seriesGenreRows) genreCount.set(genreId, (genreCount.get(genreId) ?? 0) + 1)
+  const sortedGenreEntries = [...genreCount.entries()].sort(([, a], [, b]) => b - a)
+  const inferredGenreIds = sortedGenreEntries.map(([id]) => id)
+  const topGenreNames = sortedGenreEntries.slice(0, 5).map(([id]) => genreNameMap.get(id)).filter(Boolean) as string[]
 
-  const availMovieSet = new Set(availMovieRows.map((r) => r.movieId))
-  const availSeriesSet = new Set(availSeriesRows.map((r) => r.seriesId))
-  const localMovieIds = new Set(movieRows.map((m) => m.id))
-  const localSeriesIds = new Set(seriesRows.map((s) => s.id))
-
-  const candidates: InternalCandidate[] = []
-
+  // Aggregate keywords by frequency
+  const keywordCount = new Map<string, number>()
   for (const m of movieRows) {
-    candidates.push({ mediaId: m.id, title: m.title, year: m.year, posterPath: m.posterPath, mediaType: 'MOVIE', source: 'LOCAL', genreIds: movieGenreMap.get(m.id) ?? [], popularity: m.popularity, voteAverage: m.voteAverage })
+    for (const kw of (m.keywords ?? [])) keywordCount.set(kw, (keywordCount.get(kw) ?? 0) + 1)
   }
   for (const s of seriesRows) {
-    candidates.push({ mediaId: s.id, title: s.title, year: s.year, posterPath: s.posterPath, mediaType: 'SERIES', source: 'LOCAL', genreIds: seriesGenreMap.get(s.id) ?? [], popularity: s.popularity, voteAverage: s.voteAverage })
+    for (const kw of (s.keywords ?? [])) keywordCount.set(kw, (keywordCount.get(kw) ?? 0) + 1)
   }
-  for (const dc of discoveryRows) {
-    const dcMediaType = dc.mediaType as 'MOVIE' | 'SERIES'
-    if (opts.mediaType && dcMediaType !== opts.mediaType) continue
-    if (dcMediaType === 'MOVIE' && dc.canonicalMovieId && localMovieIds.has(dc.canonicalMovieId)) continue
-    if (dcMediaType === 'SERIES' && dc.canonicalSeriesId && localSeriesIds.has(dc.canonicalSeriesId)) continue
-    const effectiveMediaId = dcMediaType === 'MOVIE' ? (dc.canonicalMovieId ?? dc.id) : (dc.canonicalSeriesId ?? dc.id)
-    const genreIds = dcMediaType === 'MOVIE'
-      ? (dc.canonicalMovieId ? (movieGenreMap.get(dc.canonicalMovieId) ?? []) : [])
-      : (dc.canonicalSeriesId ? (seriesGenreMap.get(dc.canonicalSeriesId) ?? []) : [])
-    candidates.push({ mediaId: effectiveMediaId, title: dc.title, year: dc.year, posterPath: dc.posterPath, mediaType: dcMediaType, source: 'DISCOVERY', genreIds, popularity: dc.popularity, voteAverage: dc.voteAverage })
+  const topKeywords = [...keywordCount.entries()].sort(([, a], [, b]) => b - a).slice(0, 5).map(([k]) => k)
+
+  // Aggregate directors
+  const directors = creditRows.filter((c) => c.role === 'director').map((c) => c.name)
+  const uniqueDirectors = [...new Set(directors)].slice(0, 3)
+
+  // Dominant language
+  const langCount = new Map<string, number>()
+  for (const m of movieRows) if (m.originalLanguage) langCount.set(m.originalLanguage, (langCount.get(m.originalLanguage) ?? 0) + 1)
+  for (const s of seriesRows) if (s.originalLanguage) langCount.set(s.originalLanguage, (langCount.get(s.originalLanguage) ?? 0) + 1)
+  const dominantLanguage = [...langCount.entries()].sort(([, a], [, b]) => b - a)[0]?.[0]
+
+  // Dominant decade
+  const allYears = [
+    ...movieRows.map((m) => m.year),
+    ...seriesRows.map((s) => s.year),
+  ].filter((y): y is number => y != null)
+  const decadeCount = new Map<string, number>()
+  for (const year of allYears) {
+    const decade = `${Math.floor(year / 10) * 10}s`
+    decadeCount.set(decade, (decadeCount.get(decade) ?? 0) + 1)
+  }
+  const topDecades = [...decadeCount.entries()].sort(([, a], [, b]) => b - a).slice(0, 2).map(([d]) => d)
+
+  // Build semantic intent from aggregated seed attributes
+  const parts: string[] = []
+  if (topGenreNames.length > 0) parts.push(`Genres : ${topGenreNames.join(', ')}`)
+  if (topKeywords.length > 0) parts.push(`Thèmes : ${topKeywords.join(', ')}`)
+  if (uniqueDirectors.length > 0) parts.push(`Réalisateurs : ${uniqueDirectors.join(', ')}`)
+  if (dominantLanguage) parts.push(`Langue : ${dominantLanguage}`)
+  if (topDecades.length > 0) parts.push(`Époques : ${topDecades.join(', ')}`)
+
+  const plan: RecommendationQueryPlan = {
+    schemaVersion: '1',
+    rawQuery: '',
+    displayTitle: 'Generated Shelf',
+    semanticIntent: parts.join('. '),
+    desiredThemes: topGenreNames.slice(0, 3),
+    desiredTone: [],
+    avoidSignals: [],
+    mediaTypes: mediaTypes.map((t) => t.toUpperCase() as 'MOVIE' | 'SERIES'),
+    hardFilters: {},
+    softPreferences: {
+      preferredDecades: topDecades,
+      preferredLanguages: dominantLanguage ? [dominantLanguage] : [],
+    },
+    userConstraints: [],
+    plannerFallback: true,
+    plannerMeta: null,
   }
 
-  const filtered = candidates.filter((c) => {
-    if (negativeMediaIds.has(c.mediaId)) return false
-    if (opts.availableToMe) {
-      const avail = c.mediaType === 'MOVIE' ? availMovieSet.has(c.mediaId) : availSeriesSet.has(c.mediaId)
-      if (!avail) return false
-    }
-    return true
-  })
-
-  const preferGenreBonus = (genreIds: string[]) => preferGenreSet.size > 0 && genreIds.some((gId) => preferGenreSet.has(gId)) ? 3.0 : 0
-
-  const scored = filtered.map((c) => {
-    let score: number
-    if (coldStart) {
-      score = (c.popularity ?? 0) * (c.voteAverage ?? 0) + preferGenreBonus(c.genreIds)
-    } else {
-      const genreAffinity = c.genreIds.reduce((sum, gId) => sum + (genreScores[gId] ?? 0), 0)
-      score = genreAffinity + preferGenreBonus(c.genreIds)
-    }
-    return { ...c, score }
-  })
-
-  scored.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score
-    return a.mediaId.localeCompare(b.mediaId)
-  })
-
-  return scored.slice(0, opts.limit)
-}
-
-// ─── Materialize discovery candidate ──────────────────────────────────────────
-
-async function materializeDiscoveryCandidate(candidateId: string, mediaType: 'MOVIE' | 'SERIES'): Promise<string> {
-  const [dc] = await db.select().from(discoveryCandidate).where(eq(discoveryCandidate.id, candidateId))
-  if (!dc) throw new ValidationError(`Discovery candidate not found: ${candidateId}`)
-
-  if (mediaType === 'MOVIE') {
-    if (dc.canonicalMovieId) return dc.canonicalMovieId
-    const [newMovie] = await db.insert(movies).values({ title: dc.title, year: dc.year, synopsis: dc.synopsis, posterPath: dc.posterPath, metadataProvider: dc.provenance } as any).returning({ id: movies.id })
-    await db.update(discoveryCandidate).set({ canonicalMovieId: newMovie.id }).where(eq(discoveryCandidate.id, candidateId))
-    return newMovie.id
-  } else {
-    if (dc.canonicalSeriesId) return dc.canonicalSeriesId
-    const [newSeries] = await db.insert(series).values({ title: dc.title, firstAirYear: dc.year, synopsis: dc.synopsis, posterPath: dc.posterPath, metadataProvider: dc.provenance } as any).returning({ id: series.id })
-    await db.update(discoveryCandidate).set({ canonicalSeriesId: newSeries.id }).where(eq(discoveryCandidate.id, candidateId))
-    return newSeries.id
-  }
+  return { plan, inferredGenreIds, seedTitles }
 }
 
 // ─── Shared core logic ─────────────────────────────────────────────────────────
@@ -159,60 +145,49 @@ async function resolveGeneratedMembers(
   profileId: string,
   seedMediaIds: SeedMediaRef[],
   opts: { mediaType?: 'MOVIE' | 'SERIES'; availableToMe?: boolean; limit: number },
+  log: FastifyBaseLogger,
 ): Promise<ResolveResult> {
-  const seedMovieIds = seedMediaIds.filter((s) => s.mediaType === 'MOVIE').map((s) => s.mediaId)
-  const seedSeriesIds = seedMediaIds.filter((s) => s.mediaType === 'SERIES').map((s) => s.mediaId)
-  const seedTitles: string[] = []
-
-  const [movieSeedRows, seriesSeedRows] = await Promise.all([
-    seedMovieIds.length > 0 ? db.select({ id: movies.id, title: movies.title }).from(movies).where(inArray(movies.id, seedMovieIds)) : Promise.resolve([]),
-    seedSeriesIds.length > 0 ? db.select({ id: series.id, title: series.title }).from(series).where(inArray(series.id, seedSeriesIds)) : Promise.resolve([]),
-  ])
-
-  const foundMovieIds = new Set(movieSeedRows.map((r) => r.id))
-  const foundSeriesIds = new Set(seriesSeedRows.map((r) => r.id))
-
-  for (const seed of seedMediaIds) {
-    if (seed.mediaType === 'MOVIE') {
-      if (!foundMovieIds.has(seed.mediaId)) throw new ValidationError(`Seed media not found: ${seed.mediaId}`)
-      seedTitles.push(movieSeedRows.find((r) => r.id === seed.mediaId)!.title)
-    } else {
-      if (!foundSeriesIds.has(seed.mediaId)) throw new ValidationError(`Seed media not found: ${seed.mediaId}`)
-      seedTitles.push(seriesSeedRows.find((r) => r.id === seed.mediaId)!.title)
-    }
-  }
-
-  const [movieGenreRows, seriesGenreRows] = await Promise.all([
-    seedMovieIds.length > 0 ? db.select({ genreId: movieGenres.genreId }).from(movieGenres).where(inArray(movieGenres.movieId, seedMovieIds)) : Promise.resolve([]),
-    seedSeriesIds.length > 0 ? db.select({ genreId: seriesGenres.genreId }).from(seriesGenres).where(inArray(seriesGenres.seriesId, seedSeriesIds)) : Promise.resolve([]),
-  ])
-
-  const inferredGenreIdSet = new Set<string>()
-  for (const r of movieGenreRows) inferredGenreIdSet.add(r.genreId)
-  for (const r of seriesGenreRows) inferredGenreIdSet.add(r.genreId)
-  const inferredGenreIds = [...inferredGenreIdSet]
-
-  const recs = await rankCandidatesForShelf(profileId, { preferGenreIds: inferredGenreIds, mediaType: opts.mediaType, availableToMe: opts.availableToMe, limit: opts.limit + seedMediaIds.length })
-
   const seedIdSet = new Set(seedMediaIds.map((s) => s.mediaId))
-  const candidates = recs.filter((c) => !seedIdSet.has(c.mediaId)).slice(0, opts.limit)
+  const mediaTypes: MediaType[] = opts.mediaType
+    ? [opts.mediaType.toLowerCase() as MediaType]
+    : ['movie', 'series']
 
-  const members: { mediaType: 'MOVIE' | 'SERIES'; mediaId: string }[] = []
-  for (const candidate of candidates) {
-    if (candidate.source === 'DISCOVERY') {
-      const canonicalId = await materializeDiscoveryCandidate(candidate.mediaId, candidate.mediaType)
-      members.push({ mediaType: candidate.mediaType, mediaId: canonicalId })
-    } else {
-      members.push({ mediaType: candidate.mediaType, mediaId: candidate.mediaId })
-    }
+  const { plan, inferredGenreIds, seedTitles } = await buildSeedQueryPlan(seedMediaIds, mediaTypes)
+
+  // Request extra candidates to account for seed exclusion and availableToMe filtering
+  const requestLimit = opts.limit + seedMediaIds.length + 40
+
+  const result = await runRecommendationFromPlan(
+    plan,
+    { profileId, mediaTypes, limit: requestLimit, candidatePoolSize: 200 },
+    `shelf-seeds-${profileId}`,
+    log,
+  )
+
+  // Post-filter: exclude seeds; availableToMe uses the `available` flag set by the reranker
+  let candidates = result.results.filter((c) => !seedIdSet.has(c.id))
+
+  if (opts.availableToMe) {
+    candidates = candidates.filter((c) => c.available === true)
   }
+
+  candidates = candidates.slice(0, opts.limit)
+
+  const members: { mediaType: 'MOVIE' | 'SERIES'; mediaId: string }[] = candidates.map((c) => ({
+    mediaType: c.mediaType.toUpperCase() as 'MOVIE' | 'SERIES',
+    mediaId: c.id,
+  }))
 
   return { members, inferredGenreIds, seedTitles }
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export async function generateShelfFromSeeds(profileId: string, body: GenerateShelfBody): Promise<GenerateShelfResponse> {
+export async function generateShelfFromSeeds(
+  profileId: string,
+  body: GenerateShelfBody,
+  log: FastifyBaseLogger,
+): Promise<GenerateShelfResponse> {
   const { title, seedMediaIds, mediaType, availableToMe, limit: rawLimit } = body
 
   if (!Array.isArray(seedMediaIds) || seedMediaIds.length < 3 || seedMediaIds.length > 10) {
@@ -222,7 +197,7 @@ export async function generateShelfFromSeeds(profileId: string, body: GenerateSh
   if (uniqueSeedIds.size !== seedMediaIds.length) throw new ValidationError('seedMediaIds must not contain duplicate mediaId values')
 
   const limit = Math.min(Math.max(rawLimit ?? 20, 1), 100)
-  const { members, inferredGenreIds, seedTitles } = await resolveGeneratedMembers(profileId, seedMediaIds, { mediaType, availableToMe, limit })
+  const { members, inferredGenreIds, seedTitles } = await resolveGeneratedMembers(profileId, seedMediaIds, { mediaType, availableToMe, limit }, log)
   const generatedAt = new Date().toISOString()
   const rules: GeneratedShelfRules = { seedMediaIds, mediaType, availableToMe, limit, inferredGenreIds, generatedAt }
 
@@ -242,7 +217,11 @@ export async function generateShelfFromSeeds(profileId: string, body: GenerateSh
   }
 }
 
-export async function refreshGeneratedShelf(shelfId: string, profileId: string): Promise<GenerateShelfResponse> {
+export async function refreshGeneratedShelf(
+  shelfId: string,
+  profileId: string,
+  log: FastifyBaseLogger,
+): Promise<GenerateShelfResponse> {
   const [shelf] = await db.select().from(shelves).where(eq(shelves.id, shelfId))
   if (!shelf) throw new NotFoundError('Shelf', shelfId)
   if (shelf.profileId !== profileId) throw new ForbiddenError()
@@ -253,7 +232,7 @@ export async function refreshGeneratedShelf(shelfId: string, profileId: string):
     throw new ValidationError('Shelf has invalid or missing generation rules')
   }
 
-  const { members, inferredGenreIds, seedTitles } = await resolveGeneratedMembers(profileId, rules.seedMediaIds, { mediaType: rules.mediaType, availableToMe: rules.availableToMe, limit: rules.limit })
+  const { members, inferredGenreIds, seedTitles } = await resolveGeneratedMembers(profileId, rules.seedMediaIds, { mediaType: rules.mediaType, availableToMe: rules.availableToMe, limit: rules.limit }, log)
   const updatedRules: GeneratedShelfRules = { ...rules, generatedAt: new Date().toISOString() }
 
   await db.transaction(async (tx) => {
