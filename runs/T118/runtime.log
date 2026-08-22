@@ -12,3 +12,25 @@
 [2026-08-22T16:55:48Z] snapshot: runtime-prompt=runs/T118/prompts/planner-attempt-1.md
 [2026-08-22T16:58:27Z] compose: preferring on-disk runs/T118/plan.md over chatty stdout (agent Write beat meta-report)
 [2026-08-22T16:58:27Z] auto-run: step=planner done rc=0
+[2026-08-22T17:19:36Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-22T17:19:36Z] auto-run: running step=tester
+[2026-08-22T17:19:38Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-22T17:19:38Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-22T17:19:38Z] prompt: generic fallback — injecting runs/T118/ticket.md
+[2026-08-22T17:19:38Z] compose: global-context=docs/ai/global-context.md
+[2026-08-22T17:19:38Z] compose: role=ai/roles/tester.md
+[2026-08-22T17:19:38Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-22T17:19:38Z] compose: skill=ai/skills/testing.md
+[2026-08-22T17:19:38Z] compose: skill=ai/skills/debugging.md
+[2026-08-22T17:19:38Z] compose: task (canonical prompt)
+[2026-08-22T17:19:38Z] snapshot: runtime-prompt=runs/T118/prompts/tester-attempt-1.md
+[2026-08-22T17:23:36Z] auto-run: step=tester done rc=0
+[2026-08-22T17:23:36Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-22T17:23:36Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-22T17:23:36Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T118/daemon.lock', 'runs/T118/runtime.log', 'runs/T118/workflow-status.md']
+[2026-08-22T17:23:36Z] commit-checkpoint: sha=c573ee96 files=4 title='test(T118/workflow): tester — update 4 file(s)'
+[2026-08-22T17:23:36Z] auto-run: auto-push triggered
+[2026-08-22T17:23:36Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T118/daemon.lock', 'runs/T118/runtime.log', 'runs/T118/workflow-status.md']
+[2026-08-22T17:23:36Z] push: pushing branch=ticket/T118-diagnostiquer-et-fiabiliser-la-preview-shelfconcep
+[2026-08-22T17:23:38Z] push: done branch=ticket/T118-diagnostiquer-et-fiabiliser-la-preview-shelfconcep
+[2026-08-22T17:23:38Z] auto-run: TEST_COMPLETE — running PR lifecycle
