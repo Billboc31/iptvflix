@@ -1,20 +1,11 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "pnpm --filter recommendation-engine build"
+buildCommand = "pnpm install --frozen-lockfile && pnpm --filter recommendation-engine build"
 
 [deploy]
-startCommand = "node dist/index.js"
+# Root Directory = repo root; Config-as-code = this file (same pattern as apps/web).
+startCommand = "pnpm --filter recommendation-engine start:railway"
 healthcheckPath = "/health"
-healthcheckTimeout = 30
+healthcheckTimeout = 60
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
-
-[[services]]
-name = "recommendation-engine"
-
-[services.variables]
-PORT = "3001"
-LOG_LEVEL = "info"
-# DATABASE_URL — set in Railway dashboard, points to shared IPTVFlix Postgres
-# OPENAI_API_KEY — optional; llm-planner stage gracefully reports unavailable if unset
-# CORS_ORIGIN — set to recommendation-lab Railway URL in production
