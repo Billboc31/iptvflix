@@ -11,7 +11,7 @@ export async function shelfInstancesRoutes(app: FastifyInstance): Promise<void> 
         return reply.status(400).send({ error: 'profileId is required' })
       }
       try {
-        const result = await generateShelfFromSeeds(profileId, body as GenerateShelfBody)
+        const result = await generateShelfFromSeeds(profileId, body as GenerateShelfBody, request.log)
         return reply.send(result)
       } catch (err) {
         if (err instanceof ValidationError) return reply.status(400).send({ error: err.message })
@@ -30,7 +30,7 @@ export async function shelfInstancesRoutes(app: FastifyInstance): Promise<void> 
         return reply.status(400).send({ error: 'profileId is required' })
       }
       try {
-        const result = await refreshGeneratedShelf(id, profileId)
+        const result = await refreshGeneratedShelf(id, profileId, request.log)
         return reply.send(result)
       } catch (err) {
         if (err instanceof ValidationError) return reply.status(400).send({ error: err.message })

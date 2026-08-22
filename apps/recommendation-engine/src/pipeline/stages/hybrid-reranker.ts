@@ -16,6 +16,7 @@ import {
 import type { StageResult, CandidateItem, PipelineContext } from '../types.js'
 import type { RecommendationQueryPlan, ScoreBreakdown } from '@iptvflix/api-contracts'
 
+/** @deprecated Use SCORE_MODEL_V2 for all production paths. Kept as a reference baseline for tests. */
 export const SCORE_MODEL_V1 = {
   version: 'v1',
   wSemantic: 0.35,
@@ -720,6 +721,8 @@ export async function runHybridReranker(
       available: true,
       durationMs: Date.now() - start,
       inputCount: candidates.length,
+      filteredCount: eligible.length,
+      finalCount: diversified.length,
       outputCount: output.length,
       candidates: output,
     }
