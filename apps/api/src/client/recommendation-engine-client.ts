@@ -1,4 +1,4 @@
-import type { EngineMetadata, RecommendationQueryPlan } from '@iptvflix/api-contracts'
+import type { EngineMetadata, RecommendationQueryPlan, ShelfConceptPreviewResponse } from '@iptvflix/api-contracts'
 import { RECOMMENDATION_ENGINE_URL } from '../config/env.js'
 
 const REQUEST_TIMEOUT_MS = 15_000
@@ -264,6 +264,25 @@ export const RecommendationEngineClient = {
       embeddingModelVersion: meta.embeddingModelVersion ?? 'unknown',
       rankerVersion: meta.rerankerVersion ?? 'unknown',
       candidateCount: raw.results.length,
+    }
+  },
+
+  async previewShelfConcept(conceptId: string, body: { profileId: string; debug?: boolean }): Promise<ShelfConceptPreviewResponse | null> {
+    if (!RECOMMENDATION_ENGINE_URL || isCircuitOpen()) return null
+
+    try {
+      const response = await fetchWithTimeout(`${RECOMMENDATION_ENGINE_URL}/v1/shelf-concepts/${conceptId}/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!response.ok) { recordFailure(); return null }
+      const data = (await response.json()) as ShelfConceptPreviewResponse
+      recordSuccess()
+      return data
+    } catch {
+      recordFailure()
+      return null
     }
   },
 

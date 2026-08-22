@@ -88,6 +88,25 @@ export async function shelfConceptsRoutes(app: FastifyInstance): Promise<void> {
     }
   })
 
+  app.post<{ Params: { id: string }; Body: { profileId: string; debug?: boolean } }>(
+    '/shelf-concepts/:id/preview',
+    async (request, reply) => {
+      const { id } = request.params
+      const { profileId, debug } = request.body ?? {}
+
+      if (!profileId || typeof profileId !== 'string') {
+        return reply.status(400).send({ error: 'profileId is required' })
+      }
+
+      const result = await RecommendationEngineClient.previewShelfConcept(id, { profileId, debug })
+      if (!result) {
+        return reply.status(502).send({ error: 'Recommendation engine unavailable' })
+      }
+
+      return reply.send(result)
+    },
+  )
+
   app.post<{ Params: { id: string }; Body: ShelfConceptFeedbackBody }>(
     '/shelf-concepts/:id/feedback',
     async (request, reply) => {

@@ -428,6 +428,13 @@ export function sendShelfConceptFeedback(
   return request(`/shelf-concepts/${id}/feedback`, { method: 'POST', body: JSON.stringify(body) })
 }
 
+export function previewShelfConcept(
+  id: string,
+  body: { profileId: string; debug?: boolean },
+): Promise<import('@iptvflix/api-contracts').ShelfConceptPreviewResponse> {
+  return request(`/shelf-concepts/${id}/preview`, { method: 'POST', body: JSON.stringify(body) })
+}
+
 export function recordInteractionEvent(event: InteractionEventBody): Promise<void> {
   return request('/interaction-events', { method: 'POST', body: JSON.stringify(event) })
 }

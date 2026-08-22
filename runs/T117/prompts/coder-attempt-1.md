@@ -1,0 +1,298 @@
+# GLOBAL CONTEXT
+
+# Global Context — Iptvflix
+
+## Project
+
+- project_id: iptvflix
+- repo: git@github.com:Billboc31/iptvflix.git
+
+## AI Dev Factory
+
+This project uses AI Dev Factory for AI-assisted development.
+
+Agent context folders:
+- `ai/` — roles and skills
+- `docs/` — project documentation
+- `prompts/` — ticket-specific and generic prompts
+- `runs/` — per-ticket runtime artifacts
+- `tickets/` — ticket definitions
+
+---
+
+# ROLE
+
+# Role — Coder
+
+## Mission
+
+Implémenter strictement un ticket en suivant le plan validé et les skills applicables.
+
+## Tu dois
+
+- lire le ticket
+- lire le plan validé
+- respecter le scope
+- lister les fichiers créés ou modifiés
+- produire un changement minimal, lisible et testable
+- ajouter ou adapter les tests si nécessaire
+- signaler les hypothèses et limites
+
+## Tu ne dois pas
+
+- élargir le ticket
+- réécrire l’architecture sans demande explicite
+- faire un refactor massif non demandé
+- modifier la mémoire projet sauf si le ticket le demande explicitement
+- masquer les erreurs ou incertitudes
+
+## Sortie attendue
+
+- résumé des changements
+- liste des fichiers modifiés
+- vérifications effectuées
+- limites connues
+
+## Règles
+
+- coder uniquement après `PLAN_APPROVED`
+- ne jamais contourner les contraintes du plan
+- garder les changements petits et reviewables
+
+---
+
+# SKILL: workflow-discipline
+
+# Skill — Workflow Discipline
+
+## Objectif
+
+Faire respecter le lifecycle officiel des tickets et PR IA.
+
+## Règles
+
+- respecter l’ordre des étapes du workflow
+- ne pas bypass les reviews obligatoires
+- maintenir les statuts cohérents
+- conserver les artefacts versionnés
+- séparer plan, implémentation et mémoire
+
+## Refuser si
+
+- une review obligatoire est sautée
+- la mémoire est mise à jour avant validation implémentation
+- le workflow officiel est contourné
+
+---
+
+# SKILL: git-discipline
+
+# Skill — Git Discipline
+
+## Objectif
+
+Maintenir un historique Git propre, compréhensible et traçable.
+
+## Règles
+
+- un ticket = une unité de travail cohérente
+- éviter les commits mélangeant plusieurs sujets
+- utiliser des messages de commit explicites
+- conserver les PR lisibles
+- éviter les modifications hors scope
+- maintenir les fichiers mémoire cohérents avec les changements réels
+
+## Refuser si
+
+- la PR mélange plusieurs fonctionnalités
+- des changements non liés sont ajoutés
+- les commits deviennent impossibles à reviewer
+
+---
+
+# SKILL: code-quality
+
+# Skill — Code Quality
+
+## Objectif
+
+Produire des changements simples, lisibles, robustes et faciles à reviewer.
+
+## Règles
+
+- privilégier le code simple avant le code sophistiqué
+- utiliser des noms explicites
+- garder des fonctions courtes et lisibles
+- éviter la magie cachée
+- gérer les erreurs explicitement
+- ajouter des logs utiles sans bruit excessif
+- éviter les dépendances inutiles
+- conserver un changement borné au ticket
+
+## Refuser si
+
+- le code devient inutilement complexe
+- le ticket introduit une dépendance non justifiée
+- les erreurs sont masquées
+- les changements dépassent le scope demandé
+
+---
+
+# SKILL: refactor-safety
+
+# Skill — Refactor Safety
+
+## Objectif
+
+Limiter les régressions et les dérives de scope lors des modifications.
+
+## Règles
+
+- modifier uniquement le périmètre demandé
+- éviter les refactors transversaux implicites
+- préserver les comportements existants
+- maintenir la compatibilité sauf demande explicite
+- privilégier des changements incrémentaux
+
+## Refuser si
+
+- le ticket dérive vers une réécriture globale
+- plusieurs couches sont modifiées sans justification
+- le comportement change silencieusement
+
+---
+
+# SKILL: security
+
+# Skill — Security
+
+## Objectif
+
+Réduire les risques de sécurité et éviter les comportements dangereux.
+
+## Règles
+
+- ne pas exposer de secrets dans logs ou documentation
+- limiter les permissions au strict nécessaire
+- éviter les exécutions implicites dangereuses
+- valider les entrées externes
+- documenter les impacts sécurité importants
+- éviter les comportements destructifs implicites
+
+## Refuser si
+
+- des secrets sont hardcodés
+- des données sensibles sont logguées
+- une opération destructive n’est pas explicitement contrôlée
+
+---
+
+# TASK
+
+# Generic Coder Task
+
+Read the ticket and the approved plan below, then implement the required changes.
+
+The implementation must:
+- follow the approved plan strictly
+- remain within scope
+- list all created or modified files
+- be minimal, readable, and testable
+
+The ticket follows.
+
+
+# T117 — Finir #248 : UI Lab, candidatePoolSize, validation seeds et mapping ShelfConcept complet
+
+**Source**: GitHub Issue #250
+
+## Description
+
+## Contexte
+
+La PR #249 a bien unifié une grande partie du moteur autour de `runRecommendationFromPlan()` et de `SCORE_MODEL_V2`, mais la review post-merge montre plusieurs écarts par rapport aux critères d’acceptation de #248.
+
+## Problèmes à corriger
+
+### 1. Le Lab web n’utilise pas la nouvelle preview backend
+La PR #249 ajoute `POST /v1/shelf-concepts/:id/preview`, mais aucun fichier `apps/web/...` n’a été modifié.
+
+Conséquence : l’écran Lab continue à appeler la preview historique et ne permet pas de comparer réellement :
+- `Raw vector`
+- `Final personnalisé`
+
+### 2. `candidatePoolSize` n’est pas réellement appliqué au retrieval sémantique
+`runRecommendationFromPlan()` expose `candidatePoolSize`, mais `runSemanticSearch()` utilise toujours uniquement `SEMANTIC_RETRIEVAL_LIMIT` / `SEMANTIC_RETRIEVAL_MAX_CAP` depuis la config.
+
+Conséquence : passer `candidatePoolSize: 200` n’a pas d’effet garanti sur le nombre de candidats vectoriels récupérés.
+
+### 3. Régression de validation sur les seeds
+L’ancien code vérifiait explicitement que chaque seed existait.
+
+Le nouveau `buildSeedQueryPlan()` récupère les médias trouvés et ignore silencieusement les IDs manquants.
+
+Conséquence : une shelf peut être construite sur un jeu de seeds partiel sans erreur explicite.
+
+### 4. Mapping ShelfConcept → RecommendationQueryPlan incomplet
+La preview backend ne renseigne aujourd’hui essentiellement que :
+- `semanticIntent`
+- `desiredMediaTypes`
+
+Elle laisse vides :
+- `desiredThemes`
+- `desiredTone`
+- `avoidSignals`
+- `hardFilters`
+- `softPreferences`
+- contraintes/freshness policy pertinentes
+
+Conséquence : le mode `Final personnalisé` n’exploite pas encore toute la richesse du concept.
+
+## Travaux demandés
+
+### A. UI Recommendation Lab
+- [ ] Modifier `apps/web/src/pages/RecommendationLabPage.tsx` pour appeler `POST /v1/shelf-concepts/:id/preview`.
+- [ ] Afficher deux sections clairement séparées :
+  - [ ] `Raw vector`
+  - [ ] `Final personnalisé`
+- [ ] Pour `Raw vector`, afficher au minimum : rang, titre, score vectoriel.
+- [ ] Pour `Final personnalisé`, afficher au minimum : rang, titre, score final, score breakdown / reasons.
+- [ ] Afficher le `queryPlan` réellement utilisé.
+- [ ] Garder le profil sélectionné comme contexte obligatoire pour le mode final.
+
+### B. candidatePoolSize effectif
+- [ ] Permettre à `runSemanticSearch()` de recevoir un retrieval limit issu du contexte/options, ou l’injecter dans le `PipelineContext`.
+- [ ] `runRecommendationFromPlan({ candidatePoolSize: 200 })` doit réellement demander jusqu’à 200 candidats vectoriels avant reranking, borné par un max de sécurité configurable.
+- [ ] Conserver le fallback config si aucune valeur n’est fournie.
+- [ ] Ajouter un test vérifiant que la valeur configurée est bien respectée.
+
+### C. Validation seeds
+- [ ] Après lecture des movies/series seeds, vérifier que chaque `SeedMediaRef` demandé existe réellement.
+- [ ] Si au moins une seed manque, retourner une `ValidationError` explicite avec l’id concerné.
+- [ ] Ajouter un test de seed inexistante.
+
+### D. Mapping complet ShelfConcept → QueryPlan
+- [ ] Centraliser le mapping dans une fonction dédiée, par ex. `buildQueryPlanFromShelfConcept()`.
+- [ ] Mapper `semanticIntent`.
+- [ ] Mapper `desiredMediaTypes`.
+- [ ] Mapper les thèmes / tonalités disponibles.
+- [ ] Mapper les contraintes / filtres disponibles.
+- [ ] Mapper la freshness policy vers la logique de filtre/préférence appropriée.
+- [ ] Mapper `avoidSignals` si le concept en fournit.
+- [ ] Ne pas perdre silencieusement un attribut du concept qui influence le ranking.
+
+## Tests / acceptance criteria
+
+- [ ] Dans le Lab, cliquer `Prévisualiser` montre réellement `Raw vector` et `Final personnalisé` côte à côte ou dans deux onglets.
+- [ ] Les résultats `Final personnalisé` proviennent du même `SCORE_MODEL_V2` que la production.
+- [ ] Le nombre de candidats vectoriels est piloté par `candidatePoolSize` et visible en debug.
+- [ ] Une seed inexistante fait échouer proprement la génération au lieu d’être ignorée.
+- [ ] Le `queryPlan` de preview reflète les attributs du `ShelfConcept` et pas seulement son texte.
+- [ ] Ajouter des tests de non-régression sur :
+  - `Aventures à travers le temps`
+  - `Épopées modernes`
+  - `film qui retourne le cerveau`
+
+## But
+
+Terminer réellement #248 avant de passer à la composition Home, aux recommandations Film/Série et à la stratégie cache/invalidation.

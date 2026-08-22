@@ -8,7 +8,7 @@ import { shelfConcepts } from '../db/schema.js'
 import { runSemanticSearch } from '../pipeline/stages/semantic-search.js'
 import { runRecommendationFromPlan } from '../pipeline/recommendation-service.js'
 import type { PipelineContext } from '../pipeline/types.js'
-import type { RecommendationQueryPlan } from '@iptvflix/api-contracts'
+import { buildQueryPlanFromShelfConcept } from '../services/shelf-concept-mapper.js'
 
 function buildService(): ShelfConceptGeneratorService {
   const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null
@@ -80,28 +80,8 @@ export async function shelfConceptsRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({ error: 'ShelfConcept not found' })
       }
 
-      const rawDesiredTypes = (concept.desiredMediaTypes ?? []) as string[]
-      const resolvedMediaTypes = rawDesiredTypes
-        .map((t) => t.toLowerCase())
-        .filter((t): t is 'movie' | 'series' => t === 'movie' || t === 'series')
-      const mediaTypes: ('movie' | 'series')[] = resolvedMediaTypes.length > 0 ? resolvedMediaTypes : ['movie', 'series']
-      const planMediaTypes = mediaTypes.map((t) => t.toUpperCase() as 'MOVIE' | 'SERIES')
-
-      const plan: RecommendationQueryPlan = {
-        schemaVersion: '1',
-        rawQuery: concept.semanticIntent,
-        displayTitle: concept.title,
-        semanticIntent: concept.semanticIntent,
-        desiredThemes: [],
-        desiredTone: [],
-        avoidSignals: [],
-        mediaTypes: planMediaTypes,
-        hardFilters: {},
-        softPreferences: {},
-        userConstraints: [],
-        plannerFallback: true,
-        plannerMeta: null,
-      }
+      const plan = buildQueryPlanFromShelfConcept(concept)
+      const mediaTypes = plan.mediaTypes.map((t) => t.toLowerCase() as 'movie' | 'series')
 
       // Raw vector mode: top-50 semantic results without reranking
       const rawCtx: PipelineContext = {

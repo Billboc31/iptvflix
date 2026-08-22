@@ -236,6 +236,33 @@ describe('runRecommendationFromPlan', () => {
     expect(result.engineMetadata.rerankerVersion).toBe('v2')
   })
 
+  it('propagates candidatePoolSize from opts to PipelineContext', async () => {
+    let capturedCtx: PipelineContext | undefined
+    mockSemanticFn.mockImplementationOnce(async (ctx: PipelineContext) => {
+      capturedCtx = ctx
+      return {
+        stage: 'semantic-search',
+        available: true,
+        durationMs: 5,
+        inputCount: 0,
+        outputCount: 1,
+        candidates: [CANDIDATES[0]],
+      }
+    })
+
+    setupRerankerMocks()
+
+    const plan = makePlan('Suspense films')
+    await runRecommendationFromPlan(
+      plan,
+      { profileId: 'profile-a', mediaTypes: ['movie'], limit: 5, candidatePoolSize: 50 },
+      'test-pool-size',
+      makeLogger(),
+    )
+
+    expect(capturedCtx?.candidatePoolSize).toBe(50)
+  })
+
   it('cold-start: empty semanticIntent falls back to popularity pool without error', async () => {
     // With empty semanticIntent, semantic search is skipped.
     // The service falls back to the popularity pool (2 DB queries for movies + series).

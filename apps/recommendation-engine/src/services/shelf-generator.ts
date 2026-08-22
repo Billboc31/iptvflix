@@ -58,6 +58,17 @@ export async function buildSeedQueryPlan(
   // Seed titles for explanation
   const movieById = new Map(movieRows.map((m) => [m.id, m]))
   const seriesById = new Map(seriesRows.map((s) => [s.id, s]))
+
+  // Validate all requested seeds exist in the database
+  for (const seed of seedMediaIds) {
+    if (seed.mediaType === 'MOVIE' && !movieById.has(seed.mediaId)) {
+      throw new ValidationError(`Seed not found: MOVIE:${seed.mediaId}`)
+    }
+    if (seed.mediaType === 'SERIES' && !seriesById.has(seed.mediaId)) {
+      throw new ValidationError(`Seed not found: SERIES:${seed.mediaId}`)
+    }
+  }
+
   const seedTitles = seedMediaIds.map((s) =>
     s.mediaType === 'MOVIE' ? (movieById.get(s.mediaId)?.title ?? '') : (seriesById.get(s.mediaId)?.title ?? ''),
   ).filter(Boolean)

@@ -1,7 +1,7 @@
 {
   "ticket_id": "T117",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T117-finir-248-ui-lab-candidatepoolsize-validation-seed",
   "issue_number": 250,
-  "updated_at": "2026-08-22T14:25:13Z"
+  "updated_at": "2026-08-22T14:38:49Z"
 }

@@ -81,6 +81,7 @@ export async function runRecommendationFromPlan(
     startedAt,
     log,
     queryPlan: plan,
+    candidatePoolSize: poolSize,
   }
 
   const stageOutputs: StageResult[] = []
