@@ -20,6 +20,8 @@ export interface SemanticQueryRequest {
   compareQuery?: string
   expandWithLlm?: boolean
   profileContext?: CompactTasteContext
+  profileId?: string
+  useHybridRanking?: boolean
 }
 
 export interface SemanticQueryResponse {

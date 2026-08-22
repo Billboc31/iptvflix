@@ -292,13 +292,6 @@ const scheduler = new SchedulerService(
   episodeBackfillService,
 )
 
-try {
-  await app.listen({ port: PORT, host: '0.0.0.0' })
-} catch (err) {
-  app.log.error(err)
-  process.exit(1)
-}
-
 const apiRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 function runMigrateSafe(): Promise<void> {
@@ -336,19 +329,12 @@ async function checkBinary(binary: string): Promise<void> {
   })
 }
 
-async function bootBackground(): Promise<void> {
+async function prepareForListen(): Promise<void> {
   try {
     await runMigrateSafe()
     app.log.info('startup: migrations complete')
   } catch (err) {
     app.log.error(err, 'startup: migrate-safe failed — schema may be behind')
-  }
-
-  try {
-    await runSeed()
-    app.log.info('startup: account/profile seed completed')
-  } catch (err) {
-    app.log.error(err, 'startup: seed failed — login may not work until DB is healthy')
   }
 
   try {
@@ -364,6 +350,15 @@ async function bootBackground(): Promise<void> {
     }
   } catch (err) {
     app.log.error(err, 'startup: pgvector setup failed')
+  }
+}
+
+async function bootBackground(): Promise<void> {
+  try {
+    await runSeed()
+    app.log.info('startup: account/profile seed completed')
+  } catch (err) {
+    app.log.error(err, 'startup: seed failed — login may not work until DB is healthy')
   }
 
   try {
@@ -398,6 +393,14 @@ async function bootBackground(): Promise<void> {
   } catch (err) {
     app.log.warn({ err }, 'startup: temp directory not writable — HLS segment writes may fail')
   }
+}
+
+try {
+  await prepareForListen()
+  await app.listen({ port: PORT, host: '0.0.0.0' })
+} catch (err) {
+  app.log.error(err)
+  process.exit(1)
 }
 
 void bootBackground()
