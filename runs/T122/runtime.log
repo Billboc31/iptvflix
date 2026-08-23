@@ -12,3 +12,25 @@
 [2026-08-23T15:13:02Z] snapshot: runtime-prompt=runs/T122/prompts/planner-attempt-1.md
 [2026-08-23T15:17:16Z] compose: preferring on-disk runs/T122/plan.md over chatty stdout (agent Write beat meta-report)
 [2026-08-23T15:17:16Z] auto-run: step=planner done rc=0
+[2026-08-23T15:42:16Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-23T15:42:16Z] auto-run: running step=tester
+[2026-08-23T15:42:17Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-23T15:42:17Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-23T15:42:17Z] prompt: generic fallback — injecting runs/T122/ticket.md
+[2026-08-23T15:42:17Z] compose: global-context=docs/ai/global-context.md
+[2026-08-23T15:42:17Z] compose: role=ai/roles/tester.md
+[2026-08-23T15:42:17Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-23T15:42:17Z] compose: skill=ai/skills/testing.md
+[2026-08-23T15:42:17Z] compose: skill=ai/skills/debugging.md
+[2026-08-23T15:42:17Z] compose: task (canonical prompt)
+[2026-08-23T15:42:17Z] snapshot: runtime-prompt=runs/T122/prompts/tester-attempt-1.md
+[2026-08-23T15:45:07Z] auto-run: step=tester done rc=0
+[2026-08-23T15:45:07Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-23T15:45:07Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-23T15:45:07Z] commit-checkpoint: unstaged runtime garbage: ['apps/recommendation-engine/node_modules/.vite/vitest/results.json', 'runs/T122/daemon.lock', 'runs/T122/runtime.log', 'runs/T122/workflow-status.md']
+[2026-08-23T15:45:07Z] commit-checkpoint: sha=b4a5bb4b files=3 title='test(T122/workflow): tester — update 3 file(s)'
+[2026-08-23T15:45:07Z] auto-run: auto-push triggered
+[2026-08-23T15:45:07Z] push: tolerating runtime dirty files (not blocking): ['apps/recommendation-engine/node_modules/.vite/vitest/results.json', 'runs/T122/daemon.lock', 'runs/T122/runtime.log', 'runs/T122/workflow-status.md']
+[2026-08-23T15:45:07Z] push: pushing branch=ticket/T122-bound-profile-boosts-by-semantic-relevance-in-them
+[2026-08-23T15:45:09Z] push: done branch=ticket/T122-bound-profile-boosts-by-semantic-relevance-in-them
+[2026-08-23T15:45:10Z] auto-run: TEST_COMPLETE — running PR lifecycle
