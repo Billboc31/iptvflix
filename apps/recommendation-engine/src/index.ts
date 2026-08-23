@@ -7,6 +7,7 @@ import { queryRoutes } from './routes/query.js'
 import { personalizedRoutes } from './routes/personalized.js'
 import { shelfConceptsRoutes } from './routes/shelf-concepts.js'
 import { shelfInstancesRoutes } from './routes/shelf-instances.js'
+import { diagnosticsRoutes } from './routes/diagnostics.js'
 
 const app = Fastify({
   logger: { level: LOG_LEVEL },
@@ -26,6 +27,7 @@ await app.register(queryRoutes)
 await app.register(personalizedRoutes)
 await app.register(shelfConceptsRoutes)
 await app.register(shelfInstancesRoutes)
+await app.register(diagnosticsRoutes)
 
 if (!OPENAI_API_KEY) {
   app.log.warn('OPENAI_API_KEY is not set — llm-planner and semantic-search stages will report unavailable')

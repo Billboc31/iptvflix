@@ -1,0 +1,7 @@
+{
+  "ticket_id": "T119",
+  "state": "TEST_COMPLETE",
+  "branch": "ticket/T119-fix-semantic-retrieval-returning-0-candidates-in-s",
+  "issue_number": 254,
+  "updated_at": "2026-08-23T07:02:47Z"
+}

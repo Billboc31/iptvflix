@@ -52,10 +52,11 @@ export async function runSemanticSearch(
   const mediaTypes = ctx.request.mediaTypes ?? ['movie', 'series']
 
   try {
-    const countRows = await pgClient<{ count: string }[]>`SELECT COUNT(*) AS count FROM media_embeddings`
-    const count = Number(countRows[0]?.count ?? 0)
+    // Pre-flight: total corpus count (any model)
+    const totalRows = await pgClient<{ count: string }[]>`SELECT COUNT(*) AS count FROM media_embeddings`
+    const totalCount = Number(totalRows[0]?.count ?? 0)
 
-    if (count === 0) {
+    if (totalCount === 0) {
       return {
         stage: 'semantic-search',
         available: false,
@@ -63,11 +64,42 @@ export async function runSemanticSearch(
         durationMs: Date.now() - start,
         inputCount: inputCandidates.length,
         outputCount: 0,
+        diagnostics: { totalEmbeddings: 0, eligibleEmbeddings: 0, detectedModels: [], usePgvector: null, retrievalLimit, queryVectorDim: null, retrievedRawRows: 0 },
+      }
+    }
+
+    // Pre-flight: rows matching the configured model
+    const eligibleRows = await pgClient<{ count: string }[]>`
+      SELECT COUNT(*) AS count FROM media_embeddings
+      WHERE model_provider = ${EMBEDDING_MODEL_PROVIDER} AND model_name = ${EMBEDDING_MODEL_NAME}
+    `
+    const eligibleCount = Number(eligibleRows[0]?.count ?? 0)
+
+    // Pre-flight: distinct model labels present in corpus (sanitized, no embedding data)
+    const detectedModelsRows = await pgClient<{ m: string }[]>`
+      SELECT DISTINCT model_provider || '/' || model_name AS m FROM media_embeddings LIMIT 10
+    `
+    const detectedModels = detectedModelsRows.map((r) => r.m)
+
+    if (eligibleCount === 0) {
+      ctx.log.warn(
+        { requestId: ctx.requestId, configuredModel: `${EMBEDDING_MODEL_PROVIDER}/${EMBEDDING_MODEL_NAME}`, detectedModels, totalEmbeddings: totalCount },
+        'semantic-search: no embeddings match configured model',
+      )
+      return {
+        stage: 'semantic-search',
+        available: false,
+        reason: `no embeddings matching configured model (${EMBEDDING_MODEL_PROVIDER}/${EMBEDDING_MODEL_NAME}); corpus has: ${detectedModels.join(', ')}`,
+        durationMs: Date.now() - start,
+        inputCount: inputCandidates.length,
+        outputCount: 0,
+        diagnostics: { totalEmbeddings: totalCount, eligibleEmbeddings: 0, detectedModels, usePgvector: null, retrievalLimit, queryVectorDim: null, retrievedRawRows: 0 },
       }
     }
 
     const openai = new OpenAI({ apiKey: OPENAI_API_KEY })
     const queryVector = await embedQuery(openai, semanticIntent)
+    const queryVectorDim = queryVector.length
     const usePgvector = await checkPgvector()
 
     const vectorLiteral = `'[${queryVector.join(',')}]'`
@@ -125,6 +157,8 @@ export async function runSemanticSearch(
       LIMIT ${retrievalLimit}
     `
 
+    const retrievedRawRows = rows.length
+
     const candidates: CandidateItem[] = rows.map((row) => ({
       id: row.media_id,
       mediaType: row.media_type as 'movie' | 'series',
@@ -136,7 +170,7 @@ export async function runSemanticSearch(
     }))
 
     ctx.log.info(
-      { requestId: ctx.requestId, stage: 'semantic-search', durationMs: Date.now() - start, retrievalLimit, candidateCount: candidates.length, usePgvector },
+      { requestId: ctx.requestId, stage: 'semantic-search', durationMs: Date.now() - start, retrievalLimit, candidateCount: candidates.length, usePgvector, queryVectorDim, totalEmbeddings: totalCount, eligibleEmbeddings: eligibleCount },
       'stage complete',
     )
 
@@ -147,6 +181,7 @@ export async function runSemanticSearch(
       inputCount: inputCandidates.length,
       outputCount: candidates.length,
       candidates,
+      diagnostics: { totalEmbeddings: totalCount, eligibleEmbeddings: eligibleCount, detectedModels, usePgvector, retrievalLimit, queryVectorDim, retrievedRawRows },
     }
   } catch (err) {
     ctx.log.error({ requestId: ctx.requestId, stage: 'semantic-search', err }, 'stage error')

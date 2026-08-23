@@ -64,4 +64,15 @@ export type ShelfConceptPreviewResponse = {
   finalPersonalized: Array<{ id: string; title: string; finalScore: number; scoreBreakdown?: ScoreBreakdown }>
   candidatePoolSize: number
   queryPlan: RecommendationQueryPlan
+  semanticAvailable: boolean
+  semanticFallbackReason?: string
+  semanticDiagnostics?: Record<string, unknown>
+  fallbackFlags: string[]
+  stageAvailability: Array<{ name: string; available: boolean; reason?: string }>
+  retrievalCounts: {
+    retrieved: number
+    postFilter: number | null
+    reranked: number | null
+    final: number
+  }
 }
