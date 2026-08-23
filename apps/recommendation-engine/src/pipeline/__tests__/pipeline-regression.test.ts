@@ -72,6 +72,32 @@ describe('T117/T121 — non-regression: runRecommendationFromPlan on reference i
         semanticDominant.length,
         'at least 3 top-10 results must have semanticContribution > profileContribution',
       ).toBeGreaterThanOrEqual(3)
+
+      // T122: at least 4 of top-8 must be temporally themed titles
+      const timeKeywords = ['time', 'chrono', 'visitor', 'timescape', 'lapse']
+      const isTemporalTitle = (title: string) =>
+        timeKeywords.some((kw) => title.toLowerCase().includes(kw))
+      const top8 = result.results.slice(0, 8)
+      const temporalInTop8 = top8.filter((r) => isTemporalTitle(r.title))
+      expect(
+        temporalInTop8.length,
+        'at least 4 of top-8 results must be temporal titles (Time/Chrono/Visitor/Timescape/Lapse)',
+      ).toBeGreaterThanOrEqual(4)
+
+      // T122: The Hobbit must not appear in top-5 (profile-only boost must not rescue a semantically weak candidate)
+      expect(
+        top5.every((r) => !r.title.includes('Hobbit')),
+        'The Hobbit must not appear in top-5 (semantic modulation must prevent profile-only rescue)',
+      ).toBe(true)
+
+      // T122: modulation is active — at least 3 candidates must have profileBoostEffective < profileBoostRaw
+      const modulated = result.results.filter(
+        (r) => (r.scoreBreakdown?.profileBoostEffective ?? 0) < (r.scoreBreakdown?.profileBoostRaw ?? 0) - 0.001,
+      )
+      expect(
+        modulated.length,
+        'at least 3 results must have profileBoostEffective < profileBoostRaw (modulation is active)',
+      ).toBeGreaterThanOrEqual(3)
     },
     30_000,
   )
@@ -118,6 +144,18 @@ describe('T117/T121 — non-regression: runRecommendationFromPlan on reference i
         maxSemantic - minSemantic,
         'top-5 semantic score spread must be < 0.25 (no extreme outlier saved by profile alone)',
       ).toBeLessThan(0.25)
+
+      // T122: breakdown fields are populated and modulation constraint is respected
+      expect(
+        result.results.every((r) => r.scoreBreakdown?.semanticConfidenceFactor !== undefined),
+        'all results must have semanticConfidenceFactor in breakdown',
+      ).toBe(true)
+      expect(
+        result.results.every(
+          (r) => (r.scoreBreakdown?.profileBoostEffective ?? 0) <= (r.scoreBreakdown?.profileBoostRaw ?? 0) + 0.001,
+        ),
+        'profileBoostEffective must not exceed profileBoostRaw for any candidate',
+      ).toBe(true)
     },
     30_000,
   )
@@ -138,6 +176,19 @@ describe('T117/T121 — non-regression: runRecommendationFromPlan on reference i
       expect(
         top5.every((r) => (r.scoreBreakdown?.semantic ?? 0) >= SEMANTIC_FLOOR_MODERATE),
         'all top-5 results must have semantic >= SEMANTIC_FLOOR_MODERATE',
+      ).toBe(true)
+
+      // T122: top-5 must have semanticConfidenceFactor populated — high-semantic candidates should score > 0.5
+      expect(
+        top5.every((r) => (r.scoreBreakdown?.semanticConfidenceFactor ?? -1) > 0),
+        'all top-5 results must have semanticConfidenceFactor > 0 in breakdown',
+      ).toBe(true)
+      // T122: modulation constraint — effective boost never exceeds raw boost
+      expect(
+        result.results.every(
+          (r) => (r.scoreBreakdown?.profileBoostEffective ?? 0) <= (r.scoreBreakdown?.profileBoostRaw ?? 0) + 0.001,
+        ),
+        'profileBoostEffective must not exceed profileBoostRaw for any candidate',
       ).toBe(true)
     },
     30_000,

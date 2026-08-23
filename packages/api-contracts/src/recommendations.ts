@@ -29,6 +29,14 @@ export interface ScoreBreakdown {
   dislikedPenalty: number
   avoidPenalty: number
   repetitionPenalty: number
+  semanticRelevanceNormalized: number
+  semanticConfidenceFactor: number
+  profileBoostRaw: number
+  profileBoostEffective: number
+  semanticPercentile: number
+  rawVectorRank: number | null
+  finalRank: number | null
+  rankDelta: number | null
   final: number
   reasons: string[]
 }

@@ -6,6 +6,7 @@ import {
   computeLanguageAffinity,
   computeDecadeAffinity,
   computeMediaTypeAffinity,
+  computeSemanticConfidenceFactor,
   getBlendedWeights,
   SCORE_MODEL_V2,
   resolveProtectionSettings,
@@ -350,6 +351,59 @@ describe('semantic floor protection', () => {
   it('thematic blend sets wSemantic to SEMANTIC_WEIGHT_THEMATIC', () => {
     const weights = getBlendedWeights(SCORE_MODEL_V2, 'thematic')
     expect(weights.wSemantic).toBe(SEMANTIC_WEIGHT_THEMATIC)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// T122 — semanticConfidenceFactor modulation
+// ---------------------------------------------------------------------------
+
+describe('T122 — computeSemanticConfidenceFactor', () => {
+  const MIN_FACTOR = 0.15
+  const POWER = 1.5
+
+  it('at pool bottom (normalizedRelevance=0), returns minFactor', () => {
+    expect(computeSemanticConfidenceFactor(0.41, 0.41, 0.47, MIN_FACTOR, POWER)).toBeCloseTo(MIN_FACTOR, 5)
+  })
+
+  it('at pool top (normalizedRelevance=1), returns 1.0', () => {
+    expect(computeSemanticConfidenceFactor(0.47, 0.41, 0.47, MIN_FACTOR, POWER)).toBeCloseTo(1.0, 5)
+  })
+
+  it('factor is strictly monotone: bottom < mid < top', () => {
+    const bottom = computeSemanticConfidenceFactor(0.41, 0.41, 0.47, MIN_FACTOR, POWER)
+    const mid = computeSemanticConfidenceFactor(0.44, 0.41, 0.47, MIN_FACTOR, POWER)
+    const top = computeSemanticConfidenceFactor(0.47, 0.41, 0.47, MIN_FACTOR, POWER)
+    expect(bottom).toBeLessThan(mid)
+    expect(mid).toBeLessThan(top)
+  })
+
+  it('uniform pool (poolMin === poolMax), returns 1.0 — no restriction on broad/uniform-relevance shelves', () => {
+    expect(computeSemanticConfidenceFactor(0.45, 0.45, 0.45, MIN_FACTOR, POWER)).toBe(1.0)
+    expect(computeSemanticConfidenceFactor(0.70, 0.70, 0.70, MIN_FACTOR, POWER)).toBe(1.0)
+  })
+
+  it('profile boost for low-semantic candidate is strictly lower than for high-semantic candidate in same pool', () => {
+    const rawBoost = 0.23
+    const poolMin = 0.41
+    const poolMax = 0.47
+    const factorLow = computeSemanticConfidenceFactor(0.42, poolMin, poolMax, MIN_FACTOR, POWER)
+    const factorHigh = computeSemanticConfidenceFactor(0.46, poolMin, poolMax, MIN_FACTOR, POWER)
+    expect(rawBoost * factorLow).toBeLessThan(rawBoost * factorHigh)
+  })
+
+  it('factor is always in [minFactor, 1.0] across the pool range', () => {
+    for (const sim of [0.41, 0.43, 0.45, 0.47]) {
+      const f = computeSemanticConfidenceFactor(sim, 0.41, 0.47, MIN_FACTOR, POWER)
+      expect(f).toBeGreaterThanOrEqual(MIN_FACTOR)
+      expect(f).toBeLessThanOrEqual(1.0)
+    }
+  })
+
+  it('non-thematic blend uses factor 1.0 — verified by uniform-pool degeneracy (range=0 → full boost)', () => {
+    // The calling code passes 1.0 directly for non-thematic blend levels.
+    // The degeneracy guard (range === 0 → normalizedRelevance = 1.0 → factor = 1.0) covers broad shelves.
+    expect(computeSemanticConfidenceFactor(0.55, 0.55, 0.55, MIN_FACTOR, POWER)).toBe(1.0)
   })
 })
 

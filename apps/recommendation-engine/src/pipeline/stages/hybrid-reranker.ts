@@ -19,6 +19,8 @@ import {
   SEMANTIC_FLOOR_STRICT,
   SEMANTIC_FLOOR_MODERATE,
   SEMANTIC_WEIGHT_THEMATIC,
+  PROFILE_BOOST_MIN_FACTOR,
+  PROFILE_BOOST_MODULATION_POWER,
 } from '../../config.js'
 
 /** @deprecated Use SCORE_MODEL_V2 for all production paths. Kept as a reference baseline for tests. */
@@ -528,6 +530,18 @@ export function passesSemanticFloor(similarity: number | null | undefined, floor
   return floor === 0 || (similarity ?? 0) >= floor
 }
 
+export function computeSemanticConfidenceFactor(
+  similarity: number,
+  poolMin: number,
+  poolMax: number,
+  minFactor: number,
+  power: number,
+): number {
+  const range = poolMax - poolMin
+  const normalizedRelevance = range > 0 ? (similarity - poolMin) / range : 1.0
+  return minFactor + (1 - minFactor) * Math.pow(Math.max(0, Math.min(1, normalizedRelevance)), power)
+}
+
 export const HARD_FILTER_UNKNOWN_POLICY = 'STRICT_EXCLUDE_UNKNOWN' as const
 
 export function passesHardFilters(c: EnrichedCandidate, queryPlan: RecommendationQueryPlan): boolean {
@@ -669,6 +683,17 @@ export async function runHybridReranker(
       (c) => passesHardFilters(c, plan) && passesSemanticFloor(c.similarity, semanticFloor),
     )
 
+    const rawRankById = new Map(eligible.map((c, i) => [c.id, i + 1]))
+    const poolSimilarities = eligible.map((c) => c.similarity ?? 0)
+    const poolSemanticMin = eligible.length > 0 ? Math.min(...poolSimilarities) : 0
+    const poolSemanticMax = eligible.length > 0 ? Math.max(...poolSimilarities) : 1
+    const semanticPercentileById = new Map<string, number>(
+      poolSimilarities
+        .map((s, i) => [eligible[i].id, s] as [string, number])
+        .sort(([, a], [, b]) => a - b)
+        .map(([id], rank) => [id, (rank + 1) / eligible.length] as [string, number]),
+    )
+
     const scored = eligible.map((c) => {
       const isDisliked = taste?.dislikedMediaIds.has(c.id) ?? false
       const isNotInterested = taste?.notInterestedMediaIds.has(c.id) ?? false
@@ -694,8 +719,7 @@ export async function runHybridReranker(
       const avoidPenalty = computeAvoidPenalty(c, plan.avoidSignals)
       const repetitionPenalty = 0.05 * Math.min(c.exposureCount, 4)
 
-      const weighted =
-        semantic * weights.wSemantic +
+      const profileBoostRaw =
         genreAffinity * weights.wGenre +
         themeAffinity * weights.wTheme +
         peopleAffinity * weights.wPeople +
@@ -703,26 +727,37 @@ export async function runHybridReranker(
         franchiseAffinity * weights.wFranchise +
         languageAffinity * weights.wLanguage +
         decadeAffinity * weights.wDecade +
-        mediaTypeAffinity * weights.wMediaType +
-        fresh * weights.wFreshness +
-        prior * weights.wPrior +
-        availBonus * weights.wAvailability
+        mediaTypeAffinity * weights.wMediaType
 
+      const qualityContrib = fresh * weights.wFreshness + prior * weights.wPrior + availBonus * weights.wAvailability
+      const semanticContribution = semantic * weights.wSemantic
+
+      const semanticConfidenceFactor =
+        blendLevel === 'thematic'
+          ? computeSemanticConfidenceFactor(semantic, poolSemanticMin, poolSemanticMax, PROFILE_BOOST_MIN_FACTOR, PROFILE_BOOST_MODULATION_POWER)
+          : 1.0
+
+      const profileBoostEffective = profileBoostRaw * semanticConfidenceFactor
+      const weighted = semanticContribution + profileBoostEffective + qualityContrib
       const finalScore = weighted - alreadyWatchedPenalty - abandonPenalty - dislikedPenalty - avoidPenalty - repetitionPenalty
 
-      const semanticContribution = semantic * weights.wSemantic
-      const profileGenreContribution = genreAffinity * weights.wGenre
-      const profileThemeContribution = themeAffinity * weights.wTheme
-      const peopleContribution = peopleAffinity * weights.wPeople
-      const languageContribution = languageAffinity * weights.wLanguage
-      const eraContribution = decadeAffinity * weights.wDecade
-      const otherPositiveContributions =
+      // Effective (modulated) per-signal contributions — reflect what is actually in the score
+      const profileGenreContribution = genreAffinity * weights.wGenre * semanticConfidenceFactor
+      const profileThemeContribution = themeAffinity * weights.wTheme * semanticConfidenceFactor
+      const peopleContribution = peopleAffinity * weights.wPeople * semanticConfidenceFactor
+      const languageContribution = languageAffinity * weights.wLanguage * semanticConfidenceFactor
+      const eraContribution = decadeAffinity * weights.wDecade * semanticConfidenceFactor
+      const otherPositiveContributions = (
         keywordAffinity * weights.wKeyword +
         franchiseAffinity * weights.wFranchise +
         mediaTypeAffinity * weights.wMediaType
-      const profileContribution =
-        profileGenreContribution + profileThemeContribution + peopleContribution +
-        languageContribution + eraContribution + otherPositiveContributions
+      ) * semanticConfidenceFactor
+      const profileContribution = profileBoostEffective
+
+      const poolRange = poolSemanticMax - poolSemanticMin
+      const semanticRelevanceNormalized = poolRange > 0 ? (semantic - poolSemanticMin) / poolRange : 1.0
+      const rawVectorRank = rawRankById.get(c.id) ?? null
+      const semanticPercentile = semanticPercentileById.get(c.id) ?? 1.0
 
       const reasons = buildReasons(semantic, genreAffinity, languageAffinity, decadeAffinity, c.genreNames, peopleAffinity, keywordAffinity, plan.semanticIntent)
 
@@ -753,6 +788,14 @@ export async function runHybridReranker(
         dislikedPenalty,
         avoidPenalty,
         repetitionPenalty,
+        semanticRelevanceNormalized,
+        semanticConfidenceFactor,
+        profileBoostRaw,
+        profileBoostEffective,
+        semanticPercentile,
+        rawVectorRank,
+        finalRank: null,
+        rankDelta: null,
         final: finalScore,
         reasons,
       }
@@ -768,6 +811,19 @@ export async function runHybridReranker(
     scored.sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score
       return a.id.localeCompare(b.id)
+    })
+
+    scored.forEach((item, idx) => {
+      if (item.scoreBreakdown) {
+        item.scoreBreakdown.finalRank = idx + 1
+        const rawRank = item.scoreBreakdown.rawVectorRank
+        item.scoreBreakdown.rankDelta = rawRank != null ? (idx + 1) - rawRank : null
+        const delta = item.scoreBreakdown.rankDelta
+        const percentile = item.scoreBreakdown.semanticPercentile
+        if (delta !== null && delta < -3 && percentile < 0.33) {
+          item.scoreBreakdown.reasons.push('⚠ large upward rank delta with weak semantic percentile')
+        }
+      }
     })
 
     const diversified = applyDiversityFilter(scored, limit, 2, 3)
