@@ -1,0 +1,36 @@
+[2026-08-23T16:03:20Z] auto-run start: state=INIT
+[2026-08-23T16:03:20Z] auto-run: running step=planner
+[2026-08-23T16:03:22Z] auto-run: pre-planner rebase onto integration ok
+[2026-08-23T16:03:22Z] prompt: resolved=prompts/generic/planner.md source=generic
+[2026-08-23T16:03:22Z] prompt: generic fallback — injecting runs/T123/ticket.md
+[2026-08-23T16:03:22Z] compose: global-context=docs/ai/global-context.md
+[2026-08-23T16:03:22Z] compose: role=ai/roles/planner.md
+[2026-08-23T16:03:22Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-23T16:03:22Z] compose: skill=ai/skills/architecture-discipline.md
+[2026-08-23T16:03:22Z] compose: skill=ai/skills/documentation.md
+[2026-08-23T16:03:22Z] compose: task (canonical prompt)
+[2026-08-23T16:03:22Z] snapshot: runtime-prompt=runs/T123/prompts/planner-attempt-1.md
+[2026-08-23T16:07:49Z] compose: preferring on-disk runs/T123/plan.md over chatty stdout (agent Write beat meta-report)
+[2026-08-23T16:07:49Z] auto-run: step=planner done rc=0
+[2026-08-23T16:43:27Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-23T16:43:27Z] auto-run: running step=tester
+[2026-08-23T16:43:29Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-23T16:43:29Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-23T16:43:29Z] prompt: generic fallback — injecting runs/T123/ticket.md
+[2026-08-23T16:43:29Z] compose: global-context=docs/ai/global-context.md
+[2026-08-23T16:43:29Z] compose: role=ai/roles/tester.md
+[2026-08-23T16:43:29Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-23T16:43:29Z] compose: skill=ai/skills/testing.md
+[2026-08-23T16:43:29Z] compose: skill=ai/skills/debugging.md
+[2026-08-23T16:43:29Z] compose: task (canonical prompt)
+[2026-08-23T16:43:29Z] snapshot: runtime-prompt=runs/T123/prompts/tester-attempt-1.md
+[2026-08-23T16:46:18Z] auto-run: step=tester done rc=0
+[2026-08-23T16:46:18Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-23T16:46:18Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-23T16:46:18Z] commit-checkpoint: unstaged runtime garbage: ['runs/T123/daemon.lock', 'runs/T123/runtime.log', 'runs/T123/workflow-status.md']
+[2026-08-23T16:46:18Z] commit-checkpoint: sha=fffa9658 files=3 title='test(T123/workflow): tester — update 3 file(s)'
+[2026-08-23T16:46:18Z] auto-run: auto-push triggered
+[2026-08-23T16:46:18Z] push: tolerating runtime dirty files (not blocking): ['runs/T123/daemon.lock', 'runs/T123/runtime.log', 'runs/T123/workflow-status.md']
+[2026-08-23T16:46:18Z] push: pushing branch=ticket/T123-improve-semantic-retrieval-precision-for-thematic
+[2026-08-23T16:46:20Z] push: done branch=ticket/T123-improve-semantic-retrieval-precision-for-thematic
+[2026-08-23T16:46:21Z] auto-run: TEST_COMPLETE — running PR lifecycle

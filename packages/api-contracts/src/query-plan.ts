@@ -36,6 +36,7 @@ export type RecommendationQueryPlan = {
   rawQuery: string
   displayTitle: string
   semanticIntent: string
+  semanticAnchor?: string | null
   desiredThemes: string[]
   desiredTone: string[]
   avoidSignals: string[]
@@ -44,7 +45,6 @@ export type RecommendationQueryPlan = {
   softPreferences: QueryPlanSoftPreferences
   userConstraints: string[]
   plannerFallback: boolean
-  semanticProtection?: 'strict' | 'moderate' | 'none'
   plannerMeta: {
     provider: string
     model: string

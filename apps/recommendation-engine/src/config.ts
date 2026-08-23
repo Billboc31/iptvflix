@@ -22,14 +22,7 @@ export const FATIGUE_COOLDOWN_DAYS = Number(process.env.FATIGUE_COOLDOWN_DAYS ??
 export const FATIGUE_SUPPRESSION_VERSION = process.env.FATIGUE_SUPPRESSION_VERSION ?? 'v1'
 export const SEMANTIC_RETRIEVAL_LIMIT = Number(process.env.SEMANTIC_RETRIEVAL_LIMIT ?? 200)
 export const SEMANTIC_RETRIEVAL_MAX_CAP = Number(process.env.SEMANTIC_RETRIEVAL_MAX_CAP ?? 500)
-// Semantic floor: candidates below this similarity are excluded before scoring when semanticProtection is active.
-export const SEMANTIC_FLOOR_STRICT = Number(process.env.SEMANTIC_FLOOR_STRICT ?? 0.40)
-export const SEMANTIC_FLOOR_MODERATE = Number(process.env.SEMANTIC_FLOOR_MODERATE ?? 0.28)
-// wSemantic override for the 'thematic' blend (replaces V2 default 0.28 for thematic ShelfConcepts).
-export const SEMANTIC_WEIGHT_THEMATIC = Number(process.env.SEMANTIC_WEIGHT_THEMATIC ?? 0.40)
-// Profile boost modulation for thematic reranking (T122).
-// factor = minFactor + (1 - minFactor) × normalizedSemantic^power
-// At normalizedSemantic=0 (pool bottom): factor = minFactor  — boost attenuated but not zeroed
-// At normalizedSemantic=1 (pool top):   factor = 1.0         — full profile boost
-export const PROFILE_BOOST_MIN_FACTOR = Number(process.env.PROFILE_BOOST_MIN_FACTOR ?? 0.15)
-export const PROFILE_BOOST_MODULATION_POWER = Number(process.env.PROFILE_BOOST_MODULATION_POWER ?? 1.5)
+// Blend weight for semanticAnchor embedding vs full semanticIntent embedding (T123).
+// blendedSimilarity = ALPHA * anchorSimilarity + (1 - ALPHA) * intentSimilarity
+// 0.0 = full intent only (legacy behaviour), 1.0 = anchor only.
+export const SEMANTIC_ANCHOR_BLEND_ALPHA = Number(process.env.SEMANTIC_ANCHOR_BLEND_ALPHA ?? 0.45)

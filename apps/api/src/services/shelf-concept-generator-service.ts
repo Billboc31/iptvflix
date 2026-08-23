@@ -45,6 +45,7 @@ export type RawConcept = {
   title: string
   rawIntent: string
   semanticIntent: string
+  semanticAnchor?: string | null
   generationType: string
   reasonCodes: unknown[]
   desiredMediaTypes: unknown[]
@@ -458,6 +459,7 @@ export class ShelfConceptGeneratorService {
           desiredMediaTypes: (Array.isArray(raw.desiredMediaTypes)
             ? raw.desiredMediaTypes.filter((t) => ALLOWED_MEDIA_TYPES.has(t as string))
             : []) as ('MOVIE' | 'SERIES')[],
+          semanticAnchor: typeof raw.semanticAnchor === 'string' && raw.semanticAnchor.trim() ? raw.semanticAnchor.trim() : null,
           freshnessPolicy: typeof raw.freshnessPolicy === 'string' ? raw.freshnessPolicy : null,
           active: true,
           expiresAt: new Date(Date.now() + SHELF_CONCEPT_TTL_HOURS * 60 * 60 * 1000),
@@ -551,6 +553,7 @@ export class ShelfConceptGeneratorService {
       title: row.title,
       rawIntent: row.rawIntent,
       semanticIntent: row.semanticIntent,
+      semanticAnchor: row.semanticAnchor ?? null,
       generationType: row.generationType as ShelfConcept['generationType'],
       reasonCodes: (row.reasonCodes as string[]) ?? [],
       sourceModel: row.sourceModel,

@@ -10,6 +10,7 @@ export type ShelfConcept = {
   title: string
   rawIntent: string
   semanticIntent: string
+  semanticAnchor?: string | null
   generationType: ShelfConceptGenerationType
   reasonCodes: string[]
   sourceModel: string

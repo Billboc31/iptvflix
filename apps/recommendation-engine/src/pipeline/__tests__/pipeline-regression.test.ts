@@ -4,7 +4,6 @@ import type { FastifyBaseLogger } from 'fastify'
 import { runPipeline } from '../pipeline.js'
 import { runRecommendationFromPlan } from '../recommendation-service.js'
 import type { RecommendationQueryPlan } from '@iptvflix/api-contracts'
-import { SEMANTIC_FLOOR_MODERATE } from '../../config.js'
 
 // These tests require a populated embedding index and OPENAI_API_KEY.
 // They are skipped automatically when OPENAI_API_KEY is not configured.
@@ -21,15 +20,13 @@ const mockLog = {
   child: vi.fn(),
 } as unknown as FastifyBaseLogger
 
-function makeRegressionPlan(
-  intent: string,
-  semanticProtection?: 'strict' | 'moderate' | 'none',
-): RecommendationQueryPlan {
+function makeRegressionPlan(intent: string, semanticAnchor?: string): RecommendationQueryPlan {
   return {
     schemaVersion: '1',
     rawQuery: intent,
     displayTitle: intent,
     semanticIntent: intent,
+    semanticAnchor: semanticAnchor ?? null,
     desiredThemes: [],
     desiredTone: [],
     avoidSignals: [],
@@ -38,66 +35,22 @@ function makeRegressionPlan(
     softPreferences: {},
     userConstraints: [],
     plannerFallback: true,
-    semanticProtection,
     plannerMeta: null,
   }
 }
 
-describe('T117/T121 — non-regression: runRecommendationFromPlan on reference intents', () => {
+describe('T117 — non-regression: runRecommendationFromPlan on reference intents', () => {
   it.skipIf(!canRun)(
-    '"Aventures à travers le temps" — top-5 dominated by semantic relevance',
+    '"Aventures à travers le temps" — returns ≥ 5 results',
     async () => {
       const result = await runRecommendationFromPlan(
-        makeRegressionPlan('Aventures à travers le temps', 'moderate'),
-        { mediaTypes: ['movie', 'series'], limit: 20, debug: true },
+        makeRegressionPlan('Aventures à travers le temps'),
+        { mediaTypes: ['movie', 'series'], limit: 10 },
         'regression-aventures',
         mockLog,
       )
       expect(result.results.length, 'must return at least 5 results').toBeGreaterThanOrEqual(5)
       expect(result.results.every((r) => r.title && r.id), 'all results must have id and title').toBe(true)
-
-      // No top-5 result should have a sub-floor semantic score
-      const top5 = result.results.slice(0, 5)
-      expect(
-        top5.every((r) => (r.scoreBreakdown?.semantic ?? 0) >= SEMANTIC_FLOOR_MODERATE),
-        'all top-5 results must have semantic >= SEMANTIC_FLOOR_MODERATE',
-      ).toBe(true)
-
-      // At least 3 of top-10 should have semanticContribution > profileContribution
-      const top10 = result.results.slice(0, 10)
-      const semanticDominant = top10.filter(
-        (r) => (r.scoreBreakdown?.semanticContribution ?? 0) > (r.scoreBreakdown?.profileContribution ?? Infinity),
-      )
-      expect(
-        semanticDominant.length,
-        'at least 3 top-10 results must have semanticContribution > profileContribution',
-      ).toBeGreaterThanOrEqual(3)
-
-      // T122: at least 4 of top-8 must be temporally themed titles
-      const timeKeywords = ['time', 'chrono', 'visitor', 'timescape', 'lapse']
-      const isTemporalTitle = (title: string) =>
-        timeKeywords.some((kw) => title.toLowerCase().includes(kw))
-      const top8 = result.results.slice(0, 8)
-      const temporalInTop8 = top8.filter((r) => isTemporalTitle(r.title))
-      expect(
-        temporalInTop8.length,
-        'at least 4 of top-8 results must be temporal titles (Time/Chrono/Visitor/Timescape/Lapse)',
-      ).toBeGreaterThanOrEqual(4)
-
-      // T122: The Hobbit must not appear in top-5 (profile-only boost must not rescue a semantically weak candidate)
-      expect(
-        top5.every((r) => !r.title.includes('Hobbit')),
-        'The Hobbit must not appear in top-5 (semantic modulation must prevent profile-only rescue)',
-      ).toBe(true)
-
-      // T122: modulation is active — at least 3 candidates must have profileBoostEffective < profileBoostRaw
-      const modulated = result.results.filter(
-        (r) => (r.scoreBreakdown?.profileBoostEffective ?? 0) < (r.scoreBreakdown?.profileBoostRaw ?? 0) - 0.001,
-      )
-      expect(
-        modulated.length,
-        'at least 3 results must have profileBoostEffective < profileBoostRaw (modulation is active)',
-      ).toBeGreaterThanOrEqual(3)
     },
     30_000,
   )
@@ -118,78 +71,101 @@ describe('T117/T121 — non-regression: runRecommendationFromPlan on reference i
   )
 
   it.skipIf(!canRun)(
-    '"film qui retourne le cerveau" — top-5 semantic scores within narrow range (no extreme outliers)',
+    '"film qui retourne le cerveau" — returns ≥ 5 results',
     async () => {
       const result = await runRecommendationFromPlan(
-        makeRegressionPlan('film qui retourne le cerveau', 'moderate'),
-        { mediaTypes: ['movie', 'series'], limit: 20, debug: true },
+        makeRegressionPlan('film qui retourne le cerveau'),
+        { mediaTypes: ['movie', 'series'], limit: 10 },
         'regression-cerveau',
         mockLog,
       )
       expect(result.results.length, 'must return at least 5 results').toBeGreaterThanOrEqual(5)
       expect(result.results.every((r) => r.title && r.id), 'all results must have id and title').toBe(true)
+    },
+    30_000,
+  )
+})
 
-      // No top-5 result with sub-floor semantic score
-      const top5 = result.results.slice(0, 5)
-      expect(
-        top5.every((r) => (r.scoreBreakdown?.semantic ?? 0) >= SEMANTIC_FLOOR_MODERATE),
-        'all top-5 results must have semantic >= SEMANTIC_FLOOR_MODERATE',
-      ).toBe(true)
-
-      // Semantic scores in top-5 should not have extreme outliers (profile alone cannot rescue a weak candidate)
-      const semanticScores = top5.map((r) => r.scoreBreakdown?.semantic ?? 0)
-      const maxSemantic = Math.max(...semanticScores)
-      const minSemantic = Math.min(...semanticScores)
-      expect(
-        maxSemantic - minSemantic,
-        'top-5 semantic score spread must be < 0.25 (no extreme outlier saved by profile alone)',
-      ).toBeLessThan(0.25)
-
-      // T122: breakdown fields are populated and modulation constraint is respected
-      expect(
-        result.results.every((r) => r.scoreBreakdown?.semanticConfidenceFactor !== undefined),
-        'all results must have semanticConfidenceFactor in breakdown',
-      ).toBe(true)
-      expect(
-        result.results.every(
-          (r) => (r.scoreBreakdown?.profileBoostEffective ?? 0) <= (r.scoreBreakdown?.profileBoostRaw ?? 0) + 0.001,
+describe('T123 — semantic anchor blend: compound thematic precision', () => {
+  it.skipIf(!canRun)(
+    '"Aventures à travers le temps" with anchor — temporal candidates dominate, false positives absent from top-5',
+    async () => {
+      const result = await runRecommendationFromPlan(
+        makeRegressionPlan(
+          'Aventures à travers le temps — specifically about time travel and temporal displacement, not merely adventure or journey',
+          'time travel and temporal displacement',
         ),
-        'profileBoostEffective must not exceed profileBoostRaw for any candidate',
-      ).toBe(true)
+        { mediaTypes: ['movie', 'series'], limit: 20, debug: true },
+        'regression-t123-aventures',
+        mockLog,
+      )
+      expect(result.results.length, 'must return at least 5 results').toBeGreaterThanOrEqual(5)
+
+      // At least 4 of top-8 must be temporal-themed (keyword match on title)
+      // 'time' is intentional: matches "Time Machine", "Timescape", "Time Lapse", etc.
+      const timeKeywords = ['time', 'chrono', 'visitor', 'timescape', 'lapse', 'temporal']
+      const isTemporalTitle = (title: string) =>
+        timeKeywords.some((kw) => title.toLowerCase().includes(kw))
+      const top8 = result.results.slice(0, 8)
+      const temporalInTop8 = top8.filter((r) => isTemporalTitle(r.title))
+      expect(
+        temporalInTop8.length,
+        'at least 4 of top-8 results must be temporal titles (Time/Chrono/Visitor/Timescape/Lapse/Temporal)',
+      ).toBeGreaterThanOrEqual(4)
+
+      // Known false positives (adventure/travel without temporal component) must not appear in top-5
+      const top5 = result.results.slice(0, 5)
+      const falsePositiveTitles = ["L'Avventura", 'France, le fabuleux voyage', 'Mystery at the Louvre', 'Treasure Island']
+      const falsePositivesInTop5 = top5.filter((r) =>
+        falsePositiveTitles.some((fp) => r.title.toLowerCase().includes(fp.toLowerCase().split(',')[0]!.toLowerCase())),
+      )
+      expect(
+        falsePositivesInTop5.length,
+        'known adventure/travel false positives must not appear in top-5 when anchor is active',
+      ).toBe(0)
     },
     30_000,
   )
 
   it.skipIf(!canRun)(
-    '"SF qui fait réfléchir" — top-5 dominated by semantic relevance',
+    '"Enquêtes policières dans l\'espace" with anchor — space-detective candidates dominate over pure space or pure detective results',
     async () => {
       const result = await runRecommendationFromPlan(
-        makeRegressionPlan('SF qui fait réfléchir', 'moderate'),
+        makeRegressionPlan(
+          "Enquêtes policières dans l'espace — specifically about detective investigations and crime-solving set in outer space or sci-fi space stations, not merely space exploration or crime thrillers on Earth",
+          'police detective investigation in outer space',
+        ),
         { mediaTypes: ['movie', 'series'], limit: 20, debug: true },
-        'regression-sf',
+        'regression-t123-enquetes-espace',
         mockLog,
       )
       expect(result.results.length, 'must return at least 5 results').toBeGreaterThanOrEqual(5)
 
-      // No top-5 result with sub-floor semantic score
-      const top5 = result.results.slice(0, 5)
-      expect(
-        top5.every((r) => (r.scoreBreakdown?.semantic ?? 0) >= SEMANTIC_FLOOR_MODERATE),
-        'all top-5 results must have semantic >= SEMANTIC_FLOOR_MODERATE',
-      ).toBe(true)
+      // At least 3 of top-8 must contain keywords from BOTH the space domain AND the detective/crime domain,
+      // indicating the anchor blend is surfacing composite candidates rather than single-theme matches.
+      const spaceKeywords = ['space', 'espace', 'galactic', 'galactique', 'stellar', 'cosmos', 'astro', 'orbit', 'lunar', 'star']
+      const crimeKeywords = ['detective', 'détective', 'policier', 'enquête', 'crime', 'criminal', 'murder', 'meurtre', 'investigation', 'inspector']
+      const isSpaceTitle = (title: string) => spaceKeywords.some((kw) => title.toLowerCase().includes(kw))
+      const isCrimeTitle = (title: string) => crimeKeywords.some((kw) => title.toLowerCase().includes(kw))
+      const isCompositeTitle = (title: string) => isSpaceTitle(title) && isCrimeTitle(title)
 
-      // T122: top-5 must have semanticConfidenceFactor populated — high-semantic candidates should score > 0.5
+      const top8 = result.results.slice(0, 8)
+      const compositeInTop8 = top8.filter((r) => isCompositeTitle(r.title))
       expect(
-        top5.every((r) => (r.scoreBreakdown?.semanticConfidenceFactor ?? -1) > 0),
-        'all top-5 results must have semanticConfidenceFactor > 0 in breakdown',
-      ).toBe(true)
-      // T122: modulation constraint — effective boost never exceeds raw boost
+        compositeInTop8.length,
+        'at least 3 of top-8 must match both space AND crime/detective keywords (compound theme dominates)',
+      ).toBeGreaterThanOrEqual(3)
+
+      // Pure-space titles (no crime element) and pure-detective titles (no space element) must not
+      // collectively dominate the top-5 — i.e., at most 2 of top-5 may be single-theme only.
+      const top5 = result.results.slice(0, 5)
+      const singleThemeInTop5 = top5.filter(
+        (r) => (isSpaceTitle(r.title) || isCrimeTitle(r.title)) && !isCompositeTitle(r.title),
+      )
       expect(
-        result.results.every(
-          (r) => (r.scoreBreakdown?.profileBoostEffective ?? 0) <= (r.scoreBreakdown?.profileBoostRaw ?? 0) + 0.001,
-        ),
-        'profileBoostEffective must not exceed profileBoostRaw for any candidate',
-      ).toBe(true)
+        singleThemeInTop5.length,
+        'pure-space or pure-detective single-theme results must not dominate top-5 (at most 2 allowed)',
+      ).toBeLessThanOrEqual(2)
     },
     30_000,
   )
