@@ -27,3 +27,9 @@ export const SEMANTIC_FLOOR_STRICT = Number(process.env.SEMANTIC_FLOOR_STRICT ??
 export const SEMANTIC_FLOOR_MODERATE = Number(process.env.SEMANTIC_FLOOR_MODERATE ?? 0.28)
 // wSemantic override for the 'thematic' blend (replaces V2 default 0.28 for thematic ShelfConcepts).
 export const SEMANTIC_WEIGHT_THEMATIC = Number(process.env.SEMANTIC_WEIGHT_THEMATIC ?? 0.40)
+// Profile boost modulation for thematic reranking (T122).
+// factor = minFactor + (1 - minFactor) × normalizedSemantic^power
+// At normalizedSemantic=0 (pool bottom): factor = minFactor  — boost attenuated but not zeroed
+// At normalizedSemantic=1 (pool top):   factor = 1.0         — full profile boost
+export const PROFILE_BOOST_MIN_FACTOR = Number(process.env.PROFILE_BOOST_MIN_FACTOR ?? 0.15)
+export const PROFILE_BOOST_MODULATION_POWER = Number(process.env.PROFILE_BOOST_MODULATION_POWER ?? 1.5)
