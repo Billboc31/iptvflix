@@ -7,11 +7,9 @@ import {
   getOrCreateSession,
   countUnserved,
   serveBatch,
-  buildFixedShelves,
+  buildDeclaredRails,
   fillPool,
-  fillPoolAsync,
   buildFallbackShelf,
-  persistFixedShelvesForSession,
 } from './home-pool-service.js'
 import {
   HOME_BATCH_SIZE,
@@ -65,76 +63,37 @@ export async function buildHome(profileId: string, cursor?: string): Promise<Hom
   // ── First request (no cursor) ─────────────────────────────────────────────
   const session = await getOrCreateSession(profileId)
 
-  let fixed: ShelfResponse[] = []
-  try {
-    fixed = await buildFixedShelves(profileId)
-  } catch (err) {
-    console.error('[home-service] fixed shelves failed:', err)
-  }
-
-  let coldStart = false
-  let generatedShelves: ShelfResponse[] = []
-  let remaining = 0
+  let shelves: ShelfResponse[] = []
+  let nextPoolPosition = 0
 
   try {
-    let initialUnserved = await countUnserved(session.id)
-
-    // If pool is empty synchronously fill it on first load (user waits once).
-    if (initialUnserved === 0 && session.cursorReference !== 'exhausted') {
-      try {
-        await fillPoolAsync(session.id, profileId, HOME_POOL_TARGET)
-      } catch (err) {
-        console.error('[home-service] sync fillPool failed, will use fallback:', err)
-      }
-    }
-
-    const afterFillUnserved = await countUnserved(session.id)
-
-    if (afterFillUnserved > 0) {
-      const { shelves: batchRows } = await serveBatch(session.id, 0, HOME_BATCH_SIZE)
-      generatedShelves = await batchRowsToShelfResponses(batchRows)
-    } else {
-      coldStart = true
-      try {
-        const fallback = await buildFallbackShelf()
-        if (fallback.items.length > 0) generatedShelves = [fallback]
-      } catch (err) {
-        console.error('[home-service] fallback shelf failed:', err)
-      }
-    }
-
-    remaining = await countUnserved(session.id)
-    if (remaining < HOME_POOL_MIN) {
-      fillPool(session.id, profileId, HOME_POOL_TARGET)
-    }
+    const declared = await buildDeclaredRails(profileId, session.id)
+    shelves = declared.shelves
+    nextPoolPosition = declared.nextPoolPosition
   } catch (err) {
-    console.error('[home-service] recommendation pool failed — serving fixed/fallback shelves:', err)
-    coldStart = generatedShelves.length === 0
-    if (generatedShelves.length === 0) {
-      try {
-        const fallback = await buildFallbackShelf()
-        if (fallback.items.length > 0) generatedShelves = [fallback]
-      } catch (fallbackErr) {
-        console.error('[home-service] fallback shelf failed:', fallbackErr)
-      }
+    console.error('[home-service] buildDeclaredRails failed:', err)
+  }
+
+  const coldStart = shelves.length === 0
+  if (coldStart) {
+    try {
+      const fallback = await buildFallbackShelf()
+      if (fallback.items.length > 0) shelves = [fallback]
+    } catch (err) {
+      console.error('[home-service] fallback shelf failed:', err)
     }
   }
 
-  // Persist fixed shelves into session for cross-shelf dedup (fire-and-forget).
-  if (fixed.length > 0) {
-    persistFixedShelvesForSession(profileId, session.id, fixed).catch((err) => {
-      console.error('[home-service] persistFixedShelves error (swallowed):', err)
-    })
-  }
+  // Kick off pool fill for subsequent infinite-scroll pages (fire-and-forget).
+  fillPool(session.id, profileId, HOME_POOL_TARGET)
 
-  const hasMore = remaining > 0 || session.cursorReference !== 'exhausted'
-  const nextPosition = generatedShelves.length
+  const hasMore = session.cursorReference !== 'exhausted'
 
   return {
     coldStart,
     sessionId: session.id,
-    shelves: [...fixed, ...generatedShelves],
-    nextCursor: hasMore && generatedShelves.length > 0 ? signCursor(session.id, nextPosition) : null,
+    shelves,
+    nextCursor: hasMore && shelves.length > 0 ? signCursor(session.id, nextPoolPosition) : null,
   }
 }
 

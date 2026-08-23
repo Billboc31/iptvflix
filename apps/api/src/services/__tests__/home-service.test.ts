@@ -23,11 +23,9 @@ vi.mock('../home-pool-service.js', () => ({
   getOrCreateSession: vi.fn(),
   countUnserved: vi.fn(),
   serveBatch: vi.fn(),
-  buildFixedShelves: vi.fn(),
+  buildDeclaredRails: vi.fn(),
   fillPool: vi.fn(),
-  fillPoolAsync: vi.fn(),
   buildFallbackShelf: vi.fn(),
-  persistFixedShelvesForSession: vi.fn(),
 }))
 
 vi.mock('../../lib/home-cursor.js', () => ({
@@ -57,11 +55,9 @@ import {
   getOrCreateSession,
   countUnserved,
   serveBatch,
-  buildFixedShelves,
+  buildDeclaredRails,
   fillPool,
-  fillPoolAsync,
   buildFallbackShelf,
-  persistFixedShelvesForSession,
 } from '../home-pool-service.js'
 import { signCursor, verifyCursor } from '../../lib/home-cursor.js'
 import type { ShelfResponse } from '@iptvflix/api-contracts'
@@ -73,20 +69,28 @@ import type { ShelfResponse } from '@iptvflix/api-contracts'
 const PROFILE_ID = '00000000-0000-0000-0000-000000000001'
 const SESSION_ID = '00000000-0000-0000-0000-000000000099'
 
-const EMPTY_FIXED: ShelfResponse[] = []
-const CONTINUE_WATCHING: ShelfResponse = {
-  id: 'sys_continue_watching',
-  title: 'Continuer à regarder',
-  type: 'SYSTEM',
+const POUR_TOI: ShelfResponse = {
+  id: 'instance-pour-toi',
+  title: 'Pour toi',
+  type: 'GENERATED',
   layoutHint: 'ROW',
-  items: [{ mediaType: 'MOVIE', mediaId: 'movie-01', title: 'Film en cours', posterUrl: null }],
+  items: [{ mediaType: 'MOVIE', mediaId: 'movie-01', title: 'Film 1', posterUrl: null }],
 }
-const MY_LIST: ShelfResponse = {
-  id: 'sys_my_list',
-  title: 'Ma liste',
+
+const NOUVEAUTES: ShelfResponse = {
+  id: 'instance-nouveautes',
+  title: 'Nouveautés pour toi',
+  type: 'GENERATED',
+  layoutHint: 'ROW',
+  items: [{ mediaType: 'MOVIE', mediaId: 'movie-02', title: 'Film 2', posterUrl: null }],
+}
+
+const FALLBACK_SHELF: ShelfResponse = {
+  id: 'sys_fallback_popular',
+  title: 'Films populaires',
   type: 'SYSTEM',
   layoutHint: 'ROW',
-  items: [{ mediaType: 'MOVIE', mediaId: 'movie-02', title: 'Film liste', posterUrl: null }],
+  items: [{ mediaType: 'MOVIE', mediaId: 'fallback-01', title: 'Fallback Film', posterUrl: null }],
 }
 
 function makeBatchRow(pos: number) {
@@ -103,8 +107,6 @@ function makeBatchRow(pos: number) {
 // ---------------------------------------------------------------------------
 
 function makeChain(resolveWith: unknown[] = []) {
-  // Returns a chain mock that is both chainable AND thenable so it can be
-  // awaited at any depth of chaining (e.g. .from().where() without .limit()).
   const prom = Promise.resolve(resolveWith)
   const chain: Record<string, unknown> = {
     from: vi.fn(() => chain),
@@ -121,24 +123,14 @@ function makeChain(resolveWith: unknown[] = []) {
 beforeEach(() => {
   vi.clearAllMocks()
   mockDb.select.mockReturnValue(makeChain())
-  // Restore implementations cleared by clearAllMocks on module-level mocks.
   vi.mocked(signCursor).mockImplementation((_sid: string, pos: number) => `cursor_pos_${pos}`)
 
-  // Default: active session with non-exhausted cursorReference.
   vi.mocked(getOrCreateSession).mockResolvedValue({ id: SESSION_ID, profileId: PROFILE_ID, cursorReference: null })
-  vi.mocked(buildFixedShelves).mockResolvedValue(EMPTY_FIXED)
-  vi.mocked(countUnserved).mockResolvedValue(12) // pool not empty
+  vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [POUR_TOI, NOUVEAUTES], nextPoolPosition: 2 })
   vi.mocked(fillPool).mockReturnValue(undefined)
-  vi.mocked(fillPoolAsync).mockResolvedValue(undefined)
-  vi.mocked(persistFixedShelvesForSession).mockResolvedValue(undefined)
-  vi.mocked(buildFallbackShelf).mockResolvedValue({
-    id: 'sys_fallback_popular',
-    title: 'Films populaires',
-    type: 'SYSTEM',
-    layoutHint: 'ROW',
-    items: [{ mediaType: 'MOVIE', mediaId: 'fallback-01', title: 'Fallback Film', posterUrl: null }],
-  })
+  vi.mocked(buildFallbackShelf).mockResolvedValue(FALLBACK_SHELF)
 
+  vi.mocked(countUnserved).mockResolvedValue(12)
   vi.mocked(serveBatch).mockResolvedValue({
     shelves: [makeBatchRow(0), makeBatchRow(1)],
     newNextPosition: 2,
@@ -147,57 +139,61 @@ beforeEach(() => {
 })
 
 // ---------------------------------------------------------------------------
-// First request (no cursor)
+// First request — declared rails
 // ---------------------------------------------------------------------------
 
-describe('first request — no cursor', () => {
-  it('returns sessionId, shelves, and nextCursor', async () => {
+describe('first request — declared rails', () => {
+  it('returns sessionId, declared shelves, and nextCursor', async () => {
     const result = await buildHome(PROFILE_ID)
     expect(result.sessionId).toBe(SESSION_ID)
-    expect(result.shelves.length).toBeGreaterThan(0)
-    expect(result.nextCursor).not.toBeNull()
+    expect(result.shelves).toHaveLength(2)
+    expect(result.nextCursor).toBe('cursor_pos_2')
   })
 
-  it('prepends fixed shelves before generated shelves', async () => {
-    vi.mocked(buildFixedShelves).mockResolvedValue([CONTINUE_WATCHING, MY_LIST])
+  it('first response contains declared rails in the order they were returned', async () => {
     const result = await buildHome(PROFILE_ID)
-    expect(result.shelves[0].id).toBe('sys_continue_watching')
-    expect(result.shelves[1].id).toBe('sys_my_list')
+    expect(result.shelves[0].title).toBe('Pour toi')
+    expect(result.shelves[1].title).toBe('Nouveautés pour toi')
   })
 
-  it('triggers async fillPool when pool runs low after serving', async () => {
-    vi.mocked(countUnserved)
-      .mockResolvedValueOnce(12) // call 1: initial (pool has content, skip sync fill)
-      .mockResolvedValueOnce(12) // call 2: afterFillUnserved (go to serveBatch)
-      .mockResolvedValueOnce(3)  // call 3: remaining (below HOME_POOL_MIN → fillPool)
-    await buildHome(PROFILE_ID)
-    expect(fillPool).toHaveBeenCalledWith(SESSION_ID, PROFILE_ID, 25)
+  it('coldStart is false when buildDeclaredRails returns at least one shelf', async () => {
+    const result = await buildHome(PROFILE_ID)
+    expect(result.coldStart).toBe(false)
   })
 
-  it('calls fillPoolAsync synchronously when pool is empty on first load', async () => {
-    vi.mocked(countUnserved)
-      .mockResolvedValueOnce(0)  // initial: empty
-      .mockResolvedValueOnce(6)  // after sync fill
-      .mockResolvedValueOnce(6)  // replenishment check
-    await buildHome(PROFILE_ID)
-    expect(fillPoolAsync).toHaveBeenCalledWith(SESSION_ID, PROFILE_ID, 25)
-  })
-
-  it('returns fallback shelf and coldStart=true when pool is empty and fill fails', async () => {
-    vi.mocked(countUnserved).mockResolvedValue(0)
-    vi.mocked(fillPoolAsync).mockRejectedValue(new Error('LLM unavailable'))
+  it('coldStart is true and returns fallback shelf when buildDeclaredRails returns empty array', async () => {
+    vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [], nextPoolPosition: 0 })
     const result = await buildHome(PROFILE_ID)
     expect(result.coldStart).toBe(true)
     expect(result.shelves.some((s) => s.id === 'sys_fallback_popular')).toBe(true)
   })
 
-  it('sets nextCursor to null when hasMore is false', async () => {
-    vi.mocked(serveBatch).mockResolvedValue({
-      shelves: [makeBatchRow(0)],
-      newNextPosition: 1,
-      hasMore: false,
-    })
-    vi.mocked(countUnserved).mockResolvedValue(0)
+  it('error in buildDeclaredRails falls back to fallback shelf without throwing', async () => {
+    vi.mocked(buildDeclaredRails).mockRejectedValue(new Error('engine down'))
+    const result = await buildHome(PROFILE_ID)
+    expect(result.coldStart).toBe(true)
+    expect(result.shelves.some((s) => s.id === 'sys_fallback_popular')).toBe(true)
+  })
+
+  it('always triggers async fillPool after declared rails', async () => {
+    await buildHome(PROFILE_ID)
+    expect(fillPool).toHaveBeenCalledWith(SESSION_ID, PROFILE_ID, 25)
+  })
+
+  it('nextCursor points to nextPoolPosition from buildDeclaredRails', async () => {
+    vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [POUR_TOI], nextPoolPosition: 1 })
+    const result = await buildHome(PROFILE_ID)
+    expect(result.nextCursor).toBe('cursor_pos_1')
+  })
+
+  it('nextCursor is null when session is exhausted', async () => {
+    vi.mocked(getOrCreateSession).mockResolvedValue({ id: SESSION_ID, profileId: PROFILE_ID, cursorReference: 'exhausted' })
+    const result = await buildHome(PROFILE_ID)
+    expect(result.nextCursor).toBeNull()
+  })
+
+  it('nextCursor is null when all declared rails are empty (coldStart with fallback)', async () => {
+    vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [], nextPoolPosition: 0 })
     vi.mocked(getOrCreateSession).mockResolvedValue({ id: SESSION_ID, profileId: PROFILE_ID, cursorReference: 'exhausted' })
     const result = await buildHome(PROFILE_ID)
     expect(result.nextCursor).toBeNull()
@@ -211,7 +207,6 @@ describe('first request — no cursor', () => {
 describe('cursor request', () => {
   beforeEach(() => {
     vi.mocked(verifyCursor).mockReturnValue({ sessionId: SESSION_ID, nextPosition: 6 })
-    // First db.select() call = session lookup → session row; subsequent calls → [] (for enrichment)
     mockDb.select
       .mockReturnValueOnce(makeChain([{ id: SESSION_ID, profileId: PROFILE_ID, cursorReference: null }]))
       .mockReturnValue(makeChain([]))
@@ -236,7 +231,6 @@ describe('cursor request', () => {
   })
 
   it('returns 403 when session profileId mismatches', async () => {
-    // Reset to clear the queued once-mock from beforeEach, then set mismatch session.
     mockDb.select.mockReset()
     mockDb.select
       .mockReturnValueOnce(makeChain([{ id: SESSION_ID, profileId: 'other-profile', cursorReference: null }]))
@@ -253,7 +247,6 @@ describe('cursor request', () => {
 
   it('sets nextCursor to null when hasMore is false', async () => {
     vi.mocked(serveBatch).mockResolvedValue({ shelves: [makeBatchRow(6)], newNextPosition: 7, hasMore: false })
-    vi.mocked(countUnserved).mockResolvedValue(15) // doesn't matter
     const result = await buildHome(PROFILE_ID, 'cursor_pos_6')
     expect(result.nextCursor).toBeNull()
   })
@@ -271,10 +264,13 @@ describe('shelf item count', () => {
       newNextPosition: 1,
       hasMore: false,
     })
-    // Pool has content so serveBatch is called (not the fallback branch).
     vi.mocked(countUnserved).mockResolvedValue(24)
-    vi.mocked(getOrCreateSession).mockResolvedValue({ id: SESSION_ID, profileId: PROFILE_ID, cursorReference: null })
-    const result = await buildHome(PROFILE_ID)
+    vi.mocked(verifyCursor).mockReturnValue({ sessionId: SESSION_ID, nextPosition: 0 })
+    mockDb.select.mockReset()
+    mockDb.select
+      .mockReturnValueOnce(makeChain([{ id: SESSION_ID, profileId: PROFILE_ID, cursorReference: null }]))
+      .mockReturnValue(makeChain([]))
+    const result = await buildHome(PROFILE_ID, 'cursor_pos_0')
     const shelf = result.shelves.find((s) => s.id === 'i1')
     expect(shelf?.items).toHaveLength(24)
   })

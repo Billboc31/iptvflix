@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { Component, useState, useEffect, useRef } from 'react'
+import type { ReactNode, ErrorInfo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import HeroSection from '../components/content/HeroSection.js'
 import ShelfRow from '../components/content/ShelfRow.js'
@@ -17,6 +18,24 @@ import { useArrivals } from '../hooks/useArrivals.js'
 import { useOpenDetail } from '../hooks/useOpenDetail.js'
 import { useProfile } from '../context/ProfileContext.js'
 import { useInteractionEvents } from '../hooks/useInteractionEvents.js'
+
+class ShelfErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError(_: Error) {
+    return { hasError: true }
+  }
+
+  componentDidCatch(_error: Error, _info: ErrorInfo) {}
+
+  render() {
+    if (this.state.hasError) return null
+    return this.props.children
+  }
+}
 
 function ShelfSkeleton() {
   return (
@@ -138,6 +157,13 @@ export default function HomePage() {
           onRetry={() => window.location.reload()}
         />
       )}
+      {homeLoading && (
+        <>
+          <ShelfSkeleton />
+          <ShelfSkeleton />
+          <ShelfSkeleton />
+        </>
+      )}
       {!homeLoading && (
         <>
           <div className="flex justify-end px-4 py-2">
@@ -146,7 +172,9 @@ export default function HomePage() {
             </Button>
           </div>
           {recShelves.map((shelf) => (
-            <ShelfRow key={shelf.id} shelf={shelf} />
+            <ShelfErrorBoundary key={shelf.id}>
+              <ShelfRow shelf={shelf} />
+            </ShelfErrorBoundary>
           ))}
         </>
       )}
