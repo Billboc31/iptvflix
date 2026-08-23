@@ -83,7 +83,6 @@ export async function shelfConceptsRoutes(app: FastifyInstance): Promise<void> {
       const plan = buildQueryPlanFromShelfConcept({
         ...concept,
         desiredMediaTypes: concept.desiredMediaTypes as string[] | null,
-        generationType: concept.generationType,
       })
       const mediaTypes = plan.mediaTypes.map((t) => t.toLowerCase() as 'movie' | 'series')
 
