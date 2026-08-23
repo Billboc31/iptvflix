@@ -1,7 +1,7 @@
 {
   "ticket_id": "T125",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T125-build-personalized-home-page-with-production-shelf",
   "issue_number": 266,
-  "updated_at": "2026-08-23T20:55:38Z"
+  "updated_at": "2026-08-23T21:08:25Z"
 }
