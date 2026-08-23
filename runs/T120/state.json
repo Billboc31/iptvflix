@@ -1,7 +1,7 @@
 {
   "ticket_id": "T120",
-  "state": "IMPLEMENTATION_APPROVED",
+  "state": "TEST_COMPLETE",
   "branch": "ticket/T120-semantic-retrieval-still-returns-0-after-254-fix-r",
   "issue_number": 256,
-  "updated_at": "2026-08-23T10:30:18Z"
+  "updated_at": "2026-08-23T10:39:41Z"
 }
