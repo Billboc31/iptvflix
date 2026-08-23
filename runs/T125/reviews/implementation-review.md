@@ -1,27 +1,25 @@
 ---
 
-## Review — T125: Build personalized Home page with production shelf rails
+## PR Review — T125 (Attempt 2)
 
-L'implémentation est **fonctionnellement complète** : 6 rails dans le bon ordre, déduplication cross-shelf, contraintes mediaType, filtre de fraîcheur, isolation d'erreur par rail, aucune donnée diagnostique exposée côté consumer, 27+ tests passants.
+**Décision : IMPLEMENTATION_APPROVED**
 
-**Deux points bloquants** exigent un correctif avant merge :
+### Correctifs bloquants vérifiés
 
-### 🔴 Bloquant 1 — `trace_test.ts` : artefact de debug committé
+| Bloquant | Statut |
+|----------|--------|
+| `trace_test.ts` (artefact debug) | ✅ Supprimé — fichier absent |
+| `persistFixedShelvesForSession` (code mort) | ✅ Supprimé — aucune occurrence dans `home-pool-service.ts` |
 
-`apps/api/src/services/__tests__/trace_test.ts` est un fichier de debugging laissé en production avec des `console.log`, des variables inutilisées (`dbCallN`, `label`), et un test nommé `'TRACE: Films rail with selectN logging'`. Il doit être supprimé.
+### Points confirmés inchangés
 
-### 🔴 Bloquant 2 — `persistFixedShelvesForSession` : code mort
+Tous les éléments validés en review-1 restent corrects : ordre des 6 rails, déduplication cross-shelf (`excludedMediaIds` exempt pour CW), contraintes `mediaType` MOVIE/SERIES, filtre de fraîcheur `HOME_FRESH_DAYS`, rail thématique dynamique via `shelf_concepts`, isolation d'erreur par `try/catch`, enrichissement batch sans N+1, aucune donnée diagnostique exposée, fallback cold-start, diagnostics existants préservés.
 
-La fonction `persistFixedShelvesForSession` (lignes 702–750 de `home-pool-service.ts`) est exportée mais jamais importée dans `home-service.ts`. Le plan dit explicitement de la retirer ("declared rails persist themselves internally"). Elle doit être supprimée.
+### Observations résiduelles (non bloquantes, inchangées)
 
-### 🟡 Observation — Fragilité du premier test d'ordre de déclaration
+- **🟡 Mock ordering** : le premier test de déclaration d'ordre combine encore les DB mocks de `setupEngineRails` avec ceux du corps du test — passe uniquement parce que les assertions ne couvrent que les titres de rails. À corriger avant GA si des assertions sur les items sont ajoutées.
+- **🟡 `componentDidCatch` vide** : erreurs de rendu absorbées silencieusement dans `ShelfErrorBoundary`.
 
-Le premier test dans `describe('buildDeclaredRails — declaration order')` appelle `setupEngineRails()` (qui empile des mocks DB) puis ajoute d'autres mocks DB dans son corps. L'enrichissement consomme des mocks désynchronisés. Le test passe uniquement parce que les assertions ne couvrent que les titres de rails, pas les données d'items.
+L'implémentation est conforme au ticket, au plan, et aux acceptance criteria.
 
-### 🟡 Observation — `componentDidCatch` vide
-
-`ShelfErrorBoundary` absorbe silencieusement les erreurs de rendu sans aucune trace. Acceptable pour la dégradation gracieuse, mais rendra le debugging difficile en production.
-
-**Décision** : `IMPLEMENTATION_FIX_REQUIRED`
-
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
