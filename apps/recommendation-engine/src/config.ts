@@ -26,3 +26,6 @@ export const SEMANTIC_RETRIEVAL_MAX_CAP = Number(process.env.SEMANTIC_RETRIEVAL_
 // blendedSimilarity = ALPHA * anchorSimilarity + (1 - ALPHA) * intentSimilarity
 // 0.0 = full intent only (legacy behaviour), 1.0 = anchor only.
 export const SEMANTIC_ANCHOR_BLEND_ALPHA = Number(process.env.SEMANTIC_ANCHOR_BLEND_ALPHA ?? 0.45)
+// Exponent applied to pool-relative semantic factor when attenuating profile boosts.
+// Values above 1.0 make attenuation increasingly steep for candidates below the pool leader.
+export const PROFILE_MODULATION_POWER = Number(process.env.PROFILE_MODULATION_POWER ?? 1.5)

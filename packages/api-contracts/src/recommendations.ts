@@ -13,6 +13,9 @@ export interface ScoreBreakdown {
   languageAffinity: number
   decadeAffinity: number
   mediaTypeAffinity: number
+  semanticRelevanceFactor: number
+  profileBoostRaw: number
+  profileBoostEffective: number
   qualityPrior: number
   freshness: number
   availabilityBonus: number

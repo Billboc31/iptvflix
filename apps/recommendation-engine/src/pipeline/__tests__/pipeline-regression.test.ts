@@ -235,3 +235,104 @@ describe('pipeline regression — retrieval pool larger than final shelf', () =>
     30_000,
   )
 })
+
+describe('T124-precision — profile boost modulation: thematic precision', () => {
+  it.skipIf(!canRun)(
+    '"Aventures à travers le temps" — genuine temporal titles are not overtaken by broad adventure matches',
+    async () => {
+      const result = await runRecommendationFromPlan(
+        makeRegressionPlan(
+          'Aventures à travers le temps — specifically about time travel and temporal displacement, not merely adventure or journey',
+          'time travel and temporal displacement',
+        ),
+        { mediaTypes: ['movie', 'series'], limit: 24, debug: true },
+        'regression-t124-aventures',
+        mockLog,
+      )
+      expect(result.results.length, 'must return at least 5 results').toBeGreaterThanOrEqual(5)
+
+      const timeKeywords = ['time', 'chrono', 'visitor', 'timescape', 'lapse', 'temporal', 'voyageur']
+      const isTemporalTitle = (title: string) =>
+        timeKeywords.some((kw) => title.toLowerCase().includes(kw))
+
+      // Titles known to be broad adventure matches without core temporal content
+      const nonTemporalAdventureFragments = ['hobbit', 'journey to the center', 'hors limites']
+      const isNonTemporalAdventure = (title: string) =>
+        nonTemporalAdventureFragments.some((fp) => title.toLowerCase().includes(fp))
+
+      const titles = result.results.map((r) => r.title)
+      const temporalPositions = titles
+        .map((t, i) => ({ title: t, pos: i }))
+        .filter((x) => isTemporalTitle(x.title))
+      const nonTemporalPositions = titles
+        .map((t, i) => ({ title: t, pos: i }))
+        .filter((x) => isNonTemporalAdventure(x.title))
+
+      // If both temporal and non-temporal titles appear, non-temporal must not rank above all temporal titles
+      if (temporalPositions.length > 0 && nonTemporalPositions.length > 0) {
+        const bestTemporalPos = Math.min(...temporalPositions.map((x) => x.pos))
+        for (const nt of nonTemporalPositions) {
+          expect(
+            nt.pos,
+            `"${nt.title}" (broad adventure match) must not rank above the leading temporal title at position ${bestTemporalPos}`,
+          ).toBeGreaterThan(bestTemporalPos)
+        }
+      }
+
+      // ScoreBreakdown must expose the three modulation fields
+      const firstWithBreakdown = result.results.find((r) => r.scoreBreakdown)
+      if (firstWithBreakdown?.scoreBreakdown) {
+        const bd = firstWithBreakdown.scoreBreakdown
+        expect(bd.semanticRelevanceFactor, 'semanticRelevanceFactor must be defined').toBeDefined()
+        expect(bd.profileBoostRaw, 'profileBoostRaw must be defined').toBeDefined()
+        expect(bd.profileBoostEffective, 'profileBoostEffective must be defined').toBeDefined()
+        expect(bd.semanticRelevanceFactor).toBeCloseTo(1.0, 1)
+      }
+    },
+    30_000,
+  )
+})
+
+describe('T124-personalization — profile boost modulation: broad shelf preservation', () => {
+  it.skipIf(!canRun)(
+    '"films d\'action épiques" — results >= 5 (personalization not over-suppressed)',
+    async () => {
+      const result = await runRecommendationFromPlan(
+        makeRegressionPlan("films d'action épiques"),
+        { mediaTypes: ['movie', 'series'], limit: 10 },
+        'regression-t124-action',
+        mockLog,
+      )
+      expect(result.results.length, 'must return at least 5 results').toBeGreaterThanOrEqual(5)
+    },
+    30_000,
+  )
+
+  it.skipIf(!canRun)(
+    '"comédies romantiques" — results >= 5',
+    async () => {
+      const result = await runRecommendationFromPlan(
+        makeRegressionPlan('comédies romantiques'),
+        { mediaTypes: ['movie', 'series'], limit: 10 },
+        'regression-t124-romance',
+        mockLog,
+      )
+      expect(result.results.length, 'must return at least 5 results').toBeGreaterThanOrEqual(5)
+    },
+    30_000,
+  )
+
+  it.skipIf(!canRun)(
+    '"thrillers psychologiques" — results >= 5',
+    async () => {
+      const result = await runRecommendationFromPlan(
+        makeRegressionPlan('thrillers psychologiques'),
+        { mediaTypes: ['movie', 'series'], limit: 10 },
+        'regression-t124-thriller',
+        mockLog,
+      )
+      expect(result.results.length, 'must return at least 5 results').toBeGreaterThanOrEqual(5)
+    },
+    30_000,
+  )
+})
