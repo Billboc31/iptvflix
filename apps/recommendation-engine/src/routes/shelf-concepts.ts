@@ -117,6 +117,7 @@ export async function shelfConceptsRoutes(app: FastifyInstance): Promise<void> {
       }))
 
       const rerankerStage = finalResult.stageOutputs.find((s) => s.stage === 'hybrid-reranker')
+      const fallbackUsed = finalResult.retrievalSummary?.fallbackUsed ?? false
 
       return reply.send({
         rawVector,
@@ -128,11 +129,13 @@ export async function shelfConceptsRoutes(app: FastifyInstance): Promise<void> {
         semanticDiagnostics: rawSemanticResult.diagnostics,
         fallbackFlags: finalResult.engineMetadata.fallbackFlags,
         stageAvailability: finalResult.stageAvailability,
+        fallbackUsed,
         retrievalCounts: {
-          retrieved: rawSemanticResult.outputCount,
-          postFilter: rerankerStage?.filteredCount ?? null,
-          reranked: rerankerStage?.outputCount ?? null,
-          final: finalResult.results.length,
+          semanticRetrieved: rawSemanticResult.outputCount,
+          semanticPostFilter: fallbackUsed ? null : (rerankerStage?.filteredCount ?? null),
+          fallbackCandidates: fallbackUsed ? (finalResult.retrievalSummary?.fallbackCandidateCount ?? null) : 0,
+          rerankedCandidates: rerankerStage?.outputCount ?? null,
+          finalResults: finalResult.results.length,
         },
       })
     },

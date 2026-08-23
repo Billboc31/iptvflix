@@ -5,7 +5,7 @@ import { runTextSearch } from './stages/text-search.js'
 import { runSemanticSearch } from './stages/semantic-search.js'
 import { runHybridReranker, SCORE_MODEL_V2 } from './stages/hybrid-reranker.js'
 import { EMBEDDING_MODEL_PROVIDER, EMBEDDING_MODEL_NAME, OPENAI_API_KEY } from '../config.js'
-import type { QueryResponse, StageResult, StageAvailability, PipelineContext, CandidateItem, MediaType } from './types.js'
+import type { QueryResponse, StageResult, StageAvailability, PipelineContext, CandidateItem, MediaType, RetrievalSummary } from './types.js'
 import type { RecommendationQueryPlan } from '@iptvflix/api-contracts'
 import type { FastifyBaseLogger } from 'fastify'
 
@@ -123,6 +123,13 @@ export async function runRecommendationFromPlan(
     fallbackFlags.push('popularity-fallback')
   }
 
+  const popularityFallbackUsed = fallbackFlags.includes('popularity-fallback')
+  const retrievalSummary: RetrievalSummary = {
+    semanticCandidateCount: semanticCandidates.length,
+    fallbackCandidateCount: popularityFallbackUsed ? mergedCandidates.length : 0,
+    fallbackUsed: popularityFallbackUsed,
+  }
+
   // Hybrid reranker — profile-aware SCORE_MODEL_V2 scoring
   const rerankerResult = await runHybridReranker(ctx, mergedCandidates)
   stageOutputs.push(rerankerResult)
@@ -177,5 +184,6 @@ export async function runRecommendationFromPlan(
       fallbackFlags,
     },
     queryPlan: plan,
+    retrievalSummary,
   }
 }
