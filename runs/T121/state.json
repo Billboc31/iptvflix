@@ -1,7 +1,7 @@
 {
   "ticket_id": "T121",
-  "state": "IMPLEMENTATION_APPROVED",
+  "state": "TEST_COMPLETE",
   "branch": "ticket/T121-preserve-semantic-intent-during-score-model-v2-per",
   "issue_number": 258,
-  "updated_at": "2026-08-23T13:30:24Z"
+  "updated_at": "2026-08-23T13:35:11Z"
 }
