@@ -54,6 +54,12 @@ export interface PipelineContext {
   candidatePoolSize?: number
 }
 
+export interface RetrievalSummary {
+  semanticCandidateCount: number
+  fallbackCandidateCount: number
+  fallbackUsed: boolean
+}
+
 export interface QueryResponse {
   requestId: string
   results: CandidateItem[]
@@ -71,4 +77,5 @@ export interface QueryResponse {
   }
   engineMetadata: EngineMetadata
   queryPlan?: RecommendationQueryPlan
+  retrievalSummary?: RetrievalSummary
 }

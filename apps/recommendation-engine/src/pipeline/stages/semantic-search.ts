@@ -4,15 +4,24 @@ import { OPENAI_API_KEY, EMBEDDING_MODEL_PROVIDER, EMBEDDING_MODEL_NAME, SEMANTI
 import type { StageResult, CandidateItem, PipelineContext } from '../types.js'
 
 let pgvectorAvailable: boolean | null = null
+let detectedColumnType: string | null = null
 
 async function checkPgvector(): Promise<boolean> {
   if (pgvectorAvailable !== null) return pgvectorAvailable
   try {
-    await pgClient`SELECT 1 FROM pg_extension WHERE extname = 'vector'`
-    const rows = await pgClient<{ count: string }[]>`
-      SELECT COUNT(*) AS count FROM pg_extension WHERE extname = 'vector'
-    `
-    pgvectorAvailable = Number(rows[0]?.count ?? 0) > 0
+    const [extRows, colRows] = await Promise.all([
+      pgClient<{ count: string }[]>`SELECT COUNT(*) AS count FROM pg_extension WHERE extname = 'vector'`,
+      pgClient<{ udt_name: string }[]>`
+        SELECT udt_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'media_embeddings' AND column_name = 'embedding'
+      `,
+    ])
+    const hasExtension = Number(extRows[0]?.count ?? 0) > 0
+    detectedColumnType = colRows[0]?.udt_name ?? null
+    // Require both: extension installed AND column already migrated to vector type.
+    // If the extension was added after initial deployment, migration 0040 may have been
+    // a no-op, leaving the column as double precision[] — the ::vector cast would then fail.
+    pgvectorAvailable = hasExtension && detectedColumnType === 'vector'
   } catch {
     pgvectorAvailable = false
   }
@@ -51,10 +60,17 @@ export async function runSemanticSearch(
   )
   const mediaTypes = ctx.request.mediaTypes ?? ['movie', 'series']
 
+  // Hoisted so the catch block can include them in diagnostics
+  let totalCount = 0
+  let eligibleCount = 0
+  let detectedModels: string[] = []
+  let usePgvector: boolean | null = null
+  let queryVectorDim: number | null = null
+
   try {
     // Pre-flight: total corpus count (any model)
     const totalRows = await pgClient<{ count: string }[]>`SELECT COUNT(*) AS count FROM media_embeddings`
-    const totalCount = Number(totalRows[0]?.count ?? 0)
+    totalCount = Number(totalRows[0]?.count ?? 0)
 
     if (totalCount === 0) {
       return {
@@ -73,13 +89,13 @@ export async function runSemanticSearch(
       SELECT COUNT(*) AS count FROM media_embeddings
       WHERE model_provider = ${EMBEDDING_MODEL_PROVIDER} AND model_name = ${EMBEDDING_MODEL_NAME}
     `
-    const eligibleCount = Number(eligibleRows[0]?.count ?? 0)
+    eligibleCount = Number(eligibleRows[0]?.count ?? 0)
 
     // Pre-flight: distinct model labels present in corpus (sanitized, no embedding data)
     const detectedModelsRows = await pgClient<{ m: string }[]>`
       SELECT DISTINCT model_provider || '/' || model_name AS m FROM media_embeddings LIMIT 10
     `
-    const detectedModels = detectedModelsRows.map((r) => r.m)
+    detectedModels = detectedModelsRows.map((r) => r.m)
 
     if (eligibleCount === 0) {
       ctx.log.warn(
@@ -99,8 +115,8 @@ export async function runSemanticSearch(
 
     const openai = new OpenAI({ apiKey: OPENAI_API_KEY })
     const queryVector = await embedQuery(openai, semanticIntent)
-    const queryVectorDim = queryVector.length
-    const usePgvector = await checkPgvector()
+    queryVectorDim = queryVector.length
+    usePgvector = await checkPgvector()
 
     const vectorLiteral = `'[${queryVector.join(',')}]'`
     const arrayLiteral = `ARRAY[${queryVector.join(',')}]::double precision[]`
@@ -181,7 +197,7 @@ export async function runSemanticSearch(
       inputCount: inputCandidates.length,
       outputCount: candidates.length,
       candidates,
-      diagnostics: { totalEmbeddings: totalCount, eligibleEmbeddings: eligibleCount, detectedModels, usePgvector, retrievalLimit, queryVectorDim, retrievedRawRows },
+      diagnostics: { totalEmbeddings: totalCount, eligibleEmbeddings: eligibleCount, detectedModels, usePgvector, columnType: detectedColumnType, retrievalLimit, queryVectorDim, retrievedRawRows },
     }
   } catch (err) {
     ctx.log.error({ requestId: ctx.requestId, stage: 'semantic-search', err }, 'stage error')
@@ -192,6 +208,16 @@ export async function runSemanticSearch(
       durationMs: Date.now() - start,
       inputCount: inputCandidates.length,
       outputCount: 0,
+      diagnostics: {
+        totalEmbeddings: totalCount,
+        eligibleEmbeddings: eligibleCount,
+        detectedModels,
+        usePgvector,
+        columnType: detectedColumnType,
+        retrievalLimit,
+        queryVectorDim,
+        retrievedRawRows: 0,
+      },
     }
   }
 }

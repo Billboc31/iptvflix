@@ -68,11 +68,13 @@ export type ShelfConceptPreviewResponse = {
   semanticFallbackReason?: string
   semanticDiagnostics?: Record<string, unknown>
   fallbackFlags: string[]
+  fallbackUsed: boolean
   stageAvailability: Array<{ name: string; available: boolean; reason?: string }>
   retrievalCounts: {
-    retrieved: number
-    postFilter: number | null
-    reranked: number | null
-    final: number
+    semanticRetrieved: number | null
+    semanticPostFilter: number | null
+    fallbackCandidates: number | null
+    rerankedCandidates: number | null
+    finalResults: number
   }
 }
