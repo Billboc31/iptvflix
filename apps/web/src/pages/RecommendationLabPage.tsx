@@ -512,7 +512,7 @@ function ShelfConceptsTab() {
                   <div className="rounded-lg border border-white/10 bg-white/3 px-4 py-3">
                     <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Pipeline counts</p>
                     <div className="flex items-center gap-2 text-sm font-mono flex-wrap">
-                      {(['retrieved', 'postFilter', 'reranked', 'final'] as const).map((key, i, arr) => (
+                      {(['semanticRetrieved', 'semanticPostFilter', 'fallbackCandidates', 'rerankedCandidates', 'finalResults'] as const).map((key, i, arr) => (
                         <span key={key} className="flex items-center gap-2">
                           <span className="flex flex-col items-center">
                             <span className="text-white font-semibold">

@@ -126,7 +126,7 @@ export async function runRecommendationFromPlan(
   const popularityFallbackUsed = fallbackFlags.includes('popularity-fallback')
   const retrievalSummary: RetrievalSummary = {
     semanticCandidateCount: semanticCandidates.length,
-    fallbackCandidateCount: popularityFallbackUsed ? mergedCandidates.length : 0,
+    fallbackCandidateCount: popularityFallbackUsed ? mergedCandidates.length - semanticCandidates.length : 0,
     fallbackUsed: popularityFallbackUsed,
   }
 
