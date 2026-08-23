@@ -45,7 +45,6 @@ export type RecommendationQueryPlan = {
   softPreferences: QueryPlanSoftPreferences
   userConstraints: string[]
   plannerFallback: boolean
-  semanticProtection?: 'strict' | 'moderate' | 'none'
   plannerMeta: {
     provider: string
     model: string

@@ -15,13 +15,6 @@ import {
 } from '../../db/schema.js'
 import type { StageResult, CandidateItem, PipelineContext } from '../types.js'
 import type { RecommendationQueryPlan, ScoreBreakdown } from '@iptvflix/api-contracts'
-import {
-  SEMANTIC_FLOOR_STRICT,
-  SEMANTIC_FLOOR_MODERATE,
-  SEMANTIC_WEIGHT_THEMATIC,
-  PROFILE_BOOST_MIN_FACTOR,
-  PROFILE_BOOST_MODULATION_POWER,
-} from '../../config.js'
 
 /** @deprecated Use SCORE_MODEL_V2 for all production paths. Kept as a reference baseline for tests. */
 export const SCORE_MODEL_V1 = {
@@ -56,7 +49,7 @@ export const SCORE_MODEL_V2 = {
   wAvailability: 0.05,
 } as const
 
-export type ExplorationLevel = 'exploit' | 'explore' | 'discover' | 'thematic'
+type ExplorationLevel = 'exploit' | 'explore' | 'discover'
 
 interface WeightSet {
   wSemantic: number
@@ -73,7 +66,7 @@ interface WeightSet {
   wAvailability: number
 }
 
-export function getBlendedWeights(model: typeof SCORE_MODEL_V2, level: ExplorationLevel): WeightSet {
+function getBlendedWeights(model: typeof SCORE_MODEL_V2, level: ExplorationLevel): WeightSet {
   const { version: _v, ...base } = model
   if (level === 'explore') {
     return {
@@ -103,22 +96,6 @@ export function getBlendedWeights(model: typeof SCORE_MODEL_V2, level: Explorati
       wMediaType: 0.01,
       wFreshness: base.wFreshness,
       wPrior: base.wPrior * 2,
-      wAvailability: base.wAvailability,
-    }
-  }
-  if (level === 'thematic') {
-    return {
-      wSemantic: SEMANTIC_WEIGHT_THEMATIC,
-      wGenre: 0.14,
-      wTheme: 0.08,
-      wPeople: 0.06,
-      wKeyword: 0.08,
-      wFranchise: 0.04,
-      wLanguage: 0.04,
-      wDecade: 0.03,
-      wMediaType: 0.03,
-      wFreshness: base.wFreshness,
-      wPrior: base.wPrior,
       wAvailability: base.wAvailability,
     }
   }
@@ -518,30 +495,6 @@ function computeAvoidPenalty(c: EnrichedCandidate, avoidSignals: string[]): numb
   return hasMatch ? 0.2 : 0
 }
 
-export function resolveProtectionSettings(
-  protection: 'strict' | 'moderate' | 'none' | undefined,
-): { blendLevel: ExplorationLevel; semanticFloor: number } {
-  if (protection === 'strict') return { blendLevel: 'thematic', semanticFloor: SEMANTIC_FLOOR_STRICT }
-  if (protection === 'moderate') return { blendLevel: 'thematic', semanticFloor: SEMANTIC_FLOOR_MODERATE }
-  return { blendLevel: 'exploit', semanticFloor: 0 }
-}
-
-export function passesSemanticFloor(similarity: number | null | undefined, floor: number): boolean {
-  return floor === 0 || (similarity ?? 0) >= floor
-}
-
-export function computeSemanticConfidenceFactor(
-  similarity: number,
-  poolMin: number,
-  poolMax: number,
-  minFactor: number,
-  power: number,
-): number {
-  const range = poolMax - poolMin
-  const normalizedRelevance = range > 0 ? (similarity - poolMin) / range : 1.0
-  return minFactor + (1 - minFactor) * Math.pow(Math.max(0, Math.min(1, normalizedRelevance)), power)
-}
-
 export const HARD_FILTER_UNKNOWN_POLICY = 'STRICT_EXCLUDE_UNKNOWN' as const
 
 export function passesHardFilters(c: EnrichedCandidate, queryPlan: RecommendationQueryPlan): boolean {
@@ -617,24 +570,10 @@ function buildReasons(
   genreNames: string[],
   peopleAffinity: number,
   keywordAffinity: number,
-  semanticIntent?: string,
 ): string[] {
   const reasons: string[] = []
-  if (semantic > 0.7) {
-    if (semanticIntent) {
-      const shortIntent = semanticIntent.trim().split(/\s+/).slice(0, 3).join(' ')
-      reasons.push(`strong semantic match to ${shortIntent}`)
-    } else {
-      reasons.push('strong semantic match')
-    }
-  } else if (semantic > 0.5) {
-    if (semanticIntent) {
-      const shortIntent = semanticIntent.trim().split(/\s+/).slice(0, 3).join(' ')
-      reasons.push(`semantic match to ${shortIntent}`)
-    } else {
-      reasons.push('semantic match')
-    }
-  }
+  if (semantic > 0.7) reasons.push('strong semantic match')
+  else if (semantic > 0.5) reasons.push('semantic match')
   if (genreAffinity > 0.6 && genreNames.length > 0) reasons.push(`strong ${genreNames[0].toLowerCase()} genre affinity`)
   else if (genreAffinity > 0.3 && genreNames.length > 0) reasons.push(`${genreNames[0].toLowerCase()} genre affinity`)
   if (languageAffinity > 0.7) reasons.push('preferred language')
@@ -674,25 +613,10 @@ export async function runHybridReranker(
     const enriched = await enrichCandidates(candidates, ctx.request.profileId, exposureCounts)
 
     const plan = ctx.queryPlan
-
-    const { blendLevel, semanticFloor } = resolveProtectionSettings(plan.semanticProtection)
-    const weights = getBlendedWeights(SCORE_MODEL_V2, blendLevel)
+    const weights = getBlendedWeights(SCORE_MODEL_V2, 'exploit')
     const allGenreScores = taste?.genreScores ?? {}
 
-    const eligible = enriched.filter(
-      (c) => passesHardFilters(c, plan) && passesSemanticFloor(c.similarity, semanticFloor),
-    )
-
-    const rawRankById = new Map(eligible.map((c, i) => [c.id, i + 1]))
-    const poolSimilarities = eligible.map((c) => c.similarity ?? 0)
-    const poolSemanticMin = eligible.length > 0 ? Math.min(...poolSimilarities) : 0
-    const poolSemanticMax = eligible.length > 0 ? Math.max(...poolSimilarities) : 1
-    const semanticPercentileById = new Map<string, number>(
-      poolSimilarities
-        .map((s, i) => [eligible[i].id, s] as [string, number])
-        .sort(([, a], [, b]) => a - b)
-        .map(([id], rank) => [id, (rank + 1) / eligible.length] as [string, number]),
-    )
+    const eligible = enriched.filter((c) => passesHardFilters(c, plan))
 
     const scored = eligible.map((c) => {
       const isDisliked = taste?.dislikedMediaIds.has(c.id) ?? false
@@ -719,7 +643,8 @@ export async function runHybridReranker(
       const avoidPenalty = computeAvoidPenalty(c, plan.avoidSignals)
       const repetitionPenalty = 0.05 * Math.min(c.exposureCount, 4)
 
-      const profileBoostRaw =
+      const weighted =
+        semantic * weights.wSemantic +
         genreAffinity * weights.wGenre +
         themeAffinity * weights.wTheme +
         peopleAffinity * weights.wPeople +
@@ -727,51 +652,18 @@ export async function runHybridReranker(
         franchiseAffinity * weights.wFranchise +
         languageAffinity * weights.wLanguage +
         decadeAffinity * weights.wDecade +
-        mediaTypeAffinity * weights.wMediaType
+        mediaTypeAffinity * weights.wMediaType +
+        fresh * weights.wFreshness +
+        prior * weights.wPrior +
+        availBonus * weights.wAvailability
 
-      const qualityContrib = fresh * weights.wFreshness + prior * weights.wPrior + availBonus * weights.wAvailability
-      const semanticContribution = semantic * weights.wSemantic
-
-      const semanticConfidenceFactor =
-        blendLevel === 'thematic'
-          ? computeSemanticConfidenceFactor(semantic, poolSemanticMin, poolSemanticMax, PROFILE_BOOST_MIN_FACTOR, PROFILE_BOOST_MODULATION_POWER)
-          : 1.0
-
-      const profileBoostEffective = profileBoostRaw * semanticConfidenceFactor
-      const weighted = semanticContribution + profileBoostEffective + qualityContrib
       const finalScore = weighted - alreadyWatchedPenalty - abandonPenalty - dislikedPenalty - avoidPenalty - repetitionPenalty
 
-      // Effective (modulated) per-signal contributions — reflect what is actually in the score
-      const profileGenreContribution = genreAffinity * weights.wGenre * semanticConfidenceFactor
-      const profileThemeContribution = themeAffinity * weights.wTheme * semanticConfidenceFactor
-      const peopleContribution = peopleAffinity * weights.wPeople * semanticConfidenceFactor
-      const languageContribution = languageAffinity * weights.wLanguage * semanticConfidenceFactor
-      const eraContribution = decadeAffinity * weights.wDecade * semanticConfidenceFactor
-      const otherPositiveContributions = (
-        keywordAffinity * weights.wKeyword +
-        franchiseAffinity * weights.wFranchise +
-        mediaTypeAffinity * weights.wMediaType
-      ) * semanticConfidenceFactor
-      const profileContribution = profileBoostEffective
-
-      const poolRange = poolSemanticMax - poolSemanticMin
-      const semanticRelevanceNormalized = poolRange > 0 ? (semantic - poolSemanticMin) / poolRange : 1.0
-      const rawVectorRank = rawRankById.get(c.id) ?? null
-      const semanticPercentile = semanticPercentileById.get(c.id) ?? 1.0
-
-      const reasons = buildReasons(semantic, genreAffinity, languageAffinity, decadeAffinity, c.genreNames, peopleAffinity, keywordAffinity, plan.semanticIntent)
+      const reasons = buildReasons(semantic, genreAffinity, languageAffinity, decadeAffinity, c.genreNames, peopleAffinity, keywordAffinity)
 
       const breakdown: ScoreBreakdown = {
         modelVersion: SCORE_MODEL_V2.version,
         semantic,
-        semanticContribution,
-        profileContribution,
-        profileGenreContribution,
-        profileThemeContribution,
-        peopleContribution,
-        languageContribution,
-        eraContribution,
-        otherPositiveContributions,
         genreAffinity,
         themeAffinity,
         peopleAffinity,
@@ -788,14 +680,6 @@ export async function runHybridReranker(
         dislikedPenalty,
         avoidPenalty,
         repetitionPenalty,
-        semanticRelevanceNormalized,
-        semanticConfidenceFactor,
-        profileBoostRaw,
-        profileBoostEffective,
-        semanticPercentile,
-        rawVectorRank,
-        finalRank: null,
-        rankDelta: null,
         final: finalScore,
         reasons,
       }
@@ -811,19 +695,6 @@ export async function runHybridReranker(
     scored.sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score
       return a.id.localeCompare(b.id)
-    })
-
-    scored.forEach((item, idx) => {
-      if (item.scoreBreakdown) {
-        item.scoreBreakdown.finalRank = idx + 1
-        const rawRank = item.scoreBreakdown.rawVectorRank
-        item.scoreBreakdown.rankDelta = rawRank != null ? (idx + 1) - rawRank : null
-        const delta = item.scoreBreakdown.rankDelta
-        const percentile = item.scoreBreakdown.semanticPercentile
-        if (delta !== null && delta < -3 && percentile !== undefined && percentile < 0.33) {
-          item.scoreBreakdown.reasons.push('⚠ large upward rank delta with weak semantic percentile')
-        }
-      }
     })
 
     const diversified = applyDiversityFilter(scored, limit, 2, 3)

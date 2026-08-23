@@ -5,14 +5,6 @@ export type RecommendationSource = 'LOCAL' | 'DISCOVERY' | 'ENGINE'
 export interface ScoreBreakdown {
   modelVersion: string
   semantic: number
-  semanticContribution?: number
-  profileContribution?: number
-  profileGenreContribution?: number
-  profileThemeContribution?: number
-  peopleContribution?: number
-  languageContribution?: number
-  eraContribution?: number
-  otherPositiveContributions?: number
   genreAffinity: number
   themeAffinity: number
   peopleAffinity: number
@@ -29,14 +21,6 @@ export interface ScoreBreakdown {
   dislikedPenalty: number
   avoidPenalty: number
   repetitionPenalty: number
-  semanticRelevanceNormalized?: number
-  semanticConfidenceFactor?: number
-  profileBoostRaw?: number
-  profileBoostEffective?: number
-  semanticPercentile?: number
-  rawVectorRank?: number | null
-  finalRank?: number | null
-  rankDelta?: number | null
   final: number
   reasons: string[]
 }
