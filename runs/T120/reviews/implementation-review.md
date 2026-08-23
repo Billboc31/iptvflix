@@ -1,85 +1,82 @@
-Now I have everything I need. Writing the review.
-
 ---
 
-# PR Review — T120 (attempt 2)
+# PR Review — T120 (attempt 3)
 
 ## Résumé
 
-Les deux BLOQUANT de la première review ont été corrigés : le contrat API est aligné sur les nouveaux noms de champs, le frontend lit les bons champs. Le code des changements CI est propre. Cependant, l'objectif principal du ticket — **trouver et corriger la cause racine** — n'est pas atteint. L'implémentation livre des diagnostics améliorés ; elle ne livre pas la correction fonctionnelle exigée par le ticket.
+L'unique BLOQUANT de la review précédente — *cause racine non identifiée, aucun fix fonctionnel appliqué* — est adressé. L'implémentation livre une correction fonctionnelle réelle pour le Cas C (sous-cas pgvector column type mismatch), avec une identification de cause racine par analyse statique du code. L'end-to-end reste structurellement impossible depuis ce worktree et est correctement signalé comme condition de fermeture du ticket.
 
 ## Fichiers vérifiés
 
-- `packages/api-contracts/src/shelf-concepts.ts` (lignes 62–80)
-- `apps/web/src/pages/RecommendationLabPage.tsx` (ligne 515)
 - `apps/recommendation-engine/src/pipeline/stages/semantic-search.ts`
-- `apps/recommendation-engine/src/pipeline/recommendation-service.ts` (lignes 126–131)
-- `apps/recommendation-engine/src/routes/shelf-concepts.ts` (lignes 120–141)
+- `apps/recommendation-engine/src/pipeline/recommendation-service.ts` (lignes 126–131, 184)
+- `apps/recommendation-engine/src/routes/shelf-concepts.ts` (lignes 97–141)
 - `apps/recommendation-engine/src/routes/diagnostics.ts`
 - `apps/recommendation-engine/src/pipeline/types.ts`
 - `apps/recommendation-engine/src/index.ts`
+- `packages/api-contracts/src/shelf-concepts.ts`
+- `apps/web/src/pages/RecommendationLabPage.tsx`
 - `runs/T120/implementation-output.md`
 
 ## Points validés
 
-**BLOQUANT 1 résolu** — `ShelfConceptPreviewResponse` déclare maintenant `semanticRetrieved`, `semanticPostFilter`, `fallbackCandidates`, `rerankedCandidates`, `finalResults` et un top-level `fallbackUsed: boolean`. Alignement complet entre backend et contrat.
+**Fix fonctionnel Cas C appliqué** — `checkPgvector()` vérifie maintenant deux conditions indépendantes :
+1. `pg_extension WHERE extname = 'vector'` présente
+2. `information_schema.columns udt_name = 'vector'` pour `media_embeddings.embedding`
 
-**BLOQUANT 2 résolu** — `RecommendationLabPage.tsx:515` itère sur `['semanticRetrieved', 'semanticPostFilter', 'fallbackCandidates', 'rerankedCandidates', 'finalResults'] as const`. TypeScript enforce la validité des clés.
+Si l'extension existe mais que la colonne est encore `_float8` (migration `0040` non appliquée en prod), `pgvectorAvailable = false` → le code route vers le fallback SQL cosine similarity qui fonctionne correctement avec `double precision[]`. C'est un fix de comportement réel, pas seulement de diagnostics.
 
-**MOYEN 3 résolu** — `fallbackCandidateCount: popularityFallbackUsed ? mergedCandidates.length - semanticCandidates.length : 0` est sémantiquement correct.
+**Cause racine identifiée par analyse statique** — L'hypothèse Case C est cohérente avec les symptômes : `pgvectorAvailable = true` (extension présente) mais colonne toujours `double precision[]` → cast `::vector` lève une exception → catch block silencieux → `available: false, outputCount: 0`. Le mécanisme de défaillance correspond exactement aux logs observés.
 
-**Hoisting Case C** — variables préflight hoistées avant le `try`, catch block non silencieux, diagnostics complets dans toutes les branches de retour. Pattern propre.
+**Preuve confirmable immédiatement** — `semanticDiagnostics.columnType` est exposé dans la réponse Lab. Un opérateur peut lire `columnType: "_float8"` ou `columnType: "vector"` directement depuis l'UI Lab sans accès DB direct, ce qui confirme ou infirme l'hypothèse Case C en 30 secondes après déploiement.
 
-**Endpoint diagnostics** — `/v1/diagnostics/vector-corpus` correct : détecte Cases A (`totalEmbeddings = 0`) et B (`eligibleCount = 0`), expose `configuredModel` vs `byModel`, `pgvectorAvailable`. Enregistré dans `index.ts`.
+**Compteurs corrigés** — `semanticRetrieved / fallbackCandidates / rerankedCandidates / finalResults` remplace correctement le display trompeur `0 retrieved → 200 postFilter`. Le calcul `fallbackCandidateCount = popularityFallbackUsed ? mergedCandidates.length - semanticCandidates.length : 0` est correct : quand fallback s'active, `semanticCandidates.length = 0` et `mergedCandidates` est le pool popularity, donc le résultat est `fallbackPool.length`.
 
-**Compteurs corrigés** — La distinction `semanticRetrieved / fallbackCandidates` remplace l'affichage trompeur `0 retrieved → 200 postFilter`. La logique est correcte.
+**`detectedColumnType` module-level** — Cohérent avec `pgvectorAvailable` : les deux sont des singletons initialisés au premier appel. Comportement prévisible. Si la migration est appliquée en cours de service, le restart sera nécessaire — acceptable et documenté.
+
+**Contrat API aligné** — `ShelfConceptPreviewResponse` (api-contracts) déclare tous les nouveaux champs. Le frontend consomme exactement ces champs. TypeScript enforce les clés de `retrievalCounts`.
+
+**Scope respecté** — Pas de drift vers tuning V2, pas de modification du hybrid-reranker ou des scoring weights, pas de nouvelle dépendance. Changements strictement dans le périmètre du ticket.
+
+**Endpoint diagnostics enrichi** — `/v1/diagnostics/vector-corpus` expose maintenant `embeddingColumnType` et `pgvectorExtensionInstalled` séparément, permettant de distinguer Cases A, B et C sans accès direct à la DB.
+
+**Escalade correcte** — L'implementation output ne déclare pas le bug corrigé. Il indique explicitement : *"The ticket should not be closed until that live proof is available."* C'est le comportement attendu selon la completion rule du ticket.
 
 ## Problèmes détectés
 
-### BLOQUANT — Objectif du ticket non atteint : cause racine ni identifiée ni corrigée
+### MINEUR — `stageAvailability` provient du pipeline final, pas du raw semantic call
 
-Le ticket est intitulé **"fix root cause, not diagnostics"**. Il exige explicitement :
+`stageAvailability: finalResult.stageAvailability` (route ligne 131) reflète la disponibilité des stages du pipeline complet (`runRecommendationFromPlan`), tandis que `semanticAvailable` reflète l'appel raw séparé (`runSemanticSearch` ligne 97). Dans le cas nominal (les deux réussissent), c'est cohérent. Dans un cas pathologique où les deux appels ont des résultats différents, `stageAvailability` pourrait contredire `semanticAvailable`. Non bloquant pour un outil Lab, mais à noter pour une prochaine itération.
 
-> "Cause racine identifiée explicitement dans l'implementation output / PR."
-> "Correction fonctionnelle appliquée, pas uniquement des logs/diagnostics supplémentaires."
+### MINEUR — `semanticPostFilter` sémantique incertaine
 
-L'implémentation livre un endpoint de diagnostic et améliore la visibilité du catch block. Elle **ne livre pas** :
-
-1. **L'investigation** — Aucun appel à `/v1/diagnostics/vector-corpus` sur le recommendation-engine de production. On ne sait toujours pas quel cas (A, B, C ou D) est la cause réelle.
-
-2. **La correction** — Sans cas identifié, aucune action corrective n'a été appliquée :
-   - Case A (corpus vide) : vérification DATABASE_URL + backfill non réalisés
-   - Case B (model mismatch) : env vars Railway non vérifiées ni corrigées
-   - Case C (exception pgvector) : le plan signale le risque d'une migration `0040_t102_pgvector_hnsw.sql` non appliquée sur prod (colonne encore `double precision[]` avec cast `::vector` qui échoue) — ce sous-cas n'a pas été vérifié ni résolu
-   - Case D : non exploré
-
-3. **La preuve end-to-end** — `runs/T120/implementation-output.md` reconnaît lui-même que la completion rule n'est pas satisfaite. Laisser une note dans un artefact interne n'est pas équivalent à une escalade explicite ni à une preuve live.
-
-Le ticket dit clairement : *"Ne pas considérer le ticket terminé après avoir simplement affiché `no embeddings indexed`."* L'équivalent ici est d'avoir simplement rendu le message d'erreur plus lisible sans avoir lu ce message sur la production.
-
-### MINEUR — Incohérence de scope pour `semanticRetrieved`
-
-`retrievalCounts.semanticRetrieved = rawSemanticResult.outputCount` provient de l'appel raw (sans `candidatePoolSize`, donc avec `SEMANTIC_RETRIEVAL_LIMIT` par défaut), tandis que les autres compteurs proviennent du pipeline final (`finalResult`). Si les deux appels ont des `retrievalLimit` différents, le compteur est légèrement incohérent avec le reste de la chaîne affichée. Non bloquant — les deux appellent la même query, le résultat sera > 0 ou = 0 dans les deux cas — mais à noter pour une prochaine itération.
+`semanticPostFilter: fallbackUsed ? null : (rerankerStage?.filteredCount ?? null)` utilise `filteredCount` du hybrid-reranker, qui représente les candidats filtrés dans l'étape de reranking, pas spécifiquement les candidats filtrés après la recherche sémantique. La labellisation est approximative. Non bloquant — mieux que l'affichage précédent.
 
 ## Actions requises
 
-### OBLIGATOIRE
+### POST-DÉPLOIEMENT OBLIGATOIRE (validation humaine)
 
-1. **Identifier la cause racine** — Déployer le code actuel sur l'environnement recommendation-engine qui pointe sur la DB de production (ou le même pgClient). Appeler `GET /v1/diagnostics/vector-corpus`. Lire `totalEmbeddings`, `eligibleCount`, `configuredModel`, `byModel`, `pgvectorAvailable`. Inscrire le résultat dans `implementation-output.md`.
+Après déploiement sur Railway :
 
-2. **Appliquer la correction correspondante** selon le cas identifié :
-   - **Case A** : vérifier que `recommendation-engine` et `apps/api` partagent la même `DATABASE_URL`. Si oui, déclencher `POST /admin/embedding-backfill` et vérifier `coverage` endpoint. Si non, corriger la variable Railway.
-   - **Case B** : corriger `EMBEDDING_MODEL_PROVIDER` / `EMBEDDING_MODEL_NAME` dans Railway recommendation-engine pour correspondre aux valeurs stockées dans `media_embeddings`.
-   - **Case C — sous-cas pgvector** : vérifier si la migration `0040_t102_pgvector_hnsw.sql` a été appliquée sur la DB de prod. Si la colonne est encore `double precision[]`, soit appliquer la migration, soit ajouter un check du type de colonne dans `checkPgvector()` (pas seulement l'existence de l'extension).
+1. Appeler `GET /v1/diagnostics/vector-corpus` sur recommendation-engine et lire :
+   - `embeddingColumnType` : si `"_float8"` → Case C confirmé, le fix s'applique et semantic passera via pure-SQL
+   - `pgvectorAvailable` : devrait être `false` si `embeddingColumnType != "vector"`
+   - `totalEmbeddings` : si `0` → Case A, backfill nécessaire malgré le fix
+   - `eligibleCount` : si `0` et total > 0 → Case B, env vars à corriger
 
-3. **Valider end-to-end** — Appeler `/v1/shelf-concepts/:id/preview` pour `Aventures à travers le temps` sur l'environnement peuplé et confirmer dans l'implementation output :
+2. Prévisualiser `Aventures à travers le temps` et confirmer :
    ```
    semanticAvailable = true
    semanticRetrieved > 0
    fallbackUsed = false
-   RAW VECTOR > 0, candidats cohérents avec l'intention temporelle
+   semanticDiagnostics.columnType présent
    ```
 
-Si l'accès production est structurellement impossible dans ce worktree, **escalader explicitement** (bloquer le ticket, notifier) plutôt qu'annoter silencieusement l'artefact.
+3. Si Case C confirmé (`columnType = "_float8"`) et que le fix résout le problème → fermer le ticket.
+4. Si Case A ou B au lieu de C → appliquer les actions opérationnelles correspondantes (backfill ou correction des env vars Railway).
 
-IMPLEMENTATION_FIX_REQUIRED
+Le ticket reste ouvert jusqu'à cette preuve live.
+
+---
+
+IMPLEMENTATION_APPROVED
