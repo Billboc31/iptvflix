@@ -1,83 +1,53 @@
-I have all the information needed. Writing the review now.
+All blockers from the previous review have been resolved. The implementation is clean.
 
 ---
 
-# PR Review — T123 (re-review après fix) : Improve semantic retrieval precision for thematic shelf intent
+# PR Review — T123 (attempt 3) : Improve semantic retrieval precision for thematic shelf intent
 
 ## Résumé
 
-Le fix résout correctement les deux blockers de la review précédente (artefact node_modules, drift T121/T122 dans hybrid-reranker/recommendations/config/query-plan) et améliore substantiellement le test "Enquêtes policières dans l'espace". Cependant, le nettoyage du scope drift dans `shelf-concept-mapper.ts` est **incomplet** : la fonction `resolveSemanticProtection` a été retirée du type mais pas du code, ce qui provoque deux blockers TypeScript empêchant la compilation.
+Les deux blockers de la review précédente sont entièrement résolus. La compilation TypeScript est propre sur `recommendation-engine`. Les trois erreurs restantes dans `apps/api` (`accountId` dans les fixtures pairing/commands) sont pre-existing sur main et hors scope T123.
+
+---
+
+## Blockers résolus
+
+### BLOQUANT 1 — `resolveSemanticProtection` résiduelle ✅
+
+`shelf-concept-mapper.ts` est désormais propre : aucune fonction `resolveSemanticProtection`, aucun paramètre `generationType`, aucun champ `semanticProtection` dans le return. La route n'envoie plus `generationType` non plus.
+
+### BLOQUANT 2 — `semanticAnchor` absent de `RawConcept` ✅
+
+`semanticAnchor?: string | null` correctement déclaré dans `RawConcept` des deux services (`recommendation-engine` et `api`). L'insert valide le type et sanitize la valeur (`typeof === 'string' && trim() ? trim() : null`).
 
 ---
 
 ## Points validés
 
-- **Artefact node_modules** : `node_modules/.vite/vitest/results.json` supprimé du git (`-rw deleted` dans le diff vs main). ✅
-- **hybrid-reranker.ts** : zéro ligne modifiée vs main — scope T121/T122 entièrement retiré. ✅
-- **recommendations.ts** : zéro ligne modifiée vs main. ✅
-- **config.ts** : uniquement `SEMANTIC_ANCHOR_BLEND_ALPHA` ajouté, les 5 constantes T121/T122 absentes. ✅
-- **query-plan.ts** : uniquement `semanticAnchor?: string | null` ajouté, `semanticProtection` absent du type. ✅
-- **semantic-search.ts** : dual-embedding correct (`Promise.all`, formule `ALPHA * anchorDist + (1-ALPHA) * intentDist`), path legacy byte-for-byte identique quand `semanticAnchor` absent. ✅
-- **Prompts** : instruction `semanticAnchor` avec contrainte de restrictivité et langage de contraste propagée dans `shelf-concept-generator-v1.ts` (API et reco-engine) et `query-planner-v1.ts`. ✅
-- **Migration SQL / Drizzle schemas** : `semantic_anchor TEXT` nullable ajouté de façon additive dans les deux schemas. ✅
-- **Tests blend** (`semantic-search-blend.test.ts`) : 6 cas couvrant alpha=0/1/0.45, symétrie distance/similarité, et fixture espace-policier. Aucune dépendance DB/API. ✅
-- **Test benchmark "Aventures à travers le temps"** : assertions ≥4/8 titres temporels + false positives absents du top-5. ✅
-- **Test "Enquêtes policières dans l'espace"** — correctement fixé : assertions composite ≥3/8 ET single-theme ≤2/5 en top-5. ✅
-- **Mapper tests** : 3 cas couvrant forwarding de `semanticAnchor`. ✅
-- Aucun hardcoding de titre ou de rayon en code de production. ✅
+- **`recommendation-engine` TSC** : `npx tsc --noEmit` — aucune erreur. ✅
+- **`apps/api` TSC** : uniquement les erreurs pre-existing `accountId` dans `commands.test.ts` et `pairing.test.ts`, hors scope T123. ✅
+- **`shelf-concept-mapper.ts`** : paramètre `semanticAnchor?: string | null`, forwarding `?? null`, aucune pollution T121/T122. ✅
+- **`query-plan.ts`** : `semanticAnchor?: string | null` présent, `semanticProtection` absent. ✅
+- **`shelf-concepts.ts` (contrat)** : `semanticAnchor?: string | null` sur `ShelfConcept`. ✅
+- **`semantic-search.ts`** : dual-embedding `Promise.all`, formule `ALPHA * anchorDist + (1-ALPHA) * intentDist`, path legacy inchangé quand anchor absent. ✅
+- **`config.ts`** : `SEMANTIC_ANCHOR_BLEND_ALPHA = 0.45`, env-overridable. `SEMANTIC_FLOOR_MODERATE` et autres constantes T121 intactes. ✅
+- **Prompts (×2 shelf-concept + query-planner)** : instruction `semanticAnchor` identique, avec contrainte de restrictivité et langage de contraste. ✅
+- **Migration SQL** : `ALTER TABLE shelf_concepts ADD COLUMN semantic_anchor TEXT;` — additive, non-breaking. ✅
+- **Drizzle schemas (×2)** : `semanticAnchor: text('semantic_anchor')` nullable, sans `.notNull()`. ✅
+- **`semantic-search-blend.test.ts`** : 6 cas (alpha=0/1/0.45, symétrie dist/sim, fixture temporel, fixture espace-policier), aucune dépendance DB/API. ✅
+- **`pipeline-regression.test.ts`** : bloc T123 avec 2 tests `it.skipIf(!canRun)` — benchmark "Aventures" (≥4/8 temporels + false positives absents du top-5) et "Enquêtes espace" (≥3/8 composite + ≤2/5 single-theme en top-5). ✅
+- **`shelf-concept-mapper.test.ts`** : 9 tests dont 3 dédiés au forwarding de `semanticAnchor` (fourni, absent, null explicite). ✅
+- **`hybrid-reranker.test.ts`** : diff = trailing newline uniquement, aucun changement fonctionnel. ✅
+- **Artefact `node_modules/.vite/vitest/results.json`** : supprimé du tracking git. ✅
+- **Aucun hardcoding** de titre de rayon ou de film en production. ✅
 
 ---
 
-## Problèmes détectés
+## Risques mineurs (carry-forward, non-bloquants)
 
-### 🔴 BLOQUANT 1 — `resolveSemanticProtection` résiduelle dans `shelf-concept-mapper.ts`
-
-La fonction `resolveSemanticProtection` a été retirée de `RecommendationQueryPlan` (type propre) mais **pas** de l'implémentation du mapper. La ligne :
-
-```typescript
-semanticProtection: resolveSemanticProtection(concept.generationType),  // ligne 55
-```
-
-provoque :
-```
-TS2353: Object literal may only specify known properties, and 'semanticProtection' does not exist in type 'RecommendationQueryPlan'
-```
-
-Par ricochet, `generationType?: string | null` a été ajouté en paramètre du mapper et `generationType: concept.generationType` est passé dans la route `shelf-concepts.ts` uniquement pour alimenter cette fonction morte. Ces trois éléments (fonction, paramètre, usage dans la route) sont du scope drift T121/T122 non retiré.
-
-**Correction attendue** :
-- Supprimer `resolveSemanticProtection` de `shelf-concept-mapper.ts`
-- Supprimer `semanticProtection:` du return et `generationType?: string | null` du type de paramètre
-- Supprimer `generationType: concept.generationType` dans `apps/recommendation-engine/src/routes/shelf-concepts.ts`
-
-### 🔴 BLOQUANT 2 — `semanticAnchor` absent de `RawConcept` dans les deux generators
-
-`RawConcept` (type local dans chaque service) ne déclare pas `semanticAnchor`. L'accès `raw.semanticAnchor` à l'insert provoque des erreurs TS2339 dans les deux services :
-
-| Fichier | Erreur |
-|---|---|
-| `apps/recommendation-engine/src/services/shelf-concept-generator.ts:383` | `Property 'semanticAnchor' does not exist on type 'RawConcept'` (×3) |
-| `apps/api/src/services/shelf-concept-generator-service.ts:461` | `Property 'semanticAnchor' does not exist on type 'RawConcept'` (×3) |
-
-**Correction attendue** : ajouter `semanticAnchor?: string | null` à `type RawConcept` dans les deux fichiers.
+- 🟡 Double-garde `useAnchorBlend && anchorVector.length > 0` dans `semantic-search.ts` — conservatif et défensif face à une réponse OpenAI vide silencieuse. Acceptable.
+- 🟡 Mots-clés de titre dans les tests de régression (`time`, `chrono`, etc.) — fragiles si le corpus fixture évolue, mais commentaire explicatif présent et corpus fixe dans le contexte CI.
 
 ---
 
-## Risques éventuels
-
-- 🟡 MINEUR (carry-forward) : mots-clés temporels ('time') fragiles si le corpus fixture évolue. Acceptable avec corpus fixe, commentaire déjà présent dans le test.
-- 🟡 MINEUR : le bloc `useAnchorBlend && anchorVector.length > 0` dans semantic-search.ts est une double-garde (si `useAnchorBlend` est vrai, `anchorVector.length` sera toujours > 0 sauf erreur OpenAI silencieuse). Comportement conservatif acceptable.
-
----
-
-## Actions demandées
-
-1. Dans `apps/recommendation-engine/src/services/shelf-concept-mapper.ts` : supprimer la fonction `resolveSemanticProtection`, supprimer `semanticProtection:` du return et `generationType?: string | null` du paramètre.
-2. Dans `apps/recommendation-engine/src/routes/shelf-concepts.ts` : supprimer `generationType: concept.generationType` de l'appel `buildQueryPlanFromShelfConcept`.
-3. Dans `apps/recommendation-engine/src/services/shelf-concept-generator.ts` (type `RawConcept`, ligne ~37) : ajouter `semanticAnchor?: string | null`.
-4. Dans `apps/api/src/services/shelf-concept-generator-service.ts` (type `RawConcept`) : même correction.
-5. Vérifier `npx tsc --noEmit` sur les deux packages avant resoumission.
-
----
-
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
