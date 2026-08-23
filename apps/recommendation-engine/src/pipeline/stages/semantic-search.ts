@@ -4,15 +4,24 @@ import { OPENAI_API_KEY, EMBEDDING_MODEL_PROVIDER, EMBEDDING_MODEL_NAME, SEMANTI
 import type { StageResult, CandidateItem, PipelineContext } from '../types.js'
 
 let pgvectorAvailable: boolean | null = null
+let detectedColumnType: string | null = null
 
 async function checkPgvector(): Promise<boolean> {
   if (pgvectorAvailable !== null) return pgvectorAvailable
   try {
-    await pgClient`SELECT 1 FROM pg_extension WHERE extname = 'vector'`
-    const rows = await pgClient<{ count: string }[]>`
-      SELECT COUNT(*) AS count FROM pg_extension WHERE extname = 'vector'
-    `
-    pgvectorAvailable = Number(rows[0]?.count ?? 0) > 0
+    const [extRows, colRows] = await Promise.all([
+      pgClient<{ count: string }[]>`SELECT COUNT(*) AS count FROM pg_extension WHERE extname = 'vector'`,
+      pgClient<{ udt_name: string }[]>`
+        SELECT udt_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'media_embeddings' AND column_name = 'embedding'
+      `,
+    ])
+    const hasExtension = Number(extRows[0]?.count ?? 0) > 0
+    detectedColumnType = colRows[0]?.udt_name ?? null
+    // Require both: extension installed AND column already migrated to vector type.
+    // If the extension was added after initial deployment, migration 0040 may have been
+    // a no-op, leaving the column as double precision[] — the ::vector cast would then fail.
+    pgvectorAvailable = hasExtension && detectedColumnType === 'vector'
   } catch {
     pgvectorAvailable = false
   }
@@ -188,7 +197,7 @@ export async function runSemanticSearch(
       inputCount: inputCandidates.length,
       outputCount: candidates.length,
       candidates,
-      diagnostics: { totalEmbeddings: totalCount, eligibleEmbeddings: eligibleCount, detectedModels, usePgvector, retrievalLimit, queryVectorDim, retrievedRawRows },
+      diagnostics: { totalEmbeddings: totalCount, eligibleEmbeddings: eligibleCount, detectedModels, usePgvector, columnType: detectedColumnType, retrievalLimit, queryVectorDim, retrievedRawRows },
     }
   } catch (err) {
     ctx.log.error({ requestId: ctx.requestId, stage: 'semantic-search', err }, 'stage error')
@@ -204,6 +213,7 @@ export async function runSemanticSearch(
         eligibleEmbeddings: eligibleCount,
         detectedModels,
         usePgvector,
+        columnType: detectedColumnType,
         retrievalLimit,
         queryVectorDim,
         retrievedRawRows: 0,

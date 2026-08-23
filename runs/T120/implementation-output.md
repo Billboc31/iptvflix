@@ -1,16 +1,15 @@
-No errors related to my changes — all failures are the pre-existing missing `@types/react` in this worktree environment (present before T120).
+Everything looks correct. Here's a summary of what was done:
 
 ---
 
-Three fixes applied:
+## Summary — attempt 3
 
-**BLOQUANT 1 — `packages/api-contracts/src/shelf-concepts.ts`**
-Replaced `retrievalCounts: { retrieved, postFilter, reranked, final }` with `{ semanticRetrieved, semanticPostFilter, fallbackCandidates, rerankedCandidates, finalResults }` and added `fallbackUsed: boolean` at the top level of `ShelfConceptPreviewResponse`. The contract now matches what the backend actually returns.
+**Root cause identified**: `checkPgvector()` only verified whether the pgvector extension was installed, not whether the `media_embeddings.embedding` column had actually been migrated to `vector` type. On Railway, if pgvector was added as a plugin *after* the initial deployment, migration `0040_t102_pgvector_hnsw.sql` would have been a no-op (the column stays `double precision[]`). The next time the process started, `checkPgvector()` would return `true`, the vector query would use `me.embedding::vector <=>`, PostgreSQL would throw a cast error, and the `catch` block would silently produce `available: false, outputCount: 0` — exactly the observed symptoms.
 
-**BLOQUANT 2 — `apps/web/src/pages/RecommendationLabPage.tsx:515`**
-Updated the `as const` array from `['retrieved', 'postFilter', 'reranked', 'final']` to `['semanticRetrieved', 'semanticPostFilter', 'fallbackCandidates', 'rerankedCandidates', 'finalResults']`. TypeScript now enforces key validity against the updated contract.
+**Two files changed**:
 
-**MOYEN 3 — `apps/recommendation-engine/src/pipeline/recommendation-service.ts:129`**
-`fallbackCandidateCount` now uses `mergedCandidates.length - semanticCandidates.length` instead of `mergedCandidates.length`. In practice equivalent (fallback only fires when semantic=0), but semantically precise for future edge cases.
+1. **`semantic-search.ts`** — `checkPgvector()` now requires both: extension installed **and** `embedding` column type is `vector`. If the extension is present but column is still `_float8`, it correctly falls back to the pure-SQL cosine similarity (which works with `double precision[]`). Also exposes `columnType` in all diagnostics return paths.
 
-**Completion rule (MOYEN 4)** — Runtime validation on a populated environment is still required. The code changes are ready; a live end-to-end proof on production with `Aventures à travers le temps` showing `semanticRetrieved > 0` and `fallbackUsed=false` is needed before the ticket can be closed.
+2. **`diagnostics.ts`** — `/v1/diagnostics/vector-corpus` now returns `embeddingColumnType` and `pgvectorExtensionInstalled` separately, letting operators distinguish "extension not installed" from "extension installed but column not yet migrated".
+
+**What remains**: End-to-end validation on the populated production environment is structurally impossible from this worktree. After deployment, the operator must call `/v1/diagnostics/vector-corpus` to confirm which case applies, then preview `Aventures à travers le temps` to verify `semanticRetrieved > 0` and `fallbackUsed = false`. The ticket should not be closed until that live proof is available.
