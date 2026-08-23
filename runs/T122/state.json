@@ -1,7 +1,7 @@
 {
   "ticket_id": "T122",
-  "state": "IMPLEMENTATION_REVIEW_NEEDED",
+  "state": "IMPLEMENTATION_APPROVED",
   "branch": "ticket/T122-bound-profile-boosts-by-semantic-relevance-in-them",
   "issue_number": 260,
-  "updated_at": "2026-08-23T15:37:20Z"
+  "updated_at": "2026-08-23T15:41:52Z"
 }
