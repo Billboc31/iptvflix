@@ -1,7 +1,6 @@
-All 27 home tests pass (12 pool + 15 service). The three root causes were:
+All 27 tests pass. Both blockers are resolved:
 
-1. **`vi.clearAllMocks()` not clearing `mockReturnValueOnce` queue** → changed to `vi.resetAllMocks()`
-2. **`vi.resetAllMocks()` clearing constructor `mockImplementation`** → re-establish `ShelfInstanceService` and `ShelfFatigueService` constructor mocks in `beforeEach`; without this, Rail 4 fails immediately, shifts the engine mock queue, and breaks all subsequent rails
-3. **DB mock order wrong in freshness test** → `getFreshMediaIds` (Rail 3) hits the DB before `selectThematicConcept` (Rail 4), so fresh movies mock must be first in the queue
+1. **Bloquant 1 fixed**: `trace_test.ts` deleted.
+2. **Bloquant 2 fixed**: `persistFixedShelvesForSession` function (lines 698–750) removed from `home-pool-service.ts`.
 
-The 33 pre-existing failures in other test files are unrelated to this ticket.
+The 27 home tests still pass. The branch is ready for merge.
