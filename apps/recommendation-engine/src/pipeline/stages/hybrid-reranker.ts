@@ -820,7 +820,7 @@ export async function runHybridReranker(
         item.scoreBreakdown.rankDelta = rawRank != null ? (idx + 1) - rawRank : null
         const delta = item.scoreBreakdown.rankDelta
         const percentile = item.scoreBreakdown.semanticPercentile
-        if (delta !== null && delta < -3 && percentile < 0.33) {
+        if (delta !== null && delta < -3 && percentile !== undefined && percentile < 0.33) {
           item.scoreBreakdown.reasons.push('⚠ large upward rank delta with weak semantic percentile')
         }
       }
