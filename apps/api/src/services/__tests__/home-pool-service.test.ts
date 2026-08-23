@@ -69,6 +69,8 @@ vi.mock('../../lib/tmdb-image.js', () => ({
 import { buildDeclaredRails } from '../home-pool-service.js'
 import { getShelf } from '../shelf-service.js'
 import { RecommendationEngineClient } from '../../client/recommendation-engine-client.js'
+import { ShelfInstanceService } from '../shelf-instance-service.js'
+import { ShelfFatigueService } from '../shelf-fatigue-service.js'
 import type { ShelfResponse } from '@iptvflix/api-contracts'
 
 // ---------------------------------------------------------------------------
@@ -150,8 +152,13 @@ function makeChain(rows: unknown[] = []) {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  vi.resetAllMocks()
   instanceCounter = 0
+
+  // Re-establish constructor mocks cleared by vi.resetAllMocks().
+  ;(ShelfInstanceService as any).mockImplementation(() => ({ persistShelfInstance: mockPersistShelfInstance }))
+  ;(ShelfFatigueService as any).mockImplementation(() => ({ getFatigueStates: mockGetFatigueStates }))
+
   mockPersistShelfInstance.mockImplementation(() => Promise.resolve(`instance-${++instanceCounter}`))
   mockGetFatigueStates.mockResolvedValue(new Map())
 
@@ -202,13 +209,16 @@ function setupEngineRails(opts: {
 
   const concept = opts.rail4Concept ?? makeThematicConcept()
 
-  // DB: session concepts (empty) + concept rows (one concept) + freshness movies (all pass) + freshness series + enrichment ×4
+  // DB order matches actual execution: Rail 3 freshness THEN Rail 4 selectThematic THEN enrichment.
+  // Rail 3 freshness (only fires when rail3 has candidates; default mediaType is MOVIE → no series call).
+  if (opts.rail3 && opts.rail3.length > 0) {
+    mockDb.select.mockReturnValueOnce(makeChain(opts.rail3.map((id) => ({ id }))))  // fresh movies
+    // no fresh series (all MOVIE)
+  }
+  // Rail 4 selectThematic
   mockDb.select
-    .mockReturnValueOnce(makeChain([]))                           // session concept IDs
-    .mockReturnValueOnce(makeChain([concept]))                    // shelf_concepts rows
-    // freshness filter (rail 3): return all candidate IDs as fresh
-    .mockReturnValueOnce(makeChain(opts.rail3?.map((id) => ({ id })) ?? []))   // fresh movies
-    .mockReturnValueOnce(makeChain([]))                           // fresh series
+    .mockReturnValueOnce(makeChain([]))        // session concept IDs
+    .mockReturnValueOnce(makeChain([concept])) // shelf_concepts rows
     // enrichment: all empty (titles will be '')
     .mockReturnValue(makeChain([]))
 }
@@ -473,11 +483,10 @@ describe('buildDeclaredRails — freshness filter', () => {
       .mockResolvedValueOnce(null)
 
     mockDb.select
-      .mockReturnValueOnce(makeChain([]))
-      .mockReturnValueOnce(makeChain([makeThematicConcept()]))
-      // freshness DB query returns ONLY freshId (staleId is not fresh)
-      .mockReturnValueOnce(makeChain([{ id: freshId }]))  // fresh movies
-      .mockReturnValueOnce(makeChain([]))                  // fresh series
+      // Rail 3 freshness runs before Rail 4 selectThematic
+      .mockReturnValueOnce(makeChain([{ id: freshId }]))        // fresh movies (Rail 3)
+      .mockReturnValueOnce(makeChain([]))                        // session concepts (Rail 4)
+      .mockReturnValueOnce(makeChain([makeThematicConcept()]))   // concept rows (Rail 4)
       .mockReturnValue(makeChain([]))
 
     const { shelves } = await buildDeclaredRails(PROFILE_ID, SESSION_ID)
