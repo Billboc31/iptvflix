@@ -624,11 +624,16 @@ export function rankHybrid(
     const shownPenalty = shownSet.has(c.mediaId) ? 0.15 : 0
     const repetitionPenalty = shownPenalty
 
-    const weighted =
-      semantic * weights.wSemantic +
+    const profileBoostRaw =
       genreAffinity * weights.wGenre +
       themeAffinity * weights.wTheme +
-      peopleResult.score * weights.wPeople +
+      peopleResult.score * weights.wPeople
+    const semanticRelevanceFactor = 1.0
+    const profileBoostEffective = profileBoostRaw
+
+    const weighted =
+      semantic * weights.wSemantic +
+      profileBoostEffective +
       fresh * weights.wFreshness +
       prior * weights.wPrior +
       availBonus * weights.wAvailability
@@ -666,6 +671,9 @@ export function rankHybrid(
           languageAffinity: 0,
           decadeAffinity: 0,
           mediaTypeAffinity: 0,
+          semanticRelevanceFactor,
+          profileBoostRaw,
+          profileBoostEffective,
           qualityPrior: prior,
           freshness: fresh,
           availabilityBonus: availBonus,

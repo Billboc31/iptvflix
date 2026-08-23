@@ -344,6 +344,13 @@
             "when": 3000,
             "tag": "0048_t115_enrichment_failures",
             "breakpoints": true
+        },
+        {
+            "idx": 49,
+            "version": "7",
+            "when": 4000,
+            "tag": "0049_t123_shelf_concept_anchor",
+            "breakpoints": true
         }
     ]
 }
