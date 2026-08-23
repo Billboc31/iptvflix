@@ -6,8 +6,16 @@ import {
   computeLanguageAffinity,
   computeDecadeAffinity,
   computeMediaTypeAffinity,
+  getBlendedWeights,
   SCORE_MODEL_V2,
+  resolveProtectionSettings,
+  passesSemanticFloor,
 } from '../hybrid-reranker.js'
+import {
+  SEMANTIC_FLOOR_MODERATE,
+  SEMANTIC_FLOOR_STRICT,
+  SEMANTIC_WEIGHT_THEMATIC,
+} from '../../../config.js'
 
 // Minimal EnrichedCandidate stub with only the fields each function needs.
 function makeCandidate(overrides: Partial<{
@@ -292,5 +300,85 @@ describe('computeMediaTypeAffinity', () => {
   it('handles series-dominant profile', () => {
     const c = makeCandidate({ mediaType: 'series' })
     expect(computeMediaTypeAffinity(c, { 'movie': 2, 'series': 8 })).toBe(1.0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Semantic floor protection (T121)
+// ---------------------------------------------------------------------------
+
+describe('semantic floor protection', () => {
+  it('resolveProtectionSettings returns thematic blend and SEMANTIC_FLOOR_STRICT for strict', () => {
+    const { blendLevel, semanticFloor } = resolveProtectionSettings('strict')
+    expect(blendLevel).toBe('thematic')
+    expect(semanticFloor).toBe(SEMANTIC_FLOOR_STRICT)
+  })
+
+  it('resolveProtectionSettings returns thematic blend and SEMANTIC_FLOOR_MODERATE for moderate', () => {
+    const { blendLevel, semanticFloor } = resolveProtectionSettings('moderate')
+    expect(blendLevel).toBe('thematic')
+    expect(semanticFloor).toBe(SEMANTIC_FLOOR_MODERATE)
+  })
+
+  it('resolveProtectionSettings returns exploit blend and zero floor for none/undefined', () => {
+    expect(resolveProtectionSettings('none')).toEqual({ blendLevel: 'exploit', semanticFloor: 0 })
+    expect(resolveProtectionSettings(undefined)).toEqual({ blendLevel: 'exploit', semanticFloor: 0 })
+  })
+
+  it('passesSemanticFloor excludes candidates strictly below the floor', () => {
+    expect(passesSemanticFloor(0.20, SEMANTIC_FLOOR_MODERATE)).toBe(false)
+    expect(passesSemanticFloor(0.27, SEMANTIC_FLOOR_MODERATE)).toBe(false)
+    expect(passesSemanticFloor(null, SEMANTIC_FLOOR_MODERATE)).toBe(false)
+  })
+
+  it('passesSemanticFloor admits candidates at or above the floor', () => {
+    expect(passesSemanticFloor(SEMANTIC_FLOOR_MODERATE, SEMANTIC_FLOOR_MODERATE)).toBe(true)
+    expect(passesSemanticFloor(0.35, SEMANTIC_FLOOR_MODERATE)).toBe(true)
+    expect(passesSemanticFloor(0.90, SEMANTIC_FLOOR_STRICT)).toBe(true)
+  })
+
+  it('passesSemanticFloor always admits when floor is 0', () => {
+    expect(passesSemanticFloor(0, 0)).toBe(true)
+    expect(passesSemanticFloor(null, 0)).toBe(true)
+    expect(passesSemanticFloor(0.01, 0)).toBe(true)
+  })
+
+  it('SEMANTIC_FLOOR_STRICT is higher than SEMANTIC_FLOOR_MODERATE', () => {
+    expect(SEMANTIC_FLOOR_STRICT).toBeGreaterThan(SEMANTIC_FLOOR_MODERATE)
+  })
+
+  it('thematic blend sets wSemantic to SEMANTIC_WEIGHT_THEMATIC', () => {
+    const weights = getBlendedWeights(SCORE_MODEL_V2, 'thematic')
+    expect(weights.wSemantic).toBe(SEMANTIC_WEIGHT_THEMATIC)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Profile cannot override semantic (T121)
+// ---------------------------------------------------------------------------
+
+describe('profile cannot override semantic intent', () => {
+  it('floor excludes low-semantic candidate even with maximum profile affinity', () => {
+    const { blendLevel, semanticFloor: floor } = resolveProtectionSettings('moderate')
+    const weights = getBlendedWeights(SCORE_MODEL_V2, blendLevel)
+
+    const profileWeightSum =
+      weights.wGenre + weights.wTheme + weights.wPeople + weights.wKeyword +
+      weights.wFranchise + weights.wLanguage + weights.wDecade + weights.wMediaType
+
+    // Candidate B: weak semantic (below floor) + maximum profile affinity
+    const semanticB = 0.26
+    const hypotheticalScoreB = semanticB * weights.wSemantic + 1.0 * profileWeightSum
+
+    // Candidate A: good semantic relevance + neutral profile affinity
+    const semanticA = 0.70
+    const scoreA = semanticA * weights.wSemantic + 0.5 * profileWeightSum
+
+    // Without the floor, B would outrank A on raw score (profile dominates)
+    expect(hypotheticalScoreB).toBeGreaterThan(scoreA)
+
+    // With the floor, passesSemanticFloor(B) is false — profile cannot rescue it
+    expect(passesSemanticFloor(semanticB, floor)).toBe(false)
+    expect(passesSemanticFloor(semanticA, floor)).toBe(true)
   })
 })

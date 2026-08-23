@@ -15,6 +15,11 @@ import {
 } from '../../db/schema.js'
 import type { StageResult, CandidateItem, PipelineContext } from '../types.js'
 import type { RecommendationQueryPlan, ScoreBreakdown } from '@iptvflix/api-contracts'
+import {
+  SEMANTIC_FLOOR_STRICT,
+  SEMANTIC_FLOOR_MODERATE,
+  SEMANTIC_WEIGHT_THEMATIC,
+} from '../../config.js'
 
 /** @deprecated Use SCORE_MODEL_V2 for all production paths. Kept as a reference baseline for tests. */
 export const SCORE_MODEL_V1 = {
@@ -49,7 +54,7 @@ export const SCORE_MODEL_V2 = {
   wAvailability: 0.05,
 } as const
 
-type ExplorationLevel = 'exploit' | 'explore' | 'discover'
+export type ExplorationLevel = 'exploit' | 'explore' | 'discover' | 'thematic'
 
 interface WeightSet {
   wSemantic: number
@@ -66,7 +71,7 @@ interface WeightSet {
   wAvailability: number
 }
 
-function getBlendedWeights(model: typeof SCORE_MODEL_V2, level: ExplorationLevel): WeightSet {
+export function getBlendedWeights(model: typeof SCORE_MODEL_V2, level: ExplorationLevel): WeightSet {
   const { version: _v, ...base } = model
   if (level === 'explore') {
     return {
@@ -96,6 +101,22 @@ function getBlendedWeights(model: typeof SCORE_MODEL_V2, level: ExplorationLevel
       wMediaType: 0.01,
       wFreshness: base.wFreshness,
       wPrior: base.wPrior * 2,
+      wAvailability: base.wAvailability,
+    }
+  }
+  if (level === 'thematic') {
+    return {
+      wSemantic: SEMANTIC_WEIGHT_THEMATIC,
+      wGenre: 0.14,
+      wTheme: 0.08,
+      wPeople: 0.06,
+      wKeyword: 0.08,
+      wFranchise: 0.04,
+      wLanguage: 0.04,
+      wDecade: 0.03,
+      wMediaType: 0.03,
+      wFreshness: base.wFreshness,
+      wPrior: base.wPrior,
       wAvailability: base.wAvailability,
     }
   }
@@ -495,6 +516,18 @@ function computeAvoidPenalty(c: EnrichedCandidate, avoidSignals: string[]): numb
   return hasMatch ? 0.2 : 0
 }
 
+export function resolveProtectionSettings(
+  protection: 'strict' | 'moderate' | 'none' | undefined,
+): { blendLevel: ExplorationLevel; semanticFloor: number } {
+  if (protection === 'strict') return { blendLevel: 'thematic', semanticFloor: SEMANTIC_FLOOR_STRICT }
+  if (protection === 'moderate') return { blendLevel: 'thematic', semanticFloor: SEMANTIC_FLOOR_MODERATE }
+  return { blendLevel: 'exploit', semanticFloor: 0 }
+}
+
+export function passesSemanticFloor(similarity: number | null | undefined, floor: number): boolean {
+  return floor === 0 || (similarity ?? 0) >= floor
+}
+
 export const HARD_FILTER_UNKNOWN_POLICY = 'STRICT_EXCLUDE_UNKNOWN' as const
 
 export function passesHardFilters(c: EnrichedCandidate, queryPlan: RecommendationQueryPlan): boolean {
@@ -570,10 +603,24 @@ function buildReasons(
   genreNames: string[],
   peopleAffinity: number,
   keywordAffinity: number,
+  semanticIntent?: string,
 ): string[] {
   const reasons: string[] = []
-  if (semantic > 0.7) reasons.push('strong semantic match')
-  else if (semantic > 0.5) reasons.push('semantic match')
+  if (semantic > 0.7) {
+    if (semanticIntent) {
+      const shortIntent = semanticIntent.trim().split(/\s+/).slice(0, 3).join(' ')
+      reasons.push(`strong semantic match to ${shortIntent}`)
+    } else {
+      reasons.push('strong semantic match')
+    }
+  } else if (semantic > 0.5) {
+    if (semanticIntent) {
+      const shortIntent = semanticIntent.trim().split(/\s+/).slice(0, 3).join(' ')
+      reasons.push(`semantic match to ${shortIntent}`)
+    } else {
+      reasons.push('semantic match')
+    }
+  }
   if (genreAffinity > 0.6 && genreNames.length > 0) reasons.push(`strong ${genreNames[0].toLowerCase()} genre affinity`)
   else if (genreAffinity > 0.3 && genreNames.length > 0) reasons.push(`${genreNames[0].toLowerCase()} genre affinity`)
   if (languageAffinity > 0.7) reasons.push('preferred language')
@@ -613,10 +660,14 @@ export async function runHybridReranker(
     const enriched = await enrichCandidates(candidates, ctx.request.profileId, exposureCounts)
 
     const plan = ctx.queryPlan
-    const weights = getBlendedWeights(SCORE_MODEL_V2, 'exploit')
+
+    const { blendLevel, semanticFloor } = resolveProtectionSettings(plan.semanticProtection)
+    const weights = getBlendedWeights(SCORE_MODEL_V2, blendLevel)
     const allGenreScores = taste?.genreScores ?? {}
 
-    const eligible = enriched.filter((c) => passesHardFilters(c, plan))
+    const eligible = enriched.filter(
+      (c) => passesHardFilters(c, plan) && passesSemanticFloor(c.similarity, semanticFloor),
+    )
 
     const scored = eligible.map((c) => {
       const isDisliked = taste?.dislikedMediaIds.has(c.id) ?? false
@@ -659,11 +710,33 @@ export async function runHybridReranker(
 
       const finalScore = weighted - alreadyWatchedPenalty - abandonPenalty - dislikedPenalty - avoidPenalty - repetitionPenalty
 
-      const reasons = buildReasons(semantic, genreAffinity, languageAffinity, decadeAffinity, c.genreNames, peopleAffinity, keywordAffinity)
+      const semanticContribution = semantic * weights.wSemantic
+      const profileGenreContribution = genreAffinity * weights.wGenre
+      const profileThemeContribution = themeAffinity * weights.wTheme
+      const peopleContribution = peopleAffinity * weights.wPeople
+      const languageContribution = languageAffinity * weights.wLanguage
+      const eraContribution = decadeAffinity * weights.wDecade
+      const otherPositiveContributions =
+        keywordAffinity * weights.wKeyword +
+        franchiseAffinity * weights.wFranchise +
+        mediaTypeAffinity * weights.wMediaType
+      const profileContribution =
+        profileGenreContribution + profileThemeContribution + peopleContribution +
+        languageContribution + eraContribution + otherPositiveContributions
+
+      const reasons = buildReasons(semantic, genreAffinity, languageAffinity, decadeAffinity, c.genreNames, peopleAffinity, keywordAffinity, plan.semanticIntent)
 
       const breakdown: ScoreBreakdown = {
         modelVersion: SCORE_MODEL_V2.version,
         semantic,
+        semanticContribution,
+        profileContribution,
+        profileGenreContribution,
+        profileThemeContribution,
+        peopleContribution,
+        languageContribution,
+        eraContribution,
+        otherPositiveContributions,
         genreAffinity,
         themeAffinity,
         peopleAffinity,

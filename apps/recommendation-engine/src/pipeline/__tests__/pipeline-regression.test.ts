@@ -4,6 +4,7 @@ import type { FastifyBaseLogger } from 'fastify'
 import { runPipeline } from '../pipeline.js'
 import { runRecommendationFromPlan } from '../recommendation-service.js'
 import type { RecommendationQueryPlan } from '@iptvflix/api-contracts'
+import { SEMANTIC_FLOOR_MODERATE } from '../../config.js'
 
 // These tests require a populated embedding index and OPENAI_API_KEY.
 // They are skipped automatically when OPENAI_API_KEY is not configured.
@@ -20,7 +21,10 @@ const mockLog = {
   child: vi.fn(),
 } as unknown as FastifyBaseLogger
 
-function makeRegressionPlan(intent: string): RecommendationQueryPlan {
+function makeRegressionPlan(
+  intent: string,
+  semanticProtection?: 'strict' | 'moderate' | 'none',
+): RecommendationQueryPlan {
   return {
     schemaVersion: '1',
     rawQuery: intent,
@@ -34,22 +38,40 @@ function makeRegressionPlan(intent: string): RecommendationQueryPlan {
     softPreferences: {},
     userConstraints: [],
     plannerFallback: true,
+    semanticProtection,
     plannerMeta: null,
   }
 }
 
-describe('T117 — non-regression: runRecommendationFromPlan on reference intents', () => {
+describe('T117/T121 — non-regression: runRecommendationFromPlan on reference intents', () => {
   it.skipIf(!canRun)(
-    '"Aventures à travers le temps" — returns ≥ 5 results',
+    '"Aventures à travers le temps" — top-5 dominated by semantic relevance',
     async () => {
       const result = await runRecommendationFromPlan(
-        makeRegressionPlan('Aventures à travers le temps'),
-        { mediaTypes: ['movie', 'series'], limit: 10 },
+        makeRegressionPlan('Aventures à travers le temps', 'moderate'),
+        { mediaTypes: ['movie', 'series'], limit: 20, debug: true },
         'regression-aventures',
         mockLog,
       )
       expect(result.results.length, 'must return at least 5 results').toBeGreaterThanOrEqual(5)
       expect(result.results.every((r) => r.title && r.id), 'all results must have id and title').toBe(true)
+
+      // No top-5 result should have a sub-floor semantic score
+      const top5 = result.results.slice(0, 5)
+      expect(
+        top5.every((r) => (r.scoreBreakdown?.semantic ?? 0) >= SEMANTIC_FLOOR_MODERATE),
+        'all top-5 results must have semantic >= SEMANTIC_FLOOR_MODERATE',
+      ).toBe(true)
+
+      // At least 3 of top-10 should have semanticContribution > profileContribution
+      const top10 = result.results.slice(0, 10)
+      const semanticDominant = top10.filter(
+        (r) => (r.scoreBreakdown?.semanticContribution ?? 0) > (r.scoreBreakdown?.profileContribution ?? Infinity),
+      )
+      expect(
+        semanticDominant.length,
+        'at least 3 top-10 results must have semanticContribution > profileContribution',
+      ).toBeGreaterThanOrEqual(3)
     },
     30_000,
   )
@@ -70,16 +92,53 @@ describe('T117 — non-regression: runRecommendationFromPlan on reference intent
   )
 
   it.skipIf(!canRun)(
-    '"film qui retourne le cerveau" — returns ≥ 5 results',
+    '"film qui retourne le cerveau" — top-5 semantic scores within narrow range (no extreme outliers)',
     async () => {
       const result = await runRecommendationFromPlan(
-        makeRegressionPlan('film qui retourne le cerveau'),
-        { mediaTypes: ['movie', 'series'], limit: 10 },
+        makeRegressionPlan('film qui retourne le cerveau', 'moderate'),
+        { mediaTypes: ['movie', 'series'], limit: 20, debug: true },
         'regression-cerveau',
         mockLog,
       )
       expect(result.results.length, 'must return at least 5 results').toBeGreaterThanOrEqual(5)
       expect(result.results.every((r) => r.title && r.id), 'all results must have id and title').toBe(true)
+
+      // No top-5 result with sub-floor semantic score
+      const top5 = result.results.slice(0, 5)
+      expect(
+        top5.every((r) => (r.scoreBreakdown?.semantic ?? 0) >= SEMANTIC_FLOOR_MODERATE),
+        'all top-5 results must have semantic >= SEMANTIC_FLOOR_MODERATE',
+      ).toBe(true)
+
+      // Semantic scores in top-5 should not have extreme outliers (profile alone cannot rescue a weak candidate)
+      const semanticScores = top5.map((r) => r.scoreBreakdown?.semantic ?? 0)
+      const maxSemantic = Math.max(...semanticScores)
+      const minSemantic = Math.min(...semanticScores)
+      expect(
+        maxSemantic - minSemantic,
+        'top-5 semantic score spread must be < 0.25 (no extreme outlier saved by profile alone)',
+      ).toBeLessThan(0.25)
+    },
+    30_000,
+  )
+
+  it.skipIf(!canRun)(
+    '"SF qui fait réfléchir" — top-5 dominated by semantic relevance',
+    async () => {
+      const result = await runRecommendationFromPlan(
+        makeRegressionPlan('SF qui fait réfléchir', 'moderate'),
+        { mediaTypes: ['movie', 'series'], limit: 20, debug: true },
+        'regression-sf',
+        mockLog,
+      )
+      expect(result.results.length, 'must return at least 5 results').toBeGreaterThanOrEqual(5)
+
+      // No top-5 result with sub-floor semantic score
+      const top5 = result.results.slice(0, 5)
+      expect(
+        top5.every((r) => (r.scoreBreakdown?.semantic ?? 0) >= SEMANTIC_FLOOR_MODERATE),
+        'all top-5 results must have semantic >= SEMANTIC_FLOOR_MODERATE',
+      ).toBe(true)
     },
     30_000,
   )

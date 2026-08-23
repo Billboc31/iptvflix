@@ -1,10 +1,27 @@
 import type { RecommendationQueryPlan, QueryPlanHardFilters } from '@iptvflix/api-contracts'
 
+function resolveSemanticProtection(
+  generationType: string | undefined | null,
+): 'strict' | 'moderate' | 'none' {
+  switch (generationType) {
+    case 'FIXED':
+    case 'EDITORIAL':
+      return 'strict'
+    case 'DISCOVERY':
+      return 'none'
+    case 'PERSONALIZED':
+    case 'EXPLORATION':
+    default:
+      return 'moderate'
+  }
+}
+
 export function buildQueryPlanFromShelfConcept(concept: {
   semanticIntent: string
   title: string
   desiredMediaTypes: string[] | null
   freshnessPolicy: string | null
+  generationType?: string | null
 }): RecommendationQueryPlan {
   const rawDesiredTypes = (concept.desiredMediaTypes ?? []) as string[]
   const resolvedMediaTypes = rawDesiredTypes
@@ -33,6 +50,7 @@ export function buildQueryPlanFromShelfConcept(concept: {
     softPreferences: {},
     userConstraints: [],
     plannerFallback: true,
+    semanticProtection: resolveSemanticProtection(concept.generationType),
     plannerMeta: null,
   }
 }
