@@ -42,6 +42,7 @@ export interface StageResult {
   filteredCount?: number
   finalCount?: number
   candidates?: CandidateItem[]
+  diagnostics?: Record<string, unknown>
 }
 
 export interface PipelineContext {

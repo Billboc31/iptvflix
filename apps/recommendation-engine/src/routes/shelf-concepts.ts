@@ -116,11 +116,24 @@ export async function shelfConceptsRoutes(app: FastifyInstance): Promise<void> {
         scoreBreakdown: c.scoreBreakdown,
       }))
 
+      const rerankerStage = finalResult.stageOutputs.find((s) => s.stage === 'hybrid-reranker')
+
       return reply.send({
         rawVector,
         finalPersonalized,
         candidatePoolSize: rawSemanticResult.outputCount,
         queryPlan: plan,
+        semanticAvailable: rawSemanticResult.available,
+        semanticFallbackReason: rawSemanticResult.reason,
+        semanticDiagnostics: rawSemanticResult.diagnostics,
+        fallbackFlags: finalResult.engineMetadata.fallbackFlags,
+        stageAvailability: finalResult.stageAvailability,
+        retrievalCounts: {
+          retrieved: rawSemanticResult.outputCount,
+          postFilter: rerankerStage?.filteredCount ?? null,
+          reranked: rerankerStage?.outputCount ?? null,
+          final: finalResult.results.length,
+        },
       })
     },
   )

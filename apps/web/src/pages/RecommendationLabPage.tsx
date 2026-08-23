@@ -204,6 +204,26 @@ function QueryPlanPanel({ plan }: { plan: RecommendationQueryPlan }) {
   )
 }
 
+function DiagnosticsBlock({ diagnostics }: { diagnostics: Record<string, unknown> }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/3">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-2 w-full px-4 py-2 text-xs text-gray-400 hover:text-white text-left"
+      >
+        <span className="font-semibold uppercase tracking-wide">Semantic diagnostics</span>
+        <span className="ml-auto">{expanded ? '▲' : '▼'}</span>
+      </button>
+      {expanded && (
+        <pre className="px-4 pb-3 text-xs text-gray-400 overflow-auto max-h-64 bg-black/20 rounded-b">
+          {JSON.stringify(diagnostics, null, 2)}
+        </pre>
+      )}
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Shelf Concepts tab
 // ---------------------------------------------------------------------------
@@ -478,6 +498,53 @@ function ShelfConceptsTab() {
               )}
               {previewResponse && !previewLoading && (
                 <div className="space-y-6">
+                  {/* Fallback warning banner */}
+                  {(!previewResponse.semanticAvailable || previewResponse.fallbackFlags.includes('popularity-fallback')) && (
+                    <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 space-y-1">
+                      <p className="text-sm font-semibold text-yellow-400">Semantic retrieval failed — fallback results displayed</p>
+                      {previewResponse.semanticFallbackReason && (
+                        <p className="text-xs text-yellow-300/80">{previewResponse.semanticFallbackReason}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Pipeline counters */}
+                  <div className="rounded-lg border border-white/10 bg-white/3 px-4 py-3">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Pipeline counts</p>
+                    <div className="flex items-center gap-2 text-sm font-mono flex-wrap">
+                      {(['retrieved', 'postFilter', 'reranked', 'final'] as const).map((key, i, arr) => (
+                        <span key={key} className="flex items-center gap-2">
+                          <span className="flex flex-col items-center">
+                            <span className="text-white font-semibold">
+                              {previewResponse.retrievalCounts[key] !== null ? previewResponse.retrievalCounts[key] : '—'}
+                            </span>
+                            <span className="text-xs text-gray-500">{key}</span>
+                          </span>
+                          {i < arr.length - 1 && <span className="text-gray-600">→</span>}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Stage availability badges */}
+                  {previewResponse.stageAvailability.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {previewResponse.stageAvailability.map((s) => (
+                        <span
+                          key={s.name}
+                          title={s.reason ?? ''}
+                          className={`px-2 py-0.5 rounded-full text-xs font-medium border ${
+                            s.available
+                              ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                              : 'bg-red-500/10 text-red-400 border-red-500/30'
+                          }`}
+                        >
+                          {s.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Raw vector section */}
                   <div>
                     <p className="text-xs font-semibold text-[#e50914] uppercase tracking-wide mb-1">Raw vector</p>
@@ -531,6 +598,11 @@ function ShelfConceptsTab() {
                       })}
                     </div>
                   </div>
+
+                  {/* Semantic diagnostics (collapsible) */}
+                  {previewResponse.semanticDiagnostics && Object.keys(previewResponse.semanticDiagnostics).length > 0 && (
+                    <DiagnosticsBlock diagnostics={previewResponse.semanticDiagnostics} />
+                  )}
 
                   {/* Query plan */}
                   <QueryPlanPanel plan={previewResponse.queryPlan} />
