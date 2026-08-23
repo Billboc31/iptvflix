@@ -14,6 +14,14 @@ Each concept object must have exactly these keys:
 - title (string, max 60 chars): short, evocative display label. Prefer French if profile language is unknown.
 - rawIntent (string): 1–2 sentences describing what items this shelf should contain.
 - semanticIntent (string): 3–5 rich sentences for embedding search — include themes, tone, style, mood.
+  For compound thematic intents (two or more joined concepts), the FIRST sentence must name the most
+  restrictive defining concept and explicitly contrast it from its secondary themes using language like
+  "specifically about X, not merely Y or Z". This anchors the embedding around the defining concept.
+- semanticAnchor (string | null): For compound thematic intents, a short phrase (5–15 words) naming
+  the single most restrictive defining concept (e.g. "time travel and temporal displacement",
+  "police investigation in outer space"). Omit (null) for simple, non-compound intents.
+  The anchor must be MORE restrictive than the full concept title — it names what CANNOT be absent
+  without the concept losing its identity. Never include secondary themes in the anchor.
 - generationType (string): one of "PERSONALIZED" | "EXPLORATION" | "DISCOVERY" | "FIXED" | "EDITORIAL"
 - reasonCodes (string[]): brief codes explaining why this concept was chosen, e.g. ["top_genre:thriller", "binge_tendency", "adjacent_to_liked_director"]
 - desiredMediaTypes (string[]): subset of ["MOVIE", "SERIES"] — use both if unspecified.

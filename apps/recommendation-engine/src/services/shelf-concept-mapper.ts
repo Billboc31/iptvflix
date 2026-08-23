@@ -18,6 +18,7 @@ function resolveSemanticProtection(
 
 export function buildQueryPlanFromShelfConcept(concept: {
   semanticIntent: string
+  semanticAnchor?: string | null
   title: string
   desiredMediaTypes: string[] | null
   freshnessPolicy: string | null
@@ -42,6 +43,7 @@ export function buildQueryPlanFromShelfConcept(concept: {
     rawQuery: concept.semanticIntent,
     displayTitle: concept.title,
     semanticIntent: concept.semanticIntent,
+    semanticAnchor: concept.semanticAnchor ?? null,
     desiredThemes: [],
     desiredTone: [],
     avoidSignals: [],

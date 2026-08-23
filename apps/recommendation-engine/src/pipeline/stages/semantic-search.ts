@@ -1,6 +1,6 @@
 import OpenAI from 'openai'
 import { pgClient } from '../../db/client.js'
-import { OPENAI_API_KEY, EMBEDDING_MODEL_PROVIDER, EMBEDDING_MODEL_NAME, SEMANTIC_RETRIEVAL_LIMIT, SEMANTIC_RETRIEVAL_MAX_CAP } from '../../config.js'
+import { OPENAI_API_KEY, EMBEDDING_MODEL_PROVIDER, EMBEDDING_MODEL_NAME, SEMANTIC_RETRIEVAL_LIMIT, SEMANTIC_RETRIEVAL_MAX_CAP, SEMANTIC_ANCHOR_BLEND_ALPHA } from '../../config.js'
 import type { StageResult, CandidateItem, PipelineContext, MediaType } from '../types.js'
 
 let pgvectorAvailable: boolean | null = null
@@ -124,7 +124,15 @@ export async function runSemanticSearch(
     }
 
     const openai = new OpenAI({ apiKey: OPENAI_API_KEY })
-    const queryVector = await embedQuery(openai, semanticIntent)
+
+    const semanticAnchor = ctx.queryPlan?.semanticAnchor
+    const useAnchorBlend = !!semanticAnchor && SEMANTIC_ANCHOR_BLEND_ALPHA > 0
+
+    const [queryVector, anchorVector] = await Promise.all([
+      embedQuery(openai, semanticIntent),
+      useAnchorBlend ? embedQuery(openai, semanticAnchor!) : Promise.resolve([] as number[]),
+    ])
+
     queryVectorDim = queryVector.length
     if (queryVector.length === 0) {
       return {
@@ -140,18 +148,41 @@ export async function runSemanticSearch(
 
     usePgvector = await checkPgvector()
 
-    const vectorLiteral = `'[${queryVector.join(',')}]'`
-    const arrayLiteral = `ARRAY[${queryVector.join(',')}]::double precision[]`
-    const distanceExpr = usePgvector
-      ? `(me.embedding <=> ${vectorLiteral}::vector)`
+    const intentVectorLiteral = `'[${queryVector.join(',')}]'`
+    const intentArrayLiteral = `ARRAY[${queryVector.join(',')}]::double precision[]`
+
+    // Single-embedding distance (legacy path or when no anchor)
+    const intentDistanceExpr = usePgvector
+      ? `(me.embedding <=> ${intentVectorLiteral}::vector)`
       : `(1.0 - (
-          (SELECT COALESCE(SUM(x * y), 0) FROM unnest(me.embedding, ${arrayLiteral}) AS t(x, y))
+          (SELECT COALESCE(SUM(x * y), 0) FROM unnest(me.embedding, ${intentArrayLiteral}) AS t(x, y))
           / NULLIF(
             sqrt((SELECT COALESCE(SUM(x * x), 0) FROM unnest(me.embedding) AS u(x)))
-            * sqrt((SELECT COALESCE(SUM(y * y), 0) FROM unnest(${arrayLiteral}) AS v(y))),
+            * sqrt((SELECT COALESCE(SUM(y * y), 0) FROM unnest(${intentArrayLiteral}) AS v(y))),
             0
           )
         ))`
+
+    let distanceExpr: string
+    if (useAnchorBlend && anchorVector.length > 0) {
+      const anchorVectorLiteral = `'[${anchorVector.join(',')}]'`
+      const anchorArrayLiteral = `ARRAY[${anchorVector.join(',')}]::double precision[]`
+      const anchorDistanceExpr = usePgvector
+        ? `(me.embedding <=> ${anchorVectorLiteral}::vector)`
+        : `(1.0 - (
+            (SELECT COALESCE(SUM(x * y), 0) FROM unnest(me.embedding, ${anchorArrayLiteral}) AS t(x, y))
+            / NULLIF(
+              sqrt((SELECT COALESCE(SUM(x * x), 0) FROM unnest(me.embedding) AS u(x)))
+              * sqrt((SELECT COALESCE(SUM(y * y), 0) FROM unnest(${anchorArrayLiteral}) AS v(y))),
+              0
+            )
+          ))`
+      // blendedDistance = ALPHA * anchorDistance + (1 - ALPHA) * intentDistance
+      // This preserves ordering equivalence: blendedSimilarity = ALPHA * anchorSim + (1-ALPHA) * intentSim
+      distanceExpr = `(${SEMANTIC_ANCHOR_BLEND_ALPHA} * ${anchorDistanceExpr} + ${1 - SEMANTIC_ANCHOR_BLEND_ALPHA} * ${intentDistanceExpr})`
+    } else {
+      distanceExpr = intentDistanceExpr
+    }
 
     // media_embeddings.media_type is stored as MOVIE/SERIES (API embedding convention).
     const allowedTypes = dbMediaTypes.map((t) => `'${t}'`).join(', ')
@@ -218,6 +249,8 @@ export async function runSemanticSearch(
         totalEmbeddings: totalCount,
         eligibleEmbeddings: eligibleCount,
         dbMediaTypes,
+        anchorBlend: useAnchorBlend,
+        semanticAnchorBlendAlpha: useAnchorBlend ? SEMANTIC_ANCHOR_BLEND_ALPHA : null,
       },
       'stage complete',
     )
@@ -239,6 +272,8 @@ export async function runSemanticSearch(
         queryVectorDim,
         retrievedRawRows,
         dbMediaTypes,
+        anchorBlend: useAnchorBlend,
+        semanticAnchorBlendAlpha: useAnchorBlend ? SEMANTIC_ANCHOR_BLEND_ALPHA : null,
       },
     }
   } catch (err) {

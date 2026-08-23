@@ -84,4 +84,36 @@ describe('buildQueryPlanFromShelfConcept', () => {
     expect(plan.plannerFallback).toBe(true)
     expect(plan.plannerMeta).toBeNull()
   })
+
+  it('forwards semanticAnchor when provided', () => {
+    const plan = buildQueryPlanFromShelfConcept({
+      semanticIntent: 'Aventures à travers le temps',
+      title: 'Aventures à travers le temps',
+      desiredMediaTypes: [],
+      freshnessPolicy: null,
+      semanticAnchor: 'time travel and temporal displacement',
+    })
+    expect(plan.semanticAnchor).toBe('time travel and temporal displacement')
+  })
+
+  it('sets semanticAnchor to null when not provided', () => {
+    const plan = buildQueryPlanFromShelfConcept({
+      semanticIntent: 'test',
+      title: 'test',
+      desiredMediaTypes: [],
+      freshnessPolicy: null,
+    })
+    expect(plan.semanticAnchor).toBeNull()
+  })
+
+  it('sets semanticAnchor to null when explicitly null', () => {
+    const plan = buildQueryPlanFromShelfConcept({
+      semanticIntent: 'test',
+      title: 'test',
+      desiredMediaTypes: [],
+      freshnessPolicy: null,
+      semanticAnchor: null,
+    })
+    expect(plan.semanticAnchor).toBeNull()
+  })
 })

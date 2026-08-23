@@ -33,3 +33,7 @@ export const SEMANTIC_WEIGHT_THEMATIC = Number(process.env.SEMANTIC_WEIGHT_THEMA
 // At normalizedSemantic=1 (pool top):   factor = 1.0         — full profile boost
 export const PROFILE_BOOST_MIN_FACTOR = Number(process.env.PROFILE_BOOST_MIN_FACTOR ?? 0.15)
 export const PROFILE_BOOST_MODULATION_POWER = Number(process.env.PROFILE_BOOST_MODULATION_POWER ?? 1.5)
+// Blend weight for semanticAnchor embedding vs full semanticIntent embedding (T123).
+// blendedSimilarity = ALPHA * anchorSimilarity + (1 - ALPHA) * intentSimilarity
+// 0.0 = full intent only (legacy behaviour), 1.0 = anchor only.
+export const SEMANTIC_ANCHOR_BLEND_ALPHA = Number(process.env.SEMANTIC_ANCHOR_BLEND_ALPHA ?? 0.45)
