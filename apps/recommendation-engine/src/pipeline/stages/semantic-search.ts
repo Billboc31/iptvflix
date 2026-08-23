@@ -1,7 +1,7 @@
 import OpenAI from 'openai'
 import { pgClient } from '../../db/client.js'
 import { OPENAI_API_KEY, EMBEDDING_MODEL_PROVIDER, EMBEDDING_MODEL_NAME, SEMANTIC_RETRIEVAL_LIMIT, SEMANTIC_RETRIEVAL_MAX_CAP } from '../../config.js'
-import type { StageResult, CandidateItem, PipelineContext } from '../types.js'
+import type { StageResult, CandidateItem, PipelineContext, MediaType } from '../types.js'
 
 let pgvectorAvailable: boolean | null = null
 let detectedColumnType: string | null = null
@@ -36,6 +36,15 @@ async function embedQuery(openai: OpenAI, text: string): Promise<number[]> {
   return response.data[0]?.embedding ?? []
 }
 
+/** Pipeline uses lowercase media types; media_embeddings stores uppercase (MOVIE/SERIES). */
+function toDbMediaType(t: MediaType): 'MOVIE' | 'SERIES' {
+  return t === 'series' ? 'SERIES' : 'MOVIE'
+}
+
+function fromDbMediaType(t: string): MediaType {
+  return t.toUpperCase() === 'SERIES' ? 'series' : 'movie'
+}
+
 export async function runSemanticSearch(
   ctx: PipelineContext,
   inputCandidates: CandidateItem[],
@@ -59,6 +68,7 @@ export async function runSemanticSearch(
     SEMANTIC_RETRIEVAL_MAX_CAP,
   )
   const mediaTypes = ctx.request.mediaTypes ?? ['movie', 'series']
+  const dbMediaTypes = mediaTypes.map(toDbMediaType)
 
   // Hoisted so the catch block can include them in diagnostics
   let totalCount = 0
@@ -116,12 +126,24 @@ export async function runSemanticSearch(
     const openai = new OpenAI({ apiKey: OPENAI_API_KEY })
     const queryVector = await embedQuery(openai, semanticIntent)
     queryVectorDim = queryVector.length
+    if (queryVector.length === 0) {
+      return {
+        stage: 'semantic-search',
+        available: false,
+        reason: 'empty query embedding',
+        durationMs: Date.now() - start,
+        inputCount: inputCandidates.length,
+        outputCount: 0,
+        diagnostics: { totalEmbeddings: totalCount, eligibleEmbeddings: eligibleCount, detectedModels, usePgvector: null, retrievalLimit, queryVectorDim, retrievedRawRows: 0 },
+      }
+    }
+
     usePgvector = await checkPgvector()
 
     const vectorLiteral = `'[${queryVector.join(',')}]'`
     const arrayLiteral = `ARRAY[${queryVector.join(',')}]::double precision[]`
     const distanceExpr = usePgvector
-      ? `(me.embedding::vector <=> ${vectorLiteral}::vector)`
+      ? `(me.embedding <=> ${vectorLiteral}::vector)`
       : `(1.0 - (
           (SELECT COALESCE(SUM(x * y), 0) FROM unnest(me.embedding, ${arrayLiteral}) AS t(x, y))
           / NULLIF(
@@ -131,9 +153,8 @@ export async function runSemanticSearch(
           )
         ))`
 
-    const allowedTypes = mediaTypes
-      .map((t) => `'${t}'`)
-      .join(', ')
+    // media_embeddings.media_type is stored as MOVIE/SERIES (API embedding convention).
+    const allowedTypes = dbMediaTypes.map((t) => `'${t}'`).join(', ')
 
     const rows = await pgClient<{
       media_id: string
@@ -147,24 +168,24 @@ export async function runSemanticSearch(
         me.media_id,
         me.media_type,
         CASE me.media_type
-          WHEN 'movie' THEN m.title
-          WHEN 'series' THEN s.title
+          WHEN 'MOVIE' THEN m.title
+          WHEN 'SERIES' THEN s.title
           ELSE ''
         END AS title,
         CASE me.media_type
-          WHEN 'movie' THEN m.year
-          WHEN 'series' THEN s.first_air_year
+          WHEN 'MOVIE' THEN m.year
+          WHEN 'SERIES' THEN s.first_air_year
           ELSE NULL
         END AS year,
         CASE me.media_type
-          WHEN 'movie' THEN m.poster_path
-          WHEN 'series' THEN s.poster_path
+          WHEN 'MOVIE' THEN m.poster_path
+          WHEN 'SERIES' THEN s.poster_path
           ELSE NULL
         END AS poster_path,
         ${pgClient.unsafe(distanceExpr)} AS distance
       FROM media_embeddings me
-      LEFT JOIN movies m ON me.media_type = 'movie' AND me.media_id = m.id
-      LEFT JOIN series s ON me.media_type = 'series' AND me.media_id = s.id
+      LEFT JOIN movies m ON me.media_type = 'MOVIE' AND me.media_id = m.id
+      LEFT JOIN series s ON me.media_type = 'SERIES' AND me.media_id = s.id
       WHERE
         me.model_provider = ${EMBEDDING_MODEL_PROVIDER}
         AND me.model_name = ${EMBEDDING_MODEL_NAME}
@@ -177,8 +198,8 @@ export async function runSemanticSearch(
 
     const candidates: CandidateItem[] = rows.map((row) => ({
       id: row.media_id,
-      mediaType: row.media_type as 'movie' | 'series',
-      title: row.title,
+      mediaType: fromDbMediaType(row.media_type),
+      title: row.title || 'Unknown',
       year: row.year,
       posterPath: row.poster_path,
       similarity: Math.max(0, 1 - Number(row.distance)),
@@ -186,7 +207,18 @@ export async function runSemanticSearch(
     }))
 
     ctx.log.info(
-      { requestId: ctx.requestId, stage: 'semantic-search', durationMs: Date.now() - start, retrievalLimit, candidateCount: candidates.length, usePgvector, queryVectorDim, totalEmbeddings: totalCount, eligibleEmbeddings: eligibleCount },
+      {
+        requestId: ctx.requestId,
+        stage: 'semantic-search',
+        durationMs: Date.now() - start,
+        retrievalLimit,
+        candidateCount: candidates.length,
+        usePgvector,
+        queryVectorDim,
+        totalEmbeddings: totalCount,
+        eligibleEmbeddings: eligibleCount,
+        dbMediaTypes,
+      },
       'stage complete',
     )
 
@@ -197,7 +229,17 @@ export async function runSemanticSearch(
       inputCount: inputCandidates.length,
       outputCount: candidates.length,
       candidates,
-      diagnostics: { totalEmbeddings: totalCount, eligibleEmbeddings: eligibleCount, detectedModels, usePgvector, columnType: detectedColumnType, retrievalLimit, queryVectorDim, retrievedRawRows },
+      diagnostics: {
+        totalEmbeddings: totalCount,
+        eligibleEmbeddings: eligibleCount,
+        detectedModels,
+        usePgvector,
+        columnType: detectedColumnType,
+        retrievalLimit,
+        queryVectorDim,
+        retrievedRawRows,
+        dbMediaTypes,
+      },
     }
   } catch (err) {
     ctx.log.error({ requestId: ctx.requestId, stage: 'semantic-search', err }, 'stage error')
