@@ -15,6 +15,7 @@ import {
 } from '../../db/schema.js'
 import type { StageResult, CandidateItem, PipelineContext } from '../types.js'
 import type { RecommendationQueryPlan, ScoreBreakdown } from '@iptvflix/api-contracts'
+import { PROFILE_MODULATION_POWER } from '../../config.js'
 
 /** @deprecated Use SCORE_MODEL_V2 for all production paths. Kept as a reference baseline for tests. */
 export const SCORE_MODEL_V1 = {
@@ -470,6 +471,10 @@ export function computeMediaTypeAffinity(c: EnrichedCandidate, mediaTypePreferen
   return c.mediaType === dominant ? 1.0 : 0.3
 }
 
+export function computeSemanticRelevanceFactor(semantic: number, poolMaxSemantic: number, power: number): number {
+  return Math.pow(semantic / poolMaxSemantic, power)
+}
+
 function computeFreshness(year: number | null | undefined): number {
   if (year == null) return 0.5
   const currentYear = new Date().getFullYear()
@@ -618,6 +623,8 @@ export async function runHybridReranker(
 
     const eligible = enriched.filter((c) => passesHardFilters(c, plan))
 
+    const poolMaxSemantic = Math.max(...eligible.map((c) => c.similarity ?? 0), Number.EPSILON)
+
     const scored = eligible.map((c) => {
       const isDisliked = taste?.dislikedMediaIds.has(c.id) ?? false
       const isNotInterested = taste?.notInterestedMediaIds.has(c.id) ?? false
@@ -643,8 +650,7 @@ export async function runHybridReranker(
       const avoidPenalty = computeAvoidPenalty(c, plan.avoidSignals)
       const repetitionPenalty = 0.05 * Math.min(c.exposureCount, 4)
 
-      const weighted =
-        semantic * weights.wSemantic +
+      const profileBoostRaw =
         genreAffinity * weights.wGenre +
         themeAffinity * weights.wTheme +
         peopleAffinity * weights.wPeople +
@@ -652,7 +658,14 @@ export async function runHybridReranker(
         franchiseAffinity * weights.wFranchise +
         languageAffinity * weights.wLanguage +
         decadeAffinity * weights.wDecade +
-        mediaTypeAffinity * weights.wMediaType +
+        mediaTypeAffinity * weights.wMediaType
+
+      const semanticRelevanceFactor = computeSemanticRelevanceFactor(semantic, poolMaxSemantic, PROFILE_MODULATION_POWER)
+      const profileBoostEffective = profileBoostRaw * semanticRelevanceFactor
+
+      const weighted =
+        semantic * weights.wSemantic +
+        profileBoostEffective +
         fresh * weights.wFreshness +
         prior * weights.wPrior +
         availBonus * weights.wAvailability
@@ -672,6 +685,9 @@ export async function runHybridReranker(
         languageAffinity,
         decadeAffinity,
         mediaTypeAffinity,
+        semanticRelevanceFactor,
+        profileBoostRaw,
+        profileBoostEffective,
         qualityPrior: prior,
         freshness: fresh,
         availabilityBonus: availBonus,

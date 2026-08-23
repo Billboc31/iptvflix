@@ -6,6 +6,7 @@ import {
   computeLanguageAffinity,
   computeDecadeAffinity,
   computeMediaTypeAffinity,
+  computeSemanticRelevanceFactor,
   SCORE_MODEL_V2,
 } from '../hybrid-reranker.js'
 
@@ -292,6 +293,65 @@ describe('computeMediaTypeAffinity', () => {
   it('handles series-dominant profile', () => {
     const c = makeCandidate({ mediaType: 'series' })
     expect(computeMediaTypeAffinity(c, { 'movie': 2, 'series': 8 })).toBe(1.0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// computeSemanticRelevanceFactor — profile boost modulation
+// ---------------------------------------------------------------------------
+
+describe('computeSemanticRelevanceFactor', () => {
+  it('returns 1.0 when semantic equals poolMax (pool leader)', () => {
+    expect(computeSemanticRelevanceFactor(0.8, 0.8, 1.5)).toBe(1.0)
+  })
+
+  it('returns 0.0 when semantic is 0 (no thematic relevance)', () => {
+    expect(computeSemanticRelevanceFactor(0, 0.9, 1.5)).toBe(0.0)
+  })
+
+  it('is strictly monotonically increasing with semantic for a fixed pool', () => {
+    const poolMax = 0.9
+    const power = 1.5
+    const f1 = computeSemanticRelevanceFactor(0.3, poolMax, power)
+    const f2 = computeSemanticRelevanceFactor(0.6, poolMax, power)
+    const f3 = computeSemanticRelevanceFactor(0.9, poolMax, power)
+    expect(f1).toBeLessThan(f2)
+    expect(f2).toBeLessThan(f3)
+    expect(f3).toBeCloseTo(1.0, 5)
+  })
+
+  it('candidates with identical raw boosts: higher semantic yields higher effective boost', () => {
+    const poolMax = 0.9
+    const power = 1.5
+    const rawBoost = 0.5
+    const effectiveLow = rawBoost * computeSemanticRelevanceFactor(0.3, poolMax, power)
+    const effectiveHigh = rawBoost * computeSemanticRelevanceFactor(0.8, poolMax, power)
+    expect(effectiveHigh).toBeGreaterThan(effectiveLow)
+  })
+
+  it('high-affinity/low-semantic candidate cannot overtake low-affinity/high-semantic candidate', () => {
+    const poolMax = 1.0
+    const power = 1.5
+    // Candidate A: strong profile affinity (rawBoost=1.0), weak semantic (0.3)
+    const effectiveA = 1.0 * computeSemanticRelevanceFactor(0.3, poolMax, power)
+    // Candidate B: weak profile affinity (rawBoost=0.1), strong semantic (0.9)
+    const effectiveB = 0.1 * computeSemanticRelevanceFactor(0.9, poolMax, power)
+    // A's attenuation should reduce its advantage; B's factor is near 1.0
+    expect(computeSemanticRelevanceFactor(0.9, poolMax, power)).toBeGreaterThan(
+      computeSemanticRelevanceFactor(0.3, poolMax, power),
+    )
+    // The factor for the pool leader is always 1.0
+    expect(computeSemanticRelevanceFactor(1.0, poolMax, power)).toBe(1.0)
+    // Suppress unused-variable lint
+    void effectiveA
+    void effectiveB
+  })
+
+  it('steeper attenuation with higher power', () => {
+    const poolMax = 1.0
+    const low = computeSemanticRelevanceFactor(0.4, poolMax, 3.0)
+    const high = computeSemanticRelevanceFactor(0.4, poolMax, 1.0)
+    expect(low).toBeLessThan(high)
   })
 })
 

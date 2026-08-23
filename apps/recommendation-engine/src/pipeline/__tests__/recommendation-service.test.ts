@@ -125,7 +125,9 @@ const TASTE_ROW = {
 
 // 8 movie candidates ordered by descending vector similarity.
 // Candidates 0–6 have no genre affinity; candidate 7 has genre + language match
-// despite the lowest vector similarity (0.1).
+// and a moderate semantic similarity (0.55) — within the semantically relevant band.
+// T124: profile boosts are scaled by (semantic / poolMax)^1.5, so only candidates
+// with reasonable semantic relevance can be promoted by personalization.
 const CANDIDATES: CandidateItem[] = [
   { id: 'mov-0', mediaType: 'movie', title: 'Generic 0', year: 2010, similarity: 0.90 },
   { id: 'mov-1', mediaType: 'movie', title: 'Generic 1', year: 2011, similarity: 0.80 },
@@ -134,7 +136,7 @@ const CANDIDATES: CandidateItem[] = [
   { id: 'mov-4', mediaType: 'movie', title: 'Generic 4', year: 2014, similarity: 0.50 },
   { id: 'mov-5', mediaType: 'movie', title: 'Generic 5', year: 2015, similarity: 0.40 },
   { id: 'mov-6', mediaType: 'movie', title: 'Generic 6', year: 2016, similarity: 0.30 },
-  { id: 'mov-7', mediaType: 'movie', title: 'Perfect Match', year: 2017, similarity: 0.10 },
+  { id: 'mov-7', mediaType: 'movie', title: 'Perfect Match', year: 2017, similarity: 0.55 },
 ]
 
 // Enrichment data returned by the DB for each movie
@@ -181,7 +183,7 @@ beforeEach(() => {
 })
 
 describe('runRecommendationFromPlan', () => {
-  it('promotes candidate at vector rank >5 to final top-3 via SCORE_MODEL_V2', async () => {
+  it('promotes semantically relevant candidate from vector rank >3 to final top-3 via profile affinity (T124: boost bounded by semantic relevance)', async () => {
     // Mock semantic search to return candidates in vector order (best first)
     mockSemanticFn.mockResolvedValueOnce({
       stage: 'semantic-search',
@@ -204,13 +206,15 @@ describe('runRecommendationFromPlan', () => {
 
     expect(result.results.length).toBeGreaterThan(0)
 
-    // 'mov-7' was vector rank 8 (worst) but should be in final top-3
-    // because it has genre-suspense + French language + keyword 'suspense'
+    // 'mov-7' was vector rank 5 (similarity 0.55 vs pool max 0.90) but should be in final top-3
+    // because it has genre-suspense + French language + keyword 'suspense'.
+    // T124: the profile boost is attenuated by (0.55/0.90)^1.5 ≈ 0.48, preserving enough signal
+    // to promote within the semantically relevant band.
     const finalIds = result.results.map((r) => r.id)
     const positionOf7 = finalIds.indexOf('mov-7')
 
-    expect(positionOf7, '"Perfect Match" (vector rank 8) must appear in final top-3').toBeGreaterThanOrEqual(0)
-    expect(positionOf7, '"Perfect Match" must be in top-3 after V2 scoring').toBeLessThan(3)
+    expect(positionOf7, '"Perfect Match" (vector rank 5) must appear in the results').toBeGreaterThanOrEqual(0)
+    expect(positionOf7, '"Perfect Match" must be in top-3 after V2 scoring with modulated profile boost').toBeLessThan(3)
   })
 
   it('returns SCORE_MODEL_V2 version in engineMetadata for all paths', async () => {

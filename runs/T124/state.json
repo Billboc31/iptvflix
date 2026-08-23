@@ -1,7 +1,7 @@
 {
   "ticket_id": "T124",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T124-prevent-profile-boosts-from-overpowering-core-shel",
   "issue_number": 264,
-  "updated_at": "2026-08-23T19:21:33Z"
+  "updated_at": "2026-08-23T19:30:31Z"
 }
