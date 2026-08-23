@@ -8,6 +8,8 @@ import {
   computeMediaTypeAffinity,
   getBlendedWeights,
   SCORE_MODEL_V2,
+  resolveProtectionSettings,
+  passesSemanticFloor,
 } from '../hybrid-reranker.js'
 import {
   SEMANTIC_FLOOR_MODERATE,
@@ -306,19 +308,46 @@ describe('computeMediaTypeAffinity', () => {
 // ---------------------------------------------------------------------------
 
 describe('semantic floor protection', () => {
-  it('SEMANTIC_FLOOR_MODERATE excludes candidates with similarity below the threshold', () => {
-    // Candidates with similarity < floor are excluded before scoring
-    expect(0.20 >= SEMANTIC_FLOOR_MODERATE).toBe(false)
-    expect(0.27 >= SEMANTIC_FLOOR_MODERATE).toBe(false)
-    expect(SEMANTIC_FLOOR_MODERATE >= SEMANTIC_FLOOR_MODERATE).toBe(true) // boundary passes
-    expect(0.35 >= SEMANTIC_FLOOR_MODERATE).toBe(true)
+  it('resolveProtectionSettings returns thematic blend and SEMANTIC_FLOOR_STRICT for strict', () => {
+    const { blendLevel, semanticFloor } = resolveProtectionSettings('strict')
+    expect(blendLevel).toBe('thematic')
+    expect(semanticFloor).toBe(SEMANTIC_FLOOR_STRICT)
+  })
+
+  it('resolveProtectionSettings returns thematic blend and SEMANTIC_FLOOR_MODERATE for moderate', () => {
+    const { blendLevel, semanticFloor } = resolveProtectionSettings('moderate')
+    expect(blendLevel).toBe('thematic')
+    expect(semanticFloor).toBe(SEMANTIC_FLOOR_MODERATE)
+  })
+
+  it('resolveProtectionSettings returns exploit blend and zero floor for none/undefined', () => {
+    expect(resolveProtectionSettings('none')).toEqual({ blendLevel: 'exploit', semanticFloor: 0 })
+    expect(resolveProtectionSettings(undefined)).toEqual({ blendLevel: 'exploit', semanticFloor: 0 })
+  })
+
+  it('passesSemanticFloor excludes candidates strictly below the floor', () => {
+    expect(passesSemanticFloor(0.20, SEMANTIC_FLOOR_MODERATE)).toBe(false)
+    expect(passesSemanticFloor(0.27, SEMANTIC_FLOOR_MODERATE)).toBe(false)
+    expect(passesSemanticFloor(null, SEMANTIC_FLOOR_MODERATE)).toBe(false)
+  })
+
+  it('passesSemanticFloor admits candidates at or above the floor', () => {
+    expect(passesSemanticFloor(SEMANTIC_FLOOR_MODERATE, SEMANTIC_FLOOR_MODERATE)).toBe(true)
+    expect(passesSemanticFloor(0.35, SEMANTIC_FLOOR_MODERATE)).toBe(true)
+    expect(passesSemanticFloor(0.90, SEMANTIC_FLOOR_STRICT)).toBe(true)
+  })
+
+  it('passesSemanticFloor always admits when floor is 0', () => {
+    expect(passesSemanticFloor(0, 0)).toBe(true)
+    expect(passesSemanticFloor(null, 0)).toBe(true)
+    expect(passesSemanticFloor(0.01, 0)).toBe(true)
   })
 
   it('SEMANTIC_FLOOR_STRICT is higher than SEMANTIC_FLOOR_MODERATE', () => {
     expect(SEMANTIC_FLOOR_STRICT).toBeGreaterThan(SEMANTIC_FLOOR_MODERATE)
   })
 
-  it("thematic blend sets wSemantic to SEMANTIC_WEIGHT_THEMATIC", () => {
+  it('thematic blend sets wSemantic to SEMANTIC_WEIGHT_THEMATIC', () => {
     const weights = getBlendedWeights(SCORE_MODEL_V2, 'thematic')
     expect(weights.wSemantic).toBe(SEMANTIC_WEIGHT_THEMATIC)
   })
@@ -330,8 +359,8 @@ describe('semantic floor protection', () => {
 
 describe('profile cannot override semantic intent', () => {
   it('floor excludes low-semantic candidate even with maximum profile affinity', () => {
-    const floor = SEMANTIC_FLOOR_MODERATE
-    const weights = getBlendedWeights(SCORE_MODEL_V2, 'thematic')
+    const { blendLevel, semanticFloor: floor } = resolveProtectionSettings('moderate')
+    const weights = getBlendedWeights(SCORE_MODEL_V2, blendLevel)
 
     const profileWeightSum =
       weights.wGenre + weights.wTheme + weights.wPeople + weights.wKeyword +
@@ -348,8 +377,8 @@ describe('profile cannot override semantic intent', () => {
     // Without the floor, B would outrank A on raw score (profile dominates)
     expect(hypotheticalScoreB).toBeGreaterThan(scoreA)
 
-    // With the floor, B is excluded entirely — profile cannot rescue it
-    expect(semanticB >= floor).toBe(false)
-    expect(semanticA >= floor).toBe(true)
+    // With the floor, passesSemanticFloor(B) is false — profile cannot rescue it
+    expect(passesSemanticFloor(semanticB, floor)).toBe(false)
+    expect(passesSemanticFloor(semanticA, floor)).toBe(true)
   })
 })

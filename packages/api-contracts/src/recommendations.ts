@@ -7,6 +7,12 @@ export interface ScoreBreakdown {
   semantic: number
   semanticContribution: number
   profileContribution: number
+  profileGenreContribution: number
+  profileThemeContribution: number
+  peopleContribution: number
+  languageContribution: number
+  eraContribution: number
+  otherPositiveContributions: number
   genreAffinity: number
   themeAffinity: number
   peopleAffinity: number
