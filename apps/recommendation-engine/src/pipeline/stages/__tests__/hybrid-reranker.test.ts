@@ -6,8 +6,14 @@ import {
   computeLanguageAffinity,
   computeDecadeAffinity,
   computeMediaTypeAffinity,
+  getBlendedWeights,
   SCORE_MODEL_V2,
 } from '../hybrid-reranker.js'
+import {
+  SEMANTIC_FLOOR_MODERATE,
+  SEMANTIC_FLOOR_STRICT,
+  SEMANTIC_WEIGHT_THEMATIC,
+} from '../../../config.js'
 
 // Minimal EnrichedCandidate stub with only the fields each function needs.
 function makeCandidate(overrides: Partial<{
@@ -292,5 +298,58 @@ describe('computeMediaTypeAffinity', () => {
   it('handles series-dominant profile', () => {
     const c = makeCandidate({ mediaType: 'series' })
     expect(computeMediaTypeAffinity(c, { 'movie': 2, 'series': 8 })).toBe(1.0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Semantic floor protection (T121)
+// ---------------------------------------------------------------------------
+
+describe('semantic floor protection', () => {
+  it('SEMANTIC_FLOOR_MODERATE excludes candidates with similarity below the threshold', () => {
+    // Candidates with similarity < floor are excluded before scoring
+    expect(0.20 >= SEMANTIC_FLOOR_MODERATE).toBe(false)
+    expect(0.27 >= SEMANTIC_FLOOR_MODERATE).toBe(false)
+    expect(SEMANTIC_FLOOR_MODERATE >= SEMANTIC_FLOOR_MODERATE).toBe(true) // boundary passes
+    expect(0.35 >= SEMANTIC_FLOOR_MODERATE).toBe(true)
+  })
+
+  it('SEMANTIC_FLOOR_STRICT is higher than SEMANTIC_FLOOR_MODERATE', () => {
+    expect(SEMANTIC_FLOOR_STRICT).toBeGreaterThan(SEMANTIC_FLOOR_MODERATE)
+  })
+
+  it("thematic blend sets wSemantic to SEMANTIC_WEIGHT_THEMATIC", () => {
+    const weights = getBlendedWeights(SCORE_MODEL_V2, 'thematic')
+    expect(weights.wSemantic).toBe(SEMANTIC_WEIGHT_THEMATIC)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Profile cannot override semantic (T121)
+// ---------------------------------------------------------------------------
+
+describe('profile cannot override semantic intent', () => {
+  it('floor excludes low-semantic candidate even with maximum profile affinity', () => {
+    const floor = SEMANTIC_FLOOR_MODERATE
+    const weights = getBlendedWeights(SCORE_MODEL_V2, 'thematic')
+
+    const profileWeightSum =
+      weights.wGenre + weights.wTheme + weights.wPeople + weights.wKeyword +
+      weights.wFranchise + weights.wLanguage + weights.wDecade + weights.wMediaType
+
+    // Candidate B: weak semantic (below floor) + maximum profile affinity
+    const semanticB = 0.26
+    const hypotheticalScoreB = semanticB * weights.wSemantic + 1.0 * profileWeightSum
+
+    // Candidate A: good semantic relevance + neutral profile affinity
+    const semanticA = 0.70
+    const scoreA = semanticA * weights.wSemantic + 0.5 * profileWeightSum
+
+    // Without the floor, B would outrank A on raw score (profile dominates)
+    expect(hypotheticalScoreB).toBeGreaterThan(scoreA)
+
+    // With the floor, B is excluded entirely — profile cannot rescue it
+    expect(semanticB >= floor).toBe(false)
+    expect(semanticA >= floor).toBe(true)
   })
 })

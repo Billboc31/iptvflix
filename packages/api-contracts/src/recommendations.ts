@@ -5,6 +5,8 @@ export type RecommendationSource = 'LOCAL' | 'DISCOVERY' | 'ENGINE'
 export interface ScoreBreakdown {
   modelVersion: string
   semantic: number
+  semanticContribution: number
+  profileContribution: number
   genreAffinity: number
   themeAffinity: number
   peopleAffinity: number
