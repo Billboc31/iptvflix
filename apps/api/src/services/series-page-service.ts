@@ -1,4 +1,4 @@
-import { eq, inArray, asc } from 'drizzle-orm'
+import { eq, and, inArray, asc } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import {
   recommendationSeriesSessions,
@@ -235,7 +235,7 @@ async function batchRowsToShelfResponses(batchRows: BatchRow[]): Promise<ShelfRe
     seriesIds.length > 0
       ? db.select({ mediaId: mediaVideos.mediaId, youtubeKey: mediaVideos.youtubeKey })
           .from(mediaVideos)
-          .where(eq(mediaVideos.mediaType, 'series'))
+          .where(and(eq(mediaVideos.mediaType, 'series'), inArray(mediaVideos.mediaId, seriesIds)))
       : Promise.resolve([]),
   ])
 
