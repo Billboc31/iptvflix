@@ -1,7 +1,7 @@
 {
   "ticket_id": "T127",
-  "state": "IMPLEMENTATION_REVIEW_NEEDED",
+  "state": "IMPLEMENTATION_FIX_REQUIRED",
   "branch": "ticket/T127-build-a-true-must-watch-hero-ranker-for-home",
   "issue_number": 270,
-  "updated_at": "2026-08-24T09:25:39Z"
+  "updated_at": "2026-08-24T09:30:35Z"
 }
