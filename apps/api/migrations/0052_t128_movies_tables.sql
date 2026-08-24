@@ -2,7 +2,7 @@ CREATE TABLE "movies_sessions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"profile_id" uuid NOT NULL,
 	"started_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"expires_at" timestamp with time zone,
+	"expires_at" timestamp with time zone NOT NULL,
 	"cursor_reference" text,
 	CONSTRAINT "movies_sessions_profile_id_profiles_id_fk" FOREIGN KEY ("profile_id") REFERENCES "public"."profiles"("id") ON DELETE cascade ON UPDATE no action
 );

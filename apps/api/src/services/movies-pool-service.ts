@@ -457,7 +457,7 @@ async function selectExplorationMovieConcept(
       and(
         eq(shelfConcepts.profileId, profileId),
         eq(shelfConcepts.active, true),
-        sql`${shelfConcepts.generationType} IN ('EXPLORATION', 'DISCOVERY')`,
+        inArray(shelfConcepts.generationType, ['EXPLORATION', 'DISCOVERY']),
         sql`${shelfConcepts.desiredMediaTypes} @> '["MOVIE"]'::jsonb`,
       ),
     )

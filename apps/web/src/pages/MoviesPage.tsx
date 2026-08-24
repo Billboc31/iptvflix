@@ -17,7 +17,9 @@ class ShelfErrorBoundary extends Component<{ children: ReactNode }, { hasError: 
     return { hasError: true }
   }
 
-  componentDidCatch(_error: Error, _info: ErrorInfo) {}
+  componentDidCatch(error: Error, _info: ErrorInfo) {
+    console.error('[ShelfErrorBoundary]', error)
+  }
 
   render() {
     if (this.state.hasError) return null

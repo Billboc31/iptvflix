@@ -316,16 +316,10 @@ describe('STALE: stale snapshot', () => {
 // ---------------------------------------------------------------------------
 
 describe('TTL boundary conditions', () => {
-  it('snapshot with expiresAt in the future is treated as valid', () => {
-    const { isMoviesSnapshotValid: original } = vi.importActual<typeof import('../movies-snapshot-service.js')>('../movies-snapshot-service.js') as any
-    // Already tested via mock, but we check the export contract
+  it('snapshot with expiresAt in the future is treated as valid', async () => {
+    const { isMoviesSnapshotValid: actual } = await vi.importActual('../movies-snapshot-service.js') as typeof import('../movies-snapshot-service.js')
     const snapshotFuture = { ...FRESH_SNAPSHOT, expiresAt: new Date(Date.now() + 1000), invalidatedAt: null }
-    vi.mocked(getMoviesSnapshot).mockResolvedValue(snapshotFuture)
-    vi.mocked(isMoviesSnapshotValid).mockReturnValue(true)
-    vi.mocked(isMoviesSnapshotStale).mockReturnValue(false)
-    // With HIT path, buildMoviesDeclaredRails is not called
-    // (verified in HIT test suite above)
-    expect(true).toBe(true)
+    expect(actual(snapshotFuture)).toBe(true)
   })
 
   it('snapshot with expiresAt in the past is treated as stale', async () => {
