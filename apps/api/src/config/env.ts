@@ -137,6 +137,7 @@ export const HOME_ITEMS_MAX = Number(process.env.HOME_ITEMS_MAX ?? 30)
 export const HOME_POOL_MIN = Number(process.env.HOME_POOL_MIN ?? 10)
 export const HOME_POOL_TARGET = Number(process.env.HOME_POOL_TARGET ?? 25)
 export const HOME_SESSION_TTL_HOURS = Number(process.env.HOME_SESSION_TTL_HOURS ?? 24)
+export const HOME_FRESH_DAYS = Number(process.env.HOME_FRESH_DAYS ?? 90)
 
 export const SEGMENT_REFRESH_ENABLED =
   process.env.SEGMENT_REFRESH_ENABLED !== undefined

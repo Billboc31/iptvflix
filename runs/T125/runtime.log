@@ -1,0 +1,36 @@
+[2026-08-23T21:01:58Z] auto-run start: state=INIT
+[2026-08-23T21:01:58Z] auto-run: running step=planner
+[2026-08-23T21:02:00Z] auto-run: pre-planner rebase onto integration ok
+[2026-08-23T21:02:00Z] prompt: resolved=prompts/generic/planner.md source=generic
+[2026-08-23T21:02:00Z] prompt: generic fallback — injecting runs/T125/ticket.md
+[2026-08-23T21:02:00Z] compose: global-context=docs/ai/global-context.md
+[2026-08-23T21:02:00Z] compose: role=ai/roles/planner.md
+[2026-08-23T21:02:00Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-23T21:02:00Z] compose: skill=ai/skills/architecture-discipline.md
+[2026-08-23T21:02:00Z] compose: skill=ai/skills/documentation.md
+[2026-08-23T21:02:00Z] compose: task (canonical prompt)
+[2026-08-23T21:02:00Z] snapshot: runtime-prompt=runs/T125/prompts/planner-attempt-1.md
+[2026-08-23T21:08:22Z] compose: preferring on-disk runs/T125/plan.md over chatty stdout (agent Write beat meta-report)
+[2026-08-23T21:08:22Z] auto-run: step=planner done rc=0
+[2026-08-23T23:52:55Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-23T23:52:55Z] auto-run: running step=tester
+[2026-08-23T23:52:57Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-23T23:52:57Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-23T23:52:57Z] prompt: generic fallback — injecting runs/T125/ticket.md
+[2026-08-23T23:52:57Z] compose: global-context=docs/ai/global-context.md
+[2026-08-23T23:52:57Z] compose: role=ai/roles/tester.md
+[2026-08-23T23:52:57Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-23T23:52:57Z] compose: skill=ai/skills/testing.md
+[2026-08-23T23:52:57Z] compose: skill=ai/skills/debugging.md
+[2026-08-23T23:52:57Z] compose: task (canonical prompt)
+[2026-08-23T23:52:57Z] snapshot: runtime-prompt=runs/T125/prompts/tester-attempt-1.md
+[2026-08-24T00:01:36Z] auto-run: step=tester done rc=0
+[2026-08-24T00:01:36Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-24T00:01:36Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-24T00:01:36Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.vite/vitest/results.json', 'apps/web/node_modules/.vite/vitest/results.json', 'runs/T125/daemon.lock', 'runs/T125/runtime.log', 'runs/T125/workflow-status.md']
+[2026-08-24T00:01:36Z] commit-checkpoint: sha=70274428 files=3 title='test(T125/workflow): tester — update 3 file(s)'
+[2026-08-24T00:01:36Z] auto-run: auto-push triggered
+[2026-08-24T00:01:36Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.vite/vitest/results.json', 'apps/web/node_modules/.vite/vitest/results.json', 'runs/T125/daemon.lock', 'runs/T125/runtime.log', 'runs/T125/workflow-status.md']
+[2026-08-24T00:01:36Z] push: pushing branch=ticket/T125-build-personalized-home-page-with-production-shelf
+[2026-08-24T00:01:38Z] push: done branch=ticket/T125-build-personalized-home-page-with-production-shelf
+[2026-08-24T00:01:38Z] auto-run: TEST_COMPLETE — running PR lifecycle

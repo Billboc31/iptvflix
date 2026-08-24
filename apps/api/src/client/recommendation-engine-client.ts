@@ -119,6 +119,7 @@ export const RecommendationEngineClient = {
     mediaTypes?: ('movie' | 'series')[]
     limit?: number
     debug?: boolean
+    freshnessBoostDays?: number
   }): Promise<EngineQueryResult | null> {
     if (!RECOMMENDATION_ENGINE_URL || isCircuitOpen()) return null
 
@@ -249,8 +250,16 @@ export const RecommendationEngineClient = {
     text: string
     profileId: string
     limit: number
+    mediaTypeFilter?: 'MOVIE' | 'SERIES'
+    freshnessBoostDays?: number
   }): Promise<ShelfQueryResult | null> {
-    const raw = await this.query({ text: params.text, profileId: params.profileId, limit: params.limit })
+    const raw = await this.query({
+      text: params.text,
+      profileId: params.profileId,
+      limit: params.limit,
+      mediaTypes: params.mediaTypeFilter ? [params.mediaTypeFilter.toLowerCase() as 'movie' | 'series'] : undefined,
+      freshnessBoostDays: params.freshnessBoostDays,
+    })
     if (!raw) return null
 
     const meta = raw.engineMetadata

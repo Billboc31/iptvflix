@@ -1,0 +1,35 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T125/reviews/implementation-review.md
+- generated at: 2026-08-23T23:45:30Z
+
+---
+
+---
+
+## Review — T125: Build personalized Home page with production shelf rails
+
+L'implémentation est **fonctionnellement complète** : 6 rails dans le bon ordre, déduplication cross-shelf, contraintes mediaType, filtre de fraîcheur, isolation d'erreur par rail, aucune donnée diagnostique exposée côté consumer, 27+ tests passants.
+
+**Deux points bloquants** exigent un correctif avant merge :
+
+### 🔴 Bloquant 1 — `trace_test.ts` : artefact de debug committé
+
+`apps/api/src/services/__tests__/trace_test.ts` est un fichier de debugging laissé en production avec des `console.log`, des variables inutilisées (`dbCallN`, `label`), et un test nommé `'TRACE: Films rail with selectN logging'`. Il doit être supprimé.
+
+### 🔴 Bloquant 2 — `persistFixedShelvesForSession` : code mort
+
+La fonction `persistFixedShelvesForSession` (lignes 702–750 de `home-pool-service.ts`) est exportée mais jamais importée dans `home-service.ts`. Le plan dit explicitement de la retirer ("declared rails persist themselves internally"). Elle doit être supprimée.
+
+### 🟡 Observation — Fragilité du premier test d'ordre de déclaration
+
+Le premier test dans `describe('buildDeclaredRails — declaration order')` appelle `setupEngineRails()` (qui empile des mocks DB) puis ajoute d'autres mocks DB dans son corps. L'enrichissement consomme des mocks désynchronisés. Le test passe uniquement parce que les assertions ne couvrent que les titres de rails, pas les données d'items.
+
+### 🟡 Observation — `componentDidCatch` vide
+
+`ShelfErrorBoundary` absorbe silencieusement les erreurs de rendu sans aucune trace. Acceptable pour la dégradation gracieuse, mais rendra le debugging difficile en production.
+
+**Décision** : `IMPLEMENTATION_FIX_REQUIRED`
+
+IMPLEMENTATION_FIX_REQUIRED
