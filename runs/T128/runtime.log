@@ -22,3 +22,25 @@
 [2026-08-24T14:02:44Z] conflict-resolver: running tests
 [2026-08-24T14:02:44Z] conflict-resolver: test-report written: runs/T128/conflict/test-report.md
 [2026-08-24T14:02:44Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-24T14:04:30Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-24T14:04:30Z] auto-run: running step=tester
+[2026-08-24T14:04:32Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-24T14:04:32Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-24T14:04:32Z] prompt: generic fallback — injecting runs/T128/ticket.md
+[2026-08-24T14:04:32Z] compose: global-context=docs/ai/global-context.md
+[2026-08-24T14:04:32Z] compose: role=ai/roles/tester.md
+[2026-08-24T14:04:32Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-24T14:04:32Z] compose: skill=ai/skills/testing.md
+[2026-08-24T14:04:32Z] compose: skill=ai/skills/debugging.md
+[2026-08-24T14:04:32Z] compose: task (canonical prompt)
+[2026-08-24T14:04:32Z] snapshot: runtime-prompt=runs/T128/prompts/tester-attempt-1.md
+[2026-08-24T14:16:30Z] auto-run: step=tester done rc=0
+[2026-08-24T14:16:30Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-24T14:16:30Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-24T14:16:30Z] commit-checkpoint: unstaged runtime garbage: ['runs/T128/daemon.lock', 'runs/T128/runtime.log', 'runs/T128/workflow-status.md']
+[2026-08-24T14:16:30Z] commit-checkpoint: sha=b61f01c8 files=5 title='test(T128/dashboard,workflow): tester — update 5 file(s)'
+[2026-08-24T14:16:30Z] auto-run: auto-push triggered
+[2026-08-24T14:16:30Z] push: tolerating runtime dirty files (not blocking): ['runs/T128/daemon.lock', 'runs/T128/runtime.log', 'runs/T128/workflow-status.md']
+[2026-08-24T14:16:30Z] push: pushing branch=ticket/T128-build-personalized-movies-page-with-exploitation-a
+[2026-08-24T14:16:32Z] push: done branch=ticket/T128-build-personalized-movies-page-with-exploitation-a
+[2026-08-24T14:16:32Z] auto-run: TEST_COMPLETE — running PR lifecycle
