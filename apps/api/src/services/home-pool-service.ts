@@ -525,6 +525,8 @@ export async function buildDeclaredRails(
         finalScore: c.score ?? 0,
         reasons: c.reasons ?? [],
         available: c.available ?? false,
+        qualityPrior: 0,
+        languageAffinity: 0,
       })),
       queryPlannerVersion: MODEL_VERSION,
       embeddingModelVersion: 'none',

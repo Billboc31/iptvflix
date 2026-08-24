@@ -140,6 +140,14 @@ export const HOME_SESSION_TTL_HOURS = Number(process.env.HOME_SESSION_TTL_HOURS 
 export const HOME_FRESH_DAYS = Number(process.env.HOME_FRESH_DAYS ?? 90)
 export const HOME_SNAPSHOT_TTL_HOURS = Number(process.env.HOME_SNAPSHOT_TTL_HOURS ?? 24)
 export const HERO_MIN_SCORE = Number(process.env.HERO_MIN_SCORE ?? 0.55)
+export const HERO_POOL_SIZE = Number(process.env.HERO_POOL_SIZE ?? 15)
+export const HERO_SCORE_WEIGHTS = {
+  version: 'v1',
+  profileRelevance: 0.45,
+  semanticConfidence: 0.25,
+  qualityPrior: 0.20,
+  languageAffinity: 0.10,
+} as const
 
 export const SEGMENT_REFRESH_ENABLED =
   process.env.SEGMENT_REFRESH_ENABLED !== undefined

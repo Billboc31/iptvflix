@@ -1,7 +1,7 @@
 {
   "ticket_id": "T127",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T127-build-a-true-must-watch-hero-ranker-for-home",
   "issue_number": 270,
-  "updated_at": "2026-08-24T09:18:16Z"
+  "updated_at": "2026-08-24T09:25:39Z"
 }

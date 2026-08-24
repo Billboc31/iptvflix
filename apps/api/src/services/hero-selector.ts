@@ -2,9 +2,21 @@ import { eq, and, inArray } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { explicitFeedback, movies, series, mediaVideos } from '../db/schema/index.js'
 import { resolveMediaImageUrl } from '../lib/tmdb-image.js'
-import { HERO_MIN_SCORE } from '../config/env.js'
+import { HERO_MIN_SCORE, HERO_POOL_SIZE, HERO_SCORE_WEIGHTS } from '../config/env.js'
 import type { HeroItem } from '@iptvflix/api-contracts'
 import type { ShelfCandidateItem } from '../client/recommendation-engine-client.js'
+
+export function computeHeroScore(
+  candidate: ShelfCandidateItem,
+  weights: typeof HERO_SCORE_WEIGHTS,
+): number {
+  return (
+    weights.profileRelevance * candidate.profileScore +
+    weights.semanticConfidence * candidate.semanticScore +
+    weights.qualityPrior * candidate.qualityPrior +
+    weights.languageAffinity * candidate.languageAffinity
+  )
+}
 
 export async function selectHero(
   profileId: string,
@@ -12,7 +24,9 @@ export async function selectHero(
 ): Promise<HeroItem | null> {
   if (candidates.length === 0) return null
 
-  const eligibleCandidates = candidates.filter(
+  const pool = candidates.slice(0, HERO_POOL_SIZE)
+
+  const eligibleCandidates = pool.filter(
     (c) => c.available && c.finalScore >= HERO_MIN_SCORE,
   )
   if (eligibleCandidates.length === 0) return null
@@ -75,22 +89,53 @@ export async function selectHero(
     if (entry && !entry.trailerKey) entry.trailerKey = r.youtubeKey
   }
 
-  for (const candidate of nonDisliked) {
-    const enrichment = enrichMap.get(candidate.mediaId)
-    if (!enrichment) continue
-    if (!enrichment.title) continue
-    if (!enrichment.backdropUrl) continue
-
-    return {
-      mediaId: candidate.mediaId,
-      mediaType: candidate.mediaType as 'MOVIE' | 'SERIES',
-      title: enrichment.title,
-      synopsis: enrichment.synopsis,
-      backdropUrl: enrichment.backdropUrl,
-      availabilityStatus: 'available',
-      trailerKey: enrichment.trailerKey,
-    }
+  type RankedEntry = {
+    candidate: ShelfCandidateItem
+    enrichment: EnrichEntry
+    heroScore: number
   }
 
-  return null
+  const ranked: RankedEntry[] = []
+  for (const candidate of nonDisliked) {
+    const enrichment = enrichMap.get(candidate.mediaId)
+    if (!enrichment?.title || !enrichment.backdropUrl) continue
+    const heroScore = computeHeroScore(candidate, HERO_SCORE_WEIGHTS)
+    ranked.push({ candidate, enrichment, heroScore })
+  }
+
+  if (ranked.length === 0) {
+    console.info(`[HERO_RANKING] profileId=${profileId} result=null reason=no_eligible_candidates`)
+    return null
+  }
+
+  ranked.sort((a, b) => b.heroScore - a.heroScore)
+  const winner = ranked[0]
+
+  console.info(
+    `[HERO_RANKING] profileId=${profileId} pool=${pool.length} eligible=${ranked.length} ` +
+    `winner=${winner.candidate.mediaId}(${winner.enrichment.title}) heroScore=${winner.heroScore.toFixed(3)} weights=${HERO_SCORE_WEIGHTS.version}`,
+    {
+      candidates: ranked.map((e, i) => ({
+        rank: i + 1,
+        mediaId: e.candidate.mediaId,
+        title: e.enrichment.title,
+        heroScore: e.heroScore,
+        profile: e.candidate.profileScore,
+        semantic: e.candidate.semanticScore,
+        quality: e.candidate.qualityPrior,
+        lang: e.candidate.languageAffinity,
+        selected: i === 0,
+      })),
+    },
+  )
+
+  return {
+    mediaId: winner.candidate.mediaId,
+    mediaType: winner.candidate.mediaType as 'MOVIE' | 'SERIES',
+    title: winner.enrichment.title,
+    synopsis: winner.enrichment.synopsis,
+    backdropUrl: winner.enrichment.backdropUrl,
+    availabilityStatus: 'available',
+    trailerKey: winner.enrichment.trailerKey,
+  }
 }
