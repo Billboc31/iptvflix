@@ -43,3 +43,8 @@
 [2026-08-24T13:57:56Z] push: pushing branch=ticket/T129-build-personalized-series-page-with-exploitation-a
 [2026-08-24T13:57:58Z] push: done branch=ticket/T129-build-personalized-series-page-with-exploitation-a
 [2026-08-24T13:57:59Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-24T14:00:20Z] conflict-resolver: [pass 1/3] conflicted=['apps/api/src/services/series-page-service.ts'] | staged=['apps/api/src/services/series-page-service.ts'] | unresolved=[] | continue_rc=1 | next_source=[]
+[2026-08-24T14:00:20Z] conflict-resolver: all conflicts resolved after 1 pass(es)
+[2026-08-24T14:00:20Z] conflict-resolver: running tests
+[2026-08-24T14:00:20Z] conflict-resolver: test-report written: runs/T129/conflict/test-report.md
+[2026-08-24T14:00:20Z] conflict-resolver: staging and committing resolution artifacts
