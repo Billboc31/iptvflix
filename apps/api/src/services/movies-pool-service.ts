@@ -1,4 +1,4 @@
-import { eq, and, isNull, asc, count, inArray, sql, desc, gte } from 'drizzle-orm'
+import { eq, and, isNull, asc, count, inArray, sql, desc, gte, or } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import {
   shelfInstances,
@@ -182,6 +182,7 @@ async function _fillMoviesPoolAsync(sessionId: string, profileId: string, target
       and(
         eq(shelfConcepts.profileId, profileId),
         eq(shelfConcepts.active, true),
+        sql`${shelfConcepts.desiredMediaTypes} @> '["MOVIE"]'::jsonb`,
       ),
     )
     .orderBy(desc(shelfConcepts.createdAt))
@@ -341,10 +342,17 @@ async function _fillMoviesPoolAsync(sessionId: string, profileId: string, target
 
 async function getFreshMovieIds(movieIds: string[], cutoffDate: Date): Promise<Set<string>> {
   if (movieIds.length === 0) return new Set()
+  const cutoffDateStr = cutoffDate.toISOString().slice(0, 10)
   const rows = await db
     .select({ id: movies.id })
     .from(movies)
-    .where(and(inArray(movies.id, movieIds), gte(movies.createdAt, cutoffDate)))
+    .where(and(
+      inArray(movies.id, movieIds),
+      or(
+        gte(movies.theatricalReleaseDate, cutoffDateStr),
+        gte(movies.digitalReleaseDate, cutoffDateStr),
+      ),
+    ))
   return new Set(rows.map((r) => r.id))
 }
 
@@ -407,7 +415,6 @@ async function queryCandidatesForMovies(params: {
 
 async function selectThematicMovieConcept(
   profileId: string,
-  sessionId: string,
   usedConceptIds: Set<string>,
   fatigueService: ShelfFatigueService,
 ): Promise<typeof shelfConcepts.$inferSelect | null> {
@@ -419,6 +426,7 @@ async function selectThematicMovieConcept(
         eq(shelfConcepts.profileId, profileId),
         eq(shelfConcepts.active, true),
         eq(shelfConcepts.generationType, 'PERSONALIZED'),
+        sql`${shelfConcepts.desiredMediaTypes} @> '["MOVIE"]'::jsonb`,
       ),
     )
     .orderBy(desc(shelfConcepts.createdAt))
@@ -450,6 +458,7 @@ async function selectExplorationMovieConcept(
         eq(shelfConcepts.profileId, profileId),
         eq(shelfConcepts.active, true),
         sql`${shelfConcepts.generationType} IN ('EXPLORATION', 'DISCOVERY')`,
+        sql`${shelfConcepts.desiredMediaTypes} @> '["MOVIE"]'::jsonb`,
       ),
     )
     .orderBy(desc(shelfConcepts.createdAt))
@@ -556,7 +565,7 @@ export async function buildMoviesDeclaredRails(
   for (let i = 0; i < 2; i++) {
     try {
       const t0 = Date.now()
-      const concept = await selectThematicMovieConcept(profileId, sessionId, usedConceptIds, fatigueService)
+      const concept = await selectThematicMovieConcept(profileId, usedConceptIds, fatigueService)
       if (concept) {
         const { candidates, ...meta } = await queryCandidatesForMovies({
           text: concept.semanticIntent,
@@ -615,7 +624,7 @@ export async function buildMoviesDeclaredRails(
   // ── Rail 6: Third PERSONALIZED thematic shelf ─────────────────────────────
   try {
     const t0 = Date.now()
-    const concept = await selectThematicMovieConcept(profileId, sessionId, usedConceptIds, fatigueService)
+    const concept = await selectThematicMovieConcept(profileId, usedConceptIds, fatigueService)
     if (concept) {
       const { candidates, ...meta } = await queryCandidatesForMovies({
         text: concept.semanticIntent,

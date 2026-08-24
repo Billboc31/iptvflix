@@ -45,5 +45,6 @@ export function isMoviesSnapshotValid(snapshot: MoviesSnapshot): boolean {
 }
 
 export function isMoviesSnapshotStale(snapshot: MoviesSnapshot): boolean {
+  if (snapshot.invalidatedAt !== null) return false
   return snapshot.expiresAt < new Date()
 }

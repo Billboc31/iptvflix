@@ -242,6 +242,11 @@ describe('HIT: valid snapshot', () => {
     expect(saveMoviesSnapshot).not.toHaveBeenCalled()
   })
 
+  it('triggers pool fill for infinite scroll', async () => {
+    await buildMoviesPage(PROFILE_ID)
+    expect(fillMoviesPool).toHaveBeenCalledWith(SESSION_ID, PROFILE_ID, expect.any(Number))
+  })
+
   it('returns sessionId', async () => {
     const result = await buildMoviesPage(PROFILE_ID)
     expect(result.sessionId).toBe(SESSION_ID)
@@ -376,5 +381,29 @@ describe('empty and error behavior', () => {
 
     expect(result.shelves).toHaveLength(0)
     expect(result.sessionId).toBe(SESSION_ID)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// isMoviesSnapshotStale — pure function unit tests (actual implementation)
+// ---------------------------------------------------------------------------
+
+describe('isMoviesSnapshotStale — pure function', () => {
+  it('returns false when invalidatedAt is set, even if snapshot is past expiry', async () => {
+    const { isMoviesSnapshotStale: actual } = await vi.importActual('../movies-snapshot-service.js') as typeof import('../movies-snapshot-service.js')
+    const snapshot = { ...FRESH_SNAPSHOT, invalidatedAt: new Date(), expiresAt: new Date(Date.now() - 1000) }
+    expect(actual(snapshot)).toBe(false)
+  })
+
+  it('returns true when past expiresAt and not invalidated', async () => {
+    const { isMoviesSnapshotStale: actual } = await vi.importActual('../movies-snapshot-service.js') as typeof import('../movies-snapshot-service.js')
+    const snapshot = { ...FRESH_SNAPSHOT, invalidatedAt: null, expiresAt: new Date(Date.now() - 1000) }
+    expect(actual(snapshot)).toBe(true)
+  })
+
+  it('returns false when snapshot is still valid (future expiresAt)', async () => {
+    const { isMoviesSnapshotStale: actual } = await vi.importActual('../movies-snapshot-service.js') as typeof import('../movies-snapshot-service.js')
+    const snapshot = { ...FRESH_SNAPSHOT, invalidatedAt: null, expiresAt: new Date(Date.now() + 10000) }
+    expect(actual(snapshot)).toBe(false)
   })
 })

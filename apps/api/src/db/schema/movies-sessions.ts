@@ -7,7 +7,7 @@ export const moviesSessions = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     profileId: uuid('profile_id').notNull().references(() => profiles.id, { onDelete: 'cascade' }),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
-    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     cursorReference: text('cursor_reference'),
   },
   (t) => [

@@ -77,6 +77,7 @@ export async function buildMoviesPage(profileId: string, cursor?: string): Promi
     const shelves = await reconstructMoviesShelves(snapshot.declaredShelfInstanceIds)
     const hasMore = session.cursorReference !== 'exhausted'
     const nextPosition = snapshot.declaredShelfInstanceIds.length
+    fillMoviesPool(session.id, profileId, MOVIES_POOL_TARGET)
     return {
       sessionId: session.id,
       shelves,
