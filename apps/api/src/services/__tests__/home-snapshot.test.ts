@@ -212,7 +212,7 @@ describe('MISS: no snapshot', () => {
   })
 
   it('returns hero from buildDeclaredRails', async () => {
-    const mockHero = { mediaId: 'movie-hero', mediaType: 'MOVIE' as const, title: 'Hero Film', synopsis: null, backdropUrl: 'https://img/bd.jpg', availabilityStatus: 'available', trailerKey: null }
+    const mockHero = { mediaId: 'movie-hero', mediaType: 'MOVIE' as const, title: 'Hero Film', synopsis: null, backdropUrl: 'https://img/bd.jpg', availabilityStatus: 'AVAILABLE' as const, trailerKey: null }
     vi.mocked(buildDeclaredRails).mockResolvedValue({
       shelves: [POUR_TOI],
       nextPoolPosition: 1,

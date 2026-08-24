@@ -1,4 +1,5 @@
 import type { ShelfResponse } from './shelves.js'
+import type { AvailabilityStatus } from './catalog.js'
 
 export type HeroItem = {
   mediaId: string
@@ -6,7 +7,7 @@ export type HeroItem = {
   title: string
   synopsis: string | null
   backdropUrl: string | null
-  availabilityStatus: string
+  availabilityStatus: AvailabilityStatus
   trailerKey: string | null
 }
 

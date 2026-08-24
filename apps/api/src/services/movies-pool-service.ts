@@ -271,6 +271,8 @@ async function _fillMoviesPoolAsync(sessionId: string, profileId: string, target
             finalScore: c.score ?? 0,
             reasons: c.reasons ?? [],
             available: c.available ?? false,
+            qualityPrior: c.scoreBreakdown?.qualityPrior ?? 0,
+            languageAffinity: c.scoreBreakdown?.languageAffinity ?? 0,
           }))
         totalCandidateCount = recResult.candidates.length
       }
@@ -405,6 +407,8 @@ async function queryCandidatesForMovies(params: {
       finalScore: c.score ?? 0,
       reasons: c.reasons ?? [],
       available: c.available ?? false,
+      qualityPrior: c.scoreBreakdown?.qualityPrior ?? 0,
+      languageAffinity: c.scoreBreakdown?.languageAffinity ?? 0,
     })),
     queryPlannerVersion: MODEL_VERSION,
     embeddingModelVersion: 'none',

@@ -134,7 +134,7 @@ describe('hero selected when all gates pass', () => {
     expect(result?.title).toBe('Great Film')
     expect(result?.backdropUrl).toBe('https://img/bd/great.jpg')
     expect(result?.trailerKey).toBe('ytKey123')
-    expect(result?.availabilityStatus).toBe('available')
+    expect(result?.availabilityStatus).toBe('AVAILABLE')
   })
 })
 

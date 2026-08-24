@@ -275,7 +275,7 @@ async function reconstructHero(
       title: movie.title,
       synopsis: movie.synopsis ?? null,
       backdropUrl,
-      availabilityStatus: 'available',
+      availabilityStatus: 'AVAILABLE',
       trailerKey: trailer?.youtubeKey ?? null,
     }
   }
@@ -303,7 +303,7 @@ async function reconstructHero(
       title: show.title,
       synopsis: show.synopsis ?? null,
       backdropUrl,
-      availabilityStatus: 'available',
+      availabilityStatus: 'AVAILABLE',
       trailerKey: trailer?.youtubeKey ?? null,
     }
   }

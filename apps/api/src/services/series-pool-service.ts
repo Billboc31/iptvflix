@@ -275,6 +275,8 @@ async function _fillSeriesPoolAsync(sessionId: string, profileId: string, target
           finalScore: c.score ?? 0,
           reasons: c.reasons ?? [],
           available: c.available ?? false,
+          qualityPrior: c.scoreBreakdown?.qualityPrior ?? 0,
+          languageAffinity: c.scoreBreakdown?.languageAffinity ?? 0,
         }))
         totalCandidateCount = recResult.candidates.length
       }

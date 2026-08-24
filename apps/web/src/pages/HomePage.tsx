@@ -119,7 +119,7 @@ export default function HomePage() {
           trailerKey={hero.trailerKey}
           availabilityStatus={hero.availabilityStatus}
           onPlay={
-            hero.availabilityStatus === 'available'
+            hero.availabilityStatus === 'AVAILABLE'
               ? () => navigate(`/player/${hero.mediaType === 'MOVIE' ? 'movie' : 'series'}/${hero.mediaId}`)
               : undefined
           }
