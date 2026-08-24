@@ -194,7 +194,7 @@ describe('first request — declared rails', () => {
   })
 
   it('coldStart is true and returns fallback shelf when buildDeclaredRails returns empty array', async () => {
-    vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [], nextPoolPosition: 0 })
+    vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [], nextPoolPosition: 0, shelfInstanceIds: [], hero: null })
     const result = await buildHome(PROFILE_ID)
     expect(result.coldStart).toBe(true)
     expect(result.shelves.some((s) => s.id === 'sys_fallback_popular')).toBe(true)
@@ -213,7 +213,7 @@ describe('first request — declared rails', () => {
   })
 
   it('nextCursor points to nextPoolPosition from buildDeclaredRails', async () => {
-    vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [POUR_TOI], nextPoolPosition: 1 })
+    vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [POUR_TOI], nextPoolPosition: 1, shelfInstanceIds: ['instance-pour-toi'], hero: null })
     const result = await buildHome(PROFILE_ID)
     expect(result.nextCursor).toBe('cursor_pos_1')
   })
@@ -225,7 +225,7 @@ describe('first request — declared rails', () => {
   })
 
   it('nextCursor is null when all declared rails are empty (coldStart with fallback)', async () => {
-    vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [], nextPoolPosition: 0 })
+    vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [], nextPoolPosition: 0, shelfInstanceIds: [], hero: null })
     vi.mocked(getOrCreateSession).mockResolvedValue({ id: SESSION_ID, profileId: PROFILE_ID, cursorReference: 'exhausted' })
     const result = await buildHome(PROFILE_ID)
     expect(result.nextCursor).toBeNull()

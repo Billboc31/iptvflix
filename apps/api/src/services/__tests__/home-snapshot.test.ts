@@ -338,6 +338,26 @@ describe('per-profile isolation', () => {
 })
 
 // ---------------------------------------------------------------------------
+// INVALIDATED: explicitly invalidated but not yet expired — falls to MISS
+// ---------------------------------------------------------------------------
+
+describe('INVALIDATED: explicit invalidation before expiry', () => {
+  it('treats invalidated (not-yet-expired) snapshot as MISS — triggers full regeneration', async () => {
+    const invalidatedSnapshot = {
+      ...FRESH_SNAPSHOT,
+      invalidatedAt: new Date(),
+    }
+    vi.mocked(getSnapshot).mockResolvedValue(invalidatedSnapshot)
+    vi.mocked(isSnapshotValid).mockReturnValue(false)
+    vi.mocked(isStale).mockReturnValue(false)
+
+    await buildHome(PROFILE_ID)
+    expect(buildDeclaredRails).toHaveBeenCalledWith(PROFILE_ID, SESSION_ID)
+    expect(saveSnapshot).toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // No repeated expensive generation on HIT
 // ---------------------------------------------------------------------------
 

@@ -11,6 +11,7 @@ vi.mock('../../config/env.js', () => ({
   HOME_POOL_TARGET: 25,
   HOME_SESSION_TTL_HOURS: 24,
   HOME_FRESH_DAYS: 90,
+  HERO_MIN_SCORE: 0.55,
 }))
 
 const mockPersistShelfInstance = vi.hoisted(() => vi.fn())
@@ -66,11 +67,16 @@ vi.mock('../../lib/tmdb-image.js', () => ({
   resolveMediaImageUrl: vi.fn((p: string | null) => p ? `https://img/${p}` : null),
 }))
 
+vi.mock('../hero-selector.js', () => ({
+  selectHero: vi.fn(),
+}))
+
 import { buildDeclaredRails } from '../home-pool-service.js'
 import { getShelf } from '../shelf-service.js'
 import { RecommendationEngineClient } from '../../client/recommendation-engine-client.js'
 import { ShelfInstanceService } from '../shelf-instance-service.js'
 import { ShelfFatigueService } from '../shelf-fatigue-service.js'
+import { selectHero } from '../hero-selector.js'
 import type { ShelfResponse } from '@iptvflix/api-contracts'
 
 // ---------------------------------------------------------------------------
@@ -164,6 +170,9 @@ beforeEach(() => {
 
   // By default CW is empty → Rail 1 omitted.
   vi.mocked(getShelf).mockResolvedValue({ id: 'sys_continue_watching', title: 'Continuer à regarder', type: 'SYSTEM', layoutHint: 'ROW', items: [] })
+
+  // No hero by default.
+  vi.mocked(selectHero).mockResolvedValue(null)
 
   // Engine returns empty by default.
   vi.mocked(RecommendationEngineClient.queryForShelf).mockResolvedValue(null)
@@ -533,5 +542,72 @@ describe('buildDeclaredRails — nextPoolPosition', () => {
     const { nextPoolPosition } = await buildDeclaredRails(PROFILE_ID, SESSION_ID)
     // Rails 2 and 5 succeed → positions 0 and 1 → nextPoolPosition = 2
     expect(nextPoolPosition).toBe(2)
+  })
+})
+
+describe('buildDeclaredRails — hero exclusion from Pour toi', () => {
+  it('hero mediaId is excluded from Pour toi items', async () => {
+    const heroId = 'm1'
+
+    vi.mocked(RecommendationEngineClient.queryForShelf)
+      .mockResolvedValueOnce(makeCandidates([heroId, 'm2', 'm3']))  // rail 2
+      .mockResolvedValueOnce(null)   // rail 3
+      .mockResolvedValueOnce(null)   // rail 4
+      .mockResolvedValueOnce(null)   // rail 5
+      .mockResolvedValueOnce(null)   // rail 6
+
+    vi.mocked(selectHero).mockResolvedValueOnce({
+      mediaId: heroId,
+      mediaType: 'MOVIE',
+      title: 'Hero Film',
+      synopsis: null,
+      backdropUrl: 'https://img/backdrop.jpg',
+      availabilityStatus: 'available',
+      trailerKey: null,
+    })
+
+    mockDb.select
+      .mockReturnValueOnce(makeChain([]))                         // session concepts
+      .mockReturnValueOnce(makeChain([makeThematicConcept()]))    // concept rows
+      .mockReturnValue(makeChain([]))                             // enrichment
+
+    const { shelves, hero } = await buildDeclaredRails(PROFILE_ID, SESSION_ID)
+
+    const pourToi = shelves.find((s) => s.title === 'Pour toi')
+    expect(pourToi).toBeDefined()
+    expect(pourToi!.items.some((i) => i.mediaId === heroId)).toBe(false)
+    expect(pourToi!.items.map((i) => i.mediaId)).toEqual(['m2', 'm3'])
+    expect(hero?.mediaId).toBe(heroId)
+  })
+
+  it('Pour toi is omitted entirely when the only candidate becomes the hero', async () => {
+    const heroId = 'sole-candidate'
+
+    vi.mocked(RecommendationEngineClient.queryForShelf)
+      .mockResolvedValueOnce(makeCandidates([heroId]))  // rail 2: single candidate
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+
+    vi.mocked(selectHero).mockResolvedValueOnce({
+      mediaId: heroId,
+      mediaType: 'MOVIE',
+      title: 'Solo Hero',
+      synopsis: null,
+      backdropUrl: 'https://img/bd.jpg',
+      availabilityStatus: 'available',
+      trailerKey: null,
+    })
+
+    mockDb.select
+      .mockReturnValueOnce(makeChain([]))
+      .mockReturnValueOnce(makeChain([makeThematicConcept()]))
+      .mockReturnValue(makeChain([]))
+
+    const { shelves, hero } = await buildDeclaredRails(PROFILE_ID, SESSION_ID)
+
+    expect(shelves.find((s) => s.title === 'Pour toi')).toBeUndefined()
+    expect(hero?.mediaId).toBe(heroId)
   })
 })

@@ -548,23 +548,22 @@ export async function buildDeclaredRails(
     const t0 = Date.now()
     const { candidates, ...meta } = await queryCandidates({ text: 'films et séries recommandés pour ce profil' })
     pourToiCandidates = candidates
-    if (candidates.length > 0) {
-      pendingRails.push({ title: 'Pour toi', candidates, conceptId: null, semanticIntent: null, ...meta, latencyMs: Date.now() - t0, verticalPosition: nextPosition++ })
-      for (const c of candidates) excludedMediaIds.add(c.mediaId)
+
+    // Select hero before queuing Pour toi so the hero mediaId can be filtered out of the rail
+    try {
+      hero = await selectHero(profileId, pourToiCandidates)
+      if (hero) excludedMediaIds.add(hero.mediaId)
+    } catch (err) {
+      console.error('[home-pool] hero selection failed (continuing without hero):', err)
+    }
+
+    const filteredPourToi = pourToiCandidates.filter((c) => c.mediaId !== hero?.mediaId)
+    if (filteredPourToi.length > 0) {
+      pendingRails.push({ title: 'Pour toi', candidates: filteredPourToi, conceptId: null, semanticIntent: null, ...meta, latencyMs: Date.now() - t0, verticalPosition: nextPosition++ })
+      for (const c of filteredPourToi) excludedMediaIds.add(c.mediaId)
     }
   } catch (err) {
     console.error('[home-pool] declared rail 2 "Pour toi" failed:', err)
-  }
-
-  // ── Hero selection from Pour toi candidates ─────────────────────────────────
-  try {
-    hero = await selectHero(profileId, pourToiCandidates)
-    if (hero) {
-      // Exclude hero from subsequent rails to avoid duplication
-      excludedMediaIds.add(hero.mediaId)
-    }
-  } catch (err) {
-    console.error('[home-pool] hero selection failed (continuing without hero):', err)
   }
 
   // ── Rail 3: "Nouveautés pour toi" ──────────────────────────────────────────
