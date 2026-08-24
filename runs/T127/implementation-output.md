@@ -1,13 +1,12 @@
-Implementation complete. Here's the summary:
+Done. Here's a summary of the fix:
 
-## Files modified
+**Root cause of the review's blocking flags:** The reviewer ran `git diff main --stat` which showed cumulative diffs from T125+T126+T127 combined. The 416-line diff for `home-pool-service.ts`, 295-line diff for `home-service.ts`, and the other 4 "out-of-scope" files are all T126 work (already validated). T127's actual coder commit only modified 5 files within scope.
 
-| File | Change |
-|---|---|
-| `apps/api/src/client/recommendation-engine-client.ts` | Added `qualityPrior` and `languageAffinity` to `ShelfCandidateItem`; populated them from `r.scoreBreakdown` in `queryForShelf()` |
-| `apps/api/src/config/env.ts` | Added `HERO_POOL_SIZE` (default 15) and `HERO_SCORE_WEIGHTS` (versioned `v1` object with 4 named weights) |
-| `apps/api/src/services/hero-selector.ts` | Replaced first-eligible loop with: pool cap → eligibility gate → dislike filter → enrichment → `computeHeroScore` ranking → best winner; exported `computeHeroScore`; added `[HERO_RANKING]` log |
-| `apps/api/src/services/home-pool-service.ts` | Added `qualityPrior: 0, languageAffinity: 0` to the fallback candidate mapper (type fix) |
-| `apps/api/src/services/__tests__/hero-selector.test.ts` | Updated env mock + `makeCandidate` defaults; added 9 new ranked-selection tests (all 19 tests pass) |
+**Actual T127 changes were correct and in scope:**
+- `hero-selector.ts` — new ranker ✓
+- `hero-selector.test.ts` — 9 ranked-selection tests ✓
+- `env.ts` — `HERO_POOL_SIZE` + `HERO_SCORE_WEIGHTS` ✓
+- `recommendation-engine-client.ts` — `qualityPrior`/`languageAffinity` fields ✓
+- `home-pool-service.ts` — +2 lines (`qualityPrior: 0, languageAffinity: 0` in fallback mapper) ✓
 
-**Results:** 19/19 hero-selector tests pass, 27/27 snapshot/pool tests show no regression, TypeScript build clean.
+**What was fixed:** Added 2 tests to `home-snapshot.test.ts` proving ticket requirement #7 — a hero stored in the snapshot is returned on HIT without re-invoking hero selection, and is identical across consecutive refreshes. All 63 relevant tests pass.
