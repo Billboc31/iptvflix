@@ -1,3 +1,11 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T127/reviews/implementation-review.md
+- generated at: 2026-08-24T09:45:50Z
+
+---
+
 ---
 
 ## PR Review — T127: Build a true must-watch Hero ranker for Home (attempt 2)
