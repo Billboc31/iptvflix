@@ -105,6 +105,8 @@ function makeCandidates(mediaIds: string[], mediaType: 'MOVIE' | 'SERIES' = 'MOV
       finalScore: 0.85,
       reasons: [],
       available: true,
+      qualityPrior: 0,
+      languageAffinity: 0,
     })),
     queryPlannerVersion: 'v1',
     embeddingModelVersion: 'v1',

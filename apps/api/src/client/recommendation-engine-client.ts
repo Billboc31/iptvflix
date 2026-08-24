@@ -73,6 +73,8 @@ export interface ShelfCandidateItem {
   finalScore: number
   reasons: string[]
   available: boolean
+  qualityPrior: number
+  languageAffinity: number
 }
 
 export interface ShelfQueryResult {
@@ -272,6 +274,8 @@ export const RecommendationEngineClient = {
         finalScore: r.score ?? 0,
         reasons: r.reasons ?? [],
         available: r.available ?? false,
+        qualityPrior: (r.scoreBreakdown?.qualityPrior ?? 0) as number,
+        languageAffinity: (r.scoreBreakdown?.languageAffinity ?? 0) as number,
       })),
       queryPlannerVersion: meta.plannerModelVersion ?? 'unknown',
       embeddingModelVersion: meta.embeddingModelVersion ?? 'unknown',

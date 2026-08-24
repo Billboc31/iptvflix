@@ -6,6 +6,14 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 vi.mock('../../config/env.js', () => ({
   HERO_MIN_SCORE: 0.55,
+  HERO_POOL_SIZE: 15,
+  HERO_SCORE_WEIGHTS: {
+    version: 'v1',
+    profileRelevance: 0.45,
+    semanticConfidence: 0.25,
+    qualityPrior: 0.20,
+    languageAffinity: 0.10,
+  },
 }))
 
 const mockDb = vi.hoisted(() => ({
@@ -30,7 +38,7 @@ vi.mock('../../lib/tmdb-image.js', () => ({
   resolveMediaImageUrl: vi.fn((p: string | null) => (p ? `https://img${p}` : null)),
 }))
 
-import { selectHero } from '../hero-selector.js'
+import { selectHero, computeHeroScore } from '../hero-selector.js'
 import type { ShelfCandidateItem } from '../../client/recommendation-engine-client.js'
 
 // ---------------------------------------------------------------------------
@@ -51,6 +59,8 @@ function makeCandidate(overrides: Partial<ShelfCandidateItem> = {}): ShelfCandid
     finalScore: 0.8,
     reasons: [],
     available: true,
+    qualityPrior: 0.5,
+    languageAffinity: 0.5,
     ...overrides,
   }
 }
@@ -231,5 +241,234 @@ describe('series hero', () => {
     expect(result?.mediaType).toBe('SERIES')
     expect(result?.title).toBe('Great Series')
     expect(result?.trailerKey).toBe('sKey')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Hero ranking — first eligible is NOT automatically selected
+// ---------------------------------------------------------------------------
+
+describe('hero ranking', () => {
+  it('test 1: picks the highest heroScore candidate, not the first eligible one', async () => {
+    // A (profileScore=0.6): heroScore = 0.45*0.6 + 0.25*0.8 + 0.20*0.5 + 0.10*0.5 = 0.62
+    // B (profileScore=0.7): heroScore = 0.665
+    // C (profileScore=0.9): heroScore = 0.755  ← winner
+    const candidates = [
+      makeCandidate({ mediaId: MEDIA_ID_A, profileScore: 0.6, finalScore: 0.7 }),
+      makeCandidate({ mediaId: MEDIA_ID_B, profileScore: 0.7, finalScore: 0.7 }),
+      makeCandidate({ mediaId: MEDIA_ID_C, profileScore: 0.9, finalScore: 0.9 }),
+    ]
+
+    setupMovieMocks({
+      movies: [
+        { id: MEDIA_ID_A, title: 'Film A', synopsis: null, backdropPath: '/bd/a.jpg' },
+        { id: MEDIA_ID_B, title: 'Film B', synopsis: null, backdropPath: '/bd/b.jpg' },
+        { id: MEDIA_ID_C, title: 'Film C', synopsis: null, backdropPath: '/bd/c.jpg' },
+      ],
+    })
+
+    const result = await selectHero(PROFILE_ID, candidates)
+
+    expect(result?.mediaId).toBe(MEDIA_ID_C)
+    expect(result?.title).toBe('Film C')
+  })
+
+  it('test 2: a later candidate (index 7 of 10) with materially stronger heroScore wins', async () => {
+    // Candidates 0-6 and 8-9: profileScore=0.7
+    // Candidate 7 (MEDIA_ID_B): profileScore=0.95 → clearly highest heroScore
+    const WINNER_ID = 'winner00-0000-0000-0000-000000000007'
+    const otherIds = Array.from({ length: 9 }, (_, i) => `other000-0000-0000-0000-00000000000${i}`)
+
+    const candidates: ShelfCandidateItem[] = [
+      ...otherIds.slice(0, 7).map((id) => makeCandidate({ mediaId: id, profileScore: 0.7, finalScore: 0.7 })),
+      makeCandidate({ mediaId: WINNER_ID, profileScore: 0.95, finalScore: 0.95 }),
+      ...otherIds.slice(7, 9).map((id) => makeCandidate({ mediaId: id, profileScore: 0.7, finalScore: 0.7 })),
+    ]
+
+    const allIds = [...otherIds.slice(0, 7), WINNER_ID, ...otherIds.slice(7, 9)]
+    setupMovieMocks({
+      movies: allIds.map((id) => ({
+        id,
+        title: id === WINNER_ID ? 'The Winner' : `Film ${id}`,
+        synopsis: null,
+        backdropPath: `/bd/${id}.jpg`,
+      })),
+    })
+
+    const result = await selectHero(PROFILE_ID, candidates)
+
+    expect(result?.mediaId).toBe(WINNER_ID)
+    expect(result?.title).toBe('The Winner')
+  })
+
+  it('test 3: high qualityPrior defeats marginally stronger profileScore candidate', async () => {
+    // A: profileScore=0.85, qualityPrior=0.1
+    //   heroScore = 0.45*0.85 + 0.25*0.8 + 0.20*0.1 + 0.10*0.5 = 0.3825+0.20+0.02+0.05 = 0.6525
+    // B: profileScore=0.80, qualityPrior=0.95
+    //   heroScore = 0.45*0.80 + 0.25*0.8 + 0.20*0.95 + 0.10*0.5 = 0.36+0.20+0.19+0.05 = 0.80  ← winner
+    const candidates = [
+      makeCandidate({ mediaId: MEDIA_ID_A, profileScore: 0.85, qualityPrior: 0.1, finalScore: 0.8 }),
+      makeCandidate({ mediaId: MEDIA_ID_B, profileScore: 0.80, qualityPrior: 0.95, finalScore: 0.8 }),
+    ]
+
+    setupMovieMocks({
+      movies: [
+        { id: MEDIA_ID_A, title: 'Obscure Film', synopsis: null, backdropPath: '/bd/a.jpg' },
+        { id: MEDIA_ID_B, title: 'Quality Film', synopsis: null, backdropPath: '/bd/b.jpg' },
+      ],
+    })
+
+    const result = await selectHero(PROFILE_ID, candidates)
+
+    expect(result?.mediaId).toBe(MEDIA_ID_B)
+    expect(result?.title).toBe('Quality Film')
+  })
+
+  it('test 4: disliked candidate cannot win even when its heroScore would be highest', async () => {
+    // A (disliked): profileScore=1.0 → heroScore would be 0.45+0.20+0.10+0.05 = 0.80
+    // B: profileScore=0.7 → heroScore = 0.665
+    const candidates = [
+      makeCandidate({ mediaId: MEDIA_ID_A, profileScore: 1.0, finalScore: 1.0 }),
+      makeCandidate({ mediaId: MEDIA_ID_B, profileScore: 0.7, finalScore: 0.7 }),
+    ]
+
+    setupMovieMocks({
+      disliked: [MEDIA_ID_A],
+      movies: [{ id: MEDIA_ID_B, title: 'The Real Winner', synopsis: null, backdropPath: '/bd/b.jpg' }],
+    })
+
+    const result = await selectHero(PROFILE_ID, candidates)
+
+    expect(result?.mediaId).toBe(MEDIA_ID_B)
+    expect(result?.title).toBe('The Real Winner')
+  })
+
+  it('test 5: unavailable candidate is excluded before ranking', async () => {
+    // A (available=false): would have highest heroScore but is excluded before ranking
+    // B (available=true): wins by default
+    const candidates = [
+      makeCandidate({ mediaId: MEDIA_ID_A, available: false, profileScore: 1.0, finalScore: 1.0 }),
+      makeCandidate({ mediaId: MEDIA_ID_B, available: true, profileScore: 0.7, finalScore: 0.7 }),
+    ]
+
+    setupMovieMocks({
+      movies: [{ id: MEDIA_ID_B, title: 'Available Film', synopsis: null, backdropPath: '/bd/b.jpg' }],
+    })
+
+    const result = await selectHero(PROFILE_ID, candidates)
+
+    expect(result?.mediaId).toBe(MEDIA_ID_B)
+    expect(mockDb.select).not.toHaveBeenCalledWith(
+      expect.objectContaining({ mediaId: MEDIA_ID_A }),
+    )
+  })
+
+  it('test 6: no-backdrop candidate is excluded from ranking', async () => {
+    // A has no backdrop → excluded from ranking
+    // B has backdrop → wins
+    const candidates = [
+      makeCandidate({ mediaId: MEDIA_ID_A, profileScore: 0.95, finalScore: 0.9 }),
+      makeCandidate({ mediaId: MEDIA_ID_B, profileScore: 0.70, finalScore: 0.7 }),
+    ]
+
+    setupMovieMocks({
+      movies: [
+        { id: MEDIA_ID_A, title: 'No Backdrop Film', synopsis: null, backdropPath: null },
+        { id: MEDIA_ID_B, title: 'Has Backdrop Film', synopsis: null, backdropPath: '/bd/b.jpg' },
+      ],
+    })
+
+    const result = await selectHero(PROFILE_ID, candidates)
+
+    expect(result?.mediaId).toBe(MEDIA_ID_B)
+    expect(result?.title).toBe('Has Backdrop Film')
+  })
+
+  it('test 7: foreign-language content wins when its heroScore is highest (no language hard-filter)', async () => {
+    // Proves there is no language hard-filter: A (foreign, low languageAffinity=0.10) wins over B
+    // (user's language, high languageAffinity=0.90) because A's profileScore is materially stronger.
+    //
+    // A = "Parasite" (foreign language for user — low languageAffinity)
+    //   heroScore = 0.45*0.92 + 0.25*0.80 + 0.20*0.90 + 0.10*0.10
+    //             = 0.4140 + 0.2000 + 0.1800 + 0.0100 = 0.804  ← winner
+    // B = "Domestic Film" (user's language — high languageAffinity, but weaker profile fit)
+    //   heroScore = 0.45*0.65 + 0.25*0.60 + 0.20*0.50 + 0.10*0.90
+    //             = 0.2925 + 0.1500 + 0.1000 + 0.0900 = 0.6325
+    const candidates = [
+      makeCandidate({ mediaId: MEDIA_ID_A, profileScore: 0.92, semanticScore: 0.80, qualityPrior: 0.90, languageAffinity: 0.10, finalScore: 0.92 }),
+      makeCandidate({ mediaId: MEDIA_ID_B, profileScore: 0.65, semanticScore: 0.60, qualityPrior: 0.50, languageAffinity: 0.90, finalScore: 0.65 }),
+    ]
+
+    setupMovieMocks({
+      movies: [
+        { id: MEDIA_ID_A, title: 'Parasite', synopsis: 'A Korean masterpiece.', backdropPath: '/bd/parasite.jpg' },
+        { id: MEDIA_ID_B, title: 'Domestic Film', synopsis: null, backdropPath: '/bd/b.jpg' },
+      ],
+    })
+
+    const result = await selectHero(PROFILE_ID, candidates)
+
+    expect(result?.mediaId).toBe(MEDIA_ID_A)
+    expect(result?.title).toBe('Parasite')
+  })
+
+  it('test 8: no sufficiently strong candidate after backdrop/enrichment filter returns null', async () => {
+    // All candidates pass eligibility gate but none have a backdrop in the DB
+    const candidates = [
+      makeCandidate({ mediaId: MEDIA_ID_A, profileScore: 0.9, finalScore: 0.9 }),
+      makeCandidate({ mediaId: MEDIA_ID_B, profileScore: 0.8, finalScore: 0.8 }),
+    ]
+
+    setupMovieMocks({
+      movies: [
+        { id: MEDIA_ID_A, title: 'Film A', synopsis: null, backdropPath: null },
+        { id: MEDIA_ID_B, title: 'Film B', synopsis: null, backdropPath: null },
+      ],
+    })
+
+    const result = await selectHero(PROFILE_ID, candidates)
+    expect(result).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// computeHeroScore — pure function unit test
+// ---------------------------------------------------------------------------
+
+describe('computeHeroScore', () => {
+  it('test 9: computes the weighted sum correctly with known inputs', () => {
+    const weights = {
+      version: 'v1' as const,
+      profileRelevance: 0.5,
+      semanticConfidence: 0.3,
+      qualityPrior: 0.15,
+      languageAffinity: 0.05,
+    }
+    const candidate = makeCandidate({
+      profileScore: 0.8,
+      semanticScore: 0.6,
+      qualityPrior: 0.7,
+      languageAffinity: 0.4,
+    })
+
+    // 0.5*0.8 + 0.3*0.6 + 0.15*0.7 + 0.05*0.4 = 0.4 + 0.18 + 0.105 + 0.02 = 0.705
+    const score = computeHeroScore(candidate, weights)
+    expect(score).toBeCloseTo(0.705, 5)
+  })
+
+  it('higher profileScore yields higher heroScore with identical other signals', () => {
+    const weights = {
+      version: 'v1' as const,
+      profileRelevance: 0.45,
+      semanticConfidence: 0.25,
+      qualityPrior: 0.20,
+      languageAffinity: 0.10,
+    }
+    const base = makeCandidate({ semanticScore: 0.7, qualityPrior: 0.5, languageAffinity: 0.5 })
+
+    const scoreHigh = computeHeroScore({ ...base, profileScore: 0.9 }, weights)
+    const scoreLow = computeHeroScore({ ...base, profileScore: 0.5 }, weights)
+
+    expect(scoreHigh).toBeGreaterThan(scoreLow)
   })
 })

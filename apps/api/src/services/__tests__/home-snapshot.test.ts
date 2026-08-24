@@ -378,3 +378,81 @@ describe('no repeated generation on HIT', () => {
     expect(buildDeclaredRails).toHaveBeenCalledTimes(0)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Hero snapshot stability — T127 requirement #7
+// ---------------------------------------------------------------------------
+
+describe('hero snapshot stability', () => {
+  it('hero stored in snapshot is returned on HIT without re-running hero selection', async () => {
+    const HERO_MEDIA_ID = 'hero0000-0000-0000-0000-000000000001'
+    const snapshotWithHero = {
+      id: 'snap-hero',
+      profileId: PROFILE_ID,
+      sessionId: SESSION_ID,
+      generatedAt: new Date(),
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      // Empty shelf list — simplifies DB setup; we're testing hero stability
+      declaredShelfInstanceIds: [],
+      heroMediaId: HERO_MEDIA_ID,
+      heroMediaType: 'MOVIE',
+      invalidatedAt: null,
+    }
+
+    vi.mocked(getSnapshot).mockResolvedValue(snapshotWithHero)
+    vi.mocked(isSnapshotValid).mockReturnValue(true)
+    vi.mocked(isStale).mockReturnValue(false)
+
+    // reconstructHero: movies → mediaVideos (trailer optional, returns [])
+    mockDb.select
+      .mockReturnValueOnce(makeSelectChain([
+        { id: HERO_MEDIA_ID, title: 'Stable Hero Film', synopsis: 'A must-watch.', backdropPath: '/bd/hero.jpg' },
+      ]))
+      .mockReturnValue(makeSelectChain([]))
+
+    const result = await buildHome(PROFILE_ID)
+
+    expect(result.hero).not.toBeNull()
+    expect(result.hero?.mediaId).toBe(HERO_MEDIA_ID)
+    expect(result.hero?.title).toBe('Stable Hero Film')
+    expect(result.hero?.backdropUrl).toBeTruthy()
+    // Hero came from snapshot, not from hero-selector (no re-selection)
+    expect(buildDeclaredRails).not.toHaveBeenCalled()
+  })
+
+  it('hero is unchanged across two consecutive HIT refreshes', async () => {
+    const HERO_MEDIA_ID = 'hero0000-0000-0000-0000-000000000002'
+    const snapshotWithHero = {
+      id: 'snap-hero-2',
+      profileId: PROFILE_ID,
+      sessionId: SESSION_ID,
+      generatedAt: new Date(),
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      declaredShelfInstanceIds: [],
+      heroMediaId: HERO_MEDIA_ID,
+      heroMediaType: 'MOVIE',
+      invalidatedAt: null,
+    }
+    const heroRow = [
+      { id: HERO_MEDIA_ID, title: 'Persisted Hero', synopsis: null, backdropPath: '/bd/persisted.jpg' },
+    ]
+
+    vi.mocked(getSnapshot).mockResolvedValue(snapshotWithHero)
+    vi.mocked(isSnapshotValid).mockReturnValue(true)
+    vi.mocked(isStale).mockReturnValue(false)
+
+    // Two buildHome calls — each needs the movies query (trailer returns [])
+    mockDb.select
+      .mockReturnValueOnce(makeSelectChain(heroRow))
+      .mockReturnValueOnce(makeSelectChain([]))  // trailer for call 1
+      .mockReturnValueOnce(makeSelectChain(heroRow))
+      .mockReturnValue(makeSelectChain([]))       // trailer for call 2
+
+    const result1 = await buildHome(PROFILE_ID)
+    const result2 = await buildHome(PROFILE_ID)
+
+    expect(result1.hero?.mediaId).toBe(HERO_MEDIA_ID)
+    expect(result2.hero?.mediaId).toBe(HERO_MEDIA_ID)
+    expect(buildDeclaredRails).not.toHaveBeenCalled()
+  })
+})
