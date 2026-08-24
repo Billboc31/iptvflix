@@ -12,3 +12,8 @@
 [2026-08-24T12:43:49Z] snapshot: runtime-prompt=runs/T128/prompts/planner-attempt-1.md
 [2026-08-24T12:48:47Z] compose: preferring on-disk runs/T128/plan.md over chatty stdout (agent Write beat meta-report)
 [2026-08-24T12:48:47Z] auto-run: step=planner done rc=0
+[2026-08-24T13:59:24Z] conflict-resolver: [pass 1/3] conflicted=['apps/api/src/db/schema/index.ts', 'apps/api/src/db/schema/shelf-instances.ts', 'apps/api/src/index.ts', 'apps/api/src/services/shelf-instance-service.ts', 'apps/web/src/lib/api.ts', 'packages/api-contracts/src/shelf-instances.ts'] | staged=['apps/api/src/db/schema/index.ts', 'apps/api/src/db/schema/shelf-instances.ts', 'apps/api/src/index.ts', 'apps/api/src/services/shelf-instance-service.ts', 'apps/web/src/lib/api.ts', 'packages/api-contracts/src/shelf-instances.ts'] | unresolved=[] | continue_rc=0
+[2026-08-24T13:59:24Z] conflict-resolver: all conflicts resolved after 1 pass(es)
+[2026-08-24T13:59:24Z] conflict-resolver: running tests
+[2026-08-24T13:59:24Z] conflict-resolver: test-report written: runs/T128/conflict/test-report.md
+[2026-08-24T13:59:24Z] conflict-resolver: staging and committing resolution artifacts
