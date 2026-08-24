@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchHomePage } from '../lib/api.js'
-import type { ShelfResponse } from '@iptvflix/api-contracts'
+import type { ShelfResponse, HeroItem } from '@iptvflix/api-contracts'
 
 export type UseInfiniteHomeResult = {
   allShelves: ShelfResponse[]
+  hero: HeroItem | null
   sessionId: string | null
   nextCursor: string | null
   isLoading: boolean
@@ -17,6 +18,7 @@ const MAX_RETRIES = 3
 
 export function useInfiniteHome(profileId: string, profileVersion: number): UseInfiniteHomeResult {
   const [allShelves, setAllShelves] = useState<ShelfResponse[]>([])
+  const [hero, setHero] = useState<HeroItem | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -35,6 +37,7 @@ export function useInfiniteHome(profileId: string, profileVersion: number): UseI
     let cancelled = false
 
     setAllShelves([])
+    setHero(null)
     setSessionId(null)
     setNextCursor(null)
     setHasMore(true)
@@ -50,6 +53,7 @@ export function useInfiniteHome(profileId: string, profileVersion: number): UseI
           const result = await fetchHomePage(profileId)
           if (!cancelled) {
             setAllShelves(result.shelves ?? [])
+            setHero(result.hero ?? null)
             setSessionId(result.sessionId)
             setNextCursor(result.nextCursor)
             setHasMore(result.nextCursor !== null)
@@ -112,5 +116,5 @@ export function useInfiniteHome(profileId: string, profileVersion: number): UseI
     fetchMore()
   }, [profileId, nextCursor])
 
-  return { allShelves, sessionId, nextCursor, isLoading, isFetchingMore, hasMore, error, loadMore }
+  return { allShelves, hero, sessionId, nextCursor, isLoading, isFetchingMore, hasMore, error, loadMore }
 }

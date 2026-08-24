@@ -1,5 +1,15 @@
 import type { ShelfResponse } from './shelves.js'
 
+export type HeroItem = {
+  mediaId: string
+  mediaType: 'MOVIE' | 'SERIES'
+  title: string
+  synopsis: string | null
+  backdropUrl: string | null
+  availabilityStatus: string
+  trailerKey: string | null
+}
+
 export type HomeResponse = {
   coldStart: boolean
   shelves: ShelfResponse[]
@@ -10,4 +20,5 @@ export type HomePageResponse = {
   sessionId: string
   shelves: ShelfResponse[]
   nextCursor: string | null
+  hero: HeroItem | null
 }
