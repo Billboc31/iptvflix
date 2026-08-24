@@ -159,6 +159,15 @@ export const HERO_SCORE_WEIGHTS = {
   languageAffinity: 0.10,
 } as const
 
+export const MOVIES_SNAPSHOT_TTL_HOURS = Number(process.env.MOVIES_SNAPSHOT_TTL_HOURS ?? 24)
+export const MOVIES_SESSION_TTL_HOURS = Number(process.env.MOVIES_SESSION_TTL_HOURS ?? 24)
+export const MOVIES_BATCH_SIZE = Number(process.env.MOVIES_BATCH_SIZE ?? 6)
+export const MOVIES_ITEMS_PER_SHELF = Number(process.env.MOVIES_ITEMS_PER_SHELF ?? 24)
+export const MOVIES_ITEMS_MAX = Number(process.env.MOVIES_ITEMS_MAX ?? 30)
+export const MOVIES_POOL_MIN = Number(process.env.MOVIES_POOL_MIN ?? 10)
+export const MOVIES_POOL_TARGET = Number(process.env.MOVIES_POOL_TARGET ?? 25)
+export const MOVIES_EXPLORATION_RATIO = Number(process.env.MOVIES_EXPLORATION_RATIO ?? 0.25)
+
 export const SEGMENT_REFRESH_ENABLED =
   process.env.SEGMENT_REFRESH_ENABLED !== undefined
     ? process.env.SEGMENT_REFRESH_ENABLED === 'true'

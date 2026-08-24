@@ -358,6 +358,20 @@
             "when": 5000,
             "tag": "0050_t126_home_discovery_snapshots",
             "breakpoints": true
+        },
+        {
+            "idx": 51,
+            "version": "7",
+            "when": 0,
+            "tag": "0051_t129_series_discovery",
+            "breakpoints": true
+        },
+        {
+            "idx": 52,
+            "version": "7",
+            "when": 0,
+            "tag": "0052_t128_movies_tables",
+            "breakpoints": true
         }
     ]
 }

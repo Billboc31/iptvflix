@@ -1,0 +1,10 @@
+{
+  "ticket_id": "T128",
+  "state": "TEST_COMPLETE",
+  "branch": "ticket/T128-build-personalized-movies-page-with-exploitation-a",
+  "issue_number": 272,
+  "updated_at": "2026-08-24T14:16:30Z",
+  "pre_conflict_state": "IMPLEMENTATION_APPROVED",
+  "conflict_detected_at": "2026-08-24T14:01:01Z",
+  "conflicted_files": []
+}
