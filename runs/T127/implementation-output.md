@@ -1,7 +1,3 @@
-Both blocking issues are fixed and committed:
+All 19 tests pass. The test #7 log now clearly shows the corrected scenario: "Parasite" wins with `lang: 0.10` (foreign, low language affinity) and `heroScore: 0.804`, beating "Domestic Film" at `lang: 0.90` but `heroScore: 0.6325`.
 
-1. **`hero-selector.ts`** — introduced a `HeroWeights` structural type (all fields `number`) for the `weights` parameter of `computeHeroScore`, replacing `typeof HERO_SCORE_WEIGHTS` which carried `as const` literal types incompatible with test-constructed objects.
-
-2. **`home-pool-service.test.ts`** — added `qualityPrior: 0, languageAffinity: 0` to the `makeCandidates` fixture to satisfy the required fields added to `ShelfCandidateItem` by T127.
-
-`pnpm tsc --noEmit` now shows only the two pre-existing `accountId` errors (in `commands.test.ts`/`pairing.test.ts`), and all 48 tests pass.
+Test #7 fixture corrected. "Parasite" now has `languageAffinity: 0.10` (correctly modelling a foreign-language film) and wins via strong `profileScore: 0.92` and `qualityPrior: 0.90`, proving there is no language hard-filter. All 19 hero-selector tests pass.

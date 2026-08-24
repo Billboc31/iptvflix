@@ -385,13 +385,18 @@ describe('hero ranking', () => {
   })
 
   it('test 7: foreign-language content wins when its heroScore is highest (no language hard-filter)', async () => {
-    // A (high languageAffinity=0.95, good profileScore=0.85): heroScore = 0.45*0.85+0.25*0.8+0.20*0.5+0.10*0.95
-    //   = 0.3825+0.20+0.10+0.095 = 0.7775  ← winner
-    // B (low languageAffinity=0.1, profileScore=0.75): heroScore = 0.45*0.75+0.25*0.8+0.20*0.5+0.10*0.1
-    //   = 0.3375+0.20+0.10+0.01 = 0.6475
+    // Proves there is no language hard-filter: A (foreign, low languageAffinity=0.10) wins over B
+    // (user's language, high languageAffinity=0.90) because A's profileScore is materially stronger.
+    //
+    // A = "Parasite" (foreign language for user — low languageAffinity)
+    //   heroScore = 0.45*0.92 + 0.25*0.80 + 0.20*0.90 + 0.10*0.10
+    //             = 0.4140 + 0.2000 + 0.1800 + 0.0100 = 0.804  ← winner
+    // B = "Domestic Film" (user's language — high languageAffinity, but weaker profile fit)
+    //   heroScore = 0.45*0.65 + 0.25*0.60 + 0.20*0.50 + 0.10*0.90
+    //             = 0.2925 + 0.1500 + 0.1000 + 0.0900 = 0.6325
     const candidates = [
-      makeCandidate({ mediaId: MEDIA_ID_A, profileScore: 0.85, languageAffinity: 0.95, finalScore: 0.85 }),
-      makeCandidate({ mediaId: MEDIA_ID_B, profileScore: 0.75, languageAffinity: 0.10, finalScore: 0.75 }),
+      makeCandidate({ mediaId: MEDIA_ID_A, profileScore: 0.92, semanticScore: 0.80, qualityPrior: 0.90, languageAffinity: 0.10, finalScore: 0.92 }),
+      makeCandidate({ mediaId: MEDIA_ID_B, profileScore: 0.65, semanticScore: 0.60, qualityPrior: 0.50, languageAffinity: 0.90, finalScore: 0.65 }),
     ]
 
     setupMovieMocks({
