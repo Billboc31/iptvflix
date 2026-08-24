@@ -33,3 +33,25 @@
 [2026-08-24T13:55:21Z] push: pushing branch=ticket/T129-build-personalized-series-page-with-exploitation-a
 [2026-08-24T13:55:23Z] push: done branch=ticket/T129-build-personalized-series-page-with-exploitation-a
 [2026-08-24T13:55:24Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-24T13:57:56Z] auto-run: step=tester done rc=0
+[2026-08-24T13:57:56Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-24T13:57:56Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-24T13:57:56Z] commit-checkpoint: unstaged runtime garbage: ['runs/T129/daemon.lock', 'runs/T129/runtime.log', 'runs/T129/workflow-status.md']
+[2026-08-24T13:57:56Z] commit-checkpoint: sha=92a27b8a files=2 title='test(T129/workflow): tester — update 2 file(s)'
+[2026-08-24T13:57:56Z] auto-run: auto-push triggered
+[2026-08-24T13:57:56Z] push: tolerating runtime dirty files (not blocking): ['runs/T129/daemon.lock', 'runs/T129/runtime.log', 'runs/T129/workflow-status.md']
+[2026-08-24T13:57:56Z] push: pushing branch=ticket/T129-build-personalized-series-page-with-exploitation-a
+[2026-08-24T13:57:58Z] push: done branch=ticket/T129-build-personalized-series-page-with-exploitation-a
+[2026-08-24T13:57:59Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-24T14:00:20Z] conflict-resolver: [pass 1/3] conflicted=['apps/api/src/services/series-page-service.ts'] | staged=['apps/api/src/services/series-page-service.ts'] | unresolved=[] | continue_rc=1 | next_source=[]
+[2026-08-24T14:00:20Z] conflict-resolver: all conflicts resolved after 1 pass(es)
+[2026-08-24T14:00:20Z] conflict-resolver: running tests
+[2026-08-24T14:00:20Z] conflict-resolver: test-report written: runs/T129/conflict/test-report.md
+[2026-08-24T14:00:20Z] conflict-resolver: staging and committing resolution artifacts
+[2026-08-24T14:00:20Z] conflict-resolver: commit: sha=373efb41
+[2026-08-24T14:00:20Z] conflict-resolver: git push --force-with-lease origin ticket/T129-build-personalized-series-page-with-exploitation-a
+[2026-08-24T14:00:22Z] conflict-resolver: push succeeded
+[2026-08-24T14:00:22Z] conflict-resolver: state → CONFLICT_RESOLVED_REVIEW_NEEDED
+[2026-08-24T14:00:22Z] auto-finalize-conflict: gate disabled for project='iptvflix'
+[2026-08-24T14:00:22Z] conflict-resolver: transition CONFLICT_RESOLVED_REVIEW_NEEDED → TEST_COMPLETE (auto, PROJECT_SETTING)
+[2026-08-24T14:00:23Z] auto-run: TEST_COMPLETE — running PR lifecycle
