@@ -1,35 +1,40 @@
+## Verdict: FAIL — FIX REQUIRED
+
+The implementation is architecturally sound and the 31 new series tests all pass at runtime. However two blocking issues prevent acceptance:
+
 ---
 
-## Test Report — T129
+### Blocking Issue 1 — Regression: `series.test.ts` fails
 
-**31 / 31 tests pass. All 13 acceptance criteria: PASS.**
+T129 added `import { buildSeriesPage } from '../services/series-page-service.js'` to `apps/api/src/routes/series.ts`. This transitively pulls in `db/client.ts` → `env.ts`, which throws `Error: DATABASE_URL is not configured` when the test environment loads the module.
 
-### Results by criterion
+The pre-existing `series.test.ts` (15+ catalog route tests) was passing before T129 and now loads 0 tests.
 
-| # | Criterion | Status |
-|---|-----------|--------|
-| 1 | Series page composed of personalized series-only shelves | **PASS** |
-| 2 | Both themes and titles personalized | **PASS** |
-| 3 | Multiple distinct exploitation themes, dynamically generated | **PASS** |
-| 4 | At least one exploration shelf when candidates sufficient | **PASS** |
-| 5 | Exploration retains credible positive signals, not random | **PASS** |
-| 6 | ~75% exploitation / 25% exploration composition | **PASS** |
-| 7 | No movies in series shelves | **PASS** |
-| 8 | Active/in-progress series excluded from discovery | **PASS** |
-| 9 | Cross-shelf deduplication of titles and themes | **PASS** |
-| 10 | Snapshot/cache reuse on normal refreshes | **PASS** |
-| 11 | Home, Movies and diagnostics do not regress | **PASS** |
-| 12 | Automated tests for all required behaviors | **PASS** |
-| 13 | No hacks, no manual DB changes | **PASS** |
+**Fix**: Add to `series.test.ts` before the `seriesRoutes` import:
+```typescript
+vi.mock('../services/series-page-service.js', () => ({
+  buildSeriesPage: vi.fn(),
+}))
+```
 
-### Regressions
+---
 
-None. The 23 integration-test failures in the full suite are pre-existing infrastructure issues (`DATABASE_URL not configured` / `ECONNREFUSED 5433`) — not introduced by this branch.
+### Blocking Issue 2 — TypeScript errors in new test files (23 total, 7 new)
 
-### Non-blocking observations
+- `series-pool-service.test.ts` line 87: `mediaType: 'SERIES'` must be `'SERIES' as const` to satisfy `ShelfCandidateItem`
+- `series-page-service.test.ts` lines 170, 205, 243, 259: mock snapshot objects missing required `id` field
 
-1. **`fillSeriesPool` doesn't exclude in-progress series** — active series could resurface in later cursor pages (beyond the declared rails). Acceptable for now since continuation belongs on a separate surface.
-2. **`isSeriesSnapshotStale` ignores `invalidatedAt`** — harmless because `isSeriesSnapshotValid` is always checked first in the service layer.
-3. Exploration rail persists `generationType: 'EXPLORATION'` in metadata — future-proof for analytics.
+---
 
-Report written to `runs/T129/tests/test-report.md`.
+### What passes
+
+| Criterion | Status |
+|-----------|--------|
+| Series-only constraint (`mediaTypeFilter: 'SERIES'` at 7 call sites) | ✅ |
+| Exploration shelf (omitted below threshold, present above) | ✅ |
+| Cross-shelf deduplication via `excludedMediaIds` Set | ✅ |
+| Snapshot HIT/STALE/MISS with no repeated LLM generation | ✅ |
+| In-progress series excluded from discovery rails | ✅ |
+| ~80/20 exploitation/exploration composition | ✅ |
+| No hardcoded hacks | ✅ |
+| 31 new series tests pass at runtime | ✅ |
