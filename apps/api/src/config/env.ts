@@ -131,6 +131,7 @@ if (Math.abs(_ratioSum - 1.0) > 0.01) {
   )
 }
 export const HOME_CURSOR_SECRET: string = process.env.HOME_CURSOR_SECRET || jwtSecret
+export const SERIES_CURSOR_SECRET: string = process.env.SERIES_CURSOR_SECRET || jwtSecret
 export const HOME_BATCH_SIZE = Number(process.env.HOME_BATCH_SIZE ?? 6)
 export const HOME_ITEMS_PER_SHELF = Number(process.env.HOME_ITEMS_PER_SHELF ?? 24)
 export const HOME_ITEMS_MAX = Number(process.env.HOME_ITEMS_MAX ?? 30)
@@ -139,6 +140,15 @@ export const HOME_POOL_TARGET = Number(process.env.HOME_POOL_TARGET ?? 25)
 export const HOME_SESSION_TTL_HOURS = Number(process.env.HOME_SESSION_TTL_HOURS ?? 24)
 export const HOME_FRESH_DAYS = Number(process.env.HOME_FRESH_DAYS ?? 90)
 export const HOME_SNAPSHOT_TTL_HOURS = Number(process.env.HOME_SNAPSHOT_TTL_HOURS ?? 24)
+
+export const SERIES_BATCH_SIZE = Number(process.env.SERIES_BATCH_SIZE ?? 6)
+export const SERIES_ITEMS_PER_SHELF = Number(process.env.SERIES_ITEMS_PER_SHELF ?? 24)
+export const SERIES_ITEMS_MAX = Number(process.env.SERIES_ITEMS_MAX ?? 30)
+export const SERIES_POOL_MIN = Number(process.env.SERIES_POOL_MIN ?? 10)
+export const SERIES_POOL_TARGET = Number(process.env.SERIES_POOL_TARGET ?? 25)
+export const SERIES_SESSION_TTL_HOURS = Number(process.env.SERIES_SESSION_TTL_HOURS ?? 24)
+export const SERIES_FRESH_DAYS = Number(process.env.SERIES_FRESH_DAYS ?? 90)
+export const SERIES_SNAPSHOT_TTL_HOURS = Number(process.env.SERIES_SNAPSHOT_TTL_HOURS ?? 24)
 export const HERO_MIN_SCORE = Number(process.env.HERO_MIN_SCORE ?? 0.55)
 export const HERO_POOL_SIZE = Number(process.env.HERO_POOL_SIZE ?? 15)
 export const HERO_SCORE_WEIGHTS = {

@@ -12,7 +12,7 @@ import { healthRoutes } from './routes/health.js'
 import { sourcesRoutes } from './routes/sources.js'
 import { enrichmentRoutes } from './routes/enrichment.js'
 import { moviesRoutes } from './routes/movies.js'
-import { seriesRoutes } from './routes/series.js'
+import { seriesRoutes, seriesPersonalizedRoutes } from './routes/series.js'
 import { searchRoutes } from './routes/search.js'
 import { discoveryRoutes } from './routes/discovery.js'
 import { genresRoutes } from './routes/genres.js'
@@ -152,6 +152,7 @@ await app.register(async function protectedScope(protectedApp) {
   await protectedApp.register(discoveryRoutes, { discoveryService })
   await protectedApp.register(recommendationRoutes)
   await protectedApp.register(homeRoutes)
+  await protectedApp.register(seriesPersonalizedRoutes)
 
   const embeddingProvider = OPENAI_API_KEY ? createDefaultProvider(OPENAI_API_KEY) : null
   const embeddingService = embeddingProvider ? new EmbeddingService(db, embeddingProvider) : null

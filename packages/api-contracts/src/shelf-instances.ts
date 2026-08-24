@@ -116,6 +116,7 @@ export type PersistShelfInstanceParams = {
   generationType?: string | null
   generationReasonCodes?: string[]
   homeSessionId?: string | null
+  seriesSessionId?: string | null
   verticalPosition?: number | null
   rankerVersion: string
   queryPlannerVersion: string
