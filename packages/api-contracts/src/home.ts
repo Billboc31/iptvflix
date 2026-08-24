@@ -22,3 +22,10 @@ export type HomePageResponse = {
   nextCursor: string | null
   hero: HeroItem | null
 }
+
+export type SeriesPageResponse = {
+  coldStart: boolean
+  sessionId: string
+  shelves: ShelfResponse[]
+  nextCursor: string | null
+}

@@ -44,6 +44,7 @@ import type {
   SetFeedbackBody,
   HomeResponse,
   HomePageResponse,
+  SeriesPageResponse,
   LoginRequest,
   LoginResponse,
   MeResponse,
@@ -327,6 +328,11 @@ export function fetchHome(profileId: string): Promise<HomeResponse> {
 export function fetchHomePage(profileId: string, cursor?: string): Promise<HomePageResponse> {
   const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''
   return request(`/profiles/${profileId}/home${qs}`)
+}
+
+export function fetchSeriesPage(profileId: string, cursor?: string): Promise<SeriesPageResponse> {
+  const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''
+  return request(`/profiles/${profileId}/series/personalized${qs}`)
 }
 
 export async function login(username: string, password: string): Promise<LoginResponse> {

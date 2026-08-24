@@ -2,11 +2,48 @@ import type { FastifyInstance } from 'fastify'
 import type { SeriesFilters } from '@iptvflix/api-contracts'
 import { listSeries, getSeries, NotFoundError } from '../services/catalog-service.js'
 import type { SimilarTitlesService } from '../services/similar-titles-service.js'
+import { buildSeriesPage } from '../services/series-page-service.js'
+import { getCurrentProfile } from '../services/profile-service.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 interface SeriesRouteOptions {
   similarTitlesService?: SimilarTitlesService
+}
+
+function isValidCursor(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 512 && !/\s/.test(value)
+}
+
+export async function seriesPersonalizedRoutes(app: FastifyInstance): Promise<void> {
+  app.get<{ Params: { profileId: string }; Querystring: { cursor?: string } }>(
+    '/profiles/:profileId/series/personalized',
+    async (request, reply) => {
+      const { profileId } = request.params
+
+      try {
+        await getCurrentProfile(request.account!.id, profileId)
+      } catch {
+        return reply.status(403).send({ error: 'Profile does not belong to this account' })
+      }
+
+      const rawCursor = request.query.cursor
+      if (rawCursor !== undefined && !isValidCursor(rawCursor)) {
+        return reply.status(400).send({ error: 'Invalid cursor' })
+      }
+
+      try {
+        const result = await buildSeriesPage(profileId, rawCursor)
+        return reply.status(200).send(result)
+      } catch (err) {
+        const e = err as { status?: number; message?: string }
+        if (e.status === 403) {
+          return reply.status(403).send({ error: e.message ?? 'Forbidden' })
+        }
+        throw err
+      }
+    },
+  )
 }
 
 export async function seriesRoutes(app: FastifyInstance, opts: SeriesRouteOptions = {}): Promise<void> {
