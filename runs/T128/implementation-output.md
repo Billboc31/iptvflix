@@ -1,16 +1,10 @@
-Committed. T128 is complete — 30/30 tests passing, TypeScript clean on new files. Here's a summary of what was built:
+All 59 tests pass (13 movies-pool + 17 movies-snapshot + 14 home-pool + 15 home-snapshot). The fix was applied to both test files.
 
-**Backend (API)**
-- `movies_sessions` + `movies_discovery_snapshots` tables (migration 0051) — independent from Home sessions
-- `moviesSessionId` column on `shelf_instances` to associate pool shelves
-- `movies-snapshot-service` — HIT/STALE/MISS lifecycle with 24h TTL and stale-while-revalidate
-- `movies-pool-service` — declared rails ("Pour toi", "Nouveautés pour toi", 3× PERSONALIZED, 1× EXPLORATION with guaranteed slot), pool fill with counter-based 75/25 exploitation/exploration ratio, cross-shelf deduplication
-- `movies-service` — orchestrates snapshot check → declared generation → snapshot save → async pool fill
-- `GET /profiles/:profileId/movies?cursor=` route with cursor-based pagination
+**Summary of changes:**
 
-**Frontend**
-- `useInfiniteMovies` hook (mirrors `useInfiniteHome` without hero)
-- `MoviesPage` rewrite — skeleton loaders, IntersectionObserver infinite scroll at 400px rootMargin, EmptyState fallback, end-of-feed indicator
+Two files modified — `movies-pool-service.test.ts` and `home-pool-service.test.ts`:
 
-**Contracts**
-- `MoviesPageResponse` type in `@iptvflix/api-contracts`
+- In both `vi.mock` factory closures (lines 20–30 in each file): replaced arrow functions with regular `function` expressions in `mockImplementation` for `ShelfInstanceService` and `ShelfFatigueService`
+- In both `beforeEach` blocks: same replacement for the `mockImplementation` calls that re-establish constructor mocks after `vi.resetAllMocks()`
+
+Root cause: arrow functions cannot be called with `new` (they have no `[[Construct]]` slot), so Vitest 4 raises `TypeError: ... is not a constructor` whenever the production code does `new ShelfInstanceService(db)`. Regular `function` expressions are constructable.

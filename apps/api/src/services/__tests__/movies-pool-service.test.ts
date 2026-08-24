@@ -18,15 +18,15 @@ const mockPersistShelfInstance = vi.hoisted(() => vi.fn())
 const mockGetFatigueStates = vi.hoisted(() => vi.fn())
 
 vi.mock('../shelf-instance-service.js', () => ({
-  ShelfInstanceService: vi.fn().mockImplementation(() => ({
-    persistShelfInstance: mockPersistShelfInstance,
-  })),
+  ShelfInstanceService: vi.fn().mockImplementation(function () {
+    return { persistShelfInstance: mockPersistShelfInstance }
+  }),
 }))
 
 vi.mock('../shelf-fatigue-service.js', () => ({
-  ShelfFatigueService: vi.fn().mockImplementation(() => ({
-    getFatigueStates: mockGetFatigueStates,
-  })),
+  ShelfFatigueService: vi.fn().mockImplementation(function () {
+    return { getFatigueStates: mockGetFatigueStates }
+  }),
 }))
 
 const mockDb = vi.hoisted(() => ({ select: vi.fn(), update: vi.fn(), insert: vi.fn() }))
@@ -153,8 +153,8 @@ beforeEach(() => {
   vi.resetAllMocks()
   instanceCounter = 0
 
-  ;(ShelfInstanceService as any).mockImplementation(() => ({ persistShelfInstance: mockPersistShelfInstance }))
-  ;(ShelfFatigueService as any).mockImplementation(() => ({ getFatigueStates: mockGetFatigueStates }))
+  ;(ShelfInstanceService as any).mockImplementation(function () { return { persistShelfInstance: mockPersistShelfInstance } })
+  ;(ShelfFatigueService as any).mockImplementation(function () { return { getFatigueStates: mockGetFatigueStates } })
 
   mockPersistShelfInstance.mockImplementation(() => Promise.resolve(`instance-${++instanceCounter}`))
   mockGetFatigueStates.mockResolvedValue(new Map())
