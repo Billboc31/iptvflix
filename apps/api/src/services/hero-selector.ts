@@ -6,9 +6,11 @@ import { HERO_MIN_SCORE, HERO_POOL_SIZE, HERO_SCORE_WEIGHTS } from '../config/en
 import type { HeroItem } from '@iptvflix/api-contracts'
 import type { ShelfCandidateItem } from '../client/recommendation-engine-client.js'
 
+type HeroWeights = { version: string; profileRelevance: number; semanticConfidence: number; qualityPrior: number; languageAffinity: number }
+
 export function computeHeroScore(
   candidate: ShelfCandidateItem,
-  weights: typeof HERO_SCORE_WEIGHTS,
+  weights: HeroWeights,
 ): number {
   return (
     weights.profileRelevance * candidate.profileScore +
