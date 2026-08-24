@@ -13,6 +13,30 @@ vi.mock('../contexts/PreviewContext.js', () => ({
   }),
 }))
 
+vi.mock('../context/ProfileContext.js', () => ({
+  useProfile: () => ({
+    currentProfile: { id: '00000000-0000-0000-0000-000000000001', name: 'Test', avatarColor: '#fff' },
+    profileVersion: 0,
+    profiles: [],
+    isLoading: false,
+    selectProfile: vi.fn(),
+    refreshProfiles: vi.fn(),
+  }),
+}))
+
+vi.mock('../hooks/useInfiniteMovies.js', () => ({
+  useInfiniteMovies: () => ({
+    allShelves: [],
+    sessionId: null,
+    nextCursor: null,
+    isLoading: false,
+    isFetchingMore: false,
+    hasMore: false,
+    error: null,
+    loadMore: vi.fn(),
+  }),
+}))
+
 function renderPage() {
   return render(
     <MemoryRouter>

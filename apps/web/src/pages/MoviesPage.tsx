@@ -1,7 +1,7 @@
 import { Component, useEffect, useRef } from 'react'
 import type { ReactNode, ErrorInfo } from 'react'
 import ShelfRow from '../components/content/ShelfRow.js'
-import EmptyState from '../components/ui/EmptyState.js'
+import MoviesCatalogSection from '../components/content/MoviesCatalogSection.js'
 import Skeleton from '../components/ui/Skeleton.js'
 import Spinner from '../components/ui/Spinner.js'
 import { useInfiniteMovies } from '../hooks/useInfiniteMovies.js'
@@ -66,47 +66,47 @@ export default function MoviesPage() {
     return () => observer.disconnect()
   }, [hasMore, loadMore])
 
-  if (!isLoading && allShelves.length === 0) {
-    return (
-      <EmptyState
-        icon="🎬"
-        heading="Aucune recommandation disponible"
-        description="Votre profil se met à jour. Revenez bientôt pour découvrir des films personnalisés."
-      />
-    )
-  }
+  const showRecommendations = isLoading || allShelves.length > 0
 
   return (
     <div className="min-h-screen bg-[#0a0a0f]">
-      {isLoading && <Spinner />}
+      {showRecommendations && (
+        <section>
+          <h2 className="px-4 md:px-8 pt-6 text-lg font-semibold text-white">Recommandé pour vous</h2>
 
-      {isLoading && (
-        <>
-          <ShelfSkeleton />
-          <ShelfSkeleton />
-          <ShelfSkeleton />
-        </>
+          {isLoading && <Spinner />}
+
+          {isLoading && (
+            <>
+              <ShelfSkeleton />
+              <ShelfSkeleton />
+              <ShelfSkeleton />
+            </>
+          )}
+
+          {!isLoading && allShelves.map((shelf) => (
+            <ShelfErrorBoundary key={shelf.id}>
+              <ShelfRow shelf={shelf} />
+            </ShelfErrorBoundary>
+          ))}
+
+          {isFetchingMore && (
+            <>
+              <ShelfSkeleton />
+              <ShelfSkeleton />
+              <ShelfSkeleton />
+            </>
+          )}
+
+          {hasMore && !isFetchingMore && <div ref={sentinelRef} aria-hidden="true" />}
+
+          {!hasMore && allShelves.length > 0 && (
+            <p className="text-center text-sm text-gray-600 py-4">— Fin des recommandations —</p>
+          )}
+        </section>
       )}
 
-      {!isLoading && allShelves.map((shelf) => (
-        <ShelfErrorBoundary key={shelf.id}>
-          <ShelfRow shelf={shelf} />
-        </ShelfErrorBoundary>
-      ))}
-
-      {isFetchingMore && (
-        <>
-          <ShelfSkeleton />
-          <ShelfSkeleton />
-          <ShelfSkeleton />
-        </>
-      )}
-
-      {hasMore && !isFetchingMore && <div ref={sentinelRef} aria-hidden="true" />}
-
-      {!hasMore && allShelves.length > 0 && (
-        <p className="text-center text-sm text-gray-600 py-8">— Fin des recommandations —</p>
-      )}
+      <MoviesCatalogSection />
     </div>
   )
 }
