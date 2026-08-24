@@ -12,7 +12,6 @@ import ErrorState from '../components/ui/ErrorState.js'
 import Skeleton from '../components/ui/Skeleton.js'
 import Spinner from '../components/ui/Spinner.js'
 import Button from '../components/ui/Button.js'
-import { useMovies } from '../hooks/useMovies.js'
 import { useInfiniteHome } from '../hooks/useHome.js'
 import { useArrivals } from '../hooks/useArrivals.js'
 import { useOpenDetail } from '../hooks/useOpenDetail.js'
@@ -54,9 +53,9 @@ export default function HomePage() {
   const navigate = useNavigate()
   const openDetail = useOpenDetail()
   const { currentProfile, profileVersion } = useProfile()
-  const { data: movies, loading: moviesLoading } = useMovies({ pageSize: 1 })
   const {
     allShelves,
+    hero,
     isLoading: homeLoading,
     isFetchingMore,
     hasMore,
@@ -89,8 +88,8 @@ export default function HomePage() {
   }, [hasMore, loadMore])
 
   const recShelves = allShelves.filter((shelf) => shelf.id !== 'sys_continue_watching')
-  const isLoading = moviesLoading || homeLoading
-  const hasContent = (movies?.items.length ?? 0) > 0 || recShelves.length > 0
+  const isLoading = homeLoading
+  const hasContent = recShelves.length > 0 || hero !== null
 
   if (!isLoading && !hasContent) {
     return (
@@ -108,25 +107,23 @@ export default function HomePage() {
     )
   }
 
-  const hero = movies?.items[0]
-
   return (
     <div>
-      {/* Hero */}
+      {/* Hero — only rendered when a quality-gated hero exists */}
       {hero && (
         <HeroSection
           title={hero.title}
           synopsis={hero.synopsis}
           backdropUrl={hero.backdropUrl}
-          mediaId={hero.id}
+          mediaId={hero.mediaId}
           trailerKey={hero.trailerKey}
           availabilityStatus={hero.availabilityStatus}
           onPlay={
-            hero.availabilityStatus === 'AVAILABLE'
-              ? () => navigate(`/player/movie/${hero.id}`)
+            hero.availabilityStatus === 'available'
+              ? () => navigate(`/player/${hero.mediaType === 'MOVIE' ? 'movie' : 'series'}/${hero.mediaId}`)
               : undefined
           }
-          onDetails={() => openDetail('movie', hero.id)}
+          onDetails={() => openDetail(hero.mediaType === 'MOVIE' ? 'movie' : 'series', hero.mediaId)}
           onAddToList={() => {}}
         />
       )}

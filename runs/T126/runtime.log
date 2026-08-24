@@ -1,0 +1,35 @@
+[2026-08-24T06:25:33Z] auto-run start: state=INIT
+[2026-08-24T06:25:33Z] auto-run: running step=planner
+[2026-08-24T06:25:35Z] auto-run: pre-planner rebase onto integration ok
+[2026-08-24T06:25:35Z] prompt: resolved=prompts/generic/planner.md source=generic
+[2026-08-24T06:25:35Z] prompt: generic fallback — injecting runs/T126/ticket.md
+[2026-08-24T06:25:35Z] compose: global-context=docs/ai/global-context.md
+[2026-08-24T06:25:35Z] compose: role=ai/roles/planner.md
+[2026-08-24T06:25:35Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-24T06:25:35Z] compose: skill=ai/skills/architecture-discipline.md
+[2026-08-24T06:25:35Z] compose: skill=ai/skills/documentation.md
+[2026-08-24T06:25:35Z] compose: task (canonical prompt)
+[2026-08-24T06:25:35Z] snapshot: runtime-prompt=runs/T126/prompts/planner-attempt-1.md
+[2026-08-24T06:29:41Z] auto-run: step=planner done rc=0
+[2026-08-24T08:18:56Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-24T08:18:56Z] auto-run: running step=tester
+[2026-08-24T08:18:57Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-24T08:18:57Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-24T08:18:57Z] prompt: generic fallback — injecting runs/T126/ticket.md
+[2026-08-24T08:18:57Z] compose: global-context=docs/ai/global-context.md
+[2026-08-24T08:18:57Z] compose: role=ai/roles/tester.md
+[2026-08-24T08:18:57Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-24T08:18:57Z] compose: skill=ai/skills/testing.md
+[2026-08-24T08:18:57Z] compose: skill=ai/skills/debugging.md
+[2026-08-24T08:18:57Z] compose: task (canonical prompt)
+[2026-08-24T08:18:57Z] snapshot: runtime-prompt=runs/T126/prompts/tester-attempt-20.md
+[2026-08-24T08:23:04Z] auto-run: step=tester done rc=0
+[2026-08-24T08:23:04Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-24T08:23:04Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-24T08:23:04Z] commit-checkpoint: unstaged runtime garbage: ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T126/daemon.lock', 'runs/T126/runtime.log', 'runs/T126/workflow-status.md']
+[2026-08-24T08:23:04Z] commit-checkpoint: sha=413a1922 files=3 title='test(T126/workflow): tester — update 3 file(s)'
+[2026-08-24T08:23:04Z] auto-run: auto-push triggered
+[2026-08-24T08:23:04Z] push: tolerating runtime dirty files (not blocking): ['apps/api/node_modules/.vite/vitest/results.json', 'runs/T126/daemon.lock', 'runs/T126/runtime.log', 'runs/T126/workflow-status.md']
+[2026-08-24T08:23:04Z] push: pushing branch=ticket/T126-cache-personalized-home-and-add-stable-quality-gat
+[2026-08-24T08:23:06Z] push: done branch=ticket/T126-cache-personalized-home-and-add-stable-quality-gat
+[2026-08-24T08:23:06Z] auto-run: TEST_COMPLETE — running PR lifecycle

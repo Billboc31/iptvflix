@@ -12,6 +12,8 @@ vi.mock('../../config/env.js', () => ({
   HOME_POOL_MIN: 10,
   HOME_POOL_TARGET: 25,
   HOME_SESSION_TTL_HOURS: 24,
+  HOME_SNAPSHOT_TTL_HOURS: 24,
+  HERO_MIN_SCORE: 0.55,
 }))
 
 const mockDb = vi.hoisted(() => ({
@@ -28,6 +30,17 @@ vi.mock('../home-pool-service.js', () => ({
   buildFallbackShelf: vi.fn(),
 }))
 
+vi.mock('../home-snapshot-service.js', () => ({
+  getSnapshot: vi.fn(),
+  saveSnapshot: vi.fn(),
+  isSnapshotValid: vi.fn(),
+  isStale: vi.fn(),
+}))
+
+vi.mock('../shelf-service.js', () => ({
+  getShelf: vi.fn(),
+}))
+
 vi.mock('../../lib/home-cursor.js', () => ({
   signCursor: vi.fn((_sessionId: string, pos: number) => `cursor_pos_${pos}`),
   verifyCursor: vi.fn(),
@@ -38,12 +51,17 @@ vi.mock('../../db/schema/index.js', () => ({
   movies: {},
   series: {},
   mediaVideos: {},
+  shelfInstances: {},
+  shelfInstanceItems: {},
+  homeDiscoverySnapshots: {},
 }))
 
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(),
   and: vi.fn(),
   inArray: vi.fn(),
+  asc: vi.fn(),
+  isNull: vi.fn(),
 }))
 
 vi.mock('../../lib/tmdb-image.js', () => ({
@@ -59,6 +77,13 @@ import {
   fillPool,
   buildFallbackShelf,
 } from '../home-pool-service.js'
+import {
+  getSnapshot,
+  saveSnapshot,
+  isSnapshotValid,
+  isStale,
+} from '../home-snapshot-service.js'
+import { getShelf } from '../shelf-service.js'
 import { signCursor, verifyCursor } from '../../lib/home-cursor.js'
 import type { ShelfResponse } from '@iptvflix/api-contracts'
 
@@ -126,9 +151,16 @@ beforeEach(() => {
   vi.mocked(signCursor).mockImplementation((_sid: string, pos: number) => `cursor_pos_${pos}`)
 
   vi.mocked(getOrCreateSession).mockResolvedValue({ id: SESSION_ID, profileId: PROFILE_ID, cursorReference: null })
-  vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [POUR_TOI, NOUVEAUTES], nextPoolPosition: 2 })
+  vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [POUR_TOI, NOUVEAUTES], nextPoolPosition: 2, shelfInstanceIds: ['inst-pt', 'inst-nv'], hero: null })
   vi.mocked(fillPool).mockReturnValue(undefined)
   vi.mocked(buildFallbackShelf).mockResolvedValue(FALLBACK_SHELF)
+  vi.mocked(saveSnapshot).mockResolvedValue(undefined)
+  vi.mocked(getShelf).mockResolvedValue({ id: 'sys_continue_watching', title: 'Continuer à regarder', type: 'SYSTEM', layoutHint: 'ROW', items: [] })
+
+  // Default: no snapshot (MISS path) so declared rails are built
+  vi.mocked(getSnapshot).mockResolvedValue(null)
+  vi.mocked(isSnapshotValid).mockReturnValue(false)
+  vi.mocked(isStale).mockReturnValue(false)
 
   vi.mocked(countUnserved).mockResolvedValue(12)
   vi.mocked(serveBatch).mockResolvedValue({
@@ -162,7 +194,7 @@ describe('first request — declared rails', () => {
   })
 
   it('coldStart is true and returns fallback shelf when buildDeclaredRails returns empty array', async () => {
-    vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [], nextPoolPosition: 0 })
+    vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [], nextPoolPosition: 0, shelfInstanceIds: [], hero: null })
     const result = await buildHome(PROFILE_ID)
     expect(result.coldStart).toBe(true)
     expect(result.shelves.some((s) => s.id === 'sys_fallback_popular')).toBe(true)
@@ -181,7 +213,7 @@ describe('first request — declared rails', () => {
   })
 
   it('nextCursor points to nextPoolPosition from buildDeclaredRails', async () => {
-    vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [POUR_TOI], nextPoolPosition: 1 })
+    vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [POUR_TOI], nextPoolPosition: 1, shelfInstanceIds: ['instance-pour-toi'], hero: null })
     const result = await buildHome(PROFILE_ID)
     expect(result.nextCursor).toBe('cursor_pos_1')
   })
@@ -193,7 +225,7 @@ describe('first request — declared rails', () => {
   })
 
   it('nextCursor is null when all declared rails are empty (coldStart with fallback)', async () => {
-    vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [], nextPoolPosition: 0 })
+    vi.mocked(buildDeclaredRails).mockResolvedValue({ shelves: [], nextPoolPosition: 0, shelfInstanceIds: [], hero: null })
     vi.mocked(getOrCreateSession).mockResolvedValue({ id: SESSION_ID, profileId: PROFILE_ID, cursorReference: 'exhausted' })
     const result = await buildHome(PROFILE_ID)
     expect(result.nextCursor).toBeNull()

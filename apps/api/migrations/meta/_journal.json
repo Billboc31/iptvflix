@@ -351,6 +351,13 @@
             "when": 4000,
             "tag": "0049_t123_shelf_concept_anchor",
             "breakpoints": true
+        },
+        {
+            "idx": 50,
+            "version": "7",
+            "when": 5000,
+            "tag": "0050_t126_home_discovery_snapshots",
+            "breakpoints": true
         }
     ]
 }

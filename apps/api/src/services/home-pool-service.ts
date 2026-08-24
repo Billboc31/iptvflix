@@ -25,7 +25,8 @@ import { RecommendationEngineClient } from '../client/recommendation-engine-clie
 import type { ShelfCandidateItem } from '../client/recommendation-engine-client.js'
 import { getShelf } from './shelf-service.js'
 import { resolveMediaImageUrl } from '../lib/tmdb-image.js'
-import type { ShelfResponse, ShelfItem } from '@iptvflix/api-contracts'
+import { selectHero } from './hero-selector.js'
+import type { ShelfResponse, ShelfItem, HeroItem } from '@iptvflix/api-contracts'
 
 const MODEL_VERSION = 'v1'
 const EXHAUSTED_MARKER = 'exhausted'
@@ -162,6 +163,7 @@ export async function fillPoolAsync(sessionId: string, profileId: string, target
 }
 
 async function _fillPoolAsync(sessionId: string, profileId: string, targetCount: number): Promise<void> {
+  console.log(`[HOME_GENERATION] pool fill triggered sessionId=${sessionId}`)
   // Gather already-served media IDs in this session for cross-shelf dedup.
   const servedItems = await db
     .select({ mediaId: shelfInstanceItems.mediaId })
@@ -462,7 +464,8 @@ type PendingRail = {
 export async function buildDeclaredRails(
   profileId: string,
   sessionId: string,
-): Promise<{ shelves: ShelfResponse[]; nextPoolPosition: number }> {
+): Promise<{ shelves: ShelfResponse[]; nextPoolPosition: number; shelfInstanceIds: string[]; hero: HeroItem | null }> {
+  console.log(`[HOME_GENERATION] expensive LLM/semantic generation triggered profileId=${profileId}`)
   const excludedMediaIds = new Set<string>()
   const shelfInstanceService = new ShelfInstanceService(db)
   const fatigueService = new ShelfFatigueService(db)
@@ -470,6 +473,7 @@ export async function buildDeclaredRails(
   let nextPosition = 0
   const results: ShelfResponse[] = []
   const pendingRails: PendingRail[] = []
+  let hero: HeroItem | null = null
 
   // Helper: query engine or fall back to rankRecommendations.
   async function queryCandidates(params: {
@@ -539,12 +543,24 @@ export async function buildDeclaredRails(
   }
 
   // ── Rail 2: "Pour toi" ─────────────────────────────────────────────────────
+  let pourToiCandidates: ShelfCandidateItem[] = []
   try {
     const t0 = Date.now()
     const { candidates, ...meta } = await queryCandidates({ text: 'films et séries recommandés pour ce profil' })
-    if (candidates.length > 0) {
-      pendingRails.push({ title: 'Pour toi', candidates, conceptId: null, semanticIntent: null, ...meta, latencyMs: Date.now() - t0, verticalPosition: nextPosition++ })
-      for (const c of candidates) excludedMediaIds.add(c.mediaId)
+    pourToiCandidates = candidates
+
+    // Select hero before queuing Pour toi so the hero mediaId can be filtered out of the rail
+    try {
+      hero = await selectHero(profileId, pourToiCandidates)
+      if (hero) excludedMediaIds.add(hero.mediaId)
+    } catch (err) {
+      console.error('[home-pool] hero selection failed (continuing without hero):', err)
+    }
+
+    const filteredPourToi = pourToiCandidates.filter((c) => c.mediaId !== hero?.mediaId)
+    if (filteredPourToi.length > 0) {
+      pendingRails.push({ title: 'Pour toi', candidates: filteredPourToi, conceptId: null, semanticIntent: null, ...meta, latencyMs: Date.now() - t0, verticalPosition: nextPosition++ })
+      for (const c of filteredPourToi) excludedMediaIds.add(c.mediaId)
     }
   } catch (err) {
     console.error('[home-pool] declared rail 2 "Pour toi" failed:', err)
@@ -607,13 +623,14 @@ export async function buildDeclaredRails(
     console.error('[home-pool] declared rail 6 "Séries pour toi" failed:', err)
   }
 
-  if (pendingRails.length === 0) return { shelves: results, nextPoolPosition: nextPosition }
+  if (pendingRails.length === 0) return { shelves: results, nextPoolPosition: nextPosition, shelfInstanceIds: [], hero }
 
   // ── Batch enrich all items from rails 2–6 in one round-trip ───────────────
   const allItems = pendingRails.flatMap((r) => r.candidates.map((c) => ({ mediaId: c.mediaId, mediaType: c.mediaType })))
   const enrichmentMap = await buildEnrichmentMap(allItems)
 
   // ── Persist + assemble ShelfResponse for each pending rail ─────────────────
+  const shelfInstanceIds: string[] = []
   for (const rail of pendingRails) {
     try {
       const instanceId = await shelfInstanceService.persistShelfInstance({
@@ -645,6 +662,7 @@ export async function buildDeclaredRails(
         })),
       })
 
+      shelfInstanceIds.push(instanceId)
       results.push({
         id: instanceId,
         title: rail.title,
@@ -664,7 +682,7 @@ export async function buildDeclaredRails(
     }
   }
 
-  return { shelves: results, nextPoolPosition: nextPosition }
+  return { shelves: results, nextPoolPosition: nextPosition, shelfInstanceIds, hero }
 }
 
 // ---------------------------------------------------------------------------
