@@ -25,6 +25,7 @@ import { feedbackRoutes } from './routes/feedback.js'
 import { tasteRoutes } from './routes/taste.js'
 import { recommendationRoutes } from './routes/recommendations.js'
 import { homeRoutes } from './routes/home.js'
+import { profilesMoviesRoutes } from './routes/profiles-movies.js'
 import { releaseLifecycleRoutes } from './routes/release-lifecycle.js'
 import { catalogRoutes } from './routes/catalog.js'
 import { profileRoutes } from './routes/profile.js'
@@ -153,6 +154,7 @@ await app.register(async function protectedScope(protectedApp) {
   await protectedApp.register(recommendationRoutes)
   await protectedApp.register(homeRoutes)
   await protectedApp.register(seriesPersonalizedRoutes)
+  await protectedApp.register(profilesMoviesRoutes)
 
   const embeddingProvider = OPENAI_API_KEY ? createDefaultProvider(OPENAI_API_KEY) : null
   const embeddingService = embeddingProvider ? new EmbeddingService(db, embeddingProvider) : null

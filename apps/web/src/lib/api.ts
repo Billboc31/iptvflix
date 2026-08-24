@@ -2,6 +2,7 @@ import type {
   InteractionEventBody,
   BatchEventResponse,
   ArrivalItem,
+  MoviesPageResponse,
   MovieResponse,
   MovieDetailResponse,
   SeriesResponse,
@@ -333,6 +334,11 @@ export function fetchHomePage(profileId: string, cursor?: string): Promise<HomeP
 export function fetchSeriesPage(profileId: string, cursor?: string): Promise<SeriesPageResponse> {
   const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''
   return request(`/profiles/${profileId}/series/personalized${qs}`)
+}
+
+export function fetchMoviesPage(profileId: string, cursor?: string): Promise<MoviesPageResponse> {
+  const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''
+  return request(`/profiles/${profileId}/movies${qs}`)
 }
 
 export async function login(username: string, password: string): Promise<LoginResponse> {

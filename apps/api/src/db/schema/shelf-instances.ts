@@ -24,6 +24,7 @@ export const shelfInstances = pgTable(
     generationReasonCodes: jsonb('generation_reason_codes').notNull().default([]),
     homeSessionId: uuid('home_session_id'),
     seriesSessionId: uuid('series_session_id'),
+    moviesSessionId: uuid('movies_session_id'),
     verticalPosition: integer('vertical_position'),
     rankerVersion: text('ranker_version').notNull(),
     queryPlannerVersion: text('query_planner_version').notNull(),
