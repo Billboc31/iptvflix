@@ -1,3 +1,9 @@
+export class MetadataMappingError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'MetadataMappingError';
+    }
+}
 export class NoopMetadataProvider {
     async getMovieMetadata(_tmdbId, _opts) {
         return null;

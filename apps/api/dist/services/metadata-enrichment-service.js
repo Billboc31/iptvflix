@@ -8,6 +8,8 @@ import { collections } from '../db/schema/collections.js';
 import { mediaVideos } from '../db/schema/media-videos.js';
 import { mediaCredits } from '../db/schema/media-credits.js';
 import { persons } from '../db/schema/persons.js';
+import { enrichmentFailures } from '../db/schema/enrichment-failures.js';
+import { MetadataMappingError } from '../providers/metadata/types.js';
 const DEFAULT_STALE_DAYS = 7;
 const ENRICH_THROTTLE_MS = 250;
 function slugify(name) {
@@ -29,6 +31,30 @@ function pickBestTrailer(videos) {
     const teaser = videos.find((v) => v.official && v.type === 'Teaser') ?? videos.find((v) => v.type === 'Teaser');
     return teaser ?? null;
 }
+function classifyError(err) {
+    if (err instanceof Error) {
+        const anyErr = err;
+        const code = typeof anyErr['code'] === 'string' ? anyErr['code'] : null;
+        const name = err.constructor?.name ?? err.name ?? 'Error';
+        const isTransient = name.includes('Network') ||
+            name.includes('RateLimit') ||
+            code === 'ECONNRESET' ||
+            code === 'ETIMEDOUT' ||
+            code === 'ECONNREFUSED';
+        return {
+            errorClass: name,
+            errorCode: code,
+            errorMessage: err.message,
+            retryable: isTransient,
+        };
+    }
+    return {
+        errorClass: null,
+        errorCode: null,
+        errorMessage: String(err),
+        retryable: false,
+    };
+}
 export class MetadataEnrichmentService {
     db;
     provider;
@@ -40,12 +66,51 @@ export class MetadataEnrichmentService {
         this.staleDays = staleDays;
         this.onEnriched = onEnriched;
     }
+    async persistFailure(opts) {
+        const { errorClass, errorCode, errorMessage, retryable } = classifyError(opts.err);
+        await this.db
+            .insert(enrichmentFailures)
+            .values({
+            mediaType: opts.mediaType,
+            mediaId: opts.mediaId,
+            tmdbId: opts.tmdbId ?? null,
+            title: opts.title ?? null,
+            stage: opts.stage,
+            errorClass,
+            errorCode,
+            errorMessage,
+            retryable,
+            runId: opts.runId ?? null,
+        })
+            .onConflictDoUpdate({
+            target: [enrichmentFailures.mediaType, enrichmentFailures.mediaId],
+            set: {
+                tmdbId: sql `EXCLUDED.tmdb_id`,
+                title: sql `EXCLUDED.title`,
+                stage: sql `EXCLUDED.stage`,
+                errorClass: sql `EXCLUDED.error_class`,
+                errorCode: sql `EXCLUDED.error_code`,
+                errorMessage: sql `EXCLUDED.error_message`,
+                retryable: sql `EXCLUDED.retryable`,
+                retryCount: sql `${enrichmentFailures.retryCount} + 1`,
+                occurredAt: sql `now()`,
+                runId: sql `EXCLUDED.run_id`,
+            },
+        });
+        return { retryable };
+    }
+    async clearFailure(mediaType, mediaId) {
+        await this.db
+            .delete(enrichmentFailures)
+            .where(and(eq(enrichmentFailures.mediaType, mediaType), eq(enrichmentFailures.mediaId, mediaId)));
+    }
     async enrichMovie(movieId, opts) {
         const staleDays = opts?.staleDays ?? this.staleDays;
         const [movie] = await this.db
             .select({
             id: movies.id,
             tmdbId: movies.tmdbId,
+            title: movies.title,
             metadataEnrichedAt: movies.metadataEnrichedAt,
         })
             .from(movies)
@@ -69,63 +134,101 @@ export class MetadataEnrichmentService {
                 this.provider.getMovieCertification(movie.tmdbId),
             ]);
         }
-        catch {
-            return 'provider-failed';
+        catch (err) {
+            const { retryable } = await this.persistFailure({
+                mediaType: 'MOVIE',
+                mediaId: movieId,
+                tmdbId: movie.tmdbId,
+                title: movie.title,
+                stage: err instanceof MetadataMappingError ? 'map' : 'fetch',
+                err,
+                runId: opts?.runId,
+            });
+            return retryable ? 'provider-failed' : 'terminal-failed';
         }
-        if (metadata === null)
-            return 'provider-failed';
+        if (metadata === null) {
+            await this.persistFailure({
+                mediaType: 'MOVIE',
+                mediaId: movieId,
+                tmdbId: movie.tmdbId,
+                title: movie.title,
+                stage: 'fetch',
+                err: new Error('TMDB returned null (404 or empty)'),
+                runId: opts?.runId,
+            });
+            return 'terminal-failed';
+        }
         // Upsert collection if movie belongs to one
         let collectionId = null;
         if (metadata.belongsToCollection) {
             const bc = metadata.belongsToCollection;
-            const [collRow] = await this.db
-                .insert(collections)
-                .values({
-                tmdbId: bc.tmdbId,
-                name: bc.name,
-                posterPath: bc.posterPath,
-                backdropPath: bc.backdropPath,
-            })
-                .onConflictDoUpdate({
-                target: collections.tmdbId,
-                set: {
+            try {
+                const [collRow] = await this.db
+                    .insert(collections)
+                    .values({
+                    tmdbId: bc.tmdbId,
                     name: bc.name,
                     posterPath: bc.posterPath,
                     backdropPath: bc.backdropPath,
-                },
-            })
-                .returning({ id: collections.id });
-            collectionId = collRow?.id ?? null;
+                })
+                    .onConflictDoUpdate({
+                    target: collections.tmdbId,
+                    set: {
+                        name: bc.name,
+                        posterPath: bc.posterPath,
+                        backdropPath: bc.backdropPath,
+                    },
+                })
+                    .returning({ id: collections.id });
+                collectionId = collRow?.id ?? null;
+            }
+            catch (err) {
+                console.warn(`[enrichment] collection upsert failed for movie ${movieId}:`, err);
+            }
         }
-        await this.db
-            .update(movies)
-            .set({
-            title: metadata.title,
-            originalTitle: metadata.originalTitle,
-            year: metadata.year,
-            synopsis: metadata.synopsis,
-            posterPath: metadata.posterPath,
-            backdropPath: metadata.backdropPath,
-            durationMinutes: metadata.runtimeMinutes,
-            imdbId: metadata.imdbId,
-            voteAverage: metadata.voteAverage,
-            voteCount: metadata.voteCount ?? null,
-            certification,
-            metadataProvider: 'tmdb',
-            metadataEnrichedAt: new Date(),
-            updatedAt: new Date(),
-            status: metadata.status ?? metadata.releaseStatus ?? null,
-            popularity: metadata.popularity ?? null,
-            originalLanguage: metadata.originalLanguage ?? null,
-            spokenLanguages: metadata.spokenLanguages ?? null,
-            productionCountries: metadata.productionCountries ?? null,
-            tagline: metadata.tagline ?? null,
-            keywords: metadata.keywords ?? null,
-            externalIds: metadata.externalIds ?? null,
-            collectionId,
-            tmdbSyncedAt: new Date(),
-        })
-            .where(eq(movies.id, movieId));
+        try {
+            await this.db
+                .update(movies)
+                .set({
+                title: metadata.title,
+                originalTitle: metadata.originalTitle,
+                year: metadata.year,
+                synopsis: metadata.synopsis,
+                posterPath: metadata.posterPath,
+                backdropPath: metadata.backdropPath,
+                durationMinutes: metadata.runtimeMinutes,
+                imdbId: metadata.imdbId,
+                voteAverage: metadata.voteAverage,
+                voteCount: metadata.voteCount ?? null,
+                certification,
+                metadataProvider: 'tmdb',
+                metadataEnrichedAt: new Date(),
+                updatedAt: new Date(),
+                status: metadata.status ?? metadata.releaseStatus ?? null,
+                popularity: metadata.popularity ?? null,
+                originalLanguage: metadata.originalLanguage ?? null,
+                spokenLanguages: metadata.spokenLanguages ?? null,
+                productionCountries: metadata.productionCountries ?? null,
+                tagline: metadata.tagline ?? null,
+                keywords: metadata.keywords ?? null,
+                externalIds: metadata.externalIds ?? null,
+                collectionId,
+                tmdbSyncedAt: new Date(),
+            })
+                .where(eq(movies.id, movieId));
+        }
+        catch (err) {
+            const { retryable } = await this.persistFailure({
+                mediaType: 'MOVIE',
+                mediaId: movieId,
+                tmdbId: movie.tmdbId,
+                title: movie.title,
+                stage: 'db_update',
+                err,
+                runId: opts?.runId,
+            });
+            return retryable ? 'provider-failed' : 'terminal-failed';
+        }
         await this.upsertGenres(metadata.genres, metadata.genreObjects, async (genreIds) => {
             await this.db.delete(movieGenres).where(eq(movieGenres.movieId, movieId));
             if (genreIds.length > 0) {
@@ -137,6 +240,7 @@ export class MetadataEnrichmentService {
         await this.persistVideos('movie', movieId, videos);
         await this.persistCredits('movie', movieId, credits);
         await this.persistFrenchLocalization('movie', movieId, movie.tmdbId, metadata.title, metadata.synopsis ?? null, metadata.tagline ?? null);
+        await this.clearFailure('MOVIE', movieId);
         this.onEnriched?.(movieId, 'MOVIE');
         return 'enriched';
     }
@@ -146,6 +250,7 @@ export class MetadataEnrichmentService {
             .select({
             id: series.id,
             tmdbId: series.tmdbId,
+            title: series.title,
             metadataEnrichedAt: series.metadataEnrichedAt,
         })
             .from(series)
@@ -169,43 +274,76 @@ export class MetadataEnrichmentService {
                 this.provider.getSeriesCertification(seriesRow.tmdbId),
             ]);
         }
-        catch {
-            return 'provider-failed';
+        catch (err) {
+            const { retryable } = await this.persistFailure({
+                mediaType: 'SERIES',
+                mediaId: seriesId,
+                tmdbId: seriesRow.tmdbId,
+                title: seriesRow.title,
+                stage: err instanceof MetadataMappingError ? 'map' : 'fetch',
+                err,
+                runId: opts?.runId,
+            });
+            return retryable ? 'provider-failed' : 'terminal-failed';
         }
-        if (metadata === null)
-            return 'provider-failed';
-        await this.db
-            .update(series)
-            .set({
-            title: metadata.title,
-            originalTitle: metadata.originalTitle,
-            firstAirYear: metadata.firstAirYear,
-            synopsis: metadata.synopsis,
-            posterPath: metadata.posterPath,
-            backdropPath: metadata.backdropPath,
-            imdbId: metadata.imdbId,
-            voteAverage: metadata.voteAverage,
-            voteCount: metadata.voteCount ?? null,
-            certification,
-            status: metadata.status,
-            metadataProvider: 'tmdb',
-            metadataEnrichedAt: new Date(),
-            updatedAt: new Date(),
-            popularity: metadata.popularity ?? null,
-            originalLanguage: metadata.originalLanguage ?? null,
-            spokenLanguages: metadata.spokenLanguages ?? null,
-            productionCountries: metadata.productionCountries ?? null,
-            tagline: metadata.tagline ?? null,
-            inProduction: metadata.inProduction ?? null,
-            networks: metadata.networks ?? null,
-            createdBy: metadata.createdBy ?? null,
-            numberOfSeasons: metadata.numberOfSeasons ?? null,
-            numberOfEpisodes: metadata.numberOfEpisodes ?? null,
-            keywords: metadata.keywords ?? null,
-            externalIds: metadata.externalIds ?? null,
-            tmdbSyncedAt: new Date(),
-        })
-            .where(eq(series.id, seriesId));
+        if (metadata === null) {
+            await this.persistFailure({
+                mediaType: 'SERIES',
+                mediaId: seriesId,
+                tmdbId: seriesRow.tmdbId,
+                title: seriesRow.title,
+                stage: 'fetch',
+                err: new Error('TMDB returned null (404 or empty)'),
+                runId: opts?.runId,
+            });
+            return 'terminal-failed';
+        }
+        try {
+            await this.db
+                .update(series)
+                .set({
+                title: metadata.title,
+                originalTitle: metadata.originalTitle,
+                firstAirYear: metadata.firstAirYear,
+                synopsis: metadata.synopsis,
+                posterPath: metadata.posterPath,
+                backdropPath: metadata.backdropPath,
+                imdbId: metadata.imdbId,
+                voteAverage: metadata.voteAverage,
+                voteCount: metadata.voteCount ?? null,
+                certification,
+                status: metadata.status,
+                metadataProvider: 'tmdb',
+                metadataEnrichedAt: new Date(),
+                updatedAt: new Date(),
+                popularity: metadata.popularity ?? null,
+                originalLanguage: metadata.originalLanguage ?? null,
+                spokenLanguages: metadata.spokenLanguages ?? null,
+                productionCountries: metadata.productionCountries ?? null,
+                tagline: metadata.tagline ?? null,
+                inProduction: metadata.inProduction ?? null,
+                networks: metadata.networks ?? null,
+                createdBy: metadata.createdBy ?? null,
+                numberOfSeasons: metadata.numberOfSeasons ?? null,
+                numberOfEpisodes: metadata.numberOfEpisodes ?? null,
+                keywords: metadata.keywords ?? null,
+                externalIds: metadata.externalIds ?? null,
+                tmdbSyncedAt: new Date(),
+            })
+                .where(eq(series.id, seriesId));
+        }
+        catch (err) {
+            const { retryable } = await this.persistFailure({
+                mediaType: 'SERIES',
+                mediaId: seriesId,
+                tmdbId: seriesRow.tmdbId,
+                title: seriesRow.title,
+                stage: 'db_update',
+                err,
+                runId: opts?.runId,
+            });
+            return retryable ? 'provider-failed' : 'terminal-failed';
+        }
         await this.upsertGenres(metadata.genres, metadata.genreObjects, async (genreIds) => {
             await this.db.delete(seriesGenres).where(eq(seriesGenres.seriesId, seriesId));
             if (genreIds.length > 0) {
@@ -244,12 +382,27 @@ export class MetadataEnrichmentService {
                 });
             }
         }
+        let seasonsFailureResult = null;
         try {
             await this.enrichSeriesSeasons(seriesId);
         }
         catch (err) {
             console.warn(`[enrichment] enrichSeriesSeasons(${seriesId}) failed:`, err);
+            const { retryable } = await this.persistFailure({
+                mediaType: 'SERIES',
+                mediaId: seriesId,
+                tmdbId: seriesRow.tmdbId,
+                title: seriesRow.title,
+                stage: 'seasons',
+                err,
+                runId: opts?.runId,
+            });
+            seasonsFailureResult = retryable ? 'provider-failed' : 'terminal-failed';
         }
+        if (seasonsFailureResult !== null) {
+            return seasonsFailureResult;
+        }
+        await this.clearFailure('SERIES', seriesId);
         this.onEnriched?.(seriesId, 'SERIES');
         return 'enriched';
     }
@@ -309,7 +462,7 @@ export class MetadataEnrichmentService {
                             airDate: sql `EXCLUDED.air_date`,
                             durationMinutes: sql `EXCLUDED.duration_minutes`,
                             tmdbId: sql `EXCLUDED.tmdb_id`,
-                            posterPath: sql `EXCLUDED.poster_path`,
+                            posterPath: sql `COALESCE(EXCLUDED.poster_path, ${episodes.posterPath})`,
                             voteAverage: sql `EXCLUDED.vote_average`,
                             voteCount: sql `EXCLUDED.vote_count`,
                             updatedAt: sql `now()`,
@@ -401,11 +554,11 @@ export class MetadataEnrichmentService {
             this.db
                 .select({ id: movies.id })
                 .from(movies)
-                .where(and(isNotNull(movies.tmdbId), or(isNull(movies.metadataEnrichedAt), lt(movies.metadataEnrichedAt, threshold)))),
+                .where(and(isNotNull(movies.tmdbId), eq(movies.matchStatus, 'MATCHED'), or(isNull(movies.metadataEnrichedAt), lt(movies.metadataEnrichedAt, threshold)))),
             this.db
                 .select({ id: series.id })
                 .from(series)
-                .where(and(isNotNull(series.tmdbId), or(isNull(series.metadataEnrichedAt), lt(series.metadataEnrichedAt, threshold)))),
+                .where(and(isNotNull(series.tmdbId), eq(series.matchStatus, 'MATCHED'), or(isNull(series.metadataEnrichedAt), lt(series.metadataEnrichedAt, threshold)))),
         ]);
         const counts = {
             movies: { enriched: 0, skipped: 0, failed: 0 },
@@ -518,7 +671,8 @@ export class MetadataEnrichmentService {
                     ? await this.provider.getMovieMetadata(tmdbId, { language: 'fr-FR' })
                     : await this.provider.getSeriesMetadata(tmdbId, { language: 'fr-FR' });
         }
-        catch {
+        catch (err) {
+            console.warn(`[enrichment] persistFrenchLocalization(${mediaType} ${mediaId}) failed:`, err);
             return;
         }
         if (!frMetadata)

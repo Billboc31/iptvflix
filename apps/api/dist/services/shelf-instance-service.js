@@ -17,6 +17,8 @@ export class ShelfInstanceService {
                 generationType: params.generationType ?? null,
                 generationReasonCodes: params.generationReasonCodes ?? [],
                 homeSessionId: params.homeSessionId ?? null,
+                seriesSessionId: params.seriesSessionId ?? null,
+                moviesSessionId: params.moviesSessionId ?? null,
                 verticalPosition: params.verticalPosition ?? null,
                 rankerVersion: params.rankerVersion,
                 queryPlannerVersion: params.queryPlannerVersion,

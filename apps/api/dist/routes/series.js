@@ -1,5 +1,36 @@
 import { listSeries, NotFoundError } from '../services/catalog-service.js';
+import { buildSeriesPage } from '../services/series-page-service.js';
+import { getCurrentProfile } from '../services/profile-service.js';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidCursor(value) {
+    return typeof value === 'string' && value.length <= 512 && !/\s/.test(value);
+}
+export async function seriesPersonalizedRoutes(app) {
+    app.get('/profiles/:profileId/series/personalized', async (request, reply) => {
+        const { profileId } = request.params;
+        try {
+            await getCurrentProfile(request.account.id, profileId);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Profile does not belong to this account' });
+        }
+        const rawCursor = request.query.cursor;
+        if (rawCursor !== undefined && !isValidCursor(rawCursor)) {
+            return reply.status(400).send({ error: 'Invalid cursor' });
+        }
+        try {
+            const result = await buildSeriesPage(profileId, rawCursor);
+            return reply.status(200).send(result);
+        }
+        catch (err) {
+            const e = err;
+            if (e.status === 403) {
+                return reply.status(403).send({ error: e.message ?? 'Forbidden' });
+            }
+            throw err;
+        }
+    });
+}
 export async function seriesRoutes(app, opts = {}) {
     const { similarTitlesService } = opts;
     app.get('/series', async (request, reply) => {

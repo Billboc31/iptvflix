@@ -1,1 +1,1 @@
-{"version":3,"file":"watchlist.d.ts","sourceRoot":"","sources":["../../../src/db/schema/watchlist.ts"],"names":[],"mappings":"AAGA,eAAO,MAAM,sBAAsB,2DAAsD,CAAA;AAEzF,eAAO,MAAM,SAAS;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;EAYrB,CAAA"}
+{"version":3,"file":"watchlist.d.ts","sourceRoot":"","sources":["../../../src/db/schema/watchlist.ts"],"names":[],"mappings":"AAGA,eAAO,MAAM,sBAAsB,KAAsD,CAAA;AAEzF,eAAO,MAAM,SAAS,KAYrB,CAAA"}

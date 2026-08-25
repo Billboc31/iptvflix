@@ -78,7 +78,8 @@ function extensionFallbackMode(containerExtension) {
 }
 export async function resolvePlayback(profileId, mediaType, mediaId, explicitAvailabilityId, correlationId = 'unknown', opts) {
     const t0 = Date.now();
-    console.info({ correlationId, step: 'resolve_start', mediaType, mediaId }, 'playback-resolver: resolve_start');
+    const nativeClient = opts?.clientType === 'android-tv';
+    console.info({ correlationId, step: 'resolve_start', mediaType, mediaId, clientType: opts?.clientType ?? 'web' }, 'playback-resolver: resolve_start');
     const [allRows, prefs] = await Promise.all([
         fetchAvailabilities(mediaType, mediaId),
         getProfilePreferences(profileId),
@@ -139,8 +140,9 @@ export async function resolvePlayback(profileId, mediaType, mediaId, explicitAva
     // residential probes showed .mkv/.mp4 as the working shapes.
     let containerExtension = selected.containerExtension ?? 'ts';
     // Catalog often stores "ts" even when only .mkv/.mp4 bytes work (T087).
-    // Prefer mkv so the media relay can remux instead of hanging on 551 .ts.
-    if (source.type === 'XTREAM') {
+    // Prefer mkv for media-relay remux (web). Native TV ExoPlayer can play the
+    // catalog extension directly — forcing .mkv there causes HTTP 551 on some panels.
+    if (source.type === 'XTREAM' && !nativeClient) {
         const rawExt = containerExtension.toLowerCase().replace(/^\./, '');
         if (!rawExt || rawExt === 'ts' || rawExt === 'm2ts' || rawExt === 'm3u8' || rawExt === 'm3u') {
             containerExtension = 'mkv';
@@ -365,25 +367,29 @@ export async function resolvePlayback(profileId, mediaType, mediaId, explicitAva
         }
     }
     const relayBase = getMediaRelayBaseUrl();
-    const gatewayUrl = mediaRelayEnabled && relayBase && MEDIA_RELAY_SECRET
+    const relaySecret = MEDIA_RELAY_SECRET;
+    const useMediaRelay = !nativeClient &&
+        mediaRelayEnabled &&
+        Boolean(relayBase && relaySecret);
+    const gatewayUrl = useMediaRelay
         ? buildMediaRelayPlayUrl({
             relayBaseUrl: relayBase,
-            secret: MEDIA_RELAY_SECRET,
+            secret: relaySecret,
             providerStreamUrl,
             containerExtension,
             startPositionSeconds,
         })
         : `/playback/stream/${sessionId}`;
-    // Relay remuxes mkv/ts → HLS; tell the web player to use hls.js even though
-    // the Railway session stays DIRECT (no ffmpeg on Railway).
-    const clientDeliveryMode = mediaRelayEnabled && needsRelayRemux(containerExtension) ? 'HLS_REMUX' : deliveryMode;
+    // Relay remuxes mkv/ts → HLS for web browsers. Native TV apps read Xtream directly.
+    const clientDeliveryMode = useMediaRelay && needsRelayRemux(containerExtension) ? 'HLS_REMUX' : deliveryMode;
     console.info({
         correlationId,
         step: 'gateway_url_issued',
         sessionId,
-        gatewayUrl: mediaRelayEnabled ? '[media-relay]' : gatewayUrl,
+        gatewayUrl: useMediaRelay ? '[media-relay]' : gatewayUrl,
         deliveryMode: clientDeliveryMode,
-        mediaRelay: mediaRelayEnabled,
+        mediaRelay: useMediaRelay,
+        nativeClient,
         durationMs: Date.now() - t0,
     }, 'playback-resolver: gateway_url_issued');
     return {

@@ -18,6 +18,7 @@ export const shelfConcepts = pgTable('shelf_concepts', {
     sourceModel: text('source_model').notNull(),
     promptVersion: text('prompt_version').notNull(),
     desiredMediaTypes: jsonb('desired_media_types').notNull().default([]),
+    semanticAnchor: text('semantic_anchor'),
     freshnessPolicy: text('freshness_policy'),
     active: boolean('active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

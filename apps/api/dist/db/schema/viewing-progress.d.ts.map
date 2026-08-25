@@ -1,1 +1,1 @@
-{"version":3,"file":"viewing-progress.d.ts","sourceRoot":"","sources":["../../../src/db/schema/viewing-progress.ts"],"names":[],"mappings":"AAGA,eAAO,MAAM,qBAAqB,4DAAsD,CAAA;AAExF,eAAO,MAAM,eAAe;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;EAe3B,CAAA"}
+{"version":3,"file":"viewing-progress.d.ts","sourceRoot":"","sources":["../../../src/db/schema/viewing-progress.ts"],"names":[],"mappings":"AAGA,eAAO,MAAM,qBAAqB,KAAsD,CAAA;AAExF,eAAO,MAAM,eAAe,KAe3B,CAAA"}

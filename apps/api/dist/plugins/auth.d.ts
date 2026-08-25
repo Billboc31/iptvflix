@@ -1,4 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
+import { devices } from '../db/schema/index.js';
 declare module '@fastify/jwt' {
     interface FastifyJWT {
         payload: {
@@ -20,6 +21,7 @@ declare module 'fastify' {
             username: string;
         };
         profileId?: string;
+        device?: typeof devices.$inferSelect;
     }
 }
 export declare function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<void>;

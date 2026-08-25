@@ -52,7 +52,7 @@ export async function getPairingStatus(code) {
     }
     return { status: 'pending' };
 }
-export async function approvePairingCode(code, deviceName) {
+export async function approvePairingCode(code, accountId, deviceName) {
     const [row] = await db
         .select()
         .from(pairingCodes)
@@ -64,7 +64,7 @@ export async function approvePairingCode(code, deviceName) {
     const tokenHash = hashToken(token);
     const [device] = await db
         .insert(devices)
-        .values({ name: deviceName ?? 'TV', tokenHash })
+        .values({ name: deviceName ?? 'TV', tokenHash, accountId })
         .returning();
     await db
         .update(pairingCodes)

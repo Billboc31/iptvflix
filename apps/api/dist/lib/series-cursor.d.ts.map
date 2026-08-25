@@ -1,0 +1,1 @@
+{"version":3,"file":"series-cursor.d.ts","sourceRoot":"","sources":["../../src/lib/series-cursor.ts"],"names":[],"mappings":"AAqBA,wBAAgB,UAAU,CAAC,SAAS,EAAE,MAAM,EAAE,YAAY,EAAE,MAAM,GAAG,MAAM,CAK1E;AAED,wBAAgB,YAAY,CAAC,KAAK,EAAE,MAAM,GAAG;IAAE,SAAS,EAAE,MAAM,CAAC;IAAC,YAAY,EAAE,MAAM,CAAA;CAAE,GAAG,IAAI,CA4B9F"}

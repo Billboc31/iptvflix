@@ -5,7 +5,7 @@ export declare function hashToken(token: string): string;
 export declare function createPairingCode(): Promise<PairingCodeResponse>;
 export declare function getPairingCodeDetail(code: string): Promise<PairingCodeDetailResponse>;
 export declare function getPairingStatus(code: string): Promise<PairingStatusResponse>;
-export declare function approvePairingCode(code: string, deviceName?: string): Promise<{
+export declare function approvePairingCode(code: string, accountId: string, deviceName?: string): Promise<{
     device: typeof devices.$inferSelect;
     deviceToken: string;
 }>;

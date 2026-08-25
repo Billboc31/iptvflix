@@ -1,0 +1,1 @@
+{"version":3,"file":"channels.js","sourceRoot":"","sources":["../../src/routes/channels.ts"],"names":[],"mappings":"AAGA,MAAM,CAAC,KAAK,UAAU,cAAc,CAAC,GAAoB;IACvD,GAAG,CAAC,GAAG,CAA+B,WAAW,EAAE,KAAK,EAAE,IAAI,EAAE,KAAK,EAAE,EAAE;QACvE,OAAO,KAAK,CAAC,IAAI,CAAC,EAAE,CAAC,CAAA;IACvB,CAAC,CAAC,CAAA;AACJ,CAAC"}

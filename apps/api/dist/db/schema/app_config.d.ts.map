@@ -1,1 +1,1 @@
-{"version":3,"file":"app_config.d.ts","sourceRoot":"","sources":["../../../src/db/schema/app_config.ts"],"names":[],"mappings":"AAEA,eAAO,MAAM,SAAS;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;EAGpB,CAAA"}
+{"version":3,"file":"app_config.d.ts","sourceRoot":"","sources":["../../../src/db/schema/app_config.ts"],"names":[],"mappings":"AAEA,eAAO,MAAM,SAAS,KAGpB,CAAA"}

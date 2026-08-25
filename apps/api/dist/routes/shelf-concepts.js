@@ -73,6 +73,29 @@ export async function shelfConceptsRoutes(app) {
             return handleError(err, reply);
         }
     });
+    app.post('/shelf-concepts/:id/preview', async (request, reply) => {
+        const { id } = request.params;
+        const { profileId, debug } = request.body ?? {};
+        if (!profileId || typeof profileId !== 'string') {
+            return reply.status(400).send({ error: 'profileId is required' });
+        }
+        const result = await RecommendationEngineClient.previewShelfConcept(id, { profileId, debug });
+        if (!result.ok) {
+            switch (result.kind) {
+                case 'not-found':
+                    return reply.status(404).send({ error: 'Recommendation preview endpoint not deployed' });
+                case 'timeout':
+                    return reply.status(504).send({ error: 'Recommendation preview timed out' });
+                case 'circuit-open':
+                    return reply.status(503).send({ error: 'Recommendation engine circuit open' });
+                case 'server-error':
+                    return reply.status(502).send({ error: `Recommendation engine error (HTTP ${result.status ?? 'unknown'})` });
+                default:
+                    return reply.status(502).send({ error: 'Recommendation engine unreachable' });
+            }
+        }
+        return reply.send(result.data);
+    });
     app.post('/shelf-concepts/:id/feedback', async (request, reply) => {
         const { id } = request.params;
         const { signal } = request.body ?? {};

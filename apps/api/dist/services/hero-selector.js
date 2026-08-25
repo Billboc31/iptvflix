@@ -98,7 +98,7 @@ export async function selectHero(profileId, candidates) {
         title: winner.enrichment.title,
         synopsis: winner.enrichment.synopsis,
         backdropUrl: winner.enrichment.backdropUrl,
-        availabilityStatus: 'available',
+        availabilityStatus: 'AVAILABLE',
         trailerKey: winner.enrichment.trailerKey,
     };
 }

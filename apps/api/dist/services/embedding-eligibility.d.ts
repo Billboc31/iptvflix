@@ -12,5 +12,5 @@ export declare function isEmbeddingEligible(media: {
     metadataEnrichedAt: Date | null;
 }): boolean;
 export declare const EMBEDDING_ELIGIBLE_SQL_PREDICATE = "metadata_enriched_at is not null";
-export declare const embeddingEligibleCondition: (col: Parameters<typeof isNotNull>[0]) => import("drizzle-orm").SQL<unknown>;
+export declare const embeddingEligibleCondition: (col: Parameters<typeof isNotNull>[0]) => any;
 //# sourceMappingURL=embedding-eligibility.d.ts.map
