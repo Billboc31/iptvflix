@@ -1,6 +1,10 @@
 package com.iptvflix.androidtv.player
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.view.LayoutInflater
+import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -97,6 +101,12 @@ private val HudMuted = Color(0xB3FFFFFF)
 private val PanelScrim = Color(0xCC141414)
 private const val AUTO_HIDE_MS = 3_200L
 
+private fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 @Composable
 fun PlayerScreen(
     command: PlaybackCommand?,
@@ -104,6 +114,21 @@ fun PlayerScreen(
     vm: PlayerViewModel = viewModel(),
 ) {
     val uiState by vm.uiState.collectAsState()
+    val context = LocalContext.current
+    DisposableEffect(uiState) {
+        val window = context.findActivity()?.window
+        val keepAwake = uiState is PlayerUiState.Playing
+            || uiState is PlayerUiState.Buffering
+            || uiState is PlayerUiState.Paused
+        if (keepAwake) {
+            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
     val hud by vm.hud.collectAsState()
     val scrub by vm.scrub.collectAsState()
     val overlayActions by vm.overlayActions.collectAsState()

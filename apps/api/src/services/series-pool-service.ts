@@ -76,6 +76,32 @@ export async function countUnservedSeries(sessionId: string): Promise<number> {
   return Number(row?.n ?? 0)
 }
 
+/** Next verticalPosition for pagination (first unserved shelf, or append after max). */
+export async function resolveSeriesNextServePosition(sessionId: string): Promise<number> {
+  const [unservedRow] = await db
+    .select({ minPos: sql<number | null>`MIN(${shelfInstances.verticalPosition})` })
+    .from(shelfInstances)
+    .where(and(eq(shelfInstances.seriesSessionId, sessionId), isNull(shelfInstances.servedAt)))
+
+  if (unservedRow?.minPos != null) return Number(unservedRow.minPos)
+
+  const [maxRow] = await db
+    .select({ maxPos: sql<number>`COALESCE(MAX(${shelfInstances.verticalPosition}), -1)` })
+    .from(shelfInstances)
+    .where(eq(shelfInstances.seriesSessionId, sessionId))
+
+  return Number(maxRow?.maxPos ?? -1) + 1
+}
+
+/** Append position after the highest existing shelf in the session. */
+export async function resolveSeriesAppendPosition(sessionId: string): Promise<number> {
+  const [maxRow] = await db
+    .select({ maxPos: sql<number>`COALESCE(MAX(${shelfInstances.verticalPosition}), -1)` })
+    .from(shelfInstances)
+    .where(eq(shelfInstances.seriesSessionId, sessionId))
+  return Number(maxRow?.maxPos ?? -1) + 1
+}
+
 export async function serveSeriesBatch(
   sessionId: string,
   nextPosition: number,
@@ -494,6 +520,7 @@ type PendingRail = {
 export async function buildSeriesDeclaredRails(
   profileId: string,
   sessionId: string,
+  startPosition = 0,
 ): Promise<{ shelves: ShelfResponse[]; nextPoolPosition: number; shelfInstanceIds: string[] }> {
   console.log(`[SERIES_GENERATION] expensive LLM/semantic generation triggered profileId=${profileId}`)
 
@@ -504,7 +531,7 @@ export async function buildSeriesDeclaredRails(
   const fatigueService = new ShelfFatigueService(db)
   const usedConceptIds = new Set<string>()
   const servedAt = new Date()
-  let nextPosition = 0
+  let nextPosition = startPosition
   const results: ShelfResponse[] = []
   const pendingRails: PendingRail[] = []
 

@@ -16,6 +16,8 @@ import {
   buildSeriesDeclaredRails,
   fillSeriesPool,
   buildSeriesFallbackShelf,
+  resolveSeriesNextServePosition,
+  resolveSeriesAppendPosition,
 } from './series-pool-service.js'
 import {
   getSeriesSnapshot,
@@ -82,7 +84,10 @@ export async function buildSeriesPage(profileId: string, cursor?: string): Promi
     console.log(`[SERIES_SNAPSHOT] HIT profileId=${profileId}`)
     const shelves = await reconstructShelvesFromSnapshot(snapshot.declaredShelfInstanceIds)
     const hasMore = session.cursorReference !== 'exhausted'
-    const nextPosition = snapshot.declaredShelfInstanceIds.length
+    const nextPosition = await resolveSeriesNextServePosition(session.id)
+    if ((await countUnservedSeries(session.id)) < SERIES_POOL_MIN) {
+      fillSeriesPool(session.id, profileId, SERIES_POOL_TARGET)
+    }
     return {
       coldStart: shelves.length === 0,
       sessionId: session.id,
@@ -96,12 +101,14 @@ export async function buildSeriesPage(profileId: string, cursor?: string): Promi
     console.log(`[SERIES_SNAPSHOT] STALE_SERVED profileId=${profileId} regeneration=triggered`)
     const shelves = await reconstructShelvesFromSnapshot(snapshot.declaredShelfInstanceIds)
     const hasMore = session.cursorReference !== 'exhausted'
-    const nextPosition = snapshot.declaredShelfInstanceIds.length
+    const nextPosition = await resolveSeriesNextServePosition(session.id)
 
     _regenerateSeriesSnapshot(profileId, session.id).catch((err) => {
       console.error('[SERIES_SNAPSHOT] async regeneration error:', err)
     })
-    fillSeriesPool(session.id, profileId, SERIES_POOL_TARGET)
+    if ((await countUnservedSeries(session.id)) < SERIES_POOL_MIN) {
+      fillSeriesPool(session.id, profileId, SERIES_POOL_TARGET)
+    }
 
     return {
       coldStart: shelves.length === 0,
@@ -163,7 +170,8 @@ export async function buildSeriesPage(profileId: string, cursor?: string): Promi
 
 async function _regenerateSeriesSnapshot(profileId: string, sessionId: string): Promise<void> {
   try {
-    const declared = await buildSeriesDeclaredRails(profileId, sessionId)
+    const startPosition = await resolveSeriesAppendPosition(sessionId)
+    const declared = await buildSeriesDeclaredRails(profileId, sessionId, startPosition)
     const expiresAt = new Date(Date.now() + SERIES_SNAPSHOT_TTL_HOURS * 60 * 60 * 1000)
     await saveSeriesSnapshot(profileId, sessionId, declared.shelfInstanceIds, expiresAt)
   } catch (err) {

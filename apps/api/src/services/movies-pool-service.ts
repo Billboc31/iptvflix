@@ -83,6 +83,32 @@ export async function countMoviesUnserved(sessionId: string): Promise<number> {
   return Number(row?.n ?? 0)
 }
 
+/** Next verticalPosition for pagination (first unserved shelf, or append after max). */
+export async function resolveMoviesNextServePosition(sessionId: string): Promise<number> {
+  const [unservedRow] = await db
+    .select({ minPos: sql<number | null>`MIN(${shelfInstances.verticalPosition})` })
+    .from(shelfInstances)
+    .where(and(eq(shelfInstances.moviesSessionId, sessionId), isNull(shelfInstances.servedAt)))
+
+  if (unservedRow?.minPos != null) return Number(unservedRow.minPos)
+
+  const [maxRow] = await db
+    .select({ maxPos: sql<number>`COALESCE(MAX(${shelfInstances.verticalPosition}), -1)` })
+    .from(shelfInstances)
+    .where(eq(shelfInstances.moviesSessionId, sessionId))
+
+  return Number(maxRow?.maxPos ?? -1) + 1
+}
+
+/** Append position after the highest existing shelf in the session. */
+export async function resolveMoviesAppendPosition(sessionId: string): Promise<number> {
+  const [maxRow] = await db
+    .select({ maxPos: sql<number>`COALESCE(MAX(${shelfInstances.verticalPosition}), -1)` })
+    .from(shelfInstances)
+    .where(eq(shelfInstances.moviesSessionId, sessionId))
+  return Number(maxRow?.maxPos ?? -1) + 1
+}
+
 export async function serveMoviesBatch(
   sessionId: string,
   nextPosition: number,
@@ -502,6 +528,7 @@ type PendingMovieRail = {
 export async function buildMoviesDeclaredRails(
   profileId: string,
   sessionId: string,
+  startPosition = 0,
 ): Promise<{ shelves: ShelfResponse[]; nextPoolPosition: number; shelfInstanceIds: string[] }> {
   console.log(`[MOVIES_GENERATION] declared rails triggered profileId=${profileId}`)
   const excludedMediaIds = new Set<string>()
@@ -509,7 +536,7 @@ export async function buildMoviesDeclaredRails(
   const shelfInstanceService = new ShelfInstanceService(db)
   const fatigueService = new ShelfFatigueService(db)
   const servedAt = new Date()
-  let nextPosition = 0
+  let nextPosition = startPosition
   const pendingRails: PendingMovieRail[] = []
 
   // ── Rail 1: "Pour toi" — movie-only general recommendations ───────────────

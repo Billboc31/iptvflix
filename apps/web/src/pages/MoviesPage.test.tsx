@@ -26,7 +26,24 @@ vi.mock('../context/ProfileContext.js', () => ({
 
 vi.mock('../hooks/useInfiniteMovies.js', () => ({
   useInfiniteMovies: () => ({
-    allShelves: [],
+    allShelves: [
+      {
+        id: 'rec-1',
+        title: 'Pour toi',
+        type: 'GENERATED',
+        layoutHint: 'ROW',
+        shelfInstanceId: 'rec-1',
+        items: [
+          {
+            mediaType: 'MOVIE',
+            mediaId: 'm1',
+            title: 'Rec Movie',
+            posterUrl: null,
+            trailerKey: null,
+          },
+        ],
+      },
+    ],
     sessionId: null,
     nextCursor: null,
     isLoading: false,
@@ -62,11 +79,12 @@ describe('MoviesPage', () => {
     })
   })
 
-  it('renders default shelf rows (Populaires, etc.) when no filter is selected', async () => {
+  it('renders personalized shelves by default (no catalog Populaires)', async () => {
     renderPage()
     await waitFor(() => {
-      expect(screen.getByText('Populaires')).toBeInTheDocument()
+      expect(screen.getByText('Pour toi')).toBeInTheDocument()
     })
+    expect(screen.queryByText('Populaires')).not.toBeInTheDocument()
   })
 
   it('shows Play button when hero movie is AVAILABLE', async () => {
@@ -106,16 +124,30 @@ describe('MoviesPage', () => {
     })
   })
 
-  it('filters to a genre shelf when a genre chip is selected', async () => {
+  it('shows genre results above personalized shelves when a genre chip is selected', async () => {
     const user = userEvent.setup()
     renderPage()
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Action' })).toBeInTheDocument()
+      expect(screen.getByText('Pour toi')).toBeInTheDocument()
     })
     await user.click(screen.getByRole('button', { name: 'Action' }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Action' })).toBeInTheDocument()
-      expect(screen.queryByText('Populaires')).not.toBeInTheDocument()
+      expect(screen.getByText('Pour toi')).toBeInTheDocument()
+    })
+  })
+
+  it('shows catalog shelves above personalized shelves when Disponible maintenant is selected', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Disponible maintenant' })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: 'Disponible maintenant' }))
+    await waitFor(() => {
+      expect(screen.getByText('Populaires')).toBeInTheDocument()
+      expect(screen.getByText('Pour toi')).toBeInTheDocument()
     })
   })
 
@@ -127,7 +159,6 @@ describe('MoviesPage', () => {
     )
     renderPage()
     await waitFor(() => {
-      // shelves render even on error (they just show nothing); hero is absent
       expect(screen.queryByRole('button', { name: 'Lire' })).not.toBeInTheDocument()
     })
   })

@@ -13,6 +13,47 @@ vi.mock('../contexts/PreviewContext.js', () => ({
   }),
 }))
 
+vi.mock('../context/ProfileContext.js', () => ({
+  useProfile: () => ({
+    currentProfile: { id: '00000000-0000-0000-0000-000000000001', name: 'Test', avatarColor: '#fff' },
+    profileVersion: 0,
+    profiles: [],
+    isLoading: false,
+    selectProfile: vi.fn(),
+    refreshProfiles: vi.fn(),
+  }),
+}))
+
+vi.mock('../hooks/useSeriesPage.js', () => ({
+  useInfiniteSeriesPage: () => ({
+    allShelves: [
+      {
+        id: 'rec-s1',
+        title: 'Séries pour toi',
+        type: 'GENERATED',
+        layoutHint: 'ROW',
+        shelfInstanceId: 'rec-s1',
+        items: [
+          {
+            mediaType: 'SERIES',
+            mediaId: 's1',
+            title: 'Rec Series',
+            posterUrl: null,
+            trailerKey: null,
+          },
+        ],
+      },
+    ],
+    sessionId: null,
+    nextCursor: null,
+    isLoading: false,
+    isFetchingMore: false,
+    hasMore: false,
+    error: null,
+    loadMore: vi.fn(),
+  }),
+}))
+
 function renderPage() {
   return render(
     <MemoryRouter>
@@ -46,11 +87,12 @@ describe('SeriesPage', () => {
     })
   })
 
-  it('renders default shelf rows (Populaires, etc.) when no filter is selected', async () => {
+  it('renders personalized shelves by default (no catalog Populaires)', async () => {
     renderPage()
     await waitFor(() => {
-      expect(screen.getByText('Populaires')).toBeInTheDocument()
+      expect(screen.getByText('Séries pour toi')).toBeInTheDocument()
     })
+    expect(screen.queryByText('Populaires')).not.toBeInTheDocument()
   })
 
   it('shows no hero when API returns no series', async () => {
@@ -68,16 +110,30 @@ describe('SeriesPage', () => {
     })
   })
 
-  it('filters to a genre shelf when a genre chip is selected', async () => {
+  it('shows genre results above personalized shelves when a genre chip is selected', async () => {
     const user = userEvent.setup()
     renderPage()
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Drama' })).toBeInTheDocument()
+      expect(screen.getByText('Séries pour toi')).toBeInTheDocument()
     })
     await user.click(screen.getByRole('button', { name: 'Drama' }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Drama' })).toBeInTheDocument()
-      expect(screen.queryByText('Populaires')).not.toBeInTheDocument()
+      expect(screen.getByText('Séries pour toi')).toBeInTheDocument()
+    })
+  })
+
+  it('shows catalog shelves above personalized shelves when Disponible maintenant is selected', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Disponible maintenant' })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: 'Disponible maintenant' }))
+    await waitFor(() => {
+      expect(screen.getByText('Populaires')).toBeInTheDocument()
+      expect(screen.getByText('Séries pour toi')).toBeInTheDocument()
     })
   })
 })

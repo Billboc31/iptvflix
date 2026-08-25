@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchSeriesPage } from '../lib/api.js'
+import { dedupeShelves, mergeShelves } from '../lib/dedupe-shelves.js'
 import type { ShelfResponse } from '@iptvflix/api-contracts'
 
 export type UseInfiniteSeriesPageResult = {
@@ -48,7 +49,7 @@ export function useInfiniteSeriesPage(profileId: string, profileVersion: number)
         try {
           const result = await fetchSeriesPage(profileId)
           if (!cancelled) {
-            setAllShelves(result.shelves ?? [])
+            setAllShelves(dedupeShelves(result.shelves ?? []))
             setSessionId(result.sessionId)
             setNextCursor(result.nextCursor)
             setHasMore(result.nextCursor !== null)
@@ -88,7 +89,7 @@ export function useInfiniteSeriesPage(profileId: string, profileVersion: number)
       while (attempt < MAX_RETRIES) {
         try {
           const result = await fetchSeriesPage(profileId, cursorToFetch)
-          setAllShelves((prev) => [...prev, ...(result.shelves ?? [])])
+          setAllShelves((prev) => mergeShelves(prev, result.shelves ?? []))
           setSessionId(result.sessionId)
           setNextCursor(result.nextCursor)
           setHasMore(result.nextCursor !== null)

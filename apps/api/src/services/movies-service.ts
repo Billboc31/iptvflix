@@ -15,6 +15,8 @@ import {
   buildMoviesDeclaredRails,
   fillMoviesPool,
   buildMoviesFallbackShelf,
+  resolveMoviesNextServePosition,
+  resolveMoviesAppendPosition,
 } from './movies-pool-service.js'
 import {
   getMoviesSnapshot,
@@ -76,8 +78,10 @@ export async function buildMoviesPage(profileId: string, cursor?: string): Promi
     console.log(`[MOVIES_SNAPSHOT] HIT profileId=${profileId}`)
     const shelves = await reconstructMoviesShelves(snapshot.declaredShelfInstanceIds)
     const hasMore = session.cursorReference !== 'exhausted'
-    const nextPosition = snapshot.declaredShelfInstanceIds.length
-    fillMoviesPool(session.id, profileId, MOVIES_POOL_TARGET)
+    const nextPosition = await resolveMoviesNextServePosition(session.id)
+    if ((await countMoviesUnserved(session.id)) < MOVIES_POOL_MIN) {
+      fillMoviesPool(session.id, profileId, MOVIES_POOL_TARGET)
+    }
     return {
       sessionId: session.id,
       shelves,
@@ -90,12 +94,14 @@ export async function buildMoviesPage(profileId: string, cursor?: string): Promi
     console.log(`[MOVIES_SNAPSHOT] STALE_SERVED profileId=${profileId} regeneration=triggered`)
     const shelves = await reconstructMoviesShelves(snapshot.declaredShelfInstanceIds)
     const hasMore = session.cursorReference !== 'exhausted'
-    const nextPosition = snapshot.declaredShelfInstanceIds.length
+    const nextPosition = await resolveMoviesNextServePosition(session.id)
 
     _regenerateMoviesSnapshot(profileId, session.id).catch((err) => {
       console.error('[MOVIES_SNAPSHOT] async regeneration error:', err)
     })
-    fillMoviesPool(session.id, profileId, MOVIES_POOL_TARGET)
+    if ((await countMoviesUnserved(session.id)) < MOVIES_POOL_MIN) {
+      fillMoviesPool(session.id, profileId, MOVIES_POOL_TARGET)
+    }
 
     return {
       sessionId: session.id,
@@ -149,7 +155,8 @@ export async function buildMoviesPage(profileId: string, cursor?: string): Promi
 
 async function _regenerateMoviesSnapshot(profileId: string, sessionId: string): Promise<void> {
   try {
-    const declared = await buildMoviesDeclaredRails(profileId, sessionId)
+    const startPosition = await resolveMoviesAppendPosition(sessionId)
+    const declared = await buildMoviesDeclaredRails(profileId, sessionId, startPosition)
     const expiresAt = new Date(Date.now() + MOVIES_SNAPSHOT_TTL_HOURS * 60 * 60 * 1000)
     await saveMoviesSnapshot(profileId, declared.shelfInstanceIds, expiresAt)
   } catch (err) {
