@@ -1,7 +1,7 @@
 {
   "ticket_id": "T131",
-  "state": "INIT",
+  "state": "PLAN_APPROVED",
   "branch": "ticket/T131-canonicalize-and-deduplicate-live-tv-channels-with",
   "issue_number": 278,
-  "updated_at": "2026-08-25T07:42:35Z"
+  "updated_at": "2026-08-25T08:35:22Z"
 }
