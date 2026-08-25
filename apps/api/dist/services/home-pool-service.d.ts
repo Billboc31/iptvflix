@@ -1,4 +1,4 @@
-import type { ShelfResponse } from '@iptvflix/api-contracts';
+import type { ShelfResponse, HeroItem } from '@iptvflix/api-contracts';
 export declare function getOrCreateSession(profileId: string): Promise<{
     id: string;
     profileId: string;
@@ -21,6 +21,11 @@ export declare function serveBatch(sessionId: string, nextPosition: number, batc
 export declare function buildFixedShelves(profileId: string): Promise<ShelfResponse[]>;
 export declare function fillPool(sessionId: string, profileId: string, targetCount: number): void;
 export declare function fillPoolAsync(sessionId: string, profileId: string, targetCount: number): Promise<void>;
+export declare function buildDeclaredRails(profileId: string, sessionId: string): Promise<{
+    shelves: ShelfResponse[];
+    nextPoolPosition: number;
+    shelfInstanceIds: string[];
+    hero: HeroItem | null;
+}>;
 export declare function buildFallbackShelf(): Promise<ShelfResponse>;
-export declare function persistFixedShelvesForSession(profileId: string, sessionId: string, fixed: ShelfResponse[]): Promise<void>;
 //# sourceMappingURL=home-pool-service.d.ts.map

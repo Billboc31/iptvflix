@@ -183,13 +183,16 @@ async function evaluateMovies(rules, profileId) {
             ? inArray(movies.id, db
                 .select({ id: viewingProgress.mediaId })
                 .from(viewingProgress)
-                .where(and(eq(viewingProgress.profileId, profileId), eq(viewingProgress.mediaType, 'MOVIE'), sql `${viewingProgress.progressSeconds} >= ${viewingProgress.durationSeconds} * 0.05`, sql `${viewingProgress.progressSeconds} < ${viewingProgress.durationSeconds} * 0.90`)))
+                .where(and(eq(viewingProgress.profileId, profileId), eq(viewingProgress.mediaType, 'MOVIE'), sql `${viewingProgress.progressSeconds} >= 2`, sql `(
+                  ${viewingProgress.progressSeconds} < ${viewingProgress.durationSeconds} * 0.90
+                  OR ${viewingProgress.durationSeconds} < 600
+                )`)))
             : undefined,
         rules.watchState === 'COMPLETED'
             ? inArray(movies.id, db
                 .select({ id: viewingProgress.mediaId })
                 .from(viewingProgress)
-                .where(and(eq(viewingProgress.profileId, profileId), eq(viewingProgress.mediaType, 'MOVIE'), sql `${viewingProgress.progressSeconds} >= ${viewingProgress.durationSeconds} * 0.90`)))
+                .where(and(eq(viewingProgress.profileId, profileId), eq(viewingProgress.mediaType, 'MOVIE'), sql `${viewingProgress.durationSeconds} >= 600`, sql `${viewingProgress.progressSeconds} >= ${viewingProgress.durationSeconds} * 0.90`)))
             : undefined,
         rules.watchState === 'UNWATCHED'
             ? notInArray(movies.id, db

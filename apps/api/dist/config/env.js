@@ -61,6 +61,10 @@ export const CATALOG_BOOTSTRAP_HIERARCHY_PRIORITY_COUNT = Number(process.env.CAT
  * gateway URLs point at the relay instead of proxying through Railway (blocked by CF).
  */
 export const MEDIA_RELAY_URL = process.env.MEDIA_RELAY_URL?.replace(/\/$/, '') || undefined;
+/** Standalone recommendation-engine base URL. When set, API delegates computation to it. */
+export const RECOMMENDATION_ENGINE_URL = process.env.RECOMMENDATION_ENGINE_URL?.replace(/\/$/, '') || undefined;
+/** Timeout for the heavy preview pipeline (vector retrieval + full SCORE_MODEL run). Default: 45 s. */
+export const RECOMMENDATION_PREVIEW_TIMEOUT_MS = Number(process.env.RECOMMENDATION_PREVIEW_TIMEOUT_MS ?? 45_000);
 export const MEDIA_RELAY_SECRET = process.env.MEDIA_RELAY_SECRET || undefined;
 export const MEDIA_RELAY_ENABLED = Boolean(MEDIA_RELAY_URL && MEDIA_RELAY_SECRET);
 /** Required to generate catalog embeddings (text-embedding-3-small) for recommendations. */
@@ -74,10 +78,50 @@ export const SHELF_CONCEPT_TTL_HOURS = Number(process.env.SHELF_CONCEPT_TTL_HOUR
 export const SHELF_CONCEPT_MIN_POOL_SIZE = Number(process.env.SHELF_CONCEPT_MIN_POOL_SIZE ?? 8);
 export const SHELF_CONCEPT_SEMANTIC_DEDUP_THRESHOLD = Number(process.env.SHELF_CONCEPT_SEMANTIC_DEDUP_THRESHOLD ?? 0.85);
 export const SHELF_CONCEPT_LLM_MODEL = process.env.SHELF_CONCEPT_LLM_MODEL ?? process.env.LLM_PLANNER_MODEL ?? 'gpt-4o-mini';
+export const FATIGUE_MAX_ZERO_INTERACTION_STREAK = Number(process.env.FATIGUE_MAX_ZERO_INTERACTION_STREAK ?? 5);
+export const FATIGUE_LOOKBACK_DAYS = Number(process.env.FATIGUE_LOOKBACK_DAYS ?? 14);
+export const FATIGUE_COOLDOWN_DAYS = Number(process.env.FATIGUE_COOLDOWN_DAYS ?? 7);
+export const FATIGUE_SUPPRESSION_VERSION = process.env.FATIGUE_SUPPRESSION_VERSION ?? 'v1';
+export const EXPOSURE_MEMORY_HOURS = Number(process.env.EXPOSURE_MEMORY_HOURS ?? 72);
 const _ratioSum = SHELF_CONCEPT_PERSONALIZED_RATIO + SHELF_CONCEPT_EXPLORATION_RATIO + SHELF_CONCEPT_DISCOVERY_RATIO;
 if (Math.abs(_ratioSum - 1.0) > 0.01) {
     console.warn(`[shelf-concept] SHELF_CONCEPT_*_RATIO values sum to ${_ratioSum.toFixed(3)}, not 1.0 — they will be normalized at runtime`);
 }
+export const HOME_CURSOR_SECRET = process.env.HOME_CURSOR_SECRET || jwtSecret;
+export const SERIES_CURSOR_SECRET = process.env.SERIES_CURSOR_SECRET || jwtSecret;
+export const HOME_BATCH_SIZE = Number(process.env.HOME_BATCH_SIZE ?? 6);
+export const HOME_ITEMS_PER_SHELF = Number(process.env.HOME_ITEMS_PER_SHELF ?? 24);
+export const HOME_ITEMS_MAX = Number(process.env.HOME_ITEMS_MAX ?? 30);
+export const HOME_POOL_MIN = Number(process.env.HOME_POOL_MIN ?? 10);
+export const HOME_POOL_TARGET = Number(process.env.HOME_POOL_TARGET ?? 25);
+export const HOME_SESSION_TTL_HOURS = Number(process.env.HOME_SESSION_TTL_HOURS ?? 24);
+export const HOME_FRESH_DAYS = Number(process.env.HOME_FRESH_DAYS ?? 90);
+export const HOME_SNAPSHOT_TTL_HOURS = Number(process.env.HOME_SNAPSHOT_TTL_HOURS ?? 24);
+export const SERIES_BATCH_SIZE = Number(process.env.SERIES_BATCH_SIZE ?? 6);
+export const SERIES_ITEMS_PER_SHELF = Number(process.env.SERIES_ITEMS_PER_SHELF ?? 24);
+export const SERIES_ITEMS_MAX = Number(process.env.SERIES_ITEMS_MAX ?? 30);
+export const SERIES_POOL_MIN = Number(process.env.SERIES_POOL_MIN ?? 10);
+export const SERIES_POOL_TARGET = Number(process.env.SERIES_POOL_TARGET ?? 25);
+export const SERIES_SESSION_TTL_HOURS = Number(process.env.SERIES_SESSION_TTL_HOURS ?? 24);
+export const SERIES_FRESH_DAYS = Number(process.env.SERIES_FRESH_DAYS ?? 90);
+export const SERIES_SNAPSHOT_TTL_HOURS = Number(process.env.SERIES_SNAPSHOT_TTL_HOURS ?? 24);
+export const HERO_MIN_SCORE = Number(process.env.HERO_MIN_SCORE ?? 0.55);
+export const HERO_POOL_SIZE = Number(process.env.HERO_POOL_SIZE ?? 15);
+export const HERO_SCORE_WEIGHTS = {
+    version: 'v1',
+    profileRelevance: 0.45,
+    semanticConfidence: 0.25,
+    qualityPrior: 0.20,
+    languageAffinity: 0.10,
+};
+export const MOVIES_SNAPSHOT_TTL_HOURS = Number(process.env.MOVIES_SNAPSHOT_TTL_HOURS ?? 24);
+export const MOVIES_SESSION_TTL_HOURS = Number(process.env.MOVIES_SESSION_TTL_HOURS ?? 24);
+export const MOVIES_BATCH_SIZE = Number(process.env.MOVIES_BATCH_SIZE ?? 6);
+export const MOVIES_ITEMS_PER_SHELF = Number(process.env.MOVIES_ITEMS_PER_SHELF ?? 24);
+export const MOVIES_ITEMS_MAX = Number(process.env.MOVIES_ITEMS_MAX ?? 30);
+export const MOVIES_POOL_MIN = Number(process.env.MOVIES_POOL_MIN ?? 10);
+export const MOVIES_POOL_TARGET = Number(process.env.MOVIES_POOL_TARGET ?? 25);
+export const MOVIES_EXPLORATION_RATIO = Number(process.env.MOVIES_EXPLORATION_RATIO ?? 0.25);
 export const SEGMENT_REFRESH_ENABLED = process.env.SEGMENT_REFRESH_ENABLED !== undefined
     ? process.env.SEGMENT_REFRESH_ENABLED === 'true'
     : false;

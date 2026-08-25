@@ -1,6 +1,6 @@
-import { eq, gt, and } from 'drizzle-orm';
+import { eq, gt, and, gte } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { profiles, profileTaste, movies, series as seriesTbl, movieGenres, seriesGenres, movieAvailabilities, seriesAvailabilities, viewingProgress, discoveryCandidate, } from '../db/schema/index.js';
+import { profiles, profileTaste, movies, series as seriesTbl, movieGenres, seriesGenres, movieAvailabilities, seriesAvailabilities, viewingProgress, discoveryCandidate, profileMediaExposure, } from '../db/schema/index.js';
 import { NotFoundError } from '../errors.js';
 export async function rankRecommendations(profileId, opts = {}) {
     const { availableToMe = false, availabilityPolicy, includeSeen = false, limit = 20 } = opts;
@@ -383,6 +383,7 @@ function applyDiversityFilter(scored, limit, maxPerCollection, maxPerDirector) {
     return result;
 }
 // ─── main export ──────────────────────────────────────────────────────────────
+/** @deprecated — use recommendation-engine (apps/recommendation-engine/src/pipeline/stages/hybrid-reranker.ts) */
 export function rankHybrid(candidates, queryPlan, taste, opts = {}) {
     const { limit = 24, availabilityPolicy, explorationLevel = 'exploit', diversityEnabled = true, maxPerCollection = 2, maxPerDirector = 3, alreadyShownIds = [], debug = false, includeSeen = false, } = opts;
     const weights = getBlendedWeights(SCORE_MODEL_V1, explorationLevel);
@@ -409,10 +410,13 @@ export function rankHybrid(candidates, queryPlan, taste, opts = {}) {
         const avoidPenalty = computeAvoidPenalty(c, queryPlan.avoidSignals);
         const shownPenalty = shownSet.has(c.mediaId) ? 0.15 : 0;
         const repetitionPenalty = shownPenalty;
-        const weighted = semantic * weights.wSemantic +
-            genreAffinity * weights.wGenre +
+        const profileBoostRaw = genreAffinity * weights.wGenre +
             themeAffinity * weights.wTheme +
-            peopleResult.score * weights.wPeople +
+            peopleResult.score * weights.wPeople;
+        const semanticRelevanceFactor = 1.0;
+        const profileBoostEffective = profileBoostRaw;
+        const weighted = semantic * weights.wSemantic +
+            profileBoostEffective +
             fresh * weights.wFreshness +
             prior * weights.wPrior +
             availBonus * weights.wAvailability;
@@ -437,6 +441,14 @@ export function rankHybrid(candidates, queryPlan, taste, opts = {}) {
                 genreAffinity,
                 themeAffinity,
                 peopleAffinity: peopleResult.score,
+                keywordAffinity: 0,
+                franchiseAffinity: 0,
+                languageAffinity: 0,
+                decadeAffinity: 0,
+                mediaTypeAffinity: 0,
+                semanticRelevanceFactor,
+                profileBoostRaw,
+                profileBoostEffective,
                 qualityPrior: prior,
                 freshness: fresh,
                 availabilityBonus: availBonus,
@@ -462,5 +474,14 @@ export function rankHybrid(candidates, queryPlan, taste, opts = {}) {
         return applyDiversityFilter(scored, clampedLimit, maxPerCollection, maxPerDirector);
     }
     return scored.slice(0, clampedLimit);
+}
+// ─── exposure memory helper ───────────────────────────────────────────────────
+export async function resolveImplicitShownIds(profileId, hoursBack) {
+    const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
+    const rows = await db
+        .select({ mediaId: profileMediaExposure.mediaId })
+        .from(profileMediaExposure)
+        .where(and(eq(profileMediaExposure.profileId, profileId), gte(profileMediaExposure.lastExposedAt, since)));
+    return rows.map((r) => r.mediaId);
 }
 //# sourceMappingURL=recommendation-ranking-service.js.map

@@ -9,12 +9,15 @@ export interface EnrichMissingOptions {
     concurrency?: number;
     throttleMs?: number;
     force?: boolean;
+    /** Resume from the checkpoint of a previously interrupted run (by run ID). */
+    resumeRunId?: string;
 }
 export interface EnrichMissingStats {
     totalEligible: number;
     processed: number;
     enriched: number;
     skipped: number;
+    /** Counts retry *attempts*, not unique items — one item may contribute multiple counts. */
     retrying: number;
     failedTerminal: number;
     remaining: number;
@@ -52,7 +55,7 @@ export declare class CatalogEnrichMissingService {
         concurrency?: number;
         force?: boolean;
     }): Promise<{
-        runId: string;
+        runId: string | null;
         queued: number;
     }>;
 }

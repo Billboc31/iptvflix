@@ -2,6 +2,9 @@ import { useState, type FormEvent } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import SettingsMenu from './SettingsMenu.js'
 import ProfileSwitcherPopover from '../ProfileSwitcherPopover.js'
+import { getStoredAuthToken } from '../../lib/api.js'
+
+const LIVE_TV_URL = import.meta.env.VITE_LIVE_TV_URL ?? 'http://localhost:5174'
 
 const NAV_ITEMS = [
   { label: 'Accueil', to: '/', end: true },
@@ -16,6 +19,12 @@ export default function TopNav() {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
 
+  function handleTvSwitch() {
+    const token = getStoredAuthToken()
+    const url = token ? `${LIVE_TV_URL}?token=${encodeURIComponent(token)}` : LIVE_TV_URL
+    window.location.href = url
+  }
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     const q = query.trim()
@@ -29,6 +38,29 @@ export default function TopNav() {
         <NavLink to="/" className="text-xl font-bold text-[#e50914] tracking-tight shrink-0">
           IPTVFlix
         </NavLink>
+
+        {/* VOD / TV mode toggle */}
+        <div
+          className="flex items-center gap-1 bg-white/5 rounded-lg p-1 shrink-0"
+          role="tablist"
+          aria-label="Mode de visionnage"
+        >
+          <button
+            role="tab"
+            aria-selected={true}
+            className="px-3 py-1 rounded-md text-sm font-medium bg-white/10 text-white cursor-default"
+          >
+            VOD
+          </button>
+          <button
+            role="tab"
+            aria-selected={false}
+            onClick={handleTvSwitch}
+            className="px-3 py-1 rounded-md text-sm font-medium text-gray-400 hover:text-white transition-colors"
+          >
+            TV
+          </button>
+        </div>
 
         {/* Primary nav links — desktop only */}
         <nav className="hidden md:flex items-center gap-1 flex-1" aria-label="Navigation principale">

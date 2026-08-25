@@ -10,7 +10,7 @@ const STALE_DAYS = 30;
 export async function catalogStatsRoutes(app) {
     app.get('/admin/catalog-stats', async () => {
         const staleThreshold = new Date(Date.now() - STALE_DAYS * 86_400_000).toISOString();
-        const [movieStats, seriesStats, episodeCountRow, movieAvailRow, seriesAvailRow, episodeAvailRow, oldestMovieSync, oldestSeriesSync, movieFailureCount, seriesFailureCount, movieEmbeddingCount, seriesEmbeddingCount,] = await Promise.all([
+        const [movieStats, seriesStats, episodeCountRow, movieAvailRow, seriesAvailRow, episodeAvailRow, oldestMovieSync, oldestSeriesSync, movieFailureCount, seriesFailureCount, seriesSeasonFailureCount, movieEmbeddingCount, seriesEmbeddingCount,] = await Promise.all([
             db.select({
                 total: count(),
                 withAvailability: sql `cast(count(*) filter (where exists (
@@ -67,6 +67,9 @@ export async function catalogStatsRoutes(app) {
                 .where(isNotNull(series.tmdbSyncedAt)),
             db.select({ cnt: count() }).from(enrichmentFailures).where(sql `media_type = 'MOVIE'`),
             db.select({ cnt: count() }).from(enrichmentFailures).where(sql `media_type = 'SERIES'`),
+            // Series whose main metadata is present (metadataEnrichedAt set) but season/episode
+            // enrichment failed. These appear in both `enriched` and `failedLastEnrichment`.
+            db.select({ cnt: count() }).from(enrichmentFailures).where(sql `media_type = 'SERIES' and stage = 'seasons'`),
             // Embedding eligible = enriched. Pending = enriched but no embedding row.
             // Eligibility condition is derived from EMBEDDING_ELIGIBLE_SQL_PREDICATE (see embedding-eligibility.ts).
             db.select({
@@ -104,6 +107,7 @@ export async function catalogStatsRoutes(app) {
         const sEnriched = sPartially + sFully;
         const sEligible = Number(seriesEmbeddingCount[0]?.eligible ?? 0);
         const sPending = Number(seriesEmbeddingCount[0]?.pending ?? 0);
+        const sSeasonFailed = Number(seriesSeasonFailureCount[0]?.cnt ?? 0);
         return {
             movies: {
                 total: mTotal,
@@ -133,6 +137,9 @@ export async function catalogStatsRoutes(app) {
                 fullyEnriched: sFully,
                 stale: Number(seriesStats[0]?.stale ?? 0),
                 failedLastEnrichment: Number(seriesFailureCount[0]?.cnt ?? 0),
+                // enrichedWithSeasonFailures: series whose main metadata is set (counted in `enriched`)
+                // but whose season/episode enrichment failed. These also appear in `failedLastEnrichment`.
+                enrichedWithSeasonFailures: sSeasonFailed,
                 embeddingEligible: sEligible,
                 // embeddingBlocked is currently always 0 because eligibility == enriched (metadataEnrichedAt IS NOT NULL).
                 // It will become meaningful when the embedding policy adds stricter field requirements.

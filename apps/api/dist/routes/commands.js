@@ -7,6 +7,16 @@ import { playbackCommands } from '../db/schema/index.js';
 import { eq, and } from 'drizzle-orm';
 const SSE_HEARTBEAT_INTERVAL_MS = 25_000;
 export async function commandsRoutes(app) {
+    app.get('/devices/me', async (request, reply) => {
+        const device = await authenticateDevice(request, reply);
+        if (!device)
+            return;
+        return {
+            id: device.id,
+            name: device.name,
+            lastSeenAt: device.lastSeenAt?.toISOString() ?? null,
+        };
+    });
     // Web — send a playback command to a specific paired device
     app.post('/devices/:id/commands', async (request, reply) => {
         if (!(await authenticateWeb(request, reply)))

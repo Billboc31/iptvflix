@@ -1,1 +1,1 @@
-{"version":3,"file":"persons.d.ts","sourceRoot":"","sources":["../../../src/db/schema/persons.ts"],"names":[],"mappings":"AAEA,eAAO,MAAM,OAAO;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;EAMmD,CAAA"}
+{"version":3,"file":"persons.d.ts","sourceRoot":"","sources":["../../../src/db/schema/persons.ts"],"names":[],"mappings":"AAEA,eAAO,MAAM,OAAO,KAMmD,CAAA"}

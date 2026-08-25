@@ -9,6 +9,7 @@ export type RawConcept = {
     title: string;
     rawIntent: string;
     semanticIntent: string;
+    semanticAnchor?: string | null;
     generationType: string;
     reasonCodes: unknown[];
     desiredMediaTypes: unknown[];

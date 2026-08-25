@@ -1,0 +1,86 @@
+import type { InteractionEventBody, BatchEventResponse, ArrivalItem, MoviesPageResponse, MovieResponse, MovieDetailResponse, SeriesResponse, GenreResponse, SeriesDetailResponse, EpisodeResponse, PaginatedList, MovieFilters, SeriesFilters, SearchResponse, DiscoverResponse, SourceResponse, CreateSourceBody, UpdateSourceBody, TestSourceResult, SyncRunResponse, TriggerSyncBody, WatchlistEntry, AddToWatchlistBody, WatchlistMediaType, ViewingProgressRow, UpsertProgressBody, ProgressMediaType, ContinueWatchingItem, ShelfSummaryResponse, ShelfResponse, CreateShelfBody, UpdateShelfBody, AddShelfMemberBody, ReorderShelfMembersBody, GenerateShelfBody, GenerateShelfResponse, ProfileResponse, NestedProfileResponse, UpdateProfilePreferencesBody, CreateProfileBody, UpdateProfileBody, SelectProfileResponse, FeedbackItem, SetFeedbackBody, HomeResponse, HomePageResponse, SeriesPageResponse, LoginResponse, MeResponse, PlaybackResolveRequest, PlaybackSessionResponse, DeviceResponse, PairingCodeDetailResponse, PlaybackCommandRequest, PlaybackCommandResponse } from '@iptvflix/api-contracts';
+export declare function getStoredAuthToken(): string | null;
+export declare function setStoredAuthToken(token: string): void;
+export declare function clearStoredAuthToken(): void;
+export declare class ApiError extends Error {
+    readonly status: number;
+    constructor(status: number, message: string);
+}
+export declare function listMovies(filters?: MovieFilters): Promise<PaginatedList<MovieResponse>>;
+export declare function getMovie(id: string): Promise<MovieDetailResponse>;
+export declare function getSimilarMovies(id: string): Promise<MovieResponse[]>;
+export declare function listSeries(filters?: SeriesFilters): Promise<PaginatedList<SeriesResponse>>;
+export declare function getSeries(id: string): Promise<SeriesDetailResponse>;
+export declare function getSimilarSeries(id: string): Promise<SeriesResponse[]>;
+export declare function getSeriesSeasonEpisodes(seriesId: string, seasonNumber: number, profileId?: string): Promise<EpisodeResponse[]>;
+export declare function searchContent(q: string): Promise<SearchResponse>;
+export declare function searchDiscover(q: string): Promise<DiscoverResponse>;
+export declare function materializeMovie(tmdbId: string): Promise<{
+    id: string;
+}>;
+export declare function materializeSeries(tmdbId: string): Promise<{
+    id: string;
+}>;
+export declare function listGenres(): Promise<GenreResponse[]>;
+export declare function listSources(): Promise<SourceResponse[]>;
+export declare function createSource(body: CreateSourceBody): Promise<SourceResponse>;
+export declare function updateSource(id: string, body: UpdateSourceBody): Promise<SourceResponse>;
+export declare function deleteSource(id: string): Promise<void>;
+export declare function testSource(id: string): Promise<TestSourceResult>;
+export declare function listSyncRuns(): Promise<SyncRunResponse[]>;
+export declare function triggerSync(body: TriggerSyncBody): Promise<SyncRunResponse>;
+export declare function fetchWatchlist(): Promise<WatchlistEntry[]>;
+export declare function addToWatchlist(body: AddToWatchlistBody): Promise<WatchlistEntry>;
+export declare function removeFromWatchlist(mediaType: WatchlistMediaType, mediaId: string): Promise<void>;
+export declare function upsertProgress(mediaType: ProgressMediaType, mediaId: string, body: UpsertProgressBody): Promise<ViewingProgressRow>;
+export declare function fetchContinueWatching(): Promise<ContinueWatchingItem[]>;
+export declare function dismissContinueWatching(mediaType: ProgressMediaType, mediaId: string): Promise<void>;
+export declare function fetchShelves(): Promise<ShelfSummaryResponse[]>;
+export declare function fetchShelf(id: string): Promise<ShelfResponse>;
+export declare function createShelf(body: CreateShelfBody): Promise<ShelfSummaryResponse>;
+export declare function updateShelf(id: string, body: UpdateShelfBody): Promise<ShelfSummaryResponse>;
+export declare function deleteShelf(id: string): Promise<void>;
+export declare function addShelfMember(id: string, body: AddShelfMemberBody): Promise<void>;
+export declare function removeShelfMember(id: string, mediaType: 'MOVIE' | 'SERIES', mediaId: string): Promise<void>;
+export declare function reorderShelfMembers(id: string, body: ReorderShelfMembersBody): Promise<void>;
+export declare function generateShelf(body: GenerateShelfBody): Promise<GenerateShelfResponse>;
+export declare function refreshShelf(id: string): Promise<GenerateShelfResponse>;
+export declare function getProfile(): Promise<NestedProfileResponse>;
+export declare function updateProfilePreferences(body: UpdateProfilePreferencesBody): Promise<NestedProfileResponse>;
+export declare function listProfiles(): Promise<ProfileResponse[]>;
+export declare function selectProfile(profileId: string): Promise<SelectProfileResponse>;
+export declare function createProfile(body: CreateProfileBody): Promise<ProfileResponse>;
+export declare function updateProfile(profileId: string, body: UpdateProfileBody): Promise<ProfileResponse>;
+export declare function deleteProfile(profileId: string): Promise<void>;
+export declare function fetchFeedback(): Promise<FeedbackItem[]>;
+export declare function setFeedback(mediaType: WatchlistMediaType, mediaId: string, body: SetFeedbackBody): Promise<FeedbackItem>;
+export declare function clearFeedback(mediaType: WatchlistMediaType, mediaId: string): Promise<void>;
+export declare function fetchHome(profileId: string): Promise<HomeResponse>;
+export declare function fetchHomePage(profileId: string, cursor?: string): Promise<HomePageResponse>;
+export declare function fetchSeriesPage(profileId: string, cursor?: string): Promise<SeriesPageResponse>;
+export declare function fetchMoviesPage(profileId: string, cursor?: string): Promise<MoviesPageResponse>;
+export declare function login(username: string, password: string): Promise<LoginResponse>;
+export declare function logout(): Promise<{
+    ok: true;
+}>;
+export declare function getMe(): Promise<MeResponse>;
+export declare function fetchArrivals(filter?: 'unread' | 'all'): Promise<ArrivalItem[]>;
+export declare function markArrivalRead(id: string): Promise<void>;
+export declare function resolvePlayback(mediaType: 'movie' | 'episode', mediaId: string, body?: PlaybackResolveRequest): Promise<PlaybackSessionResponse>;
+export declare function listDevices(): Promise<DeviceResponse[]>;
+export declare function getPairingCodeDetail(code: string): Promise<PairingCodeDetailResponse>;
+export declare function approvePairingCode(code: string, name?: string): Promise<DeviceResponse>;
+export declare function sendPlayOnTvCommand(deviceId: string, payload: PlaybackCommandRequest): Promise<PlaybackCommandResponse>;
+export declare function renameDevice(deviceId: string, name: string): Promise<DeviceResponse>;
+export declare function revokeDevice(deviceId: string): Promise<void>;
+export declare function semanticQuery(body: import('@iptvflix/api-contracts').SemanticQueryRequest): Promise<import('@iptvflix/api-contracts').SemanticQueryResponse>;
+export declare function generateShelfConcepts(body: import('@iptvflix/api-contracts').GenerateShelfConceptsBody): Promise<import('@iptvflix/api-contracts').GenerateShelfConceptsResponse>;
+export declare function getShelfConceptPool(profileId: string): Promise<import('@iptvflix/api-contracts').ShelfConcept[]>;
+export declare function sendShelfConceptFeedback(id: string, body: import('@iptvflix/api-contracts').ShelfConceptFeedbackBody): Promise<void>;
+export declare function previewShelfConcept(id: string, body: {
+    profileId: string;
+    debug?: boolean;
+}): Promise<import('@iptvflix/api-contracts').ShelfConceptPreviewResponse>;
+export declare function recordInteractionEvent(event: InteractionEventBody): Promise<void>;
+export declare function batchRecordInteractionEvents(events: InteractionEventBody[]): Promise<BatchEventResponse>;
+//# sourceMappingURL=api.d.ts.map

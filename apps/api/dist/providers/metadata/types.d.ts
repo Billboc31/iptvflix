@@ -121,6 +121,9 @@ export interface ExternalSeasonEpisode {
     voteAverage?: number | null;
     voteCount?: number | null;
 }
+export declare class MetadataMappingError extends Error {
+    constructor(message: string);
+}
 export type DiscoveryFeed = 'popular' | 'trending' | 'upcoming' | 'now_playing' | 'airing_today';
 export type DiscoverParams = {
     genreId?: number;

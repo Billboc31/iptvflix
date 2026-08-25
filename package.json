@@ -8,8 +8,8 @@
     "reset-local": "bash scripts/reset-local.sh",
     "start-local": "bash scripts/start-local.sh",
     "build": "pnpm --filter './packages/*' build && pnpm --filter './apps/*' build",
-    "lint": "pnpm --filter './packages/*' --filter './apps/api' --filter './apps/web' lint",
-    "typecheck": "pnpm --filter './packages/*' --filter './apps/api' --filter './apps/web' typecheck",
+    "lint": "pnpm --filter './packages/*' --filter './apps/api' --filter './apps/web' --filter './apps/live-tv' lint",
+    "typecheck": "pnpm --filter './packages/*' --filter './apps/api' --filter './apps/web' --filter './apps/live-tv' typecheck",
     "test": "pnpm --filter './apps/api' test",
     "test:e2e": "pnpm --filter @iptvflix/e2e test",
     "validate": "pnpm build && pnpm typecheck && pnpm test"

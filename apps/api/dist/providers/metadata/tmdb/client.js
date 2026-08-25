@@ -1,3 +1,4 @@
+import { MetadataMappingError } from '../types.js';
 import { TmdbRateLimitError, TmdbNetworkError } from './errors.js';
 import { parseYear } from '../../../lib/parse-year.js';
 const BASE_URL = 'https://api.themoviedb.org/3';
@@ -11,13 +12,13 @@ function mapMovieDetail(raw) {
         title: raw.title,
         originalTitle: raw.original_title ?? null,
         year: parseYear(raw.release_date),
-        synopsis: raw.overview || null,
+        synopsis: raw.overview?.trim() || null,
         posterPath: raw.poster_path ?? null,
         backdropPath: raw.backdrop_path ?? null,
         genres: raw.genres.map((g) => g.name),
         genreObjects: raw.genres.map((g) => ({ name: g.name, tmdbId: g.id })),
-        runtimeMinutes: raw.runtime ?? null,
-        imdbId: raw.imdb_id ?? null,
+        runtimeMinutes: raw.runtime || null,
+        imdbId: raw.imdb_id || null,
         popularity: raw.popularity ?? null,
         voteAverage: raw.vote_average ?? null,
         voteCount: raw.vote_count ?? null,
@@ -51,7 +52,7 @@ function mapSeriesDetail(raw) {
         title: raw.name,
         originalTitle: raw.original_name ?? null,
         firstAirYear: parseYear(raw.first_air_date),
-        synopsis: raw.overview || null,
+        synopsis: raw.overview?.trim() || null,
         posterPath: raw.poster_path ?? null,
         backdropPath: raw.backdrop_path ?? null,
         genres: raw.genres.map((g) => g.name),
@@ -146,12 +147,18 @@ export class TmdbClient {
             return null;
         if (!response.ok)
             throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`);
+        let raw;
         try {
-            const raw = (await response.json());
-            return { ...mapMovieDetail(raw), certification: null };
+            raw = (await response.json());
         }
         catch {
             throw new TmdbNetworkError('Could not parse TMDB movie response');
+        }
+        try {
+            return { ...mapMovieDetail(raw), certification: null };
+        }
+        catch (err) {
+            throw new MetadataMappingError(`mapMovieDetail: ${err instanceof Error ? err.message : String(err)}`);
         }
     }
     async getSeriesMetadata(tmdbId, opts) {
@@ -163,12 +170,18 @@ export class TmdbClient {
             return null;
         if (!response.ok)
             throw new TmdbNetworkError(`TMDB returned HTTP ${response.status}`);
+        let raw;
         try {
-            const raw = (await response.json());
-            return { ...mapSeriesDetail(raw), certification: null };
+            raw = (await response.json());
         }
         catch {
             throw new TmdbNetworkError('Could not parse TMDB series response');
+        }
+        try {
+            return { ...mapSeriesDetail(raw), certification: null };
+        }
+        catch (err) {
+            throw new MetadataMappingError(`mapSeriesDetail: ${err instanceof Error ? err.message : String(err)}`);
         }
     }
     async fetchCollection(collectionTmdbId) {

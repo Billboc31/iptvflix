@@ -1,7 +1,8 @@
 import 'dotenv/config';
 import { spawn } from 'node:child_process';
 import { writeFile, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
@@ -11,7 +12,7 @@ import { healthRoutes } from './routes/health.js';
 import { sourcesRoutes } from './routes/sources.js';
 import { enrichmentRoutes } from './routes/enrichment.js';
 import { moviesRoutes } from './routes/movies.js';
-import { seriesRoutes } from './routes/series.js';
+import { seriesRoutes, seriesPersonalizedRoutes } from './routes/series.js';
 import { searchRoutes } from './routes/search.js';
 import { discoveryRoutes } from './routes/discovery.js';
 import { genresRoutes } from './routes/genres.js';
@@ -24,6 +25,7 @@ import { feedbackRoutes } from './routes/feedback.js';
 import { tasteRoutes } from './routes/taste.js';
 import { recommendationRoutes } from './routes/recommendations.js';
 import { homeRoutes } from './routes/home.js';
+import { profilesMoviesRoutes } from './routes/profiles-movies.js';
 import { releaseLifecycleRoutes } from './routes/release-lifecycle.js';
 import { catalogRoutes } from './routes/catalog.js';
 import { profileRoutes } from './routes/profile.js';
@@ -42,13 +44,16 @@ import { reconcileRoutes, episodeBackfillRoutes } from './routes/reconcile.js';
 import { catalogBootstrapRoutes } from './routes/catalog-bootstrap.js';
 import { catalogRefreshRoutes } from './routes/catalog-refresh.js';
 import { catalogStatsRoutes } from './routes/catalog-stats.js';
+import { catalogEnrichMissingRoutes } from './routes/catalog-enrich-missing.js';
 import { embeddingBackfillRoutes } from './routes/embedding-backfill.js';
 import { recommendationLabRoutes } from './routes/recommendation-lab.js';
 import { shelfConceptsRoutes } from './routes/shelf-concepts.js';
+import { shelfInstancesRoutes } from './routes/shelf-instances.js';
 import { failRunningJobsRoutes } from './routes/fail-running-jobs.js';
 import { episodeSegmentsRoutes } from './routes/episodes.js';
 import { segmentAdminRoutes } from './routes/segment-admin.js';
 import { adminRoutes } from './routes/admin.js';
+import { channelsRoutes } from './routes/channels.js';
 import { authenticate, requireProfile } from './plugins/auth.js';
 import { failInterruptedRuns } from './services/fail-interrupted-runs.js';
 import { runSeed } from './db/seed.js';
@@ -66,6 +71,7 @@ import { MediaReconciliationService } from './services/media-reconciliation-serv
 import { EpisodeBackfillService } from './services/episode-backfill-service.js';
 import { CatalogBootstrapService } from './services/catalog-bootstrap-service.js';
 import { CatalogRefreshService } from './services/catalog-refresh-service.js';
+import { CatalogEnrichMissingService } from './services/catalog-enrich-missing-service.js';
 import { EmbeddingService } from './services/embedding-service.js';
 import { createDefaultProvider } from './services/embedding-provider.js';
 import { triggerSync, setOnNewEpisodeHook } from './services/sync-runs-service.js';
@@ -81,24 +87,11 @@ app.setErrorHandler((error, _request, reply) => {
 await app.register(cors, { origin: CORS_ORIGIN, credentials: true });
 await app.register(jwt, { secret: JWT_SECRET });
 await app.register(cookie);
-// Run idempotent boot-time seed (account + default profile) before accepting requests
-try {
-    await runSeed();
-    app.log.info('startup: account/profile seed completed');
-}
-catch (err) {
-    app.log.error(err, 'startup: seed failed — login may not work until DB is healthy');
-}
-const embeddingIndexMode = await ensurePgvectorEmbeddings();
-app.log.info({ embeddingIndexMode, openaiEmbeddings: Boolean(OPENAI_API_KEY) }, 'startup: recommendation embeddings ready');
-if (!OPENAI_API_KEY) {
-    app.log.warn('startup: OPENAI_API_KEY is unset — catalog embeddings will not be generated until it is set');
-}
+await app.register(healthRoutes);
 const similarTitlesService = TMDB_API_KEY
     ? new SimilarTitlesService(db, new TmdbClient({ apiKey: TMDB_API_KEY }))
     : undefined;
 // Public routes
-await app.register(healthRoutes);
 await app.register(mediaRelayHeartbeatRoutes);
 await app.register(authRoutes);
 await app.register(moviesRoutes, { similarTitlesService });
@@ -120,6 +113,7 @@ await app.register(devicesRoutes);
 await app.register(commandsRoutes);
 let catalogRefreshServiceRef = null;
 // Protected routes — require valid JWT (authenticate)
+const episodeBackfillService = new EpisodeBackfillService();
 await app.register(async function protectedScope(protectedApp) {
     protectedApp.addHook('preHandler', authenticate);
     // Account-level routes (no profileId needed)
@@ -130,6 +124,8 @@ await app.register(async function protectedScope(protectedApp) {
     await protectedApp.register(discoveryRoutes, { discoveryService });
     await protectedApp.register(recommendationRoutes);
     await protectedApp.register(homeRoutes);
+    await protectedApp.register(seriesPersonalizedRoutes);
+    await protectedApp.register(profilesMoviesRoutes);
     const embeddingProvider = OPENAI_API_KEY ? createDefaultProvider(OPENAI_API_KEY) : null;
     const embeddingService = embeddingProvider ? new EmbeddingService(db, embeddingProvider) : null;
     const enrichmentService = TMDB_API_KEY
@@ -148,7 +144,7 @@ await app.register(async function protectedScope(protectedApp) {
     if (reconciliationService) {
         await protectedApp.register(reconcileRoutes, { reconciliationService });
     }
-    const backfillService = new EpisodeBackfillService();
+    const backfillService = episodeBackfillService;
     await protectedApp.register(episodeBackfillRoutes, { backfillService });
     if (TMDB_API_KEY) {
         const bootstrapEnrichmentService = new MetadataEnrichmentService(db, new TmdbClient({ apiKey: TMDB_API_KEY }));
@@ -158,13 +154,17 @@ await app.register(async function protectedScope(protectedApp) {
         const refreshService = new CatalogRefreshService(db, new TmdbClient({ apiKey: TMDB_API_KEY }), refreshEnrichmentService);
         await protectedApp.register(catalogRefreshRoutes, { service: refreshService });
         catalogRefreshServiceRef = refreshService;
+        const enrichMissingService = new CatalogEnrichMissingService(db, refreshEnrichmentService);
+        await protectedApp.register(catalogEnrichMissingRoutes, { service: enrichMissingService });
     }
     await protectedApp.register(catalogStatsRoutes);
     await protectedApp.register(embeddingBackfillRoutes);
     await protectedApp.register(recommendationLabRoutes);
     await protectedApp.register(shelfConceptsRoutes);
+    await protectedApp.register(shelfInstancesRoutes);
     await protectedApp.register(segmentAdminRoutes);
     await protectedApp.register(adminRoutes);
+    await protectedApp.register(channelsRoutes);
     // Profile-scoped routes — also require a profileId in the session JWT
     await protectedApp.register(async function profileScope(profileApp) {
         profileApp.addHook('preHandler', requireProfile);
@@ -215,17 +215,34 @@ const scheduler = new SchedulerService(db, triggerSync, discoveryPoolService, {
     segmentRefreshEnabled: SEGMENT_REFRESH_ENABLED,
     segmentRefreshCadenceHours: SEGMENT_REFRESH_CADENCE_HOURS,
     segmentRefreshRecentDays: SEGMENT_REFRESH_RECENT_DAYS,
-}, catalogRefreshServiceRef, segmentSyncService);
-try {
-    const cleared = await failInterruptedRuns(db);
-    app.log.info(cleared, 'cleared interrupted RUNNING jobs');
+    episodeBackfillCadenceMinutes: parseInt(process.env.EPISODE_BACKFILL_CADENCE_MINUTES ?? '120', 10) || 120,
+}, catalogRefreshServiceRef, segmentSyncService, episodeBackfillService);
+const apiRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+function runMigrateSafe() {
+    return new Promise((resolve, reject) => {
+        const script = join(apiRoot, 'scripts/migrate-safe.mjs');
+        const proc = spawn(process.execPath, [script], {
+            stdio: 'inherit',
+            cwd: apiRoot,
+            env: process.env,
+        });
+        const timer = setTimeout(() => {
+            proc.kill('SIGKILL');
+            reject(new Error('migrate-safe timed out after 60s'));
+        }, 60_000);
+        proc.on('error', (err) => {
+            clearTimeout(timer);
+            reject(err);
+        });
+        proc.on('close', (code) => {
+            clearTimeout(timer);
+            if (code === 0)
+                resolve();
+            else
+                reject(new Error(`migrate-safe exited ${code}`));
+        });
+    });
 }
-catch (err) {
-    app.log.error(err, 'failed to clear interrupted RUNNING jobs');
-}
-scheduler.start();
-// Best-effort ffmpeg/ffprobe check — never block API boot (auth/catalog must stay up).
-// Missing binaries only degrade HLS playback; DIRECT mode and login still work.
 async function checkBinary(binary) {
     return new Promise((resolve, reject) => {
         const proc = spawn(binary, ['-version'], { stdio: ['ignore', 'ignore', 'ignore'] });
@@ -238,28 +255,72 @@ async function checkBinary(binary) {
         proc.on('error', (err) => reject(new Error(`${binary} not found: ${err.message}`)));
     });
 }
+async function prepareForListen() {
+    try {
+        await runMigrateSafe();
+        app.log.info('startup: migrations complete');
+    }
+    catch (err) {
+        app.log.error(err, 'startup: migrate-safe failed — schema may be behind');
+    }
+    try {
+        const embeddingIndexMode = await ensurePgvectorEmbeddings();
+        app.log.info({ embeddingIndexMode, openaiEmbeddings: Boolean(OPENAI_API_KEY) }, 'startup: recommendation embeddings ready');
+        if (!OPENAI_API_KEY) {
+            app.log.warn('startup: OPENAI_API_KEY is unset — catalog embeddings will not be generated until it is set');
+        }
+    }
+    catch (err) {
+        app.log.error(err, 'startup: pgvector setup failed');
+    }
+}
+async function bootBackground() {
+    try {
+        await runSeed();
+        app.log.info('startup: account/profile seed completed');
+    }
+    catch (err) {
+        app.log.error(err, 'startup: seed failed — login may not work until DB is healthy');
+    }
+    try {
+        const cleared = await failInterruptedRuns(db);
+        app.log.info(cleared, 'cleared interrupted RUNNING jobs');
+    }
+    catch (err) {
+        app.log.error(err, 'failed to clear interrupted RUNNING jobs');
+    }
+    scheduler.start();
+    setTimeout(() => {
+        void episodeBackfillService.backfill().then((result) => {
+            app.log.info(result, 'startup: episode source backfill completed');
+        }).catch((err) => {
+            app.log.error(err, 'startup: episode source backfill failed');
+        });
+    }, 90_000);
+    try {
+        await Promise.all([checkBinary('ffmpeg'), checkBinary('ffprobe')]);
+        app.log.info('startup: ffmpeg and ffprobe available');
+    }
+    catch (err) {
+        app.log.warn({ err }, 'startup: ffmpeg/ffprobe unavailable — HLS playback will fail until binaries are provisioned');
+    }
+    try {
+        const testPath = join(tmpdir(), `.iptvflix-startup-check-${Date.now()}`);
+        await writeFile(testPath, '');
+        await unlink(testPath);
+        app.log.info({ tmpdir: tmpdir() }, 'startup: temp directory is writable');
+    }
+    catch (err) {
+        app.log.warn({ err }, 'startup: temp directory not writable — HLS segment writes may fail');
+    }
+}
 try {
-    await Promise.all([checkBinary('ffmpeg'), checkBinary('ffprobe')]);
-    app.log.info('startup: ffmpeg and ffprobe available');
-}
-catch (err) {
-    app.log.warn({ err }, 'startup: ffmpeg/ffprobe unavailable — HLS playback will fail until binaries are provisioned');
-}
-// Best-effort temp-dir check for HLS segment writes.
-try {
-    const testPath = join(tmpdir(), `.iptvflix-startup-check-${Date.now()}`);
-    await writeFile(testPath, '');
-    await unlink(testPath);
-    app.log.info({ tmpdir: tmpdir() }, 'startup: temp directory is writable');
-}
-catch (err) {
-    app.log.warn({ err }, 'startup: temp directory not writable — HLS segment writes may fail');
-}
-try {
+    await prepareForListen();
     await app.listen({ port: PORT, host: '0.0.0.0' });
 }
 catch (err) {
     app.log.error(err);
     process.exit(1);
 }
+void bootBackground();
 //# sourceMappingURL=index.js.map

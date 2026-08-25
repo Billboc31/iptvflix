@@ -65,6 +65,8 @@ export type ScoredHybridCandidate = HybridCandidate & {
     reasons: string[];
     scoreBreakdown?: ScoreBreakdown;
 };
+/** @deprecated — use recommendation-engine (apps/recommendation-engine/src/pipeline/stages/hybrid-reranker.ts) */
 export declare function rankHybrid(candidates: HybridCandidate[], queryPlan: RecommendationQueryPlan, taste: TasteSignals | null, opts?: RankingOptions): ScoredHybridCandidate[];
+export declare function resolveImplicitShownIds(profileId: string, hoursBack: number): Promise<string[]>;
 export {};
 //# sourceMappingURL=recommendation-ranking-service.d.ts.map

@@ -1,4 +1,4 @@
-import { RECOMMENDATION_ENGINE_URL } from '../config/env.js';
+import { RECOMMENDATION_ENGINE_URL, RECOMMENDATION_PREVIEW_TIMEOUT_MS } from '../config/env.js';
 const REQUEST_TIMEOUT_MS = 15_000;
 const CIRCUIT_FAILURE_THRESHOLD = 3;
 const CIRCUIT_RESET_AFTER_MS = 30_000;
@@ -28,9 +28,9 @@ function recordFailure() {
         circuitOpenUntil = Date.now() + CIRCUIT_RESET_AFTER_MS;
     }
 }
-async function fetchWithTimeout(url, options) {
+async function fetchWithTimeout(url, options, timeoutMs = REQUEST_TIMEOUT_MS) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
         return await fetch(url, { ...options, signal: controller.signal });
     }
@@ -172,7 +172,13 @@ export const RecommendationEngineClient = {
         }
     },
     async queryForShelf(params) {
-        const raw = await this.query({ text: params.text, profileId: params.profileId, limit: params.limit });
+        const raw = await this.query({
+            text: params.text,
+            profileId: params.profileId,
+            limit: params.limit,
+            mediaTypes: params.mediaTypeFilter ? [params.mediaTypeFilter.toLowerCase()] : undefined,
+            freshnessBoostDays: params.freshnessBoostDays,
+        });
         if (!raw)
             return null;
         const meta = raw.engineMetadata;
@@ -185,12 +191,52 @@ export const RecommendationEngineClient = {
                 finalScore: r.score ?? 0,
                 reasons: r.reasons ?? [],
                 available: r.available ?? false,
+                qualityPrior: (r.scoreBreakdown?.qualityPrior ?? 0),
+                languageAffinity: (r.scoreBreakdown?.languageAffinity ?? 0),
             })),
             queryPlannerVersion: meta.plannerModelVersion ?? 'unknown',
             embeddingModelVersion: meta.embeddingModelVersion ?? 'unknown',
             rankerVersion: meta.rerankerVersion ?? 'unknown',
             candidateCount: raw.results.length,
         };
+    },
+    async previewShelfConcept(conceptId, body) {
+        if (!RECOMMENDATION_ENGINE_URL)
+            return { ok: false, kind: 'unreachable' };
+        if (isCircuitOpen())
+            return { ok: false, kind: 'circuit-open' };
+        const endpoint = `${RECOMMENDATION_ENGINE_URL}/v1/shelf-concepts/${conceptId}/preview`;
+        const startMs = Date.now();
+        try {
+            const response = await fetchWithTimeout(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, RECOMMENDATION_PREVIEW_TIMEOUT_MS);
+            const durationMs = Date.now() - startMs;
+            if (!response.ok) {
+                const rawBody = await response.text().catch(() => '');
+                const truncatedBody = rawBody.slice(0, 500);
+                recordFailure();
+                if (response.status === 404) {
+                    console.error('[recommendation-engine] preview failed', { endpoint, status: 404, durationMs, kind: 'not-found', body: truncatedBody });
+                    return { ok: false, kind: 'not-found', status: 404 };
+                }
+                console.error('[recommendation-engine] preview failed', { endpoint, status: response.status, durationMs, kind: 'server-error', body: truncatedBody });
+                return { ok: false, kind: 'server-error', status: response.status, message: truncatedBody };
+            }
+            const data = (await response.json());
+            recordSuccess();
+            console.info('[recommendation-engine] preview succeeded', { endpoint, status: response.status, durationMs });
+            return { ok: true, data };
+        }
+        catch (err) {
+            const durationMs = Date.now() - startMs;
+            recordFailure();
+            if (err instanceof Error && err.name === 'AbortError') {
+                console.error('[recommendation-engine] preview timed out', { endpoint, durationMs, kind: 'timeout' });
+                return { ok: false, kind: 'timeout' };
+            }
+            const message = err instanceof Error ? err.message : String(err);
+            console.error('[recommendation-engine] preview unreachable', { endpoint, durationMs, kind: 'unreachable', error: message });
+            return { ok: false, kind: 'unreachable' };
+        }
     },
     async refreshShelfInstance(shelfId, profileId) {
         if (!RECOMMENDATION_ENGINE_URL || isCircuitOpen())

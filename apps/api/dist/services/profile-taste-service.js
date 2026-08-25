@@ -38,6 +38,8 @@ function buildOutput(profileId, genreScoresMap, genreMetaMap, positiveMediaIds, 
         genreScores,
         positiveMediaIds,
         negativeMediaIds,
+        dislikedMediaIds: extra.dislikedMediaIds,
+        notInterestedMediaIds: extra.notInterestedMediaIds,
         signalCount,
         builtAt: builtAt.toISOString(),
         personScores: extra.personScores,
@@ -85,6 +87,8 @@ export async function buildTaste(profileId) {
     const genreMetaMap = {};
     const positiveSet = new Set();
     const negativeSet = new Set();
+    const dislikedSet = new Set();
+    const notInterestedSet = new Set();
     const personScores = {};
     const personMeta = {};
     const keywordScores = {};
@@ -191,8 +195,13 @@ export async function buildTaste(profileId) {
         if (fb.feedback === 'LIKE') {
             positiveSet.add(fb.mediaId);
         }
+        else if (fb.feedback === 'DISLIKE') {
+            negativeSet.add(fb.mediaId);
+            dislikedSet.add(fb.mediaId);
+        }
         else {
             negativeSet.add(fb.mediaId);
+            notInterestedSet.add(fb.mediaId);
         }
         signalCount++;
     }
@@ -255,6 +264,8 @@ export async function buildTaste(profileId) {
     }
     const sortedPositive = [...positiveSet].sort();
     const sortedNegative = [...negativeSet].sort();
+    const sortedDisliked = [...dislikedSet].sort();
+    const sortedNotInterested = [...notInterestedSet].sort();
     const [upserted] = await db
         .insert(profileTaste)
         .values({
@@ -263,6 +274,8 @@ export async function buildTaste(profileId) {
         genreMeta: genreMetaMap,
         positiveMediaIds: sortedPositive,
         negativeMediaIds: sortedNegative,
+        dislikedMediaIds: sortedDisliked,
+        notInterestedMediaIds: sortedNotInterested,
         signalCount,
         builtAt: now,
         personScores,
@@ -284,6 +297,8 @@ export async function buildTaste(profileId) {
             genreMeta: genreMetaMap,
             positiveMediaIds: sortedPositive,
             negativeMediaIds: sortedNegative,
+            dislikedMediaIds: sortedDisliked,
+            notInterestedMediaIds: sortedNotInterested,
             signalCount,
             builtAt: now,
             personScores,
@@ -312,6 +327,8 @@ export async function buildTaste(profileId) {
         completionRate,
         historyEventCount,
         tasteVersion: upserted?.tasteVersion ?? 1,
+        dislikedMediaIds: sortedDisliked,
+        notInterestedMediaIds: sortedNotInterested,
     });
 }
 export async function getTaste(profileId) {
@@ -334,6 +351,8 @@ export async function getTaste(profileId) {
         completionRate: row.completionRate ? Number(row.completionRate) : null,
         historyEventCount: row.historyEventCount,
         tasteVersion: row.tasteVersion,
+        dislikedMediaIds: row.dislikedMediaIds ?? [],
+        notInterestedMediaIds: row.notInterestedMediaIds ?? [],
     });
 }
 //# sourceMappingURL=profile-taste-service.js.map

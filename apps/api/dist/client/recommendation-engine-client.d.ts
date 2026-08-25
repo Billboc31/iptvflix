@@ -1,4 +1,13 @@
-import type { EngineMetadata, RecommendationQueryPlan } from '@iptvflix/api-contracts';
+import type { EngineMetadata, RecommendationQueryPlan, ShelfConceptPreviewResponse } from '@iptvflix/api-contracts';
+export type EnginePreviewResult<T> = {
+    ok: true;
+    data: T;
+} | {
+    ok: false;
+    kind: 'not-found' | 'server-error' | 'timeout' | 'unreachable' | 'circuit-open';
+    status?: number;
+    message?: string;
+};
 export interface EngineQueryResult {
     requestId: string;
     results: Array<{
@@ -23,6 +32,8 @@ export interface ShelfCandidateItem {
     finalScore: number;
     reasons: string[];
     available: boolean;
+    qualityPrior: number;
+    languageAffinity: number;
 }
 export interface ShelfQueryResult {
     candidates: ShelfCandidateItem[];
@@ -71,6 +82,7 @@ export declare const RecommendationEngineClient: {
         mediaTypes?: ("movie" | "series")[];
         limit?: number;
         debug?: boolean;
+        freshnessBoostDays?: number;
     }): Promise<EngineQueryResult | null>;
     personalized(params: {
         profileId: string;
@@ -91,7 +103,13 @@ export declare const RecommendationEngineClient: {
         text: string;
         profileId: string;
         limit: number;
+        mediaTypeFilter?: "MOVIE" | "SERIES";
+        freshnessBoostDays?: number;
     }): Promise<ShelfQueryResult | null>;
+    previewShelfConcept(conceptId: string, body: {
+        profileId: string;
+        debug?: boolean;
+    }): Promise<EnginePreviewResult<ShelfConceptPreviewResponse>>;
     refreshShelfInstance(shelfId: string, profileId: string): Promise<EngineShelfInstanceResult | null>;
 };
 //# sourceMappingURL=recommendation-engine-client.d.ts.map

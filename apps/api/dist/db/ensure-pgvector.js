@@ -9,6 +9,22 @@ function rowCount(result) {
     }
     return 0;
 }
+async function detectEmbeddingColumnMode() {
+    try {
+        const vectorCol = await db.execute(sql `
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'media_embeddings'
+        AND column_name = 'embedding'
+        AND udt_name = 'vector'
+      LIMIT 1
+    `);
+        return rowCount(vectorCol) > 0 ? 'pgvector' : 'float8';
+    }
+    catch {
+        return 'float8';
+    }
+}
 /**
  * Enable pgvector + HNSW when the Postgres image ships the extension.
  * Never throws: stock Railway Postgres stays on float8[] cosine search.
@@ -47,21 +63,14 @@ export async function ensurePgvectorEmbeddings() {
         catch {
             // Exact <=> search still works without HNSW (small catalogs / old pgvector).
         }
-        const vectorCol = await db.execute(sql `
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'media_embeddings'
-        AND column_name = 'embedding'
-        AND udt_name = 'vector'
-      LIMIT 1
-    `);
-        const mode = rowCount(vectorCol) > 0 ? 'pgvector' : 'float8';
+        const mode = await detectEmbeddingColumnMode();
         setEmbeddingIndexMode(mode);
         return mode;
     }
     catch {
-        setEmbeddingIndexMode('float8');
-        return 'float8';
+        const mode = await detectEmbeddingColumnMode();
+        setEmbeddingIndexMode(mode);
+        return mode;
     }
 }
 export { getEmbeddingIndexMode };

@@ -1,1 +1,1 @@
-{"version":3,"file":"arrivals.d.ts","sourceRoot":"","sources":["../../../src/db/schema/arrivals.ts"],"names":[],"mappings":"AAMA,eAAO,MAAM,aAAa;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;EAkBzB,CAAA"}
+{"version":3,"file":"arrivals.d.ts","sourceRoot":"","sources":["../../../src/db/schema/arrivals.ts"],"names":[],"mappings":"AAMA,eAAO,MAAM,aAAa,KAkBzB,CAAA"}

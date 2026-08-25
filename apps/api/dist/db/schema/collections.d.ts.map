@@ -1,1 +1,1 @@
-{"version":3,"file":"collections.d.ts","sourceRoot":"","sources":["../../../src/db/schema/collections.ts"],"names":[],"mappings":"AAEA,eAAO,MAAM,WAAW;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;EAQtB,CAAA"}
+{"version":3,"file":"collections.d.ts","sourceRoot":"","sources":["../../../src/db/schema/collections.ts"],"names":[],"mappings":"AAEA,eAAO,MAAM,WAAW,KAQtB,CAAA"}

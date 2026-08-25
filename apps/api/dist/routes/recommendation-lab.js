@@ -277,6 +277,8 @@ function mapEngineResultToCandidate(r) {
         available: true,
     };
 }
+/** Lab queries include shelf-concept semanticIntent (3–5 sentences); keep below embedding model limits. */
+const MAX_SEMANTIC_QUERY_CHARS = 8000;
 // ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
@@ -291,8 +293,8 @@ export async function recommendationLabRoutes(app) {
             return reply.status(400).send({ error: 'query is required' });
         }
         const rawQuery = query.trim();
-        if (rawQuery.length > 500) {
-            return reply.status(400).send({ error: 'query must not exceed 500 characters' });
+        if (rawQuery.length > MAX_SEMANTIC_QUERY_CHARS) {
+            return reply.status(400).send({ error: `query must not exceed ${MAX_SEMANTIC_QUERY_CHARS} characters` });
         }
         const topK = Math.min(Math.max(1, Number(body?.topK ?? 10)), 50);
         const expandWithLlm = body?.expandWithLlm === true;
@@ -455,10 +457,19 @@ export async function recommendationLabRoutes(app) {
             });
         }
         // Default path — unchanged behaviour
-        const [primary, comparison] = await Promise.all([
-            retrievalService.retrieve(rawQuery, topK),
-            compareQuery ? retrievalService.retrieve(compareQuery, topK) : Promise.resolve(null),
-        ]);
+        let primary;
+        let comparison = null;
+        try {
+            ;
+            [primary, comparison] = await Promise.all([
+                retrievalService.retrieve(rawQuery, topK),
+                compareQuery ? retrievalService.retrieve(compareQuery, topK) : Promise.resolve(null),
+            ]);
+        }
+        catch (err) {
+            request.log.error({ err, queryLength: rawQuery.length }, 'semantic-query retrieval failed');
+            return reply.status(500).send({ error: 'semantic_search_failed' });
+        }
         const mapResult = (r) => ({
             mediaId: r.mediaId,
             mediaType: r.mediaType,

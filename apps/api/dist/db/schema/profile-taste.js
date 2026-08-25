@@ -9,6 +9,8 @@ export const profileTaste = pgTable('profile_taste', {
     genreMeta: jsonb('genre_meta').notNull().default({}),
     positiveMediaIds: text('positive_media_ids').array().notNull().default(sql `'{}'`),
     negativeMediaIds: text('negative_media_ids').array().notNull().default(sql `'{}'`),
+    dislikedMediaIds: text('disliked_media_ids').array().notNull().default(sql `'{}'`),
+    notInterestedMediaIds: text('not_interested_media_ids').array().notNull().default(sql `'{}'`),
     signalCount: integer('signal_count').notNull().default(0),
     builtAt: timestamp('built_at', { withTimezone: true }).notNull(),
     // T100 additions

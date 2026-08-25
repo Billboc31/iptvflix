@@ -1,1 +1,1 @@
-{"version":3,"file":"genres.d.ts","sourceRoot":"","sources":["../../../src/db/schema/genres.ts"],"names":[],"mappings":"AAEA,eAAO,MAAM,MAAM;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;EAOjB,CAAA"}
+{"version":3,"file":"genres.d.ts","sourceRoot":"","sources":["../../../src/db/schema/genres.ts"],"names":[],"mappings":"AAEA,eAAO,MAAM,MAAM,KAOjB,CAAA"}

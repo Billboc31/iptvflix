@@ -7,6 +7,7 @@ import { ValidationError, ForbiddenError, NotFoundError } from '../errors.js';
 import { getPlaylist, getSegment, SEGMENT_RE } from '../services/hls-session-store.js';
 import { XTREAM_STREAM_HEADERS, fetchXtreamStream } from '../providers/xtream/playback.js';
 import { getPlaybackDiag } from '../services/playback-diag.js';
+import { resolveClientType } from './resolve-client-type.js';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UPSTREAM_TIMEOUT_MS = 30_000;
 const SEGMENT_TIMEOUT_MS = 15_000;
@@ -54,8 +55,9 @@ export async function playbackRoutes(app) {
             return reply.status(400).send({ error: 'Invalid mediaId', errorCategory: 'STREAM_URL_INVALID', correlationId });
         }
         const { availabilityId, restart } = request.body ?? {};
+        const clientType = resolveClientType(request);
         try {
-            const session = await resolvePlayback(request.profileId, mediaType, mediaId, availabilityId, correlationId, { restart: restart === true });
+            const session = await resolvePlayback(request.profileId, mediaType, mediaId, availabilityId, correlationId, { restart: restart === true, clientType });
             return reply.status(200).send(session);
         }
         catch (err) {
