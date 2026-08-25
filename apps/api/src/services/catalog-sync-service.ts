@@ -14,12 +14,14 @@ import { syncRuns } from '../db/schema/sync-runs.js'
 import { titleMatchResults } from '../db/schema/title-match-results.js'
 import { releaseEvents } from '../db/schema/release-lifecycle.js'
 import type { XtreamCatalogSnapshot } from '../providers/xtream/types.js'
+import { buildXtreamLiveUrl } from '../providers/xtream/playback.js'
 import { normalizeTitle } from '../matching/title-normalizer.js'
 import type { PlexCatalogSnapshot, PlexGuid } from '../providers/plex/types.js'
 import type { M3UCatalogSnapshot } from '../providers/m3u/types.js'
 import { TitleMatchingService, type MatchItemInput } from './title-matching-service.js'
 import type { CanonicalResolver } from './canonical-resolver.js'
 import { ChannelSyncService, type LiveChannelEntry } from './channel-sync-service.js'
+import { sources } from '../db/schema/sources.js'
 
 const MATCH_CONCURRENCY = parseInt(process.env.MATCH_CONCURRENCY ?? '5', 10) || 5
 const MATCH_THROTTLE_MS = parseInt(process.env.MATCH_THROTTLE_MS ?? '250', 10) || 0
@@ -1286,14 +1288,45 @@ export const CatalogSyncService = {
     snapshot: XtreamCatalogSnapshot,
     options?: { runId?: string; matchingService?: TitleMatchingService; canonicalResolver?: CanonicalResolver; skipLifecycle?: boolean },
   ): Promise<CatalogSyncResult> {
-    const liveEntries: LiveChannelEntry[] = (snapshot.liveStreams ?? []).map((s) => ({
-      providerItemId: String(s.stream_id),
-      providerName: s.name,
-      streamUrl: s.direct_source ?? '',
-      tvgId: s.epg_channel_id ?? null,
-      tvgLogo: s.stream_icon || null,
-      groupTitle: snapshot.liveCategories?.find((c) => c.category_id === s.category_id)?.category_name ?? null,
-    }))
+    const [sourceRow] = await db.select().from(sources).where(eq(sources.id, sourceId)).limit(1)
+    const liveEntries: LiveChannelEntry[] = (snapshot.liveStreams ?? []).map((s) => {
+      const direct = typeof s.direct_source === 'string' ? s.direct_source.trim() : ''
+      const streamUrl =
+        direct ||
+        (sourceRow
+          ? buildXtreamLiveUrl(
+              sourceRow.baseUrl,
+              sourceRow.username ?? '',
+              sourceRow.password ?? '',
+              String(s.stream_id),
+            )
+          : '')
+      return {
+        providerItemId: String(s.stream_id),
+        providerName: s.name,
+        streamUrl,
+        tvgId: s.epg_channel_id ?? null,
+        tvgLogo: s.stream_icon || null,
+        groupTitle: snapshot.liveCategories?.find((c) => c.category_id === s.category_id)?.category_name ?? null,
+      }
+    })
+
+    // Sync Live TV channels first so the Live TV app works even if VOD/series
+    // sync fails later (e.g. episode availability batch limits).
+    let earlyChannelResult: Awaited<ReturnType<typeof ChannelSyncService.syncLiveChannels>> | null = null
+    if (liveEntries.length > 0) {
+      earlyChannelResult = await ChannelSyncService.syncLiveChannels(sourceId, liveEntries, {
+        skipLifecycle: options?.skipLifecycle,
+      }).catch((err) => {
+        console.error('[catalog-sync] channel sync failed:', err)
+        return null
+      })
+      if (earlyChannelResult) {
+        console.info(
+          `[catalog-sync] live channels synced early: created=${earlyChannelResult.channelsCreated} updated=${earlyChannelResult.channelsUpdated}`,
+        )
+      }
+    }
 
     const normalizedEpisodes: NormalizedEpisodeItem[] | undefined = snapshot.seriesInfo
       ? Object.entries(snapshot.seriesInfo).flatMap(([seriesIdStr, info]) =>
@@ -1381,17 +1414,9 @@ export const CatalogSyncService = {
       options?.canonicalResolver,
     )
 
-    if (liveEntries.length > 0) {
-      const channelResult = await ChannelSyncService.syncLiveChannels(sourceId, liveEntries, {
-        skipLifecycle: options?.skipLifecycle,
-      }).catch((err) => {
-        console.error('[catalog-sync] channel sync failed:', err)
-        return null
-      })
-      if (channelResult) {
-        result.counts.channelsCreated = channelResult.channelsCreated
-        result.counts.channelsUpdated = channelResult.channelsUpdated
-      }
+    if (earlyChannelResult) {
+      result.counts.channelsCreated = earlyChannelResult.channelsCreated
+      result.counts.channelsUpdated = earlyChannelResult.channelsUpdated
     }
 
     return result
@@ -1474,6 +1499,16 @@ export const CatalogSyncService = {
       groupTitle: entry.groupTitle,
     }))
 
+    let earlyChannelResult: Awaited<ReturnType<typeof ChannelSyncService.syncLiveChannels>> | null = null
+    if (liveEntries.length > 0) {
+      earlyChannelResult = await ChannelSyncService.syncLiveChannels(sourceId, liveEntries, {
+        skipLifecycle: options?.skipLifecycle,
+      }).catch((err) => {
+        console.error('[catalog-sync] M3U channel sync failed:', err)
+        return null
+      })
+    }
+
     const result = await syncNormalized(
       sourceId,
       {
@@ -1506,17 +1541,9 @@ export const CatalogSyncService = {
       options?.canonicalResolver,
     )
 
-    if (liveEntries.length > 0) {
-      const channelResult = await ChannelSyncService.syncLiveChannels(sourceId, liveEntries, {
-        skipLifecycle: options?.skipLifecycle,
-      }).catch((err) => {
-        console.error('[catalog-sync] channel sync failed:', err)
-        return null
-      })
-      if (channelResult) {
-        result.counts.channelsCreated = channelResult.channelsCreated
-        result.counts.channelsUpdated = channelResult.channelsUpdated
-      }
+    if (earlyChannelResult) {
+      result.counts.channelsCreated = earlyChannelResult.channelsCreated
+      result.counts.channelsUpdated = earlyChannelResult.channelsUpdated
     }
 
     return result

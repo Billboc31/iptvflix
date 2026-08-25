@@ -26,6 +26,18 @@ export function buildXtreamEpisodeUrl(
   return `${base}/series/${username}/${password}/${providerItemId}.${ext}`
 }
 
+export function buildXtreamLiveUrl(
+  baseUrl: string,
+  username: string,
+  password: string,
+  providerItemId: string,
+  containerExtension?: string | null,
+): string {
+  const base = baseUrl.replace(/\/$/, '')
+  const ext = containerExtension || 'ts'
+  return `${base}/live/${username}/${password}/${providerItemId}.${ext}`
+}
+
 /** HTTPS so a HTTPS web app can play without mixed-content blocking. */
 export function browserSafeXtreamUrl(url: string): string {
   try {
