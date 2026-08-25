@@ -1,5 +1,10 @@
 import { useNavigate } from 'react-router-dom'
 import type { ChannelResponse } from '@iptvflix/api-contracts'
+import {
+  CATEGORY_DISPLAY_ORDER,
+  categoryLabel,
+  isCanonicalCategory,
+} from '../../lib/categories.js'
 
 type Props = {
   channels: ChannelResponse[]
@@ -11,11 +16,14 @@ export default function CategoryShortcuts({ channels }: Props) {
   const counts = new Map<string, number>()
   for (const ch of channels) {
     for (const cat of ch.categories) {
+      if (!isCanonicalCategory(cat) || cat === 'other') continue
       counts.set(cat, (counts.get(cat) ?? 0) + 1)
     }
   }
 
-  const categories = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
+  const categories = CATEGORY_DISPLAY_ORDER
+    .filter((cat) => counts.has(cat))
+    .map((cat) => [cat, counts.get(cat)!] as const)
 
   if (categories.length === 0) return null
 
@@ -26,11 +34,12 @@ export default function CategoryShortcuts({ channels }: Props) {
         {categories.map(([cat, count]) => (
           <button
             key={cat}
+            type="button"
             onClick={() => navigate(`/channels?category=${encodeURIComponent(cat)}`)}
             className="bg-[#111118] border border-white/5 rounded-xl p-4 text-left hover:border-[#f97316]/40 hover:bg-[#f97316]/5 transition-colors group"
           >
             <p className="text-white text-sm font-medium truncate group-hover:text-[#f97316] transition-colors">
-              {cat}
+              {categoryLabel(cat)}
             </p>
             <p className="text-gray-500 text-xs mt-1">{count} chaîne{count > 1 ? 's' : ''}</p>
           </button>

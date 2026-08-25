@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mapCategory } from '../category-mapper.js'
+import { mapCategory, stripRegionPrefix } from '../category-mapper.js'
 
 describe('mapCategory', () => {
   it('maps sport', () => {
@@ -49,8 +49,15 @@ describe('mapCategory', () => {
     expect(mapCategory('Généraliste')).toBe('generalist')
   })
 
-  it('preserves unknown values as-is', () => {
-    expect(mapCategory('My Custom Group')).toBe('My Custom Group')
+  it('buckets unknown values as other', () => {
+    expect(mapCategory('My Custom Group')).toBe('other')
+  })
+
+  it('strips region prefixes then maps', () => {
+    expect(stripRegionPrefix('FR| Sports HD')).toBe('Sports HD')
+    expect(mapCategory('FR| Sports HD')).toBe('sport')
+    expect(mapCategory('FR| SOCCER PPV')).toBe('sport')
+    expect(mapCategory('[EN] News 24')).toBe('news')
   })
 
   it('case-insensitively matches partial keywords', () => {

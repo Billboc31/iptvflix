@@ -4,6 +4,7 @@ import { channels } from '../db/schema/channels.js'
 import { channelSources } from '../db/schema/channel-sources.js'
 import { normalizeChannelName, toCanonicalDisplayName } from '../channels/channel-normalizer.js'
 import { mapCategory } from '../channels/category-mapper.js'
+import { inferChannelLanguage } from '../channels/language-infer.js'
 
 export interface LiveChannelEntry {
   providerItemId: string
@@ -108,17 +109,34 @@ export const ChannelSyncService = {
           .where(eq(channelSources.id, existing.id))
         result.sourcesUpdated++
 
-        if (entry.tvgLogo && !existing.tvgLogo) {
-          const [chRow] = await db
-            .select({ logoUrl: channels.logoUrl })
-            .from(channels)
-            .where(eq(channels.id, existing.channelId))
-            .limit(1)
-          if (chRow && !chRow.logoUrl) {
-            await db
-              .update(channels)
-              .set({ logoUrl: entry.tvgLogo, updatedAt: now })
-              .where(eq(channels.id, existing.channelId))
+        const language = inferChannelLanguage(entry.providerName, entry.groupTitle)
+        const categories = entry.groupTitle ? [mapCategory(entry.groupTitle)] : []
+        const [chRow] = await db
+          .select({ logoUrl: channels.logoUrl, language: channels.language, categories: channels.categories })
+          .from(channels)
+          .where(eq(channels.id, existing.channelId))
+          .limit(1)
+
+        if (chRow) {
+          const patch: Partial<typeof channels.$inferInsert> = { updatedAt: now }
+          let changed = false
+          if (entry.tvgLogo && !chRow.logoUrl) {
+            patch.logoUrl = entry.tvgLogo
+            changed = true
+          }
+          if (language && chRow.language !== language) {
+            patch.language = language
+            changed = true
+          }
+          if (categories.length > 0) {
+            const prev = (chRow.categories as string[] | null) ?? []
+            if (prev[0] !== categories[0]) {
+              patch.categories = categories
+              changed = true
+            }
+          }
+          if (changed) {
+            await db.update(channels).set(patch).where(eq(channels.id, existing.channelId))
             result.channelsUpdated++
           }
         }
@@ -144,13 +162,31 @@ export const ChannelSyncService = {
       if (scoredCandidates.length === 1) {
         const match = scoredCandidates[0]!
         const channelId = match.channel.id
+        const language = inferChannelLanguage(entry.providerName, entry.groupTitle)
+        const categories = entry.groupTitle ? [mapCategory(entry.groupTitle)] : []
 
+        const patch: Partial<typeof channels.$inferInsert> = { updatedAt: now }
+        let changed = false
         if (entry.tvgLogo && !match.channel.logoUrl) {
-          await db
-            .update(channels)
-            .set({ logoUrl: entry.tvgLogo, updatedAt: now })
-            .where(eq(channels.id, channelId))
+          patch.logoUrl = entry.tvgLogo
           match.channel.logoUrl = entry.tvgLogo
+          changed = true
+        }
+        if (language && match.channel.language !== language) {
+          patch.language = language
+          match.channel.language = language
+          changed = true
+        }
+        if (categories.length > 0) {
+          const prev = (match.channel.categories as string[] | null) ?? []
+          if (prev[0] !== categories[0]) {
+            patch.categories = categories
+            match.channel.categories = categories
+            changed = true
+          }
+        }
+        if (changed) {
+          await db.update(channels).set(patch).where(eq(channels.id, channelId))
           result.channelsUpdated++
         }
 
@@ -176,7 +212,8 @@ export const ChannelSyncService = {
         result.sourcesCreated++
       } else {
         const canonicalName = toCanonicalDisplayName(entryNormalized) || entry.providerName
-        const categories = entry.groupTitle ? [mapCategory(entry.groupTitle)] : []
+        const categories = entry.groupTitle ? [mapCategory(entry.groupTitle)] : ['other']
+        const language = inferChannelLanguage(entry.providerName, entry.groupTitle)
 
         const [newChannel] = await db
           .insert(channels)
@@ -186,6 +223,7 @@ export const ChannelSyncService = {
             logoUrl: entry.tvgLogo ?? null,
             tvgId: entry.tvgId ?? null,
             categories,
+            language,
           })
           .returning()
 

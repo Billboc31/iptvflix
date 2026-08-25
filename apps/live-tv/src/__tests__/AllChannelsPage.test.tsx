@@ -13,9 +13,9 @@ vi.mock('../lib/api.js', () => ({
 }))
 
 const channels: ChannelResponse[] = [
-  { id: '1', name: 'TF1', logoUrl: null, categories: ['Généralistes'] },
-  { id: '2', name: 'beIN Sports', logoUrl: null, categories: ['Sport'] },
-  { id: '3', name: 'Canal+', logoUrl: null, categories: ['Cinéma & Séries'] },
+  { id: '1', name: 'TF1', logoUrl: null, categories: ['generalist'], language: 'fr' },
+  { id: '2', name: 'beIN Sports', logoUrl: null, categories: ['sport'], language: 'ar' },
+  { id: '3', name: 'Canal+', logoUrl: null, categories: ['cinema'], language: 'fr' },
 ]
 
 const mockContext = {
@@ -30,6 +30,15 @@ const mockContext = {
 
 vi.mock('../context/ChannelsContext.js', () => ({
   useChannels: () => mockContext,
+}))
+
+vi.mock('../context/ProfileContext.js', () => ({
+  useProfile: () => ({
+    currentProfile: { id: 'p1', name: 'Test', preferredAudioLanguages: ['fr'] },
+    profiles: [],
+    isLoading: false,
+    selectProfile: vi.fn(),
+  }),
 }))
 
 function renderPage(search = '') {
@@ -60,14 +69,20 @@ describe('AllChannelsPage', () => {
   })
 
   it('filters channels by category from URL', () => {
-    renderPage('?category=Sport')
+    renderPage('?category=sport')
     expect(screen.getByText('beIN Sports')).toBeInTheDocument()
     expect(screen.queryByText('TF1')).not.toBeInTheDocument()
   })
 
+  it('filters to profile language when Ma langue is active', () => {
+    renderPage('?lang=mine')
+    expect(screen.getByText('TF1')).toBeInTheDocument()
+    expect(screen.getByText('Canal+')).toBeInTheDocument()
+    expect(screen.queryByText('beIN Sports')).not.toBeInTheDocument()
+  })
+
   it('filters to favorites only when toggled', () => {
     renderPage()
-    // The filter toggle button has the text "♥ Favoris" (with the heart)
     const favBtn = screen.getByRole('button', { name: '♥ Favoris' })
     fireEvent.click(favBtn)
     expect(screen.getByText('TF1')).toBeInTheDocument()
@@ -76,7 +91,6 @@ describe('AllChannelsPage', () => {
 
   it('calls toggleFavorite when favorite button is clicked', () => {
     renderPage()
-    // Use specific aria-label to get a row-level favorite toggle
     const rowFavBtn = screen.getByRole('button', { name: 'Retirer des favoris' })
     fireEvent.click(rowFavBtn)
     expect(mockContext.toggleFavorite).toHaveBeenCalled()

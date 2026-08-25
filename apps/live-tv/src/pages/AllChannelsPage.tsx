@@ -1,15 +1,33 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useChannels } from '../context/ChannelsContext.js'
+import { useProfile } from '../context/ProfileContext.js'
 import ChannelRow from '../components/channel/ChannelRow.js'
+import {
+  CATEGORY_DISPLAY_ORDER,
+  categoryLabel,
+  isCanonicalCategory,
+} from '../lib/categories.js'
+
+function preferredLangCodes(profileLangs: string[] | undefined): string[] {
+  if (profileLangs?.length) {
+    return profileLangs.map((l) => l.trim().toLowerCase().slice(0, 2)).filter(Boolean)
+  }
+  return ['fr']
+}
 
 export default function AllChannelsPage() {
   const { channels, isLoading, favoriteIds, toggleFavorite, recordHistory } = useChannels()
+  const { currentProfile } = useProfile()
   const [searchParams, setSearchParams] = useSearchParams()
   const [favoritesOnly, setFavoritesOnly] = useState(false)
 
+  const preferredLangs = preferredLangCodes(currentProfile?.preferredAudioLanguages)
+  const primaryLang = preferredLangs[0] ?? 'fr'
+
   const searchQuery = searchParams.get('q') ?? ''
   const activeCategory = searchParams.get('category') ?? ''
+  const langFilter = searchParams.get('lang') // 'mine' | '' (all)
 
   function setSearch(value: string) {
     setSearchParams((prev) => {
@@ -29,30 +47,56 @@ export default function AllChannelsPage() {
     }, { replace: true })
   }
 
+  function setLangFilter(mode: 'mine' | 'all') {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (mode === 'mine') {
+        next.set('lang', 'mine')
+      } else {
+        next.delete('lang')
+        next.delete('category')
+      }
+      return next
+    }, { replace: true })
+  }
+
   const categories = useMemo(() => {
-    const seen = new Set<string>()
+    const present = new Set<string>()
     for (const ch of channels) {
-      for (const cat of ch.categories) seen.add(cat)
+      for (const cat of ch.categories) {
+        if (isCanonicalCategory(cat)) present.add(cat)
+      }
     }
-    return Array.from(seen).sort()
+    return CATEGORY_DISPLAY_ORDER.filter((c) => present.has(c))
   }, [channels])
 
   const filtered = useMemo(() => {
     let result = channels
     if (favoritesOnly) result = result.filter((c) => favoriteIds.has(c.id))
+    if (langFilter === 'mine') {
+      result = result.filter(
+        (c) => c.language && preferredLangs.includes(c.language.toLowerCase()),
+      )
+    }
     if (activeCategory) result = result.filter((c) => c.categories.includes(activeCategory))
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
       result = result.filter((c) => c.name.toLowerCase().includes(q))
     }
     return result
-  }, [channels, favoritesOnly, activeCategory, searchQuery, favoriteIds])
+  }, [channels, favoritesOnly, activeCategory, searchQuery, favoriteIds, langFilter, preferredLangs])
+
+  const chipClass = (active: boolean) =>
+    `px-3 py-1 rounded-full text-sm border transition-colors ${
+      active
+        ? 'border-[#f97316] bg-[#f97316]/10 text-[#f97316]'
+        : 'border-white/10 text-gray-400 hover:text-white hover:border-white/20'
+    }`
 
   return (
     <div className="p-6 md:p-8">
       <h1 className="text-2xl font-bold text-white mb-6">Toutes les chaînes</h1>
 
-      {/* Search and filters */}
       <div className="space-y-4 mb-6">
         <input
           type="search"
@@ -65,38 +109,43 @@ export default function AllChannelsPage() {
 
         <div className="flex gap-2 flex-wrap">
           <button
+            type="button"
             onClick={() => setFavoritesOnly((v) => !v)}
-            className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-              favoritesOnly
-                ? 'border-[#f97316] bg-[#f97316]/10 text-[#f97316]'
-                : 'border-white/10 text-gray-400 hover:text-white hover:border-white/20'
-            }`}
+            className={chipClass(favoritesOnly)}
             aria-pressed={favoritesOnly}
           >
             ♥ Favoris
           </button>
 
-          {activeCategory && (
-            <button
-              onClick={() => setCategory('')}
-              className="px-3 py-1 rounded-full text-sm border border-[#f97316] bg-[#f97316]/10 text-[#f97316] transition-colors"
-              aria-pressed
-            >
-              {activeCategory} ✕
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setLangFilter('mine')}
+            className={chipClass(langFilter === 'mine')}
+            aria-pressed={langFilter === 'mine'}
+          >
+            {primaryLang === 'fr' ? 'Ma langue (FR)' : `Ma langue (${primaryLang.toUpperCase()})`}
+          </button>
 
-          {categories.map((cat) =>
-            cat === activeCategory ? null : (
-              <button
-                key={cat}
-                onClick={() => setCategory(cat)}
-                className="px-3 py-1 rounded-full text-sm border border-white/10 text-gray-400 hover:text-white hover:border-white/20 transition-colors"
-              >
-                {cat}
-              </button>
-            ),
-          )}
+          <button
+            type="button"
+            onClick={() => setLangFilter('all')}
+            className={chipClass(langFilter !== 'mine' && !activeCategory)}
+            aria-pressed={langFilter !== 'mine' && !activeCategory}
+          >
+            Toutes
+          </button>
+
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setCategory(activeCategory === cat ? '' : cat)}
+              className={chipClass(activeCategory === cat)}
+              aria-pressed={activeCategory === cat}
+            >
+              {categoryLabel(cat)}
+            </button>
+          ))}
         </div>
       </div>
 

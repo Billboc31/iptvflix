@@ -5,10 +5,33 @@ import { db } from '../db/client.js'
 import { channels } from '../db/schema/channels.js'
 import { channelSources } from '../db/schema/channel-sources.js'
 import { channelFavorites } from '../db/schema/channel-favorites.js'
+import { profiles } from '../db/schema/profiles.js'
 import { selectPreferredSources } from '../channels/source-selector.js'
+import {
+  CATEGORY_DISPLAY_ORDER,
+  mapCategory,
+  type CanonicalCategory,
+} from '../channels/category-mapper.js'
+
+function normalizeLangCode(code: string): string {
+  return code.trim().toLowerCase().slice(0, 2)
+}
+
+function canonicalizeCategories(raw: string[] | null | undefined): string[] {
+  const mapped = (raw ?? []).map((c) => mapCategory(c))
+  const unique = [...new Set(mapped)]
+  return unique.length > 0 ? unique : ['other']
+}
+
+function categoryRank(cats: string[]): number {
+  const primary = cats[0] as CanonicalCategory | undefined
+  if (!primary) return CATEGORY_DISPLAY_ORDER.length
+  const idx = CATEGORY_DISPLAY_ORDER.indexOf(primary)
+  return idx === -1 ? CATEGORY_DISPLAY_ORDER.length : idx
+}
 
 export async function channelsRoutes(app: FastifyInstance): Promise<void> {
-  app.get<{ Querystring: { favorites?: string }; Reply: ChannelResponse[] }>(
+  app.get<{ Querystring: { favorites?: string; lang?: string }; Reply: ChannelResponse[] }>(
     '/channels',
     async (req, reply) => {
       const profileId = req.profileId
@@ -22,9 +45,22 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
 
       let ids = availableIds.map((r) => r.id)
 
-      // Resolve favorites for isFavorite field and optional filter
       let favoriteChannelIds: Set<string> | null = null
+      let preferredLangs: string[] = ['fr']
+
       if (profileId) {
+        const [profile] = await db
+          .select({
+            preferredAudioLanguages: profiles.preferredAudioLanguages,
+          })
+          .from(profiles)
+          .where(eq(profiles.id, profileId))
+          .limit(1)
+
+        if (profile?.preferredAudioLanguages?.length) {
+          preferredLangs = profile.preferredAudioLanguages.map(normalizeLangCode).filter(Boolean)
+        }
+
         const favRows = await db
           .select({ channelId: channelFavorites.channelId })
           .from(channelFavorites)
@@ -37,26 +73,43 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
+      const langFilter = req.query.lang ? normalizeLangCode(req.query.lang) : null
+
       const rows = await db
         .select({
           id: channels.id,
           canonicalName: channels.canonicalName,
           logoUrl: channels.logoUrl,
           categories: channels.categories,
+          language: channels.language,
         })
         .from(channels)
         .where(inArray(channels.id, ids))
-        .orderBy(channels.canonicalName)
 
-      return reply.send(
-        rows.map((row) => ({
-          id: row.id,
-          name: row.canonicalName,
-          logoUrl: row.logoUrl ?? null,
-          categories: (row.categories as string[]) ?? [],
-          isFavorite: favoriteChannelIds ? favoriteChannelIds.has(row.id) : undefined,
-        })),
-      )
+      let mapped = rows.map((row) => ({
+        id: row.id,
+        name: row.canonicalName,
+        logoUrl: row.logoUrl ?? null,
+        categories: canonicalizeCategories(row.categories as string[] | null),
+        language: row.language ? normalizeLangCode(row.language) : null,
+        isFavorite: favoriteChannelIds ? favoriteChannelIds.has(row.id) : undefined,
+      }))
+
+      if (langFilter) {
+        mapped = mapped.filter((c) => c.language === langFilter)
+      }
+
+      mapped.sort((a, b) => {
+        const aMatch = a.language && preferredLangs.includes(a.language) ? 0 : 1
+        const bMatch = b.language && preferredLangs.includes(b.language) ? 0 : 1
+        if (aMatch !== bMatch) return aMatch - bMatch
+        const ca = categoryRank(a.categories)
+        const cb = categoryRank(b.categories)
+        if (ca !== cb) return ca - cb
+        return a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' })
+      })
+
+      return reply.send(mapped)
     },
   )
 

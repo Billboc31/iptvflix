@@ -9,6 +9,8 @@ export type ChannelResponse = {
   name: string
   logoUrl?: string | null
   categories: string[]
+  /** ISO-ish 2-letter language code inferred from IPTV metadata (e.g. "fr"). */
+  language?: string | null
   epg?: {
     now?: EpgProgram
     next?: EpgProgram

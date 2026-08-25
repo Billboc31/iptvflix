@@ -1,5 +1,10 @@
 import { NavLink } from 'react-router-dom'
 import { useChannels } from '../../context/ChannelsContext.js'
+import {
+  CATEGORY_DISPLAY_ORDER,
+  categoryLabel,
+  isCanonicalCategory,
+} from '../../lib/categories.js'
 
 const NAV_ITEMS = [
   { label: 'Accueil TV', to: '/', end: true, icon: '📺' },
@@ -12,9 +17,10 @@ const NAV_ITEMS = [
 export default function Sidebar() {
   const { channels } = useChannels()
 
-  const categories = Array.from(
-    new Set(channels.flatMap((c) => c.categories)),
-  ).sort()
+  const present = new Set(
+    channels.flatMap((c) => c.categories).filter(isCanonicalCategory),
+  )
+  const categories = CATEGORY_DISPLAY_ORDER.filter((c) => present.has(c) && c !== 'other')
 
   return (
     <aside className="w-16 md:w-56 shrink-0 flex flex-col bg-[#111118] border-r border-white/5 min-h-screen overflow-y-auto">
@@ -62,7 +68,7 @@ export default function Sidebar() {
                   }`
                 }
               >
-                <span className="truncate">{cat}</span>
+                <span className="truncate">{categoryLabel(cat)}</span>
               </NavLink>
             ))}
           </div>
