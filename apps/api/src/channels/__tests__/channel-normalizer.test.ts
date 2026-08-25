@@ -30,6 +30,12 @@ describe('normalizeChannelName', () => {
     expect(normalizeChannelName('TF1 UHD')).toBe('tf1')
   })
 
+  it('strips HEVC / VIP / RAW tokens', () => {
+    expect(normalizeChannelName('TF1 HEVC')).toBe('tf1')
+    expect(normalizeChannelName('FR | TF1 VIP')).toBe('tf1')
+    expect(normalizeChannelName('TF1 (FHD)')).toBe('tf1')
+  })
+
   it('strips trailing 1080p suffix', () => {
     expect(normalizeChannelName('M6 1080p')).toBe('m6')
   })

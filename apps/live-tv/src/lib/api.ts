@@ -116,8 +116,17 @@ export async function selectProfile(profileId: string): Promise<SelectProfileRes
   return res
 }
 
-export function listChannels(): Promise<ChannelResponse[]> {
-  return request('/channels')
+export function listChannels(opts?: {
+  country?: string
+  catalog?: 'curated' | 'all'
+  lang?: string
+}): Promise<ChannelResponse[]> {
+  const params = new URLSearchParams()
+  if (opts?.catalog) params.set('catalog', opts.catalog)
+  if (opts?.country) params.set('country', opts.country)
+  if (opts?.lang) params.set('lang', opts.lang)
+  const qs = params.toString()
+  return request(`/channels${qs ? `?${qs}` : ''}`)
 }
 
 export function getChannelStream(id: string): Promise<ChannelStreamResponse> {

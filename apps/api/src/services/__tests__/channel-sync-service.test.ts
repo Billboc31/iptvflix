@@ -88,19 +88,24 @@ describe('ChannelSyncService', () => {
     })
   })
 
-  describe('non-merge — normalized name alone is below confidence threshold', () => {
-    it('does not merge when only normalized name matches but no tvgId', async () => {
+  describe('merge — unique normalized name (quality variants)', () => {
+    it('merges Arte / Arte HD when no tvgId conflict', async () => {
       const entries: LiveChannelEntry[] = [
         makeEntry({ providerItemId: 'arte-sd', providerName: 'Arte', streamUrl: 'http://stream/arte' }),
         makeEntry({ providerItemId: 'arte-hd', providerName: 'Arte HD', streamUrl: 'http://stream/arte-hd' }),
       ]
 
-      // First entry creates the channel
       await ChannelSyncService.syncLiveChannels(testSourceId, [entries[0]!])
-      // Second entry: normalizedName match alone = 0.4 < 0.75 threshold → creates new channel
       const result = await ChannelSyncService.syncLiveChannels(testSourceId, [entries[1]!])
 
-      expect(result.channelsCreated).toBe(1)
+      expect(result.channelsCreated).toBe(0)
+      expect(result.sourcesCreated).toBe(1)
+
+      const sourceRows = await db
+        .select({ channelId: channelSources.channelId })
+        .from(channelSources)
+        .where(eq(channelSources.sourceId, testSourceId))
+      expect(new Set(sourceRows.map((r) => r.channelId)).size).toBe(1)
     })
   })
 

@@ -7,11 +7,19 @@ import {
   listHistory,
   recordHistory as apiRecordHistory,
 } from '../lib/api.js'
+import { useProfile } from './ProfileContext.js'
+import { preferredCountryFromLanguages } from '../lib/countries.js'
+
+export type CatalogMode = 'curated' | 'all'
 
 type ChannelsContextValue = {
   channels: ChannelResponse[]
   isLoading: boolean
   error: string | null
+  catalog: CatalogMode
+  country: string
+  setCatalog: (mode: CatalogMode) => void
+  setCountry: (country: string) => void
   favoriteIds: Set<string>
   toggleFavorite: (channelId: string) => Promise<void>
   history: ChannelHistoryEntry[]
@@ -21,22 +29,50 @@ type ChannelsContextValue = {
 const ChannelsContext = createContext<ChannelsContextValue | null>(null)
 
 export function ChannelsProvider({ children }: { children: React.ReactNode }) {
+  const { currentProfile } = useProfile()
+  const preferredCountry = preferredCountryFromLanguages(currentProfile?.preferredAudioLanguages)
+
   const [channels, setChannels] = useState<ChannelResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [catalog, setCatalog] = useState<CatalogMode>('curated')
+  const [country, setCountry] = useState(preferredCountry)
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set())
   const [history, setHistory] = useState<ChannelHistoryEntry[]>([])
 
   useEffect(() => {
-    listChannels()
+    setCountry(preferredCountry)
+  }, [preferredCountry])
+
+  useEffect(() => {
+    let cancelled = false
+    setIsLoading(true)
+    setError(null)
+
+    listChannels(
+      catalog === 'curated'
+        ? { catalog: 'curated', country }
+        : { catalog: 'all' },
+    )
       .then((data) => {
+        if (cancelled) return
         setChannels(data)
         const favs = new Set(data.filter((c) => c.isFavorite).map((c) => c.id))
         setFavoriteIds(favs)
       })
-      .catch(() => setError('Impossible de charger les chaînes.'))
-      .finally(() => setIsLoading(false))
+      .catch(() => {
+        if (!cancelled) setError('Impossible de charger les chaînes.')
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
 
+    return () => {
+      cancelled = true
+    }
+  }, [catalog, country])
+
+  useEffect(() => {
     listHistory()
       .then(setHistory)
       .catch(() => {/* history is optional — fail silently */})
@@ -44,7 +80,6 @@ export function ChannelsProvider({ children }: { children: React.ReactNode }) {
 
   const toggleFavorite = useCallback(async (channelId: string) => {
     const wasFav = favoriteIds.has(channelId)
-    // Optimistic update
     setFavoriteIds((prev) => {
       const next = new Set(prev)
       if (wasFav) next.delete(channelId)
@@ -52,13 +87,9 @@ export function ChannelsProvider({ children }: { children: React.ReactNode }) {
       return next
     })
     try {
-      if (wasFav) {
-        await removeFavorite(channelId)
-      } else {
-        await addFavorite(channelId)
-      }
+      if (wasFav) await removeFavorite(channelId)
+      else await addFavorite(channelId)
     } catch {
-      // Roll back on failure
       setFavoriteIds((prev) => {
         const next = new Set(prev)
         if (wasFav) next.add(channelId)
@@ -82,7 +113,21 @@ export function ChannelsProvider({ children }: { children: React.ReactNode }) {
   }, [channels])
 
   return (
-    <ChannelsContext.Provider value={{ channels, isLoading, error, favoriteIds, toggleFavorite, history, recordHistory }}>
+    <ChannelsContext.Provider
+      value={{
+        channels,
+        isLoading,
+        error,
+        catalog,
+        country,
+        setCatalog,
+        setCountry,
+        favoriteIds,
+        toggleFavorite,
+        history,
+        recordHistory,
+      }}
+    >
       {children}
     </ChannelsContext.Provider>
   )

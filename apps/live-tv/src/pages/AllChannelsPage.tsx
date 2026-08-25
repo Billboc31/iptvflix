@@ -1,33 +1,30 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useChannels } from '../context/ChannelsContext.js'
-import { useProfile } from '../context/ProfileContext.js'
 import ChannelRow from '../components/channel/ChannelRow.js'
 import {
   CATEGORY_DISPLAY_ORDER,
   categoryLabel,
   isCanonicalCategory,
 } from '../lib/categories.js'
-
-function preferredLangCodes(profileLangs: string[] | undefined): string[] {
-  if (profileLangs?.length) {
-    return profileLangs.map((l) => l.trim().toLowerCase().slice(0, 2)).filter(Boolean)
-  }
-  return ['fr']
-}
+import { countryLabel } from '../lib/countries.js'
 
 export default function AllChannelsPage() {
-  const { channels, isLoading, favoriteIds, toggleFavorite, recordHistory } = useChannels()
-  const { currentProfile } = useProfile()
+  const {
+    channels,
+    isLoading,
+    catalog,
+    country,
+    setCatalog,
+    favoriteIds,
+    toggleFavorite,
+    recordHistory,
+  } = useChannels()
   const [searchParams, setSearchParams] = useSearchParams()
   const [favoritesOnly, setFavoritesOnly] = useState(false)
 
-  const preferredLangs = preferredLangCodes(currentProfile?.preferredAudioLanguages)
-  const primaryLang = preferredLangs[0] ?? 'fr'
-
   const searchQuery = searchParams.get('q') ?? ''
   const activeCategory = searchParams.get('category') ?? ''
-  const langFilter = searchParams.get('lang') // 'mine' | '' (all)
 
   function setSearch(value: string) {
     setSearchParams((prev) => {
@@ -47,19 +44,6 @@ export default function AllChannelsPage() {
     }, { replace: true })
   }
 
-  function setLangFilter(mode: 'mine' | 'all') {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev)
-      if (mode === 'mine') {
-        next.set('lang', 'mine')
-      } else {
-        next.delete('lang')
-        next.delete('category')
-      }
-      return next
-    }, { replace: true })
-  }
-
   const categories = useMemo(() => {
     const present = new Set<string>()
     for (const ch of channels) {
@@ -73,18 +57,13 @@ export default function AllChannelsPage() {
   const filtered = useMemo(() => {
     let result = channels
     if (favoritesOnly) result = result.filter((c) => favoriteIds.has(c.id))
-    if (langFilter === 'mine') {
-      result = result.filter(
-        (c) => c.language && preferredLangs.includes(c.language.toLowerCase()),
-      )
-    }
     if (activeCategory) result = result.filter((c) => c.categories.includes(activeCategory))
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
       result = result.filter((c) => c.name.toLowerCase().includes(q))
     }
     return result
-  }, [channels, favoritesOnly, activeCategory, searchQuery, favoriteIds, langFilter, preferredLangs])
+  }, [channels, favoritesOnly, activeCategory, searchQuery, favoriteIds])
 
   const chipClass = (active: boolean) =>
     `px-3 py-1 rounded-full text-sm border transition-colors ${
@@ -95,7 +74,9 @@ export default function AllChannelsPage() {
 
   return (
     <div className="p-6 md:p-8">
-      <h1 className="text-2xl font-bold text-white mb-6">Toutes les chaînes</h1>
+      <h1 className="text-2xl font-bold text-white mb-6">
+        {catalog === 'curated' ? `Chaînes — ${countryLabel(country)}` : 'Catalogue brut'}
+      </h1>
 
       <div className="space-y-4 mb-6">
         <input
@@ -110,29 +91,29 @@ export default function AllChannelsPage() {
         <div className="flex gap-2 flex-wrap">
           <button
             type="button"
+            onClick={() => setCatalog('curated')}
+            className={chipClass(catalog === 'curated')}
+            aria-pressed={catalog === 'curated'}
+          >
+            {countryLabel(country)}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setCatalog('all')}
+            className={chipClass(catalog === 'all')}
+            aria-pressed={catalog === 'all'}
+          >
+            Catalogue brut
+          </button>
+
+          <button
+            type="button"
             onClick={() => setFavoritesOnly((v) => !v)}
             className={chipClass(favoritesOnly)}
             aria-pressed={favoritesOnly}
           >
             ♥ Favoris
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setLangFilter('mine')}
-            className={chipClass(langFilter === 'mine')}
-            aria-pressed={langFilter === 'mine'}
-          >
-            {primaryLang === 'fr' ? 'Ma langue (FR)' : `Ma langue (${primaryLang.toUpperCase()})`}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setLangFilter('all')}
-            className={chipClass(langFilter !== 'mine' && !activeCategory)}
-            aria-pressed={langFilter !== 'mine' && !activeCategory}
-          >
-            Toutes
           </button>
 
           {categories.map((cat) => (
@@ -147,6 +128,13 @@ export default function AllChannelsPage() {
             </button>
           ))}
         </div>
+
+        {!isLoading && (
+          <p className="text-xs text-gray-500">
+            {filtered.length} chaîne{filtered.length !== 1 ? 's' : ''}
+            {searchQuery ? ` pour « ${searchQuery} »` : ''}
+          </p>
+        )}
       </div>
 
       {isLoading ? (

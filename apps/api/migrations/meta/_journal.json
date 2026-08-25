@@ -386,6 +386,13 @@
             "when": 0,
             "tag": "0054_t132_channel_favorites_history",
             "breakpoints": true
+        },
+        {
+            "idx": 55,
+            "version": "7",
+            "when": 0,
+            "tag": "0055_channels_iptv_org",
+            "breakpoints": true
         }
     ]
 }

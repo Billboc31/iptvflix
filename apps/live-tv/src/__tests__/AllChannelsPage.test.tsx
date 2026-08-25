@@ -13,15 +13,19 @@ vi.mock('../lib/api.js', () => ({
 }))
 
 const channels: ChannelResponse[] = [
-  { id: '1', name: 'TF1', logoUrl: null, categories: ['generalist'], language: 'fr' },
-  { id: '2', name: 'beIN Sports', logoUrl: null, categories: ['sport'], language: 'ar' },
-  { id: '3', name: 'Canal+', logoUrl: null, categories: ['cinema'], language: 'fr' },
+  { id: '1', name: 'TF1', logoUrl: null, categories: ['generalist'], language: 'fr', country: 'FR', iptvOrgId: 'TF1.fr' },
+  { id: '2', name: 'beIN Sports 1', logoUrl: null, categories: ['sport'], language: 'fr', country: 'FR', iptvOrgId: 'beINSports1.fr' },
+  { id: '3', name: 'Canal+', logoUrl: null, categories: ['cinema'], language: 'fr', country: 'FR', iptvOrgId: 'CanalPlus.fr' },
 ]
 
 const mockContext = {
   channels,
   isLoading: false,
   error: null,
+  catalog: 'curated' as const,
+  country: 'FR',
+  setCatalog: vi.fn(),
+  setCountry: vi.fn(),
   favoriteIds: new Set(['1']),
   toggleFavorite: vi.fn(),
   history: [],
@@ -30,15 +34,6 @@ const mockContext = {
 
 vi.mock('../context/ChannelsContext.js', () => ({
   useChannels: () => mockContext,
-}))
-
-vi.mock('../context/ProfileContext.js', () => ({
-  useProfile: () => ({
-    currentProfile: { id: 'p1', name: 'Test', preferredAudioLanguages: ['fr'] },
-    profiles: [],
-    isLoading: false,
-    selectProfile: vi.fn(),
-  }),
 }))
 
 function renderPage(search = '') {
@@ -53,32 +48,31 @@ describe('AllChannelsPage', () => {
   beforeEach(() => {
     vi.stubGlobal('open', vi.fn())
     mockContext.favoriteIds = new Set(['1'])
+    mockContext.setCatalog.mockClear()
   })
 
-  it('renders all channels initially', () => {
+  it('renders curated channels', () => {
     renderPage()
     expect(screen.getByText('TF1')).toBeInTheDocument()
-    expect(screen.getByText('beIN Sports')).toBeInTheDocument()
-    expect(screen.getByText('Canal+')).toBeInTheDocument()
+    expect(screen.getByText('beIN Sports 1')).toBeInTheDocument()
   })
 
   it('filters channels by search query from URL', () => {
     renderPage('?q=tf1')
     expect(screen.getByText('TF1')).toBeInTheDocument()
-    expect(screen.queryByText('beIN Sports')).not.toBeInTheDocument()
+    expect(screen.queryByText('beIN Sports 1')).not.toBeInTheDocument()
   })
 
   it('filters channels by category from URL', () => {
     renderPage('?category=sport')
-    expect(screen.getByText('beIN Sports')).toBeInTheDocument()
+    expect(screen.getByText('beIN Sports 1')).toBeInTheDocument()
     expect(screen.queryByText('TF1')).not.toBeInTheDocument()
   })
 
-  it('filters to profile language when Ma langue is active', () => {
-    renderPage('?lang=mine')
-    expect(screen.getByText('TF1')).toBeInTheDocument()
-    expect(screen.getByText('Canal+')).toBeInTheDocument()
-    expect(screen.queryByText('beIN Sports')).not.toBeInTheDocument()
+  it('switches to raw catalog via chip', () => {
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Catalogue brut' }))
+    expect(mockContext.setCatalog).toHaveBeenCalledWith('all')
   })
 
   it('filters to favorites only when toggled', () => {
@@ -86,7 +80,7 @@ describe('AllChannelsPage', () => {
     const favBtn = screen.getByRole('button', { name: '♥ Favoris' })
     fireEvent.click(favBtn)
     expect(screen.getByText('TF1')).toBeInTheDocument()
-    expect(screen.queryByText('beIN Sports')).not.toBeInTheDocument()
+    expect(screen.queryByText('beIN Sports 1')).not.toBeInTheDocument()
   })
 
   it('calls toggleFavorite when favorite button is clicked', () => {

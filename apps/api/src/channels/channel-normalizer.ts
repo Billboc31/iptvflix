@@ -1,7 +1,10 @@
-const QUALITY_SUFFIX_RE = /\b(?:FHD|UHD|4K|HD|SD|720p|1080p|2160p|480p|360p)\b/gi
+const QUALITY_TOKEN_RE =
+  /\b(?:FHD|UHD|4K|HD|SD|HEVC|H\.?265|H\.?264|AVC|RAW|VIP|720p|1080p|2160p|480p|360p)\b/gi
+
+const QUALITY_PAREN_RE = /\(\s*(?:FHD|UHD|4K|HD|SD|HEVC|H\.?265|RAW|VIP)\s*\)/gi
 
 const IPTV_PREFIX_TOKEN_RE =
-  /^(?:4K|UHD|HD|SD|FHD|VF|VO|VOSTFR|VOST|VFF|VOFF|MULTI|MULTi|ENG|FR|EN|UK|US|TRUEFRENCH|FRENCH|CAM|TS|HDR|DV|\d{3,4}P)$/i
+  /^(?:4K|UHD|HD|SD|FHD|VF|VO|VOSTFR|VOST|VFF|VOFF|MULTI|MULTi|ENG|FR|EN|UK|US|TRUEFRENCH|FRENCH|CAM|TS|HDR|DV|HEVC|H265|RAW|VIP|\d{3,4}P)$/i
 
 function stripIptvPrefixes(input: string): string {
   let working = input
@@ -28,7 +31,8 @@ function stripIptvPrefixes(input: string): string {
 export function normalizeChannelName(raw: string): string {
   let working = raw.replace(/_/g, ' ')
   working = stripIptvPrefixes(working)
-  working = working.replace(QUALITY_SUFFIX_RE, ' ')
+  working = working.replace(QUALITY_PAREN_RE, ' ')
+  working = working.replace(QUALITY_TOKEN_RE, ' ')
   working = working.replace(/\s+/g, ' ').trim().toLowerCase()
   return working
 }

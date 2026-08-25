@@ -1,11 +1,11 @@
 import type { ChannelResponse } from '@iptvflix/api-contracts'
 import { useChannels } from '../context/ChannelsContext.js'
-import { useProfile } from '../context/ProfileContext.js'
 import LiveRail from '../components/channel/LiveRail.js'
 import CategoryShortcuts from '../components/channel/CategoryShortcuts.js'
 import { CATEGORY_DISPLAY_ORDER, categoryLabel } from '../lib/categories.js'
+import { countryLabel } from '../lib/countries.js'
 
-const RAIL_LIMIT = 24
+const RAIL_LIMIT = 36
 
 function historyChannels(
   channels: ChannelResponse[],
@@ -17,33 +17,30 @@ function historyChannels(
     .filter((c): c is ChannelResponse => c !== undefined)
 }
 
-function preferredLangCodes(profileLangs: string[] | undefined): string[] {
-  if (profileLangs?.length) {
-    return profileLangs.map((l) => l.trim().toLowerCase().slice(0, 2)).filter(Boolean)
-  }
-  return ['fr']
-}
-
 export default function HomePage() {
-  const { channels, isLoading, error, favoriteIds, toggleFavorite, history, recordHistory } = useChannels()
-  const { currentProfile } = useProfile()
+  const {
+    channels,
+    isLoading,
+    error,
+    catalog,
+    country,
+    setCatalog,
+    favoriteIds,
+    toggleFavorite,
+    history,
+    recordHistory,
+  } = useChannels()
 
-  const preferredLangs = preferredLangCodes(currentProfile?.preferredAudioLanguages)
   const recentChannels = historyChannels(channels, history)
   const favoriteChannels = channels.filter((c) => favoriteIds.has(c.id)).slice(0, RAIL_LIMIT)
-
-  const languageChannels = channels
-    .filter((c) => c.language && preferredLangs.includes(c.language.toLowerCase()))
-    .slice(0, RAIL_LIMIT)
+  const countryChannels = channels.slice(0, RAIL_LIMIT)
 
   const categoryRails = CATEGORY_DISPLAY_ORDER
     .filter((cat) => cat !== 'other')
     .map((cat) => ({
       id: cat,
       title: categoryLabel(cat),
-      channels: channels
-        .filter((c) => c.categories.includes(cat))
-        .slice(0, RAIL_LIMIT),
+      channels: channels.filter((c) => c.categories.includes(cat)).slice(0, RAIL_LIMIT),
     }))
     .filter((rail) => rail.channels.length > 0)
 
@@ -55,6 +52,36 @@ export default function HomePage() {
 
   return (
     <div className="p-6 md:p-8 space-y-10">
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="text-2xl font-bold text-white mr-auto">
+          {catalog === 'curated' ? countryLabel(country) : 'Catalogue IPTV'}
+        </h1>
+        <button
+          type="button"
+          onClick={() => setCatalog('curated')}
+          className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+            catalog === 'curated'
+              ? 'border-[#f97316] bg-[#f97316]/10 text-[#f97316]'
+              : 'border-white/10 text-gray-400 hover:text-white'
+          }`}
+          aria-pressed={catalog === 'curated'}
+        >
+          {countryLabel(country)}
+        </button>
+        <button
+          type="button"
+          onClick={() => setCatalog('all')}
+          className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+            catalog === 'all'
+              ? 'border-[#f97316] bg-[#f97316]/10 text-[#f97316]'
+              : 'border-white/10 text-gray-400 hover:text-white'
+          }`}
+          aria-pressed={catalog === 'all'}
+        >
+          Catalogue brut
+        </button>
+      </div>
+
       <LiveRail
         title="Favoris"
         channels={favoriteChannels}
@@ -76,35 +103,38 @@ export default function HomePage() {
       )}
 
       <LiveRail
-        title={preferredLangs[0] === 'fr' ? 'Chaînes françaises' : `Ma langue (${preferredLangs[0]?.toUpperCase()})`}
-        channels={languageChannels}
+        title={catalog === 'curated' ? `Chaînes ${countryLabel(country)}` : 'Toutes les chaînes'}
+        channels={countryChannels}
         isLoading={isLoading}
         favoriteIds={favoriteIds}
         onToggleFavorite={toggleFavorite}
         onRecordHistory={recordHistory}
       />
 
-      {!isLoading && channels.length > 0 && (
+      {!isLoading && channels.length > 0 && catalog === 'curated' && (
         <CategoryShortcuts channels={channels} />
       )}
 
-      {categoryRails.map((rail) => (
-        <LiveRail
-          key={rail.id}
-          title={rail.title}
-          channels={rail.channels}
-          isLoading={false}
-          favoriteIds={favoriteIds}
-          onToggleFavorite={toggleFavorite}
-          onRecordHistory={recordHistory}
-        />
-      ))}
+      {catalog === 'curated' &&
+        categoryRails.map((rail) => (
+          <LiveRail
+            key={rail.id}
+            title={rail.title}
+            channels={rail.channels}
+            isLoading={false}
+            favoriteIds={favoriteIds}
+            onToggleFavorite={toggleFavorite}
+            onRecordHistory={recordHistory}
+          />
+        ))}
 
       {!isLoading && channels.length === 0 && (
         <div className="flex flex-col items-center justify-center h-64 text-center">
           <p className="text-4xl mb-4">📡</p>
           <p className="text-gray-400 text-sm max-w-sm">
-            Aucune chaîne disponible pour le moment.
+            {catalog === 'curated'
+              ? 'Aucune chaîne matchée pour ce pays. Essayez le catalogue brut ou attendez le prochain sync.'
+              : 'Aucune chaîne disponible pour le moment.'}
           </p>
         </div>
       )}
