@@ -122,8 +122,9 @@ export class M3UClient {
 
     const movies = classified.filter((e) => e.kind === 'movie')
     const episodes = classified.filter((e) => e.kind === 'episode')
+    const liveChannels = classified.filter((e) => e.kind === 'live')
     const unclassified = classified.filter((e) => e.kind === 'unclassified')
 
-    return { sourceId, fetchedAt: new Date(), movies, episodes, unclassified }
+    return { sourceId, fetchedAt: new Date(), movies, episodes, liveChannels, unclassified }
   }
 }

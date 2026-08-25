@@ -109,12 +109,21 @@ async function fetchXtreamSnapshot(
   if (runId) {
     await setSyncRunProgress(runId, 'Téléchargement du catalogue Xtream (films + séries)…')
   }
-  const [vodCategories, vodStreams, seriesCategories, series] = await Promise.all([
-    client.getVodCategories(),
-    client.getVodStreams(),
-    client.getSeriesCategories(),
-    client.getSeries(),
-  ])
+  const [vodCategories, vodStreams, seriesCategories, series, liveCategories, liveStreams] =
+    await Promise.all([
+      client.getVodCategories(),
+      client.getVodStreams(),
+      client.getSeriesCategories(),
+      client.getSeries(),
+      client.getLiveCategories().catch((err) => {
+        console.warn('[xtream-snapshot] getLiveCategories failed (skipping):', err)
+        return []
+      }),
+      client.getLiveStreams().catch((err) => {
+        console.warn('[xtream-snapshot] getLiveStreams failed (skipping):', err)
+        return []
+      }),
+    ])
 
   // Per-series episode fetch is extremely expensive on large catalogs (~50k
   // series). Opt-in via XTREAM_FETCH_SERIES_INFO=true; default skips it so the
@@ -138,6 +147,8 @@ async function fetchXtreamSnapshot(
       vodStreams,
       seriesCategories,
       series,
+      liveCategories,
+      liveStreams,
       seriesInfo: {},
     }
   }
@@ -177,6 +188,8 @@ async function fetchXtreamSnapshot(
     vodStreams,
     seriesCategories,
     series,
+    liveCategories,
+    liveStreams,
     seriesInfo,
     failedSeriesIds: failedSeriesIds.length > 0 ? failedSeriesIds : undefined,
   }

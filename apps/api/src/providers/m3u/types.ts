@@ -8,7 +8,7 @@ export interface M3UEntry {
 }
 
 export interface M3UClassifiedEntry extends M3UEntry {
-  kind: 'movie' | 'episode' | 'unclassified'
+  kind: 'movie' | 'episode' | 'live' | 'unclassified'
   seasonNumber: number | null
   episodeNumber: number | null
   seriesKey: string | null
@@ -19,5 +19,6 @@ export interface M3UCatalogSnapshot {
   fetchedAt: Date
   movies: M3UClassifiedEntry[]
   episodes: M3UClassifiedEntry[]
+  liveChannels: M3UClassifiedEntry[]
   unclassified: M3UClassifiedEntry[]
 }

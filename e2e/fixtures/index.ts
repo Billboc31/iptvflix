@@ -10,6 +10,7 @@ interface FakeServers {
   m3uAuthFail: string
   m3uEmpty: string
   m3uMalformed: string
+  m3uLiveChannels: string
 }
 
 function loadServers(): FakeServers {
