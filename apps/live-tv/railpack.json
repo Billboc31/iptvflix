@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "deploy": {
+    "startCommand": "pnpm --filter @iptvflix/live-tv start"
+  },
+  "steps": {
+    "build": {
+      "commands": [
+        "pnpm install --frozen-lockfile",
+        "rm -rf apps/live-tv/dist",
+        "pnpm --filter @iptvflix/live-tv build"
+      ]
+    }
+  }
+}

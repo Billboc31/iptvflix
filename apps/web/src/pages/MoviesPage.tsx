@@ -165,7 +165,6 @@ export default function MoviesPage() {
   const { data: heroData } = useMovies({ pageSize: 1, sortBy: 'popularity' })
   const heroMovie = heroData?.items[0]
 
-  const selectedGenreName = genres.find((g) => g.id === selectedGenreId)?.name
   const avail = availabilityMode === 'available' ? ('AVAILABLE' as const) : undefined
   const browsingCatalog = selectedGenreId != null || availabilityMode === 'available'
 
@@ -217,7 +216,35 @@ export default function MoviesPage() {
 
       {browsingCatalog && (
         selectedGenreId ? (
-          <MovieShelf title={selectedGenreName ?? 'Films'} genreId={selectedGenreId} availability={avail} />
+          <>
+            {availabilityMode === 'available' && (
+              <MovieShelf
+                title="Disponibles"
+                sortBy="recentAvailability"
+                availability="AVAILABLE"
+                genreId={selectedGenreId}
+              />
+            )}
+            <MovieShelf
+              title="Populaires"
+              sortBy="popularity"
+              availability={avail}
+              genreId={selectedGenreId}
+            />
+            <MovieShelf
+              title="Les mieux notés"
+              sortBy="voteAverage"
+              availability={avail}
+              genreId={selectedGenreId}
+            />
+            <MovieShelf
+              title="Sorties récentes"
+              sortBy="year"
+              availability={avail}
+              genreId={selectedGenreId}
+            />
+            <MovieShelf title="À venir" upcoming availability={avail} genreId={selectedGenreId} />
+          </>
         ) : (
           <>
             <MovieShelf title="Disponibles" sortBy="recentAvailability" availability="AVAILABLE" />

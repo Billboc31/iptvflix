@@ -1,0 +1,11 @@
+[build]
+builder = "NIXPACKS"
+# Root Directory for this service must be the repo root so the pnpm workspace is available.
+buildCommand = "pnpm install --frozen-lockfile && rm -rf apps/live-tv/dist && node -e \"const b=process.env.VITE_API_BASE; if(!b){console.error('VITE_API_BASE is required for Railway live-tv builds');process.exit(1)} if(/\\/api\\/?$/.test(b) || b.startsWith('/')){console.error('VITE_API_BASE must be an absolute API origin, not /api. Got:', b);process.exit(1)} console.log('VITE_API_BASE=', b); console.log('VITE_VOD_URL=', process.env.VITE_VOD_URL || '(unset)')\" && pnpm --filter @iptvflix/live-tv build"
+
+[deploy]
+startCommand = "pnpm --filter @iptvflix/live-tv start"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

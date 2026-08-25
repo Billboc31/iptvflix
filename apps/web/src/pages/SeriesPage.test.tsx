@@ -119,7 +119,7 @@ describe('SeriesPage', () => {
     })
     await user.click(screen.getByRole('button', { name: 'Drama' }))
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Drama' })).toBeInTheDocument()
+      expect(screen.getByText('Populaires')).toBeInTheDocument()
       expect(screen.getByText('Séries pour toi')).toBeInTheDocument()
     })
   })

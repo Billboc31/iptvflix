@@ -154,7 +154,6 @@ export default function SeriesPage() {
   const { data: heroData } = useSeries({ pageSize: 1, sortBy: 'popularity' })
   const heroSeries = heroData?.items[0]
 
-  const selectedGenreName = genres.find((g) => g.id === selectedGenreId)?.name
   const avail = availabilityMode === 'available' ? ('AVAILABLE' as const) : undefined
   const browsingCatalog = selectedGenreId != null || availabilityMode === 'available'
 
@@ -200,7 +199,35 @@ export default function SeriesPage() {
 
       {browsingCatalog && (
         selectedGenreId ? (
-          <SeriesShelf title={selectedGenreName ?? 'Séries'} genreId={selectedGenreId} availability={avail} />
+          <>
+            {availabilityMode === 'available' && (
+              <SeriesShelf
+                title="Disponibles"
+                sortBy="recentAvailability"
+                availability="AVAILABLE"
+                genreId={selectedGenreId}
+              />
+            )}
+            <SeriesShelf
+              title="Populaires"
+              sortBy="popularity"
+              availability={avail}
+              genreId={selectedGenreId}
+            />
+            <SeriesShelf
+              title="Les mieux notées"
+              sortBy="voteAverage"
+              availability={avail}
+              genreId={selectedGenreId}
+            />
+            <SeriesShelf
+              title="Sorties récentes"
+              sortBy="year"
+              availability={avail}
+              genreId={selectedGenreId}
+            />
+            <SeriesShelf title="À venir" upcoming availability={avail} genreId={selectedGenreId} />
+          </>
         ) : (
           <>
             <SeriesShelf title="Disponibles" sortBy="recentAvailability" availability="AVAILABLE" />

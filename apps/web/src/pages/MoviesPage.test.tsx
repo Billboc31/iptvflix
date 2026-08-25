@@ -133,7 +133,7 @@ describe('MoviesPage', () => {
     })
     await user.click(screen.getByRole('button', { name: 'Action' }))
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Action' })).toBeInTheDocument()
+      expect(screen.getByText('Populaires')).toBeInTheDocument()
       expect(screen.getByText('Pour toi')).toBeInTheDocument()
     })
   })
