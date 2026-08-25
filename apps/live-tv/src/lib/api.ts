@@ -5,6 +5,8 @@ import type {
   ProfileResponse,
   SelectProfileResponse,
   ChannelResponse,
+  ChannelStreamResponse,
+  ChannelHistoryEntry,
 } from '@iptvflix/api-contracts'
 
 const BASE = import.meta.env.VITE_API_BASE ?? '/api'
@@ -116,4 +118,28 @@ export async function selectProfile(profileId: string): Promise<SelectProfileRes
 
 export function listChannels(): Promise<ChannelResponse[]> {
   return request('/channels')
+}
+
+export function getChannelStream(id: string): Promise<ChannelStreamResponse> {
+  return request(`/channels/${id}/stream`)
+}
+
+export function listFavoriteChannels(): Promise<ChannelResponse[]> {
+  return request('/channels/favorites')
+}
+
+export function addFavorite(id: string): Promise<void> {
+  return request(`/channels/${id}/favorite`, { method: 'POST' })
+}
+
+export function removeFavorite(id: string): Promise<void> {
+  return request(`/channels/${id}/favorite`, { method: 'DELETE' })
+}
+
+export function listHistory(): Promise<ChannelHistoryEntry[]> {
+  return request('/channels/history')
+}
+
+export function recordHistory(id: string): Promise<void> {
+  return request(`/channels/${id}/history`, { method: 'POST' })
 }

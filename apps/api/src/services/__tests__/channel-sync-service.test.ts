@@ -42,7 +42,7 @@ afterEach(async () => {
     .select({ id: channelSources.channelId })
     .from(channelSources)
     .where(inArray(channelSources.sourceId, [testSourceId, testSourceId2]))
-  const channelIds = [...new Set(sourceRows.map((r) => r.channelId))]
+  const channelIds = [...new Set(sourceRows.map((r) => r.id))]
   if (channelIds.length > 0) {
     await db.delete(channels).where(inArray(channels.id, channelIds))
   }

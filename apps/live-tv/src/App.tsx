@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthContext.js'
 import { ProfileProvider, useProfile } from './context/ProfileContext.js'
 import { useAuth } from './context/AuthContext.js'
 import AppShell from './components/layout/AppShell.js'
+import { ChannelsProvider } from './context/ChannelsContext.js'
 import LoginPage from './pages/LoginPage.js'
 import HealthPage from './pages/HealthPage.js'
 import ProfileChoosePage from './pages/ProfileChoosePage.js'
@@ -68,7 +69,7 @@ export default function App() {
               <Route path="/profiles/choose" element={<ProfileChoosePage />} />
 
               <Route element={<ProfileRequiredRoute />}>
-                <Route element={<AppShell />}>
+                <Route element={<ChannelsProvider><AppShell /></ChannelsProvider>}>
                   <Route path="/" element={<HomePage />} />
                   <Route path="/channels" element={<AllChannelsPage />} />
                   <Route path="/favorites" element={<FavoritesPage />} />
