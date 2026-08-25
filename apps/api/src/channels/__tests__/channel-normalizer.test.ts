@@ -51,7 +51,7 @@ describe('normalizeChannelName', () => {
   })
 
   it('collapses extra whitespace', () => {
-    expect(normalizeChannelName('  BFM  TV  ')).toBe('bfm  tv')
+    expect(normalizeChannelName('  BFM  TV  ')).toBe('bfm tv')
   })
 
   it('does not merge different channels by prefix alone', () => {

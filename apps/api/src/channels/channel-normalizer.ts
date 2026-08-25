@@ -26,7 +26,7 @@ function stripIptvPrefixes(input: string): string {
 }
 
 export function normalizeChannelName(raw: string): string {
-  let working = raw.replace(/[._]/g, ' ')
+  let working = raw.replace(/_/g, ' ')
   working = stripIptvPrefixes(working)
   working = working.replace(QUALITY_SUFFIX_RE, ' ')
   working = working.replace(/\s+/g, ' ').trim().toLowerCase()
