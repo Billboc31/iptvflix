@@ -1,78 +1,125 @@
-import { useEffect, useState } from 'react'
-import type { ChannelResponse } from '@iptvflix/api-contracts'
-import { listChannels } from '../lib/api.js'
+import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useChannels } from '../context/ChannelsContext.js'
+import ChannelRow from '../components/channel/ChannelRow.js'
 
 export default function AllChannelsPage() {
-  const [channels, setChannels] = useState<ChannelResponse[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const { channels, isLoading, favoriteIds, toggleFavorite } = useChannels()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [favoritesOnly, setFavoritesOnly] = useState(false)
 
-  useEffect(() => {
-    listChannels()
-      .then(setChannels)
-      .catch(() => {})
-      .finally(() => setIsLoading(false))
-  }, [])
+  const searchQuery = searchParams.get('q') ?? ''
+  const activeCategory = searchParams.get('category') ?? ''
 
-  const categories = [...new Set(channels.map((c) => c.category).filter(Boolean))] as string[]
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <span className="w-8 h-8 border-4 border-white/20 border-t-[#f97316] rounded-full animate-spin" />
-      </div>
-    )
+  function setSearch(value: string) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (value) next.set('q', value)
+      else next.delete('q')
+      return next
+    }, { replace: true })
   }
+
+  function setCategory(cat: string) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (cat) next.set('category', cat)
+      else next.delete('category')
+      return next
+    }, { replace: true })
+  }
+
+  const categories = useMemo(() => {
+    const seen = new Set<string>()
+    for (const ch of channels) {
+      for (const cat of ch.categories) seen.add(cat)
+    }
+    return Array.from(seen).sort()
+  }, [channels])
+
+  const filtered = useMemo(() => {
+    let result = channels
+    if (favoritesOnly) result = result.filter((c) => favoriteIds.has(c.id))
+    if (activeCategory) result = result.filter((c) => c.categories.includes(activeCategory))
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      result = result.filter((c) => c.name.toLowerCase().includes(q))
+    }
+    return result
+  }, [channels, favoritesOnly, activeCategory, searchQuery, favoriteIds])
 
   return (
     <div className="p-6 md:p-8">
-      <h1 className="text-2xl font-bold text-white mb-4">Toutes les chaînes</h1>
+      <h1 className="text-2xl font-bold text-white mb-6">Toutes les chaînes</h1>
 
-      {/* Category filter bar */}
-      {categories.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto pb-4 mb-6" style={{ scrollbarWidth: 'none' }}>
-          {categories.map((cat) => (
+      {/* Search and filters */}
+      <div className="space-y-4 mb-6">
+        <input
+          type="search"
+          placeholder="Rechercher une chaîne…"
+          value={searchQuery}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full max-w-sm bg-[#111118] border border-white/10 rounded-lg px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#f97316]/50"
+          aria-label="Rechercher une chaîne"
+        />
+
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setFavoritesOnly((v) => !v)}
+            className={`px-3 py-1 rounded-full text-sm border transition-colors ${
+              favoritesOnly
+                ? 'border-[#f97316] bg-[#f97316]/10 text-[#f97316]'
+                : 'border-white/10 text-gray-400 hover:text-white hover:border-white/20'
+            }`}
+            aria-pressed={favoritesOnly}
+          >
+            ♥ Favoris
+          </button>
+
+          {activeCategory && (
             <button
-              key={cat}
-              className="shrink-0 px-3 py-1 rounded-full text-sm text-gray-400 border border-white/10 hover:border-[#f97316]/40 hover:text-white transition-colors"
+              onClick={() => setCategory('')}
+              className="px-3 py-1 rounded-full text-sm border border-[#f97316] bg-[#f97316]/10 text-[#f97316] transition-colors"
+              aria-pressed
             >
-              {cat}
+              {activeCategory} ✕
             </button>
-          ))}
-        </div>
-      )}
+          )}
 
-      {channels.length === 0 ? (
+          {categories.map((cat) =>
+            cat === activeCategory ? null : (
+              <button
+                key={cat}
+                onClick={() => setCategory(cat)}
+                className="px-3 py-1 rounded-full text-sm border border-white/10 text-gray-400 hover:text-white hover:border-white/20 transition-colors"
+              >
+                {cat}
+              </button>
+            ),
+          )}
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center h-64">
+          <span className="w-8 h-8 border-4 border-white/20 border-t-[#f97316] rounded-full animate-spin" />
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 text-center">
           <p className="text-4xl mb-4">📡</p>
           <p className="text-gray-400 text-sm max-w-sm">
-            Aucune chaîne disponible. Le catalogue sera disponible prochainement.
+            Aucune chaîne ne correspond à votre recherche.
           </p>
         </div>
       ) : (
-        <div
-          className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4"
-          aria-label="Grille de chaînes"
-        >
-          {channels.map((channel) => (
-            <div
+        <div className="space-y-2" aria-label="Liste des chaînes">
+          {filtered.map((channel) => (
+            <ChannelRow
               key={channel.id}
-              className="bg-[#111118] border border-white/5 rounded-lg p-4 flex flex-col items-center gap-2 hover:border-[#f97316]/30 transition-colors cursor-pointer"
-            >
-              {channel.logoUrl ? (
-                <img
-                  src={channel.logoUrl}
-                  alt={channel.name}
-                  className="w-12 h-12 object-contain rounded"
-                />
-              ) : (
-                <div className="w-12 h-12 bg-[#1a1a24] rounded flex items-center justify-center text-[#f97316] font-bold text-lg">
-                  {channel.name.charAt(0).toUpperCase()}
-                </div>
-              )}
-              <span className="text-white text-xs font-medium text-center truncate w-full">
-                {channel.name}
-              </span>
-            </div>
+              channel={channel}
+              isFavorite={favoriteIds.has(channel.id)}
+              onToggleFavorite={() => toggleFavorite(channel.id)}
+            />
           ))}
         </div>
       )}
