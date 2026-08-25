@@ -101,6 +101,22 @@ export interface XtreamSeriesInfo {
   episodes: Record<string, XtreamEpisode[]>
 }
 
+export type XtreamLiveCategory = XtreamCategory
+
+export interface XtreamLiveStream {
+  num: number
+  name: string
+  stream_id: number
+  stream_icon: string
+  category_id: string
+  epg_channel_id?: string
+  added?: string
+  custom_sid?: string
+  tv_archive?: number
+  tv_archive_duration?: number
+  direct_source?: string
+}
+
 export interface XtreamCatalogSnapshot {
   sourceId: string
   fetchedAt: Date
@@ -108,6 +124,8 @@ export interface XtreamCatalogSnapshot {
   vodStreams: XtreamVodStream[]
   seriesCategories: XtreamCategory[]
   series: XtreamSeries[]
+  liveCategories?: XtreamLiveCategory[]
+  liveStreams?: XtreamLiveStream[]
   seriesInfo?: Record<number, XtreamSeriesInfo>
   failedSeriesIds?: number[]
 }

@@ -106,6 +106,17 @@ export function classifyEntries(entries: M3UEntry[]): M3UClassifiedEntry[] {
       }
     }
 
+    // Live: has a group-title that doesn't match any VOD/series pattern
+    if (entry.groupTitle && entry.groupTitle.trim()) {
+      return {
+        ...entry,
+        kind: 'live' as const,
+        seasonNumber: null,
+        episodeNumber: null,
+        seriesKey: null,
+      }
+    }
+
     return {
       ...entry,
       kind: 'unclassified' as const,

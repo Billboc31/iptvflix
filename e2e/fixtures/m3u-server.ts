@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 
-export type M3UServerMode = 'happy' | 'auth-fail' | 'empty' | 'malformed'
+export type M3UServerMode = 'happy' | 'auth-fail' | 'empty' | 'malformed' | 'live-channels'
 
 const HAPPY_PLAYLIST = [
   '#EXTM3U',
@@ -15,6 +15,24 @@ const HAPPY_PLAYLIST = [
 
 const EMPTY_PLAYLIST = '#EXTM3U\n'
 
+// Three name variants of TF1 share the same tvg-id → should collapse to 1 canonical channel.
+// France 2 and France 3 have distinct tvg-ids → should remain separate (2 canonical channels).
+// Total raw entries: 5, expected canonical channels: 3.
+const LIVE_CHANNELS_PLAYLIST = [
+  '#EXTM3U',
+  '#EXTINF:-1 tvg-id="TF1" tvg-name="TF1" tvg-logo="http://logos/tf1.png" group-title="Généraliste",TF1',
+  'http://stream.example.test/tf1.m3u8',
+  '#EXTINF:-1 tvg-id="TF1" tvg-name="TF1 HD" tvg-logo="http://logos/tf1.png" group-title="Généraliste",TF1 HD',
+  'http://stream.example.test/tf1-hd.m3u8',
+  '#EXTINF:-1 tvg-id="TF1" tvg-name="TF1 FHD" tvg-logo="http://logos/tf1.png" group-title="Généraliste",TF1 FHD',
+  'http://stream.example.test/tf1-fhd.m3u8',
+  '#EXTINF:-1 tvg-id="France2" tvg-name="France 2" group-title="Généraliste",France 2',
+  'http://stream.example.test/france2.m3u8',
+  '#EXTINF:-1 tvg-id="France3" tvg-name="France 3" group-title="Généraliste",France 3',
+  'http://stream.example.test/france3.m3u8',
+  '',
+].join('\n')
+
 function handleRequest(mode: M3UServerMode, req: IncomingMessage, res: ServerResponse): void {
   if (mode === 'auth-fail') {
     res.writeHead(401, { 'Content-Type': 'text/plain' })
@@ -28,7 +46,12 @@ function handleRequest(mode: M3UServerMode, req: IncomingMessage, res: ServerRes
     return
   }
 
-  const body = mode === 'empty' ? EMPTY_PLAYLIST : HAPPY_PLAYLIST
+  const body =
+    mode === 'empty'
+      ? EMPTY_PLAYLIST
+      : mode === 'live-channels'
+        ? LIVE_CHANNELS_PLAYLIST
+        : HAPPY_PLAYLIST
   const buf = Buffer.from(body, 'utf8')
 
   const rangeHeader = req.headers['range']

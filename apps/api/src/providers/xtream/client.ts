@@ -4,6 +4,8 @@ import type {
   XtreamVodStream,
   XtreamSeries,
   XtreamSeriesInfo,
+  XtreamLiveCategory,
+  XtreamLiveStream,
 } from './types.js'
 import { XtreamAuthError, XtreamNetworkError, XtreamParseError } from './errors.js'
 
@@ -136,5 +138,17 @@ export class XtreamCodesClient {
   async getSeriesInfo(seriesId: number): Promise<XtreamSeriesInfo> {
     const raw = await this.fetch('get_series_info', { series_id: String(seriesId) })
     return parseSeriesInfoOrThrow(raw, 'get_series_info')
+  }
+
+  async getLiveCategories(): Promise<XtreamLiveCategory[]> {
+    const raw = await this.fetch('get_live_categories')
+    return parseArrayOrThrow<XtreamLiveCategory>(raw, 'get_live_categories')
+  }
+
+  async getLiveStreams(categoryId?: string): Promise<XtreamLiveStream[]> {
+    const params: Record<string, string> = {}
+    if (categoryId) params.category_id = categoryId
+    const raw = await this.fetch('get_live_streams', params)
+    return parseArrayOrThrow<XtreamLiveStream>(raw, 'get_live_streams')
   }
 }

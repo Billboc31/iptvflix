@@ -122,11 +122,11 @@ describe('classifyEntries()', () => {
     expect(classified[1].seriesKey).toBe('breaking bad')
   })
 
-  it('classifies live TV and unknown groups as "unclassified"', () => {
+  it('classifies live TV groups (non-VOD group-title) as "live"', () => {
     const entries = parseM3U(MIXED_PLAYLIST)
     const classified = classifyEntries(entries)
     const live = classified.find((e) => e.rawTitle === 'CNN International')
-    expect(live?.kind).toBe('unclassified')
+    expect(live?.kind).toBe('live')
   })
 
   it('classifies film-group entry as "movie"', () => {

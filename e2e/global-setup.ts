@@ -6,7 +6,7 @@ import { startFakeM3U } from './fixtures/m3u-server.js'
 const SERVERS_FILE = join(import.meta.dirname, '.fake-servers.json')
 
 export default async function globalSetup() {
-  const [happy, empty, authFail, m3uHappy, m3uAuthFail, m3uEmpty, m3uMalformed] =
+  const [happy, empty, authFail, m3uHappy, m3uAuthFail, m3uEmpty, m3uMalformed, m3uLiveChannels] =
     await Promise.all([
       startFakeXtream('happy', 9998),
       startFakeXtream('empty', 9997),
@@ -15,6 +15,7 @@ export default async function globalSetup() {
       startFakeM3U('auth-fail', 9994),
       startFakeM3U('empty', 9993),
       startFakeM3U('malformed', 9992),
+      startFakeM3U('live-channels', 9991),
     ])
 
   writeFileSync(
@@ -27,6 +28,7 @@ export default async function globalSetup() {
       m3uAuthFail: m3uAuthFail.baseUrl,
       m3uEmpty: m3uEmpty.baseUrl,
       m3uMalformed: m3uMalformed.baseUrl,
+      m3uLiveChannels: m3uLiveChannels.baseUrl,
     }),
   )
 
@@ -39,6 +41,7 @@ export default async function globalSetup() {
       m3uAuthFail.stop(),
       m3uEmpty.stop(),
       m3uMalformed.stop(),
+      m3uLiveChannels.stop(),
     ])
   }
 }
