@@ -40,3 +40,14 @@ apps/web/vite.config.d.ts.map
 e2e/playwright-report/
 e2e/test-results/
 e2e/.fake-servers.json
+
+# Live TV TypeScript emit artifacts
+apps/live-tv/src/**/*.js
+apps/live-tv/src/**/*.js.map
+apps/live-tv/src/**/*.d.ts
+apps/live-tv/src/**/*.d.ts.map
+apps/live-tv/vite.config.js
+apps/live-tv/vite.config.js.map
+apps/live-tv/vite.config.d.ts
+apps/live-tv/vite.config.d.ts.map
+!apps/live-tv/src/vite-env.d.ts
