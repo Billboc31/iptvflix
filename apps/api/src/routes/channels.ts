@@ -32,6 +32,19 @@ function categoryRank(cats: string[]): number {
   return idx === -1 ? CATEGORY_DISPLAY_ORDER.length : idx
 }
 
+/** Curated country match: registry country, French feeds, or beIN (iptv-org .qa). */
+function matchesCuratedCountry(
+  channel: { country: string | null; language: string | null; iptvOrgId: string | null },
+  countryFilter: string,
+): boolean {
+  if (channel.country === countryFilter) return true
+  if (countryFilter === 'FR') {
+    if (channel.language === 'fr') return true
+    if (channel.iptvOrgId?.match(/^beINSports/i)) return true
+  }
+  return false
+}
+
 export async function channelsRoutes(app: FastifyInstance): Promise<void> {
   app.get<{
     Querystring: { favorites?: string; lang?: string; country?: string; catalog?: string }
@@ -111,7 +124,7 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
     if (catalogMode === 'curated') {
       mapped = mapped.filter((c) => c.iptvOrgId)
       if (countryFilter) {
-        mapped = mapped.filter((c) => c.country === countryFilter)
+        mapped = mapped.filter((c) => matchesCuratedCountry(c, countryFilter))
       }
     } else if (countryFilter && req.query.country) {
       mapped = mapped.filter((c) => c.country === countryFilter)

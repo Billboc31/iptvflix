@@ -3,7 +3,7 @@ import { db } from '../db/client.js'
 import { channels } from '../db/schema/channels.js'
 import { channelSources } from '../db/schema/channel-sources.js'
 import { normalizeChannelName, toCanonicalDisplayName } from '../channels/channel-normalizer.js'
-import { mapCategory } from '../channels/category-mapper.js'
+import { mapCategory, mapIptvOrgCategories } from '../channels/category-mapper.js'
 import { inferChannelLanguage } from '../channels/language-infer.js'
 import { loadIptvOrgCatalog } from '../channels/iptv-org-catalog.js'
 import {
@@ -91,18 +91,23 @@ function applyIptvOrgEnrichment(
     country?: string | null
     logoUrl?: string | null
     canonicalName?: string | null
+    categories?: string[] | null
   },
   org: IptvOrgChannel | null,
   countryFallback: string | null,
 ): boolean {
   let changed = false
+  const broadcastCountry = countryFallback?.toUpperCase() ?? null
+
   if (org) {
     if (current.iptvOrgId !== org.id) {
       patch.iptvOrgId = org.id
       changed = true
     }
-    if (org.country && current.country !== org.country) {
-      patch.country = org.country
+    // IPTV feed country (FR|…) wins over iptv-org registry country (beIN = QA).
+    const resolvedCountry = broadcastCountry ?? org.country ?? null
+    if (resolvedCountry && current.country !== resolvedCountry) {
+      patch.country = resolvedCountry
       changed = true
     }
     if (org.logoUrl && !current.logoUrl) {
@@ -113,8 +118,16 @@ function applyIptvOrgEnrichment(
       patch.canonicalName = org.name
       changed = true
     }
-  } else if (countryFallback && !current.country) {
-    patch.country = countryFallback
+    if (org.categories?.length) {
+      const cats = mapIptvOrgCategories(org.categories)
+      const prev = (current.categories as string[] | null) ?? []
+      if (prev[0] !== cats[0]) {
+        patch.categories = cats
+        changed = true
+      }
+    }
+  } else if (broadcastCountry && !current.country) {
+    patch.country = broadcastCountry
     changed = true
   }
   return changed
@@ -202,6 +215,7 @@ export const ChannelSyncService = {
             country: channels.country,
             iptvOrgId: channels.iptvOrgId,
             canonicalName: channels.canonicalName,
+            categories: channels.categories,
           })
           .from(channels)
           .where(eq(channels.id, existing.channelId))
@@ -320,11 +334,18 @@ export const ChannelSyncService = {
         result.sourcesCreated++
       } else {
         const canonicalName = toCanonicalDisplayName(entryNormalized) || entry.providerName
-        const categories = entry.groupTitle ? [mapCategory(entry.groupTitle)] : ['other']
         const language = inferChannelLanguage(entry.providerName, entry.groupTitle)
         const org = resolveOrg(entry.providerName, entry.groupTitle)
+        const countryFallback = inferChannelCountry(entry.providerName, entry.groupTitle, language)
         const country =
-          org?.country ?? inferChannelCountry(entry.providerName, entry.groupTitle, language)
+          countryFallback ??
+          org?.country ??
+          inferChannelCountry(entry.providerName, entry.groupTitle, language)
+        const categories = org?.categories?.length
+          ? mapIptvOrgCategories(org.categories)
+          : entry.groupTitle
+            ? [mapCategory(entry.groupTitle)]
+            : ['other']
 
         const [newChannel] = await db
           .insert(channels)

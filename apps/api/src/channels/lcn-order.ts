@@ -31,8 +31,9 @@ export const FR_LCN_ORDER: string[] = [
   'CanalPlusSeries.fr',
   'Eurosport1.fr',
   'Eurosport2.fr',
-  'beINSports1.fr',
-  'beINSports2.fr',
+  'beINSports1.qa',
+  'beINSports2.qa',
+  'beINSports3.qa',
   'RMCSport1.fr',
 ]
 

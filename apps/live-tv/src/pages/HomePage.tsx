@@ -41,7 +41,7 @@ export default function HomePage() {
     .map((cat) => ({
       id: cat,
       title: categoryLabel(cat),
-      channels: channels.filter((c) => c.categories.includes(cat)).slice(0, RAIL_LIMIT),
+      channels: channels.filter((c) => c.categories.includes(cat)),
     }))
     .filter((rail) => rail.channels.length > 0)
 

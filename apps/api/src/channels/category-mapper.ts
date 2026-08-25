@@ -108,6 +108,13 @@ export function mapCategory(raw: string): CanonicalCategory {
   return 'other'
 }
 
+/** Map iptv-org category ids (sports, movies, …) to our canonical set. */
+export function mapIptvOrgCategories(raw: string[] | null | undefined): CanonicalCategory[] {
+  const mapped = (raw ?? []).map((c) => mapCategory(c))
+  const unique = [...new Set(mapped)].filter((c) => c !== 'other')
+  return unique.length > 0 ? unique : ['other']
+}
+
 /** Stable display order for home rails / chips. */
 export const CATEGORY_DISPLAY_ORDER: CanonicalCategory[] = [
   'generalist',
