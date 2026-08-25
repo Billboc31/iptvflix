@@ -44,3 +44,8 @@
 [2026-08-25T10:05:06Z] push: pushing branch=ticket/T132-build-the-live-tv-dashboard-ui-with-categories-fav
 [2026-08-25T10:05:09Z] push: done branch=ticket/T132-build-the-live-tv-dashboard-ui-with-categories-fav
 [2026-08-25T10:05:09Z] auto-run: TEST_COMPLETE — running PR lifecycle
+[2026-08-25T10:09:14Z] conflict-resolver: [pass 1/3] conflicted=['apps/live-tv/src/__tests__/AllChannelsPage.test.tsx', 'apps/live-tv/src/__tests__/LiveRail.test.tsx', 'apps/live-tv/src/components/channel/ChannelRow.tsx', 'apps/live-tv/src/components/channel/LiveRail.tsx', 'apps/live-tv/src/pages/AllChannelsPage.tsx', 'apps/live-tv/src/pages/HomePage.tsx'] | staged=['apps/live-tv/src/__tests__/AllChannelsPage.test.tsx', 'apps/live-tv/src/__tests__/LiveRail.test.tsx', 'apps/live-tv/src/components/channel/ChannelRow.tsx', 'apps/live-tv/src/components/channel/LiveRail.tsx', 'apps/live-tv/src/pages/AllChannelsPage.tsx', 'apps/live-tv/src/pages/HomePage.tsx'] | unresolved=[] | continue_rc=1 | next_source=[]
+[2026-08-25T10:09:14Z] conflict-resolver: all conflicts resolved after 1 pass(es)
+[2026-08-25T10:09:14Z] conflict-resolver: running tests
+[2026-08-25T10:09:14Z] conflict-resolver: test-report written: runs/T132/conflict/test-report.md
+[2026-08-25T10:09:14Z] conflict-resolver: staging and committing resolution artifacts
