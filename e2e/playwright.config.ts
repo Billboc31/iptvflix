@@ -40,5 +40,11 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
     },
+    {
+      command: 'pnpm --filter @iptvflix/live-tv dev',
+      url: 'http://localhost:5174',
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+    },
   ],
 })
