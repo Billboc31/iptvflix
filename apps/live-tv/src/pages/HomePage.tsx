@@ -33,7 +33,8 @@ export default function HomePage() {
 
   const recentChannels = historyChannels(channels, history)
   const favoriteChannels = channels.filter((c) => favoriteIds.has(c.id)).slice(0, RAIL_LIMIT)
-  const countryChannels = channels.slice(0, RAIL_LIMIT)
+  // Main country rail: show the full curated list (~150 FR), not a capped preview.
+  const countryChannels = channels
 
   const categoryRails = CATEGORY_DISPLAY_ORDER
     .filter((cat) => cat !== 'other')
@@ -109,6 +110,7 @@ export default function HomePage() {
         favoriteIds={favoriteIds}
         onToggleFavorite={toggleFavorite}
         onRecordHistory={recordHistory}
+        seeAllTo="/channels"
       />
 
       {!isLoading && channels.length > 0 && catalog === 'curated' && (

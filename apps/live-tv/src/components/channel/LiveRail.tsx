@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import type { ChannelResponse } from '@iptvflix/api-contracts'
 import ChannelCard from './ChannelCard.js'
 
@@ -8,6 +9,7 @@ type Props = {
   onToggleFavorite?: (id: string) => void
   favoriteIds?: Set<string>
   onRecordHistory?: (channelId: string) => void
+  seeAllTo?: string
 }
 
 function Skeleton() {
@@ -25,12 +27,35 @@ function Skeleton() {
   )
 }
 
-export default function LiveRail({ title, channels, isLoading, onToggleFavorite, favoriteIds, onRecordHistory }: Props) {
+export default function LiveRail({
+  title,
+  channels,
+  isLoading,
+  onToggleFavorite,
+  favoriteIds,
+  onRecordHistory,
+  seeAllTo,
+}: Props) {
   if (!isLoading && channels.length === 0) return null
 
   return (
     <section aria-label={title}>
-      <h2 className="text-lg font-semibold text-white mb-4">{title}</h2>
+      <div className="flex items-center justify-between mb-4 gap-4">
+        <h2 className="text-lg font-semibold text-white">
+          {title}
+          {!isLoading && channels.length > 0 && (
+            <span className="text-gray-500 font-normal text-sm ml-2">{channels.length}</span>
+          )}
+        </h2>
+        {seeAllTo && channels.length > 0 && (
+          <Link
+            to={seeAllTo}
+            className="text-sm text-[#f97316] hover:text-[#fb923c] transition-colors shrink-0"
+          >
+            Voir tout
+          </Link>
+        )}
+      </div>
       <div
         className="flex gap-4 overflow-x-auto pb-2"
         style={{ scrollbarWidth: 'none' }}
