@@ -15,8 +15,14 @@ if (!authPasswordHash) {
 
 export const DATABASE_URL: string = databaseUrl
 export const PORT = Number(process.env.PORT ?? 3000)
-/** Browser Origin must not include a trailing slash or CORS preflight fails. */
-export const CORS_ORIGIN = (process.env.CORS_ORIGIN ?? 'http://localhost:5173').replace(/\/$/, '')
+/** Browser Origin(s) must not include a trailing slash or CORS preflight fails.
+ *  Comma-separated list supported (VOD + Live TV). */
+export const CORS_ORIGINS: string[] = (process.env.CORS_ORIGIN ?? 'http://localhost:5173')
+  .split(',')
+  .map((s) => s.trim().replace(/\/$/, ''))
+  .filter(Boolean)
+/** @deprecated Prefer CORS_ORIGINS — kept for callers expecting a single string. */
+export const CORS_ORIGIN = CORS_ORIGINS[0] ?? 'http://localhost:5173'
 export const TMDB_API_KEY: string | undefined = process.env.TMDB_API_KEY || undefined
 export const TMDB_STALE_DAYS = Number(process.env.TMDB_STALE_DAYS ?? 7)
 export const WEB_SECRET: string | undefined = process.env.WEB_SECRET || undefined

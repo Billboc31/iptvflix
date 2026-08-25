@@ -62,7 +62,7 @@ import { runSeed } from './db/seed.js'
 import { ensurePgvectorEmbeddings } from './db/ensure-pgvector.js'
 import {
   PORT,
-  CORS_ORIGIN,
+  CORS_ORIGINS,
   TMDB_API_KEY,
   JWT_SECRET,
   SYNC_SCHEDULER_ENABLED,
@@ -108,7 +108,7 @@ app.setErrorHandler((error, _request, reply) => {
   reply.status(status).send({ error: status >= 500 ? 'Internal Server Error' : error.message })
 })
 
-await app.register(cors, { origin: CORS_ORIGIN, credentials: true })
+await app.register(cors, { origin: CORS_ORIGINS, credentials: true })
 await app.register(jwt, { secret: JWT_SECRET })
 await app.register(cookie)
 await app.register(healthRoutes)
