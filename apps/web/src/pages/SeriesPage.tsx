@@ -166,7 +166,6 @@ export default function SeriesPage() {
           synopsis={heroSeries.synopsis}
           backdropUrl={heroSeries.backdropUrl}
           mediaId={heroSeries.id}
-          trailerKey={heroSeries.trailerKey}
           availabilityStatus={heroSeries.availabilityStatus}
           onDetails={() => openDetail('series', heroSeries.id)}
         />
