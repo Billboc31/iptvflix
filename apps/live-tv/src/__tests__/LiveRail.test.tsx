@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import LiveRail from '../components/channel/LiveRail.js'
 import type { ChannelResponse } from '@iptvflix/api-contracts'
@@ -45,5 +45,19 @@ describe('LiveRail', () => {
   it('renders section title', () => {
     render(<LiveRail title="En direct maintenant" channels={channels} isLoading={false} />)
     expect(screen.getByText('En direct maintenant')).toBeInTheDocument()
+  })
+
+  it('calls onRecordHistory when a card is played', async () => {
+    const onRecordHistory = vi.fn()
+    render(
+      <LiveRail
+        title="En direct"
+        channels={channels}
+        isLoading={false}
+        onRecordHistory={onRecordHistory}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Regarder TF1' }))
+    await waitFor(() => expect(onRecordHistory).toHaveBeenCalledWith('1'))
   })
 })

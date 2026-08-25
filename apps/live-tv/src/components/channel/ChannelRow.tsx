@@ -8,13 +8,14 @@ type Props = {
   channel: ChannelResponse
   onToggleFavorite?: () => void
   isFavorite?: boolean
+  onRecordHistory?: () => void
 }
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function ChannelRow({ channel, onToggleFavorite, isFavorite }: Props) {
+export default function ChannelRow({ channel, onToggleFavorite, isFavorite, onRecordHistory }: Props) {
   const [isLoadingStream, setIsLoadingStream] = useState(false)
   const [streamError, setStreamError] = useState<string | null>(null)
 
@@ -26,6 +27,7 @@ export default function ChannelRow({ channel, onToggleFavorite, isFavorite }: Pr
     setIsLoadingStream(true)
     try {
       const { streamUrl } = await getChannelStream(channel.id)
+      onRecordHistory?.()
       window.open(streamUrl, '_blank', 'noopener')
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {

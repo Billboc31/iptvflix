@@ -7,6 +7,7 @@ type Props = {
   isLoading: boolean
   onToggleFavorite?: (id: string) => void
   favoriteIds?: Set<string>
+  onRecordHistory?: (channelId: string) => void
 }
 
 function Skeleton() {
@@ -24,7 +25,7 @@ function Skeleton() {
   )
 }
 
-export default function LiveRail({ title, channels, isLoading, onToggleFavorite, favoriteIds }: Props) {
+export default function LiveRail({ title, channels, isLoading, onToggleFavorite, favoriteIds, onRecordHistory }: Props) {
   if (!isLoading && channels.length === 0) return null
 
   return (
@@ -42,6 +43,7 @@ export default function LiveRail({ title, channels, isLoading, onToggleFavorite,
                   channel={ch}
                   isFavorite={favoriteIds?.has(ch.id)}
                   onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(ch.id) : undefined}
+                  onPlay={onRecordHistory ? (url) => { onRecordHistory(ch.id); window.open(url, '_blank', 'noopener') } : undefined}
                 />
               </div>
             ))}

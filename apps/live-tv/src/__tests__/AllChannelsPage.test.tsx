@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import AllChannelsPage from '../pages/AllChannelsPage.js'
@@ -85,5 +85,12 @@ describe('AllChannelsPage', () => {
   it('shows empty state when no channels match search', () => {
     renderPage('?q=zzznomatch')
     expect(screen.getByText(/aucune chaîne ne correspond/i)).toBeInTheDocument()
+  })
+
+  it('calls recordHistory when a channel play button is clicked', async () => {
+    renderPage()
+    const playButtons = screen.getAllByRole('button', { name: /regarder/i })
+    fireEvent.click(playButtons[0])
+    await waitFor(() => expect(mockContext.recordHistory).toHaveBeenCalledWith(channels[0].id))
   })
 })

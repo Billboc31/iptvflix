@@ -4,7 +4,7 @@ import { useChannels } from '../context/ChannelsContext.js'
 import ChannelRow from '../components/channel/ChannelRow.js'
 
 export default function AllChannelsPage() {
-  const { channels, isLoading, favoriteIds, toggleFavorite } = useChannels()
+  const { channels, isLoading, favoriteIds, toggleFavorite, recordHistory } = useChannels()
   const [searchParams, setSearchParams] = useSearchParams()
   const [favoritesOnly, setFavoritesOnly] = useState(false)
 
@@ -119,6 +119,7 @@ export default function AllChannelsPage() {
               channel={channel}
               isFavorite={favoriteIds.has(channel.id)}
               onToggleFavorite={() => toggleFavorite(channel.id)}
+              onRecordHistory={() => recordHistory(channel.id)}
             />
           ))}
         </div>

@@ -14,7 +14,7 @@ function historyChannels(
 }
 
 export default function HomePage() {
-  const { channels, isLoading, error, favoriteIds, toggleFavorite, history } = useChannels()
+  const { channels, isLoading, error, favoriteIds, toggleFavorite, history, recordHistory } = useChannels()
 
   const recentChannels = historyChannels(channels, history)
 
@@ -32,6 +32,7 @@ export default function HomePage() {
         isLoading={isLoading}
         favoriteIds={favoriteIds}
         onToggleFavorite={toggleFavorite}
+        onRecordHistory={recordHistory}
       />
 
       {!isLoading && channels.length > 0 && (
@@ -45,6 +46,7 @@ export default function HomePage() {
           isLoading={false}
           favoriteIds={favoriteIds}
           onToggleFavorite={toggleFavorite}
+          onRecordHistory={recordHistory}
         />
       )}
 
