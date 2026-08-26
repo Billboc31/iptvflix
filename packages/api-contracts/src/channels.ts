@@ -26,6 +26,17 @@ export type ChannelStreamResponse = {
   streamUrl: string
 }
 
+export type ChannelPlaybackResponse = {
+  gatewayUrl: string
+  deliveryMode: 'DIRECT' | 'HLS_REMUX' | 'HLS_TRANSCODE_AUDIO' | 'HLS_TRANSCODE_FULL'
+  containerExtension: string
+  correlationId: string
+}
+
+export type GuideChannelResponse = ChannelResponse & {
+  programs: EpgProgram[]
+}
+
 export type ChannelFavoriteRequest = {
   channelId: string
 }

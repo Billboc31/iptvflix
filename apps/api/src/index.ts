@@ -54,6 +54,8 @@ import { episodeSegmentsRoutes } from './routes/episodes.js'
 import { segmentAdminRoutes } from './routes/segment-admin.js'
 import { adminRoutes } from './routes/admin.js'
 import { channelsRoutes } from './routes/channels.js'
+import { ensureEpgLoaded } from './services/epg-service.js'
+import { loadXmltvFrCatalog } from './channels/xmltv-fr-catalog.js'
 import { channelFavoritesRoutes } from './routes/channel-favorites.js'
 import { channelHistoryRoutes } from './routes/channel-history.js'
 import { authenticate, requireProfile } from './plugins/auth.js'
@@ -378,6 +380,15 @@ async function bootBackground(): Promise<void> {
   }
 
   scheduler.start()
+
+  void Promise.all([
+    loadXmltvFrCatalog().then(() => app.log.info('startup: xmltvfr channel catalog cached')),
+    ensureEpgLoaded().then((cache) =>
+      app.log.info({ channels: cache?.byChannel.size ?? 0 }, 'startup: xmltvfr EPG cached'),
+    ),
+  ]).catch((err) => {
+    app.log.warn({ err }, 'startup: xmltvfr catalog/epg preload failed — will retry on first request')
+  })
 
   setTimeout(() => {
     void episodeBackfillService.backfill().then((result) => {

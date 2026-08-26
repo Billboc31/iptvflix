@@ -12,6 +12,7 @@ import AllChannelsPage from './pages/AllChannelsPage.js'
 import FavoritesPage from './pages/FavoritesPage.js'
 import RecentPage from './pages/RecentPage.js'
 import GuidePage from './pages/GuidePage.js'
+import WatchPage from './pages/WatchPage.js'
 
 function ProtectedRoute() {
   const { isAuthenticated, isLoading } = useAuth()
@@ -69,12 +70,15 @@ export default function App() {
               <Route path="/profiles/choose" element={<ProfileChoosePage />} />
 
               <Route element={<ProfileRequiredRoute />}>
-                <Route element={<ChannelsProvider><AppShell /></ChannelsProvider>}>
-                  <Route path="/" element={<HomePage />} />
-                  <Route path="/channels" element={<AllChannelsPage />} />
-                  <Route path="/favorites" element={<FavoritesPage />} />
-                  <Route path="/recent" element={<RecentPage />} />
-                  <Route path="/guide" element={<GuidePage />} />
+                <Route element={<ChannelsProvider><Outlet /></ChannelsProvider>}>
+                  <Route element={<AppShell />}>
+                    <Route path="/" element={<HomePage />} />
+                    <Route path="/channels" element={<AllChannelsPage />} />
+                    <Route path="/favorites" element={<FavoritesPage />} />
+                    <Route path="/recent" element={<RecentPage />} />
+                    <Route path="/guide" element={<GuidePage />} />
+                  </Route>
+                  <Route path="/watch/:channelId" element={<WatchPage />} />
                 </Route>
               </Route>
             </Route>

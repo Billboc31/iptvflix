@@ -1,12 +1,11 @@
-import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { ChannelResponse } from '@iptvflix/api-contracts'
 import ChannelLogo from './ChannelLogo.js'
 import EpgProgress from './EpgProgress.js'
-import { getChannelStream, ApiError } from '../../lib/api.js'
 
 type Props = {
   channel: ChannelResponse
-  onPlay?: (streamUrl: string) => void
+  onPlay?: (channelId: string) => void
   onToggleFavorite?: () => void
   isFavorite?: boolean
 }
@@ -16,29 +15,15 @@ function formatTime(iso: string): string {
 }
 
 export default function ChannelCard({ channel, onPlay, onToggleFavorite, isFavorite }: Props) {
-  const [isLoadingStream, setIsLoadingStream] = useState(false)
-  const [streamError, setStreamError] = useState<string | null>(null)
+  const navigate = useNavigate()
 
   const epgNow = channel.epg?.now
 
-  async function handlePlay() {
-    setStreamError(null)
-    setIsLoadingStream(true)
-    try {
-      const { streamUrl } = await getChannelStream(channel.id)
-      if (onPlay) {
-        onPlay(streamUrl)
-      } else {
-        window.open(streamUrl, '_blank', 'noopener')
-      }
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        setStreamError('Flux indisponible')
-      } else {
-        setStreamError('Erreur de lecture')
-      }
-    } finally {
-      setIsLoadingStream(false)
+  function handlePlay() {
+    if (onPlay) {
+      onPlay(channel.id)
+    } else {
+      navigate(`/watch/${channel.id}`)
     }
   }
 
@@ -47,7 +32,6 @@ export default function ChannelCard({ channel, onPlay, onToggleFavorite, isFavor
       <button
         className="w-full p-4 flex flex-col gap-3 text-left"
         onClick={handlePlay}
-        disabled={isLoadingStream}
         aria-label={`Regarder ${channel.name}`}
       >
         <div className="flex items-center gap-3">
@@ -75,13 +59,6 @@ export default function ChannelCard({ channel, onPlay, onToggleFavorite, isFavor
           </>
         )}
 
-        {streamError && (
-          <p className="text-red-400 text-xs">{streamError}</p>
-        )}
-
-        {isLoadingStream && (
-          <span className="self-center w-4 h-4 border-2 border-white/20 border-t-[#f97316] rounded-full animate-spin" />
-        )}
       </button>
 
       {onToggleFavorite && (

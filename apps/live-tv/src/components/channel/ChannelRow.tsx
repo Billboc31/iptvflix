@@ -1,8 +1,7 @@
-import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { ChannelResponse } from '@iptvflix/api-contracts'
 import ChannelLogo from './ChannelLogo.js'
 import EpgProgress from './EpgProgress.js'
-import { getChannelStream, ApiError } from '../../lib/api.js'
 
 type Props = {
   channel: ChannelResponse
@@ -16,28 +15,14 @@ function formatTime(iso: string): string {
 }
 
 export default function ChannelRow({ channel, onToggleFavorite, isFavorite, onRecordHistory }: Props) {
-  const [isLoadingStream, setIsLoadingStream] = useState(false)
-  const [streamError, setStreamError] = useState<string | null>(null)
+  const navigate = useNavigate()
 
   const epgNow = channel.epg?.now
   const epgNext = channel.epg?.next
 
-  async function handlePlay() {
-    setStreamError(null)
-    setIsLoadingStream(true)
-    try {
-      const { streamUrl } = await getChannelStream(channel.id)
-      onRecordHistory?.()
-      window.open(streamUrl, '_blank', 'noopener')
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        setStreamError('Flux indisponible')
-      } else {
-        setStreamError('Erreur de lecture')
-      }
-    } finally {
-      setIsLoadingStream(false)
-    }
+  function handlePlay() {
+    onRecordHistory?.()
+    navigate(`/watch/${channel.id}`)
   }
 
   return (
@@ -72,9 +57,6 @@ export default function ChannelRow({ channel, onToggleFavorite, isFavorite, onRe
           </p>
         )}
 
-        {streamError && (
-          <p className="text-red-400 text-xs mt-1">{streamError}</p>
-        )}
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
@@ -94,16 +76,11 @@ export default function ChannelRow({ channel, onToggleFavorite, isFavorite, onRe
         )}
 
         <button
-          className="px-3 py-1.5 rounded-lg bg-[#f97316]/10 text-[#f97316] text-xs font-medium hover:bg-[#f97316]/20 transition-colors disabled:opacity-50"
+          className="px-3 py-1.5 rounded-lg bg-[#f97316]/10 text-[#f97316] text-xs font-medium hover:bg-[#f97316]/20 transition-colors"
           onClick={handlePlay}
-          disabled={isLoadingStream}
           aria-label={`Regarder ${channel.name}`}
         >
-          {isLoadingStream ? (
-            <span className="w-3 h-3 border border-[#f97316]/30 border-t-[#f97316] rounded-full animate-spin inline-block" />
-          ) : (
-            '▶'
-          )}
+          ▶
         </button>
       </div>
     </div>

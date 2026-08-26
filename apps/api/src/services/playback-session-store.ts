@@ -6,7 +6,7 @@ const TTL_MS = 4 * 60 * 60 * 1000 // 4 hours
 export type SessionEntry = {
   sessionId: string
   profileId: string
-  mediaType: 'movie' | 'episode'
+  mediaType: 'movie' | 'episode' | 'channel'
   mediaId: string
   availabilityId: string
   sourceId: string

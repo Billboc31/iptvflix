@@ -6,6 +6,8 @@ import type {
   SelectProfileResponse,
   ChannelResponse,
   ChannelStreamResponse,
+  ChannelPlaybackResponse,
+  GuideChannelResponse,
   ChannelHistoryEntry,
 } from '@iptvflix/api-contracts'
 
@@ -131,6 +133,23 @@ export function listChannels(opts?: {
 
 export function getChannelStream(id: string): Promise<ChannelStreamResponse> {
   return request(`/channels/${id}/stream`)
+}
+
+export function resolveChannelPlayback(id: string): Promise<ChannelPlaybackResponse> {
+  return request(`/channels/${id}/playback/resolve`, { method: 'POST' })
+}
+
+export function getGuideChannels(opts?: {
+  country?: string
+  catalog?: 'curated' | 'all'
+  hours?: number
+}): Promise<GuideChannelResponse[]> {
+  const params = new URLSearchParams()
+  if (opts?.catalog) params.set('catalog', opts.catalog)
+  if (opts?.country) params.set('country', opts.country)
+  if (opts?.hours) params.set('hours', String(opts.hours))
+  const qs = params.toString()
+  return request(`/channels/guide${qs ? `?${qs}` : ''}`)
 }
 
 export function listFavoriteChannels(): Promise<ChannelResponse[]> {

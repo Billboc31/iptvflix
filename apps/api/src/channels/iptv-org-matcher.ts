@@ -19,6 +19,13 @@ const LANG_TO_COUNTRY: Record<string, string> = {
   zh: 'CN',
 }
 
+/** Map profile language to curated country filter (GB for English — iptv-org uses UK in data). */
+export function languageToPreferredCountry(langs: string[] | undefined): string {
+  const primary = langs?.[0]?.trim().toLowerCase().slice(0, 2)
+  if (primary && LANG_TO_COUNTRY[primary]) return LANG_TO_COUNTRY[primary]!
+  return 'FR'
+}
+
 const PREFIX_COUNTRY: Record<string, string> = {
   fr: 'FR',
   france: 'FR',
@@ -65,12 +72,6 @@ export function inferChannelCountry(
   const lang = language ?? inferChannelLanguage(providerName, groupTitle)
   if (lang && LANG_TO_COUNTRY[lang]) return LANG_TO_COUNTRY[lang]!
   return null
-}
-
-export function languageToPreferredCountry(langs: string[] | undefined): string {
-  const primary = langs?.[0]?.trim().toLowerCase().slice(0, 2)
-  if (primary && LANG_TO_COUNTRY[primary]) return LANG_TO_COUNTRY[primary]!
-  return 'FR'
 }
 
 function uniqueMatch(candidates: IptvOrgChannel[]): IptvOrgChannel | null {

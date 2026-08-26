@@ -12,6 +12,13 @@ const mockHistory: ChannelHistoryEntry[] = [
   { channelId: '1', name: 'TF1', logoUrl: null, watchedAt: new Date().toISOString() },
 ]
 
+vi.mock('../context/ProfileContext.js', () => ({
+  useProfile: () => ({
+    currentProfile: { preferredAudioLanguages: ['fr'] },
+    isLoading: false,
+  }),
+}))
+
 vi.mock('../lib/api.js', () => ({
   listChannels: vi.fn(),
   addFavorite: vi.fn().mockResolvedValue(undefined),

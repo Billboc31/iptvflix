@@ -8,9 +8,14 @@ import { inferChannelLanguage } from '../channels/language-infer.js'
 import { loadIptvOrgCatalog } from '../channels/iptv-org-catalog.js'
 import {
   inferChannelCountry,
-  matchIptvOrgChannel,
 } from '../channels/iptv-org-matcher.js'
-import type { IptvOrgChannel, IptvOrgIndex } from '../channels/iptv-org-catalog.js'
+import { loadXmltvFrCatalog } from '../channels/xmltv-fr-catalog.js'
+import {
+  matchCatalogChannel,
+  type CatalogMatch,
+} from '../channels/catalog-matcher.js'
+import type { IptvOrgIndex } from '../channels/iptv-org-catalog.js'
+import type { XmltvFrIndex } from '../channels/xmltv-fr-catalog.js'
 
 export interface LiveChannelEntry {
   providerItemId: string
@@ -84,7 +89,7 @@ function pickMergeCandidate<T extends { confidence: number; provenance: Record<s
   return null
 }
 
-function applyIptvOrgEnrichment(
+function applyCatalogEnrichment(
   patch: Partial<typeof channels.$inferInsert>,
   current: {
     iptvOrgId?: string | null
@@ -93,33 +98,32 @@ function applyIptvOrgEnrichment(
     canonicalName?: string | null
     categories?: string[] | null
   },
-  org: IptvOrgChannel | null,
+  catalog: CatalogMatch | null,
   countryFallback: string | null,
 ): boolean {
   let changed = false
   const broadcastCountry = countryFallback?.toUpperCase() ?? null
 
-  if (org) {
-    if (current.iptvOrgId !== org.id) {
-      patch.iptvOrgId = org.id
+  if (catalog) {
+    if (current.iptvOrgId !== catalog.id) {
+      patch.iptvOrgId = catalog.id
       changed = true
     }
-    // IPTV feed country (FR|…) wins over iptv-org registry country (beIN = QA).
-    const resolvedCountry = broadcastCountry ?? org.country ?? null
+    const resolvedCountry = broadcastCountry ?? catalog.country ?? null
     if (resolvedCountry && current.country !== resolvedCountry) {
       patch.country = resolvedCountry
       changed = true
     }
-    if (org.logoUrl && !current.logoUrl) {
-      patch.logoUrl = org.logoUrl
+    if (catalog.logoUrl && !current.logoUrl) {
+      patch.logoUrl = catalog.logoUrl
       changed = true
     }
-    if (org.name && current.canonicalName !== org.name) {
-      patch.canonicalName = org.name
+    if (catalog.name && current.canonicalName !== catalog.name) {
+      patch.canonicalName = catalog.name
       changed = true
     }
-    if (org.categories?.length) {
-      const cats = mapIptvOrgCategories(org.categories)
+    if (catalog.source === 'iptv-org' && catalog.categories?.length) {
+      const cats = mapIptvOrgCategories(catalog.categories)
       const prev = (current.categories as string[] | null) ?? []
       if (prev[0] !== cats[0]) {
         patch.categories = cats
@@ -154,16 +158,26 @@ export const ChannelSyncService = {
     const now = new Date()
 
     let iptvOrgIndex: IptvOrgIndex | null = null
+    let xmltvIndex: XmltvFrIndex | null = null
     try {
-      iptvOrgIndex = await loadIptvOrgCatalog()
+      ;[iptvOrgIndex, xmltvIndex] = await Promise.all([
+        loadIptvOrgCatalog(),
+        loadXmltvFrCatalog(),
+      ])
     } catch {
       iptvOrgIndex = null
+      xmltvIndex = null
     }
 
-    const resolveOrg = (providerName: string, groupTitle?: string | null) =>
-      iptvOrgIndex
-        ? matchIptvOrgChannel(iptvOrgIndex, providerName, { groupTitle })
-        : null
+    const resolveCatalog = (
+      providerName: string,
+      groupTitle?: string | null,
+      tvgId?: string | null,
+    ) =>
+      matchCatalogChannel(iptvOrgIndex, xmltvIndex, providerName, {
+        groupTitle,
+        tvgId,
+      })
 
     const existingSources = await db
       .select()
@@ -205,7 +219,7 @@ export const ChannelSyncService = {
 
         const language = inferChannelLanguage(entry.providerName, entry.groupTitle)
         const categories = entry.groupTitle ? [mapCategory(entry.groupTitle)] : []
-        const org = resolveOrg(entry.providerName, entry.groupTitle)
+        const catalog = resolveCatalog(entry.providerName, entry.groupTitle, entry.tvgId)
         const countryFallback = inferChannelCountry(entry.providerName, entry.groupTitle, language)
         const [chRow] = await db
           .select({
@@ -215,7 +229,6 @@ export const ChannelSyncService = {
             country: channels.country,
             iptvOrgId: channels.iptvOrgId,
             canonicalName: channels.canonicalName,
-            categories: channels.categories,
           })
           .from(channels)
           .where(eq(channels.id, existing.channelId))
@@ -239,7 +252,7 @@ export const ChannelSyncService = {
               changed = true
             }
           }
-          if (applyIptvOrgEnrichment(patch, chRow, org, countryFallback)) changed = true
+          if (applyCatalogEnrichment(patch, chRow, catalog, countryFallback)) changed = true
           if (changed) {
             await db.update(channels).set(patch).where(eq(channels.id, existing.channelId))
             result.channelsUpdated++
@@ -270,7 +283,7 @@ export const ChannelSyncService = {
         const channelId = match.channel.id
         const language = inferChannelLanguage(entry.providerName, entry.groupTitle)
         const categories = entry.groupTitle ? [mapCategory(entry.groupTitle)] : []
-        const org = resolveOrg(entry.providerName, entry.groupTitle)
+        const catalog = resolveCatalog(entry.providerName, entry.groupTitle, entry.tvgId)
         const countryFallback = inferChannelCountry(entry.providerName, entry.groupTitle, language)
 
         const patch: Partial<typeof channels.$inferInsert> = { updatedAt: now }
@@ -294,10 +307,10 @@ export const ChannelSyncService = {
           }
         }
         if (
-          applyIptvOrgEnrichment(
+          applyCatalogEnrichment(
             patch,
             match.channel,
-            org,
+            catalog,
             countryFallback,
           )
         ) {
@@ -335,14 +348,14 @@ export const ChannelSyncService = {
       } else {
         const canonicalName = toCanonicalDisplayName(entryNormalized) || entry.providerName
         const language = inferChannelLanguage(entry.providerName, entry.groupTitle)
-        const org = resolveOrg(entry.providerName, entry.groupTitle)
+        const catalog = resolveCatalog(entry.providerName, entry.groupTitle, entry.tvgId)
         const countryFallback = inferChannelCountry(entry.providerName, entry.groupTitle, language)
         const country =
           countryFallback ??
-          org?.country ??
+          catalog?.country ??
           inferChannelCountry(entry.providerName, entry.groupTitle, language)
-        const categories = org?.categories?.length
-          ? mapIptvOrgCategories(org.categories)
+        const categories = catalog?.source === 'iptv-org' && catalog.categories?.length
+          ? mapIptvOrgCategories(catalog.categories)
           : entry.groupTitle
             ? [mapCategory(entry.groupTitle)]
             : ['other']
@@ -350,14 +363,14 @@ export const ChannelSyncService = {
         const [newChannel] = await db
           .insert(channels)
           .values({
-            canonicalName: org?.name ?? canonicalName,
+            canonicalName: catalog?.name ?? canonicalName,
             normalizedName: entryNormalized,
-            logoUrl: entry.tvgLogo ?? org?.logoUrl ?? null,
+            logoUrl: entry.tvgLogo ?? catalog?.logoUrl ?? null,
             tvgId: entry.tvgId ?? null,
             categories,
             language,
             country,
-            iptvOrgId: org?.id ?? null,
+            iptvOrgId: catalog?.id ?? null,
           })
           .returning()
 

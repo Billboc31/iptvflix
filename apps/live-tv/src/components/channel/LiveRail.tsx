@@ -68,7 +68,13 @@ export default function LiveRail({
                   channel={ch}
                   isFavorite={favoriteIds?.has(ch.id)}
                   onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(ch.id) : undefined}
-                  onPlay={onRecordHistory ? (url) => { onRecordHistory(ch.id); window.open(url, '_blank', 'noopener') } : undefined}
+                  onPlay={
+                    onRecordHistory
+                      ? (channelId) => {
+                          onRecordHistory(channelId)
+                        }
+                      : undefined
+                  }
                 />
               </div>
             ))}

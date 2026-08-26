@@ -87,6 +87,9 @@ importers:
 
   apps/live-tv:
     dependencies:
+      hls.js:
+        specifier: ^1.7.0
+        version: 1.7.0
       react:
         specifier: ^18.3.0
         version: 18.3.1
