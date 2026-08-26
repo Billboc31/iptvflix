@@ -1,7 +1,7 @@
 {
   "ticket_id": "T133",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T133-move-live-tv-primary-navigation-from-left-sidebar",
   "issue_number": 284,
-  "updated_at": "2026-08-26T09:13:36Z"
+  "updated_at": "2026-08-26T09:22:13Z"
 }

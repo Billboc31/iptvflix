@@ -13,6 +13,7 @@ import FavoritesPage from './pages/FavoritesPage.js'
 import RecentPage from './pages/RecentPage.js'
 import GuidePage from './pages/GuidePage.js'
 import WatchPage from './pages/WatchPage.js'
+import SearchPage from './pages/SearchPage.js'
 
 function ProtectedRoute() {
   const { isAuthenticated, isLoading } = useAuth()
@@ -77,6 +78,7 @@ export default function App() {
                     <Route path="/favorites" element={<FavoritesPage />} />
                     <Route path="/recent" element={<RecentPage />} />
                     <Route path="/guide" element={<GuidePage />} />
+                    <Route path="/search" element={<SearchPage />} />
                   </Route>
                   <Route path="/watch/:channelId" element={<WatchPage />} />
                 </Route>
