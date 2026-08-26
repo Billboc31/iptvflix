@@ -23,6 +23,7 @@ const BATCH = 200
 const QUALITY_TOKEN_RE =
   /\b(?:FHD|UHD|4K|HD|SD|HEVC|H\.?265|H\.?264|AVC|RAW|VIP|720p|1080p|2160p|480p|360p)\b/gi
 const QUALITY_PAREN_RE = /\(\s*(?:FHD|UHD|4K|HD|SD|HEVC|H\.?265|RAW|VIP)\s*\)/gi
+const UNICODE_QUALITY_RE = /[\u1D2C-\u1D6A\u1D43-\u1D5B\u2090-\u209C\u2070-\u207F◉●◆◇★☆]+/gu
 const IPTV_PREFIX_TOKEN_RE =
   /^(?:4K|UHD|HD|SD|FHD|VF|VO|VOSTFR|VOST|VFF|VOFF|MULTI|MULTi|ENG|FR|EN|UK|US|TRUEFRENCH|FRENCH|CAM|TS|HDR|DV|HEVC|H265|RAW|VIP|\d{3,4}P)$/i
 
@@ -56,8 +57,10 @@ function stripIptvPrefixes(input) {
 function normalizeChannelName(raw) {
   let working = String(raw || '').replace(/_/g, ' ')
   working = stripIptvPrefixes(working)
+  working = working.replace(UNICODE_QUALITY_RE, ' ')
   working = working.replace(QUALITY_PAREN_RE, ' ')
   working = working.replace(QUALITY_TOKEN_RE, ' ')
+  working = working.replace(/#+/g, ' ')
   return working.replace(/\s+/g, ' ').trim().toLowerCase()
 }
 
@@ -202,6 +205,11 @@ function matchXmltv(xmltv, providerName, groupTitle, language, tvgId) {
   }
   const norm = normalizeChannelName(providerName)
   if (!norm) return null
+
+  // Explicit French sports aliases (IPTV names ≠ xmltvfr display names).
+  const alias = matchFrSportAlias(norm, xmltv)
+  if (alias) return alias
+
   const country = inferCountry(providerName, groupTitle, language)
   let candidates = xmltv.byNormalizedName.get(norm) ?? []
   if (country === 'FR' || !country) {
@@ -211,6 +219,35 @@ function matchXmltv(xmltv, providerName, groupTitle, language, tvgId) {
   const hit = uniqueMatch(candidates)
   if (!hit) return null
   return { id: hit.id, name: hit.name, country: 'FR', logoUrl: null }
+}
+
+function matchFrSportAlias(norm, xmltv) {
+  const compact = norm.replace(/\s+/g, '')
+
+  // Canal+ Ligue 1
+  if (/^canal\+?\s*ligue\s*1/.test(norm) || /^canal\+?ligue1/.test(compact)) {
+    const hit = xmltv.byId.get('CanalPlusLigue1.fr')
+    if (hit) return { id: hit.id, name: hit.name, country: 'FR', logoUrl: null }
+  }
+
+  // Ligue 1+ / Ligue1+ / Ligue 1+ N
+  const ligue = norm.match(/^ligue\s*1\+?\s*(\d{1,2})?$/) || compact.match(/^ligue1\+?(\d{1,2})?$/)
+  if (ligue) {
+    const n = ligue[1] ? Number(ligue[1]) : null
+    let id = 'Ligue1Plus.fr'
+    if (n && n >= 2 && n <= 10) id = `Ligue1Plus${n}.fr`
+    else if (n === 1) id = 'Ligue1Plus.fr'
+    const hit = xmltv.byId.get(id)
+    if (hit) return { id: hit.id, name: hit.name, country: 'FR', logoUrl: null }
+  }
+
+  // DAZN 1 France
+  if (/^dazn(?:\s*1)?$/.test(norm) || compact === 'dazn1' || compact === 'dazn') {
+    const hit = xmltv.byId.get('DAZN.fr')
+    if (hit) return { id: hit.id, name: hit.name, country: 'FR', logoUrl: null }
+  }
+
+  return null
 }
 
 const forcePlain = /localhost|127\.0\.0\.1|railway\.internal|proxy\.rlwy\.net/i.test(url)
@@ -360,8 +397,13 @@ try {
     if (org && !catalog.byId?.get(org.id) && xmltv?.byId?.get(org.id)) xmltvHits++
 
     // Prefer IPTV feed country (FR|…) over registry country (beIN = QA).
+    // xmltvfr IDs are always FR-facing for curated France.
     const feedCountry = inferCountry(name, row.group_title, row.language)
-    const country = feedCountry ?? org?.country ?? row.country
+    const country =
+      (org?.id?.endsWith('.fr') ? 'FR' : null) ??
+      feedCountry ??
+      org?.country ??
+      row.country
 
     const next = {
       id: row.id,

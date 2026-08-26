@@ -56,8 +56,9 @@ describe('normalizeChannelName', () => {
     expect(normalizeChannelName('M.6')).toBe('m.6')
   })
 
-  it('collapses extra whitespace', () => {
-    expect(normalizeChannelName('  BFM  TV  ')).toBe('bfm tv')
+  it('strips unicode quality badges and hashes', () => {
+    expect(normalizeChannelName('FR: LIGUE 1+ ◉ ᴿᴬᵂ')).toBe('ligue 1+')
+    expect(normalizeChannelName('##### LIGUE1+ ⱽᴵᴾ ᴴᴰ ######')).toBe('ligue1+')
   })
 
   it('does not merge different channels by prefix alone', () => {

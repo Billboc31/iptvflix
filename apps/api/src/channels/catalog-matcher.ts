@@ -78,6 +78,9 @@ export function matchCatalogChannel(
   }
 
   if (xmltvIndex) {
+    const alias = matchFrSportAlias(xmltvIndex, norm)
+    if (alias) return fromXmltvFr(alias, country ?? 'FR')
+
     if (country) {
       const frCandidates = (xmltvIndex.byNormalizedName.get(norm) ?? []).filter((c) =>
         c.id.endsWith('.fr'),
@@ -87,6 +90,31 @@ export function matchCatalogChannel(
     }
     const global = uniqueXmltvMatch(xmltvIndex.byNormalizedName.get(norm) ?? [])
     if (global) return fromXmltvFr(global, country)
+  }
+
+  return null
+}
+
+function matchFrSportAlias(
+  xmltvIndex: XmltvFrIndex,
+  norm: string,
+): XmltvFrChannel | null {
+  const compact = norm.replace(/\s+/g, '')
+
+  if (/^canal\+?\s*ligue\s*1/.test(norm) || /^canal\+?ligue1/.test(compact)) {
+    return xmltvIndex.byId.get('CanalPlusLigue1.fr') ?? null
+  }
+
+  const ligue = norm.match(/^ligue\s*1\+?\s*(\d{1,2})?$/) || compact.match(/^ligue1\+?(\d{1,2})?$/)
+  if (ligue) {
+    const n = ligue[1] ? Number(ligue[1]) : null
+    let id = 'Ligue1Plus.fr'
+    if (n && n >= 2 && n <= 10) id = `Ligue1Plus${n}.fr`
+    return xmltvIndex.byId.get(id) ?? null
+  }
+
+  if (/^dazn(?:\s*1)?$/.test(norm) || compact === 'dazn1' || compact === 'dazn') {
+    return xmltvIndex.byId.get('DAZN.fr') ?? null
   }
 
   return null
