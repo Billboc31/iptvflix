@@ -5,6 +5,7 @@ import EpgProgress from './EpgProgress.js'
 
 type Props = {
   channel: ChannelResponse
+  /** Optional side-effect when play starts (e.g. record history). Always navigates to watch. */
   onPlay?: (channelId: string) => void
   onToggleFavorite?: () => void
   isFavorite?: boolean
@@ -20,16 +21,14 @@ export default function ChannelCard({ channel, onPlay, onToggleFavorite, isFavor
   const epgNow = channel.epg?.now
 
   function handlePlay() {
-    if (onPlay) {
-      onPlay(channel.id)
-    } else {
-      navigate(`/watch/${channel.id}`)
-    }
+    onPlay?.(channel.id)
+    navigate(`/watch/${channel.id}`)
   }
 
   return (
     <div className="relative bg-[#111118] border border-white/5 rounded-xl overflow-hidden hover:border-[#f97316]/30 transition-colors group">
       <button
+        type="button"
         className="w-full p-4 flex flex-col gap-3 text-left"
         onClick={handlePlay}
         aria-label={`Regarder ${channel.name}`}
@@ -59,10 +58,15 @@ export default function ChannelCard({ channel, onPlay, onToggleFavorite, isFavor
           </>
         )}
 
+        <span className="mt-1 inline-flex items-center justify-center gap-1.5 self-stretch rounded-lg bg-[#f97316]/15 text-[#f97316] text-xs font-semibold py-2 group-hover:bg-[#f97316]/25 transition-colors">
+          <span aria-hidden="true">▶</span>
+          Regarder
+        </span>
       </button>
 
       {onToggleFavorite && (
         <button
+          type="button"
           className={`absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full ${
             isFavorite ? 'text-[#f97316]' : 'text-gray-500 hover:text-white'
           }`}

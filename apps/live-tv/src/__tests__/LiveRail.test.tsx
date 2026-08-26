@@ -62,4 +62,9 @@ describe('LiveRail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Regarder TF1' }))
     expect(onRecordHistory).toHaveBeenCalledWith('1')
   })
+
+  it('shows play CTA on each card', () => {
+    renderRail()
+    expect(screen.getAllByText('Regarder')).toHaveLength(2)
+  })
 })

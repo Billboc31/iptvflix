@@ -76,11 +76,13 @@ export default function ChannelRow({ channel, onToggleFavorite, isFavorite, onRe
         )}
 
         <button
-          className="px-3 py-1.5 rounded-lg bg-[#f97316]/10 text-[#f97316] text-xs font-medium hover:bg-[#f97316]/20 transition-colors"
+          type="button"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f97316]/15 text-[#f97316] text-xs font-semibold hover:bg-[#f97316]/25 transition-colors"
           onClick={handlePlay}
           aria-label={`Regarder ${channel.name}`}
         >
-          ▶
+          <span aria-hidden="true">▶</span>
+          Play
         </button>
       </div>
     </div>

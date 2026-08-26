@@ -71,11 +71,17 @@ describe('ChannelCard', () => {
     expect(navigateMock).toHaveBeenCalledWith('/watch/ch-1')
   })
 
-  it('calls onPlay with channel id when provided', () => {
+  it('shows a visible play CTA', () => {
+    renderCard(baseChannel)
+    expect(screen.getByText('Regarder')).toBeInTheDocument()
+  })
+
+  it('calls onPlay and still navigates when onPlay is provided', () => {
     const onPlay = vi.fn()
     renderCard(baseChannel, { onPlay })
     fireEvent.click(screen.getByRole('button', { name: /regarder TF1/i }))
     expect(onPlay).toHaveBeenCalledWith('ch-1')
+    expect(navigateMock).toHaveBeenCalledWith('/watch/ch-1')
   })
 
   it('calls onToggleFavorite when favorite button clicked', () => {
