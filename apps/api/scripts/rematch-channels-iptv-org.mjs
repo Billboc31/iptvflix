@@ -17,6 +17,7 @@ if (!url) {
 
 const CHANNELS_URL = 'https://iptv-org.github.io/api/channels.json'
 const LOGOS_URL = 'https://iptv-org.github.io/api/logos.json'
+const XMLTVFR_CHANNELS_URL = 'https://xmltvfr.fr/channels.php?guide=france'
 const BATCH = 200
 
 const QUALITY_TOKEN_RE =
@@ -102,12 +103,14 @@ async function loadCatalog() {
     if (!logosByChannel.has(logo.channel) && logo.url) logosByChannel.set(logo.channel, logo.url)
   }
 
+  const byId = new Map()
   const byNormalizedName = new Map()
   const byCountryAndName = new Map()
 
   for (const raw of channels) {
     if (raw.closed || raw.is_nsfw) continue
     const ch = { ...raw, logoUrl: logosByChannel.get(raw.id) ?? null }
+    byId.set(ch.id, ch)
     const names = [ch.name, ...(ch.alt_names ?? [])]
     for (const name of names) {
       const norm = normalizeChannelName(name)
@@ -125,10 +128,62 @@ async function loadCatalog() {
       cmap.set(norm, carr)
     }
   }
-  return { byNormalizedName, byCountryAndName }
+  return { byId, byNormalizedName, byCountryAndName }
 }
 
-function matchOrg(catalog, providerName, groupTitle, language) {
+function parseXmltvFrChannelsPage(html) {
+  const rows = []
+  const rowRe =
+    /<th\s+scope="row">\s*([A-Za-z0-9]+\.[a-z]{2,3})\s*<\/th>\s*<td>\s*([^<]*?)\s*<\/td>/gi
+  let match
+  while ((match = rowRe.exec(html)) !== null) {
+    const id = match[1].trim()
+    const name = match[2].trim().replace(/\s+/g, ' ')
+    if (!id || !name || name === '/') continue
+    rows.push({ id, name })
+  }
+  if (rows.length === 0) {
+    const mdRe = /\|\s*([A-Za-z0-9]+\.[a-z]{2,3})\s*\|\s*([^|]+?)\s*\|/g
+    while ((match = mdRe.exec(html)) !== null) {
+      const id = match[1].trim()
+      const name = match[2].trim().replace(/\s+/g, ' ')
+      if (!id || name === '/' || name === '---') continue
+      rows.push({ id, name })
+    }
+  }
+  return rows
+}
+
+async function loadXmltvFrCatalog() {
+  const res = await fetch(XMLTVFR_CHANNELS_URL, {
+    headers: { accept: 'text/html', 'user-agent': 'iptvflix/1.0' },
+  })
+  if (!res.ok) throw new Error(`xmltvfr fetch failed ${res.status}`)
+  const html = await res.text()
+  const channels = parseXmltvFrChannelsPage(html)
+  const byId = new Map()
+  const byNormalizedName = new Map()
+  for (const ch of channels) {
+    byId.set(ch.id, ch)
+    const norm = normalizeChannelName(ch.name)
+    if (!norm) continue
+    const arr = byNormalizedName.get(norm) ?? []
+    arr.push(ch)
+    byNormalizedName.set(norm, arr)
+    const idNorm = normalizeChannelName(ch.id.replace(/\.[a-z]{2,3}$/i, ''))
+    if (idNorm && idNorm !== norm) {
+      const idArr = byNormalizedName.get(idNorm) ?? []
+      if (!idArr.some((c) => c.id === ch.id)) {
+        idArr.push(ch)
+        byNormalizedName.set(idNorm, idArr)
+      }
+    }
+  }
+  return { byId, byNormalizedName }
+}
+
+function matchOrg(catalog, providerName, groupTitle, language, tvgId) {
+  if (tvgId && catalog.byId?.get(tvgId)) return catalog.byId.get(tvgId)
   const norm = normalizeChannelName(providerName)
   if (!norm) return null
   const country = inferCountry(providerName, groupTitle, language)
@@ -139,7 +194,27 @@ function matchOrg(catalog, providerName, groupTitle, language) {
   return uniqueMatch(catalog.byNormalizedName.get(norm) ?? [])
 }
 
-const sql = postgres(url, { max: 5 })
+function matchXmltv(xmltv, providerName, groupTitle, language, tvgId) {
+  if (!xmltv) return null
+  if (tvgId && xmltv.byId.get(tvgId)) {
+    const hit = xmltv.byId.get(tvgId)
+    return { id: hit.id, name: hit.name, country: 'FR', logoUrl: null }
+  }
+  const norm = normalizeChannelName(providerName)
+  if (!norm) return null
+  const country = inferCountry(providerName, groupTitle, language)
+  let candidates = xmltv.byNormalizedName.get(norm) ?? []
+  if (country === 'FR' || !country) {
+    const frOnly = candidates.filter((c) => c.id.endsWith('.fr'))
+    if (frOnly.length) candidates = frOnly
+  }
+  const hit = uniqueMatch(candidates)
+  if (!hit) return null
+  return { id: hit.id, name: hit.name, country: 'FR', logoUrl: null }
+}
+
+const forcePlain = /localhost|127\.0\.0\.1|railway\.internal|proxy\.rlwy\.net/i.test(url)
+const sql = postgres(url, { max: 5, connect_timeout: 20, ssl: forcePlain ? false : undefined })
 
 try {
   console.log('[rematch] ensuring iptv_org_id column…')
@@ -147,8 +222,15 @@ try {
   await sql`CREATE INDEX IF NOT EXISTS channels_iptv_org_id_idx ON channels (iptv_org_id)`
   await sql`CREATE INDEX IF NOT EXISTS channels_normalized_name_idx ON channels (normalized_name)`
 
-  console.log('[rematch] loading catalog…')
-  const catalog = await loadCatalog()
+  console.log('[rematch] loading catalogs (iptv-org + xmltvfr)…')
+  const [catalog, xmltv] = await Promise.all([
+    loadCatalog(),
+    loadXmltvFrCatalog().catch((err) => {
+      console.warn('[rematch] xmltvfr unavailable:', err.message)
+      return null
+    }),
+  ])
+  console.log(`[rematch] xmltvfr channels: ${xmltv?.byId.size ?? 0}`)
 
   console.log('[rematch] re-normalizing names from provider titles…')
   const allRows = await sql`
@@ -243,7 +325,7 @@ try {
     console.log('[rematch] no duplicates to merge')
   }
 
-  console.log('[rematch] matching iptv-org…')
+  console.log('[rematch] matching iptv-org + xmltvfr…')
   const rows = await sql`
     SELECT
       c.id,
@@ -254,10 +336,11 @@ try {
       c.logo_url,
       c.iptv_org_id,
       cs.provider_name,
-      cs.group_title
+      cs.group_title,
+      cs.tvg_id
     FROM channels c
     LEFT JOIN LATERAL (
-      SELECT provider_name, group_title
+      SELECT provider_name, group_title, tvg_id
       FROM channel_sources
       WHERE channel_id = c.id
       ORDER BY priority DESC, last_seen_at DESC
@@ -266,15 +349,19 @@ try {
   `
 
   const updates = []
+  let xmltvHits = 0
   for (const row of rows) {
     const name = row.provider_name || row.canonical_name
     // Re-normalize if historical names still have HD tokens
     const freshNorm = normalizeChannelName(name)
-    const org = matchOrg(catalog, name, row.group_title, row.language)
-    const country =
-      org?.country ??
-      inferCountry(name, row.group_title, row.language) ??
-      row.country
+    const org =
+      matchOrg(catalog, name, row.group_title, row.language, row.tvg_id) ||
+      matchXmltv(xmltv, name, row.group_title, row.language, row.tvg_id)
+    if (org && !catalog.byId?.get(org.id) && xmltv?.byId?.get(org.id)) xmltvHits++
+
+    // Prefer IPTV feed country (FR|…) over registry country (beIN = QA).
+    const feedCountry = inferCountry(name, row.group_title, row.language)
+    const country = feedCountry ?? org?.country ?? row.country
 
     const next = {
       id: row.id,
@@ -295,7 +382,7 @@ try {
     if (changed) updates.push(next)
   }
 
-  console.log(`[rematch] ${updates.length} channels to enrich`)
+  console.log(`[rematch] ${updates.length} channels to enrich (xmltvfr matches in this pass: ${xmltvHits})`)
 
   for (let i = 0; i < updates.length; i += BATCH) {
     const chunk = updates.slice(i, i + BATCH)
@@ -331,7 +418,15 @@ try {
   const curated = await sql`
     SELECT count(*)::int AS n FROM channels WHERE iptv_org_id IS NOT NULL AND country = 'FR'
   `
+  const samples = await sql`
+    SELECT canonical_name, iptv_org_id
+    FROM channels
+    WHERE iptv_org_id IN ('Ligue1Plus.fr', 'DAZN.fr', 'CanalPlusLigue1.fr', 'TF1.fr')
+    ORDER BY iptv_org_id
+    LIMIT 20
+  `
   console.log(`[rematch] FR curated channels: ${curated[0].n}`)
+  console.log('[rematch] sample sport/tnt ids:', samples.map((s) => `${s.iptv_org_id}=${s.canonical_name}`).join(' | ') || '(none)')
   console.log('[rematch] done')
 } catch (err) {
   console.error('[rematch] failed:', err)

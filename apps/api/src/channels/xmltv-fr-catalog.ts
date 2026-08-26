@@ -18,17 +18,30 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000
 let cached: XmltvFrIndex | null = null
 let inflight: Promise<XmltvFrIndex> | null = null
 
-/** Parses the markdown/HTML table from xmltvfr.fr/channels.php */
+/** Parses the HTML table from xmltvfr.fr/channels.php */
 export function parseXmltvFrChannelsPage(html: string): XmltvFrChannel[] {
   const rows: XmltvFrChannel[] = []
-  const rowRe = /\|\s*([A-Za-z0-9]+\.[a-z]{2,3})\s*\|\s*([^|]+?)\s*\|/g
+  const rowRe =
+    /<th\s+scope="row">\s*([A-Za-z0-9]+\.[a-z]{2,3})\s*<\/th>\s*<td>\s*([^<]*?)\s*<\/td>/gi
   let match: RegExpExecArray | null
   while ((match = rowRe.exec(html)) !== null) {
     const id = match[1]!.trim()
     const name = match[2]!.trim().replace(/\s+/g, ' ')
-    if (!id || name === '/' || name === '---') continue
+    if (!id || !name || name === '/') continue
     rows.push({ id, name })
   }
+
+  // Fallback: markdown tables (e.g. scraped/converted pages)
+  if (rows.length === 0) {
+    const mdRe = /\|\s*([A-Za-z0-9]+\.[a-z]{2,3})\s*\|\s*([^|]+?)\s*\|/g
+    while ((match = mdRe.exec(html)) !== null) {
+      const id = match[1]!.trim()
+      const name = match[2]!.trim().replace(/\s+/g, ' ')
+      if (!id || name === '/' || name === '---') continue
+      rows.push({ id, name })
+    }
+  }
+
   return rows
 }
 
