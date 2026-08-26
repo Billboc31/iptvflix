@@ -3,8 +3,9 @@ const QUALITY_TOKEN_RE =
 
 const QUALITY_PAREN_RE = /\(\s*(?:FHD|UHD|4K|HD|SD|HEVC|H\.?265|RAW|VIP)\s*\)/gi
 
-/** Unicode faux-superscript quality badges used by some IPTV panels (RAW/HD/VIP/BE…). */
-const UNICODE_QUALITY_RE = /[\u1D2C-\u1D6A\u1D43-\u1D5B\u2090-\u209C\u2070-\u207F◉●◆◇★☆]+/gu
+/** Unicode faux-superscript / decorative quality badges used by some IPTV panels. */
+const UNICODE_QUALITY_RE =
+  /[\u00B9\u00B2\u00B3\u1D2C-\u1D6A\u1D43-\u1D5B\u2090-\u209C\u2070-\u207F\u2C7D◉●◆◇★☆]+/gu
 
 const IPTV_PREFIX_TOKEN_RE =
   /^(?:4K|UHD|HD|SD|FHD|VF|VO|VOSTFR|VOST|VFF|VOFF|MULTI|MULTi|ENG|FR|EN|UK|US|TRUEFRENCH|FRENCH|CAM|TS|HDR|DV|HEVC|H265|RAW|VIP|\d{3,4}P)$/i
