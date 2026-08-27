@@ -41,6 +41,42 @@ export type ChannelFavoriteRequest = {
   channelId: string
 }
 
+export type LiveNowResult = {
+  channelId: string
+  channelName: string
+  logoUrl?: string | null
+  programTitle: string
+  startTime: string
+  endTime: string
+  progress: number
+  streamUrl: string
+  deliveryMode: 'DIRECT' | 'HLS_REMUX' | 'HLS_TRANSCODE_AUDIO' | 'HLS_TRANSCODE_FULL'
+}
+
+export type UpcomingResult = {
+  channelId: string
+  channelName: string
+  logoUrl?: string | null
+  programTitle: string
+  startTime: string
+  endTime: string
+}
+
+export type ChannelResult = {
+  channelId: string
+  channelName: string
+  logoUrl?: string | null
+  categories: string[]
+  language?: string | null
+  country?: string | null
+}
+
+export type LiveSearchResponse = {
+  liveNow: LiveNowResult[]
+  upcoming: UpcomingResult[]
+  channels: ChannelResult[]
+}
+
 export type ChannelHistoryEntry = {
   channelId: string
   name: string

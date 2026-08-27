@@ -6,6 +6,7 @@ import type {
   ChannelStreamResponse,
   ChannelPlaybackResponse,
   GuideChannelResponse,
+  LiveSearchResponse,
 } from '@iptvflix/api-contracts'
 import { db } from '../db/client.js'
 import { channels } from '../db/schema/channels.js'
@@ -23,6 +24,8 @@ import { lcnRank } from '../channels/lcn-order.js'
 import { ensureEpgLoaded, getEpgNowNext, getEpgProgramsInWindow } from '../services/epg-service.js'
 import { resolveChannelPlayback } from '../services/channel-playback-resolver.js'
 import { requireProfile } from '../plugins/auth.js'
+import { normalizeQuery } from '../services/live-search-normalizer.js'
+import { searchLiveTV } from '../services/live-search-service.js'
 
 function normalizeLangCode(code: string): string {
   return code.trim().toLowerCase().slice(0, 2)
@@ -218,6 +221,26 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
     const hours = Math.min(24, Math.max(1, Number(req.query.hours) || 6))
     const mapped = await buildChannelList(req, { includePrograms: true, programHours: hours })
     return reply.send(mapped as GuideChannelResponse[])
+  })
+
+  app.get<{
+    Querystring: { q?: string }
+    Reply: LiveSearchResponse
+  }>('/channels/search', async (req, reply) => {
+    const raw = req.query.q
+    if (!raw || raw.trim().length === 0) {
+      return reply.status(400).send({ liveNow: [], upcoming: [], channels: [] } as LiveSearchResponse)
+    }
+    if (raw.length > 100) {
+      return reply.status(400).send({ liveNow: [], upcoming: [], channels: [] } as LiveSearchResponse)
+    }
+    const query = normalizeQuery(raw)
+    if (!query) {
+      return reply.send({ liveNow: [], upcoming: [], channels: [] })
+    }
+    const epgCache = await ensureEpgLoaded()
+    const result = await searchLiveTV(query, epgCache)
+    return reply.send(result)
   })
 
   app.post<{ Params: { id: string }; Reply: ChannelPlaybackResponse }>(
