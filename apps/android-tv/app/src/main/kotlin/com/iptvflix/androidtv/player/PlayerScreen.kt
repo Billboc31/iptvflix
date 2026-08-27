@@ -85,8 +85,12 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.iptvflix.androidtv.App
 import com.iptvflix.androidtv.R
 import com.iptvflix.androidtv.command.PlaybackCommand
+import com.iptvflix.androidtv.livetv.LiveChannelSelectorOverlay
+import com.iptvflix.androidtv.livetv.LiveChannelSelectorState
+import com.iptvflix.androidtv.livetv.LiveChannelSelectorViewModel
 import com.iptvflix.androidtv.playback.AvailabilityVariant
 import com.iptvflix.androidtv.playback.EpisodeListItem
 import com.iptvflix.androidtv.playback.SeasonSummary
@@ -145,6 +149,14 @@ fun PlayerScreen(
     val playFocusRequester = remember { FocusRequester() }
     var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
 
+    val selectorVm: LiveChannelSelectorViewModel = viewModel(
+        factory = LiveChannelSelectorViewModel.factory(LocalContext.current.applicationContext as App),
+    )
+    val selectorState by selectorVm.state.collectAsState()
+    var isChannelSelectorOpen by remember { mutableStateOf(false) }
+    var loadingChannelId by remember { mutableStateOf<String?>(null) }
+    var currentChannelId by remember { mutableStateOf(command?.mediaId) }
+
     val visibleActions = remember(overlayActions, hud.positionMs, scrub) {
         val pos = if (scrub.active) scrub.previewMs else hud.positionMs
         overlayActions.visibleAt(pos)
@@ -159,6 +171,8 @@ fun PlayerScreen(
         if (command != null) {
             showControls = true
             interactionTick++
+            isChannelSelectorOpen = false
+            currentChannelId = command.mediaId
             vm.load(command)
         }
     }
@@ -167,6 +181,9 @@ fun PlayerScreen(
         if (uiState is PlayerUiState.Error) {
             showControls = true
             interactionTick++
+        }
+        if (uiState is PlayerUiState.Playing || uiState is PlayerUiState.Error) {
+            loadingChannelId = null
         }
     }
 
@@ -182,7 +199,7 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(interactionTick, uiState, scrub.active, openPanel) {
+    LaunchedEffect(interactionTick, uiState, scrub.active, openPanel, isChannelSelectorOpen) {
         when (uiState) {
             is PlayerUiState.Ended -> {
                 delay(2_000)
@@ -192,8 +209,10 @@ fun PlayerScreen(
             is PlayerUiState.Playing -> {
                 if (scrub.active) return@LaunchedEffect
                 if (openPanel != PlayerPanel.None) return@LaunchedEffect
+                if (isChannelSelectorOpen) return@LaunchedEffect
                 delay(AUTO_HIDE_MS)
                 if (openPanel != PlayerPanel.None) return@LaunchedEffect
+                if (isChannelSelectorOpen) return@LaunchedEffect
                 showControls = false
                 runCatching { rootFocusRequester.requestFocus() }
             }
@@ -228,10 +247,14 @@ fun PlayerScreen(
             .onKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
 
-                // Back must be handled before bumpInteraction — otherwise showing
-                // chrome first makes "overlay hidden → exit" impossible.
+                // Back hierarchy: channel overlay → panel → chrome → exit.
                 if (event.key == Key.Back || event.key == Key.Escape) {
                     return@onKeyEvent when {
+                        isChannelSelectorOpen -> {
+                            isChannelSelectorOpen = false
+                            runCatching { rootFocusRequester.requestFocus() }
+                            true
+                        }
                         openPanel != PlayerPanel.None -> {
                             vm.closePanel()
                             bumpInteraction()
@@ -248,6 +271,17 @@ fun PlayerScreen(
                             true
                         }
                     }
+                }
+
+                // While channel selector is open, RIGHT closes it; all other keys
+                // are consumed to prevent seek/play-pause side-effects from firing.
+                // UP/DOWN are consumed by TvLazyColumn before reaching here.
+                if (isChannelSelectorOpen) {
+                    if (event.key == Key.DirectionRight) {
+                        isChannelSelectorOpen = false
+                        runCatching { rootFocusRequester.requestFocus() }
+                    }
+                    return@onKeyEvent true
                 }
 
                 val controlsUp = showControls || openPanel != PlayerPanel.None
@@ -270,7 +304,15 @@ fun PlayerScreen(
                     }
                 }
 
-                // Chrome hidden: any other key shows it; L/R still seek.
+                // Chrome hidden: DPAD_LEFT opens the channel selector for Live TV.
+                if (event.key == Key.DirectionLeft &&
+                    command?.mediaType.equals("channel", ignoreCase = true)
+                ) {
+                    isChannelSelectorOpen = true
+                    return@onKeyEvent true
+                }
+
+                // Chrome hidden: any other key shows it; L/R still seek (VOD).
                 bumpInteraction()
                 when (event.key) {
                     Key.DirectionCenter, Key.Enter, Key.MediaPlay, Key.MediaPause, Key.MediaPlayPause -> {
@@ -348,6 +390,22 @@ fun PlayerScreen(
                 }
             },
             chromeContent = {
+                if (isChannelSelectorOpen) {
+                    LiveChannelSelectorOverlay(
+                        state = selectorState,
+                        currentChannelId = currentChannelId,
+                        loadingChannelId = loadingChannelId,
+                        onChannelSelected = { ch ->
+                            if (loadingChannelId == null) {
+                                loadingChannelId = ch.id
+                                currentChannelId = ch.id
+                                vm.switchChannel(ch.id, ch.name, ch.logoUrl)
+                            }
+                        },
+                        onClose = { isChannelSelectorOpen = false },
+                        modifier = Modifier.align(Alignment.TopStart),
+                    )
+                }
                 AnimatedVisibility(
                     visible = showControls || scrub.active || openPanel != PlayerPanel.None ||
                         uiState is PlayerUiState.Error,

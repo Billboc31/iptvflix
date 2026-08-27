@@ -20,4 +20,6 @@ class ChannelRepository(private val api: ChannelApi) {
         api.getChannels()
     }.onFailure { Log.w(TAG, "All channels fetch failed: ${it.message}") }
         .getOrDefault(emptyList())
+
+    suspend fun allChannelsOrThrow(): List<ChannelResponse> = api.getChannels()
 }

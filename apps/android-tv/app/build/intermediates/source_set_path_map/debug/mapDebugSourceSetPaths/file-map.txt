@@ -45,10 +45,10 @@ com.iptvflix.androidtv.app-jetified-tv-material-1.0.0-alpha10-43 /Users/pierrebo
 com.iptvflix.androidtv.app-jetified-activity-compose-1.9.0-44 /Users/pierrebocquet/.gradle/caches/transforms-4/f1f001bb8100cc8449757c72266dc459/transformed/jetified-activity-compose-1.9.0/res
 com.iptvflix.androidtv.app-jetified-lifecycle-viewmodel-compose-release-45 /Users/pierrebocquet/.gradle/caches/transforms-4/f4daa7c4a66b0ccc8955c69dd0eaf662/transformed/jetified-lifecycle-viewmodel-compose-release/res
 com.iptvflix.androidtv.app-core-1.13.1-46 /Users/pierrebocquet/.gradle/caches/transforms-4/fb42cfcf9134d35afece10b1e540319f/transformed/core-1.13.1/res
-com.iptvflix.androidtv.app-pngs-47 /Users/pierrebocquet/runtime/iptvflix/worktrees/T134/apps/android-tv/app/build/generated/res/pngs/debug
-com.iptvflix.androidtv.app-resValues-48 /Users/pierrebocquet/runtime/iptvflix/worktrees/T134/apps/android-tv/app/build/generated/res/resValues/debug
-com.iptvflix.androidtv.app-packageDebugResources-49 /Users/pierrebocquet/runtime/iptvflix/worktrees/T134/apps/android-tv/app/build/intermediates/incremental/debug/packageDebugResources/merged.dir
-com.iptvflix.androidtv.app-packageDebugResources-50 /Users/pierrebocquet/runtime/iptvflix/worktrees/T134/apps/android-tv/app/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
-com.iptvflix.androidtv.app-debug-51 /Users/pierrebocquet/runtime/iptvflix/worktrees/T134/apps/android-tv/app/build/intermediates/merged_res/debug/mergeDebugResources
-com.iptvflix.androidtv.app-debug-52 /Users/pierrebocquet/runtime/iptvflix/worktrees/T134/apps/android-tv/app/src/debug/res
-com.iptvflix.androidtv.app-main-53 /Users/pierrebocquet/runtime/iptvflix/worktrees/T134/apps/android-tv/app/src/main/res
+com.iptvflix.androidtv.app-pngs-47 /Users/pierrebocquet/runtime/iptvflix/worktrees/T135/apps/android-tv/app/build/generated/res/pngs/debug
+com.iptvflix.androidtv.app-resValues-48 /Users/pierrebocquet/runtime/iptvflix/worktrees/T135/apps/android-tv/app/build/generated/res/resValues/debug
+com.iptvflix.androidtv.app-packageDebugResources-49 /Users/pierrebocquet/runtime/iptvflix/worktrees/T135/apps/android-tv/app/build/intermediates/incremental/debug/packageDebugResources/merged.dir
+com.iptvflix.androidtv.app-packageDebugResources-50 /Users/pierrebocquet/runtime/iptvflix/worktrees/T135/apps/android-tv/app/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
+com.iptvflix.androidtv.app-debug-51 /Users/pierrebocquet/runtime/iptvflix/worktrees/T135/apps/android-tv/app/build/intermediates/merged_res/debug/mergeDebugResources
+com.iptvflix.androidtv.app-debug-52 /Users/pierrebocquet/runtime/iptvflix/worktrees/T135/apps/android-tv/app/src/debug/res
+com.iptvflix.androidtv.app-main-53 /Users/pierrebocquet/runtime/iptvflix/worktrees/T135/apps/android-tv/app/src/main/res
