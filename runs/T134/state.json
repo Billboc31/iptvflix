@@ -1,7 +1,7 @@
 {
   "ticket_id": "T134",
-  "state": "IMPLEMENTATION_REVIEW_NEEDED",
+  "state": "IMPLEMENTATION_FIX_REQUIRED",
   "branch": "ticket/T134-add-live-tv-mode-to-android-tv-app-with-orange-vis",
   "issue_number": 286,
-  "updated_at": "2026-08-27T08:06:03Z"
+  "updated_at": "2026-08-27T08:13:09Z"
 }
