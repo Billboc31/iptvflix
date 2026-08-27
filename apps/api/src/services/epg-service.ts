@@ -6,9 +6,26 @@ const CACHE_TTL_MS = 6 * 60 * 60 * 1000
 
 type ParsedProgram = EpgProgram & { channelId: string }
 
-type EpgCache = {
+export type EpgCache = {
   byChannel: Map<string, ParsedProgram[]>
   fetchedAt: number
+}
+
+export type EpgMatch = {
+  catalogId: string
+  title: string
+  startTime: string
+  endTime: string
+  isLive: boolean
+  /** 0 = exact title, 1 = prefix, 2 = substring */
+  matchWeight: number
+}
+
+function normalizeText(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
 }
 
 let cached: EpgCache | null = null
@@ -175,6 +192,44 @@ export function getEpgProgramsInWindow(
       return end > startTs && start < endTs
     })
     .map(({ title, startTime, endTime }) => ({ title, startTime, endTime }))
+}
+
+export function searchEpgPrograms(
+  normalizedQuery: string,
+  cache: EpgCache | null,
+  now = new Date(),
+): EpgMatch[] {
+  if (!cache || cache.byChannel.size === 0 || !normalizedQuery) return []
+
+  const q = normalizeText(normalizedQuery)
+  const nowMs = now.getTime()
+  const matches: EpgMatch[] = []
+
+  for (const [catalogId, programs] of cache.byChannel) {
+    for (const p of programs) {
+      const endMs = new Date(p.endTime).getTime()
+      if (endMs <= nowMs) continue
+
+      const startMs = new Date(p.startTime).getTime()
+      const isLive = startMs <= nowMs && endMs > nowMs
+      const titleNorm = normalizeText(p.title)
+
+      let matchWeight: number
+      if (titleNorm === q) {
+        matchWeight = 0
+      } else if (titleNorm.startsWith(q)) {
+        matchWeight = 1
+      } else if (titleNorm.includes(q)) {
+        matchWeight = 2
+      } else {
+        continue
+      }
+
+      matches.push({ catalogId, title: p.title, startTime: p.startTime, endTime: p.endTime, isLive, matchWeight })
+    }
+  }
+
+  return matches
 }
 
 export function setEpgCacheForTests(cache: EpgCache | null): void {
