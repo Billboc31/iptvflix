@@ -1,119 +1,69 @@
-I have all the information needed. Here is the structured review.
+Now I have everything needed to write the final review.
 
 ---
 
-# PR Review — T135: Android TV Live Channel Selector Overlay
+# PR Review — T135: Android TV Live Channel Selector Overlay (Retry)
 
-## Summary
+## Résumé
 
-The implementation covers the full scope of the ticket: a persistent left-side channel selector overlay, in-place channel switching, correct focus management, EPG display, BACK/RIGHT close hierarchy, and ViewModel + unit tests. The VOD player controls are untouched. No regressions were introduced.
+This is a re-review after the coder addressed three issues raised in the first review. All blocking and minor fixes have been correctly applied. The core feature remains correct and complete.
 
 ---
 
-## Acceptance Criteria Coverage
+## Vérifications effectuées
 
-| Criterion | Status | Notes |
+- Read all nine created/modified source files in full
+- Verified each fix against the actual file content (not just the implementation summary)
+- Re-checked architecture, focus management, auto-hide guard, and overlay lifecycle
+
+---
+
+## Fix Verification
+
+### Fix 1 (Medium — Error state reachable) ✅
+
+`ChannelRepository.kt` line 24 adds `allChannelsOrThrow()` that delegates directly to `api.getChannels()` with no `runCatching` wrapper, so exceptions propagate. `LiveChannelSelectorViewModel.load()` calls `repo.allChannelsOrThrow()` — the `runCatching` fold in the ViewModel now correctly reaches `onFailure` on network failure. All four tests in `LiveChannelSelectorViewModelTest` mock `allChannelsOrThrow()`, so they are now aligned with the production path.
+
+### Fix 2 (Minor — Empty list message) ✅
+
+`LiveChannelSelectorOverlay.kt` lines 109–120: when `state.channels.isEmpty()`, a `Box` with "Aucune chaîne disponible" is shown. Critically, `rememberTvLazyListState()`, `remember(...)`, and `LaunchedEffect(currentChannelId)` are all called unconditionally before the `if/else` — Compose composition rules are preserved.
+
+### Fix 3 (Minor — OK-press guard) ✅
+
+`PlayerScreen.kt` lines 398–404: `onChannelSelected` checks `if (loadingChannelId == null)` before dispatching, preventing d-pad repeat from triggering redundant loads while a switch is in-flight.
+
+---
+
+## Points validés
+
+| Point | Status | Notes |
 |---|---|---|
-| DPAD_LEFT opens overlay during Live playback | ✅ | Fires only when `mediaType == "channel"` and chrome is hidden (correct: no conflict with VOD seek) |
-| Overlay shows logo/name/EPG | ✅ | Initials fallback, graceful EPG-absent rendering |
-| DPAD_UP/DOWN with orange focus | ✅ | `TvLazyColumn` + `TvColors.LiveTvAccent` focus background |
-| OK switches channel, overlay stays open | ✅ | `onChannelSelected` does not set `isChannelSelectorOpen = false` |
-| Focus remains deterministic after switch | ✅ | `currentChannelId` updated immediately; `requestInitialFocus` propagated via index match |
-| Current channel visually identified | ✅ | Orange tinted background + `▶` glyph on `isCurrentlyPlaying` row |
-| BACK closes overlay first | ✅ | Back hierarchy at PlayerScreen lines 251–273 checks overlay before panel/chrome/exit |
-| RIGHT closes overlay | ✅ | Lines 280–284 |
-| EPG/no-EPG both render | ✅ | `if (channel.epg?.now != null)` guard, no placeholder crash |
-| No ChannelSource duplicates | ✅ | Backend-delegated, per plan; no client-side dedup required |
-| Channel switch uses failover path | ✅ | `switchChannel → load → PlaybackResolver` — identical path to all other playback |
-| Loading state during switch | ✅ | `loadingChannelId` shows per-row spinner; cleared on `Playing` or `Error` |
-| Tests | ✅ / partial | See below |
-| VOD controls not regressed | ✅ | DPAD_LEFT only opens overlay for `mediaType == "channel"`; VOD seek path unchanged |
+| Error state reachable in production | ✅ | `allChannelsOrThrow()` propagates; `runCatching` fold now reaches `Error` |
+| Empty-list message displayed | ✅ | "Aucune chaîne disponible" shown; Compose rules respected |
+| OK-press guard | ✅ | `loadingChannelId == null` guard prevents repeated switches |
+| Overlay stays open after channel switch | ✅ | `command` prop comes from `commandVm.currentCommand()`, not from `vm.switchChannel()` — `LaunchedEffect(command?.id)` does not fire during in-place switches |
+| Auto-hide disabled while overlay is open | ✅ | `isChannelSelectorOpen` in LaunchedEffect keys (line 202); early return guard at lines 212 and 215 |
+| `loadingChannelId` cleared on state change | ✅ | Cleared on `Playing` or `Error` (lines 185–187) |
+| Focus scrolls to current channel on switch | ✅ | `LaunchedEffect(currentChannelId)` triggers `listState.scrollToItem(currentIndex)` |
+| AppNavGraph `LiveTvHome` wiring | ✅ | Correct `PlaybackCommand` shape (`mediaType = "channel"`), correct screen transitions |
+| VOD controls not regressed | ✅ | DPAD_LEFT overlay path is gated on `mediaType == "channel"` AND `isChannelSelectorOpen == false` |
 
 ---
 
-## Issues
+## Problèmes détectés
 
-### Medium — `LiveChannelSelectorState.Error` is unreachable in production
-
-**File:** `livetv/ChannelRepository.kt` + `livetv/LiveChannelSelectorViewModel.kt`
-
-`ChannelRepository.allChannels()` wraps `api.getChannels()` in `runCatching` and returns `emptyList()` on failure — it never throws. The `runCatching` in `LiveChannelSelectorViewModel.load()` therefore always sees a success result. The `Error` state can never be set at runtime.
-
-Consequence: when the channel list fails to load (e.g., network outage), the overlay shows the "Chaînes" header with an empty `TvLazyColumn` and no explanatory message. The ticket requires failure to be handled gracefully; an unexplained empty panel is not graceful.
-
-The `LiveChannelSelectorViewModelTest` test `Repository failure surfaces as Error` mocks the repository to throw directly, which bypasses this swallowing — so the test passes but validates a code path that production code cannot reach.
-
-**Fix options (pick one):**
-```kotlin
-// Option A: propagate from ChannelRepository
-suspend fun allChannels(): List<ChannelResponse> = api.getChannels()
-// LiveChannelSelectorViewModel's runCatching then works as designed.
-
-// Option B: targeted helper that propagates, leaving existing callers unchanged
-suspend fun allChannelsOrThrow(): List<ChannelResponse> = api.getChannels()
-// LiveChannelSelectorViewModel calls allChannelsOrThrow() instead.
-```
-
-Note: the same pattern exists in `LiveTvHomeViewModel` from T134, but `LiveTvHomeViewModel` shows an error screen — so fixing it there too would be worthwhile.
+None. All issues from the previous review are resolved.
 
 ---
 
-### Minor — Empty Ready state has no empty-list message in overlay
+## Risques éventuels
 
-**File:** `livetv/LiveChannelSelectorOverlay.kt` (line 109–124)
-
-When `state is LiveChannelSelectorState.Ready` but `channels.isEmpty()`, the `TvLazyColumn` renders with no items and no message. Depending on how Issue 1 is resolved (if error propagates, this can only happen when the backend returns zero channels), adding a fallback message is a small robustness improvement:
-
-```kotlin
-if (state.channels.isEmpty()) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Aucune chaîne disponible", color = TvColors.TextMuted, fontSize = 13.sp)
-    }
-} else {
-    TvLazyColumn(…) { … }
-}
-```
+**`ModeSwitchTest.kt` still tests trivial lambdas** (unchanged from prior review observation). The tests pass by construction — they assign string constants via lambdas and immediately assert on them. This provides zero coverage of real navigation logic. It is harmless and was already flagged as a non-blocking observation; no action required here, but it should not be mistaken for meaningful test coverage of the `AppNavGraph` transitions.
 
 ---
 
-### Minor — No OK-press guard in channel selector (d-pad repeat)
+## Décision
 
-The ticket explicitly requires "D-pad repeat should be handled sanely and not trigger accidental multiple OK selections."
+All three previously required fixes are correctly implemented. The feature meets every acceptance criterion in the ticket. No new issues were introduced by the fixes.
 
-`ChannelSelectorRow.Surface` uses the TV library's click dispatch. Holding ENTER could fire `onChannelSelected` multiple times in quick succession. Each call produces a new UUID command (bypassing `loadedCommandId` dedup in `PlayerViewModel.load`), triggering redundant loads. No crash, but unnecessary thrashing.
-
-A simple guard in the `onChannelSelected` callback:
-```kotlin
-onChannelSelected = { ch ->
-    if (loadingChannelId == null) {   // guard: ignore if a switch is already in-flight
-        loadingChannelId = ch.id
-        currentChannelId = ch.id
-        vm.switchChannel(ch.id, ch.name, ch.logoUrl)
-    }
-},
-```
-
----
-
-### Observation — `ModeSwitchTest` tests trivial lambdas, not real components
-
-`ModeSwitchTest` assigns string constants via lambdas and asserts on those strings. This validates no actual Kotlin/Compose/navigation logic. It passes by construction and would not catch any real regression. It is harmless but provides no coverage value.
-
----
-
-## Architecture & Scope
-
-- Scope: bounded correctly to the player + LiveTv home wiring. No changes outside the declared plan perimeter.
-- `PlayerOverlayStack` (pre-T134): channel selector is correctly mounted in `chromeContent` (layer 4), above video, status, and action overlays.
-- The `LiveChannelSelectorViewModel` is scoped to `PlayerScreen` via `viewModel()`, and the channel list is fetched once per player session (not per switch). Cache invalidation is tied to screen lifecycle — correct.
-- `formatEpgTime` handles both ISO 8601 (`"2026-08-27T18:00:00Z"` → `"18:00"`) and plain time strings gracefully.
-- `LaunchedEffect(requestInitialFocus)` pattern for focus is consistent with the existing `EpisodeRow` / `ChannelCard` / `CheckOption` pattern throughout the codebase.
-- `isChannelSelectorOpen` is included in the auto-hide `LaunchedEffect` keys, correctly preventing the chrome from auto-hiding while the overlay is open.
-
----
-
-## Verdict
-
-The core feature is correct and complete. Two of the three issues above are small enough to be addressed in a follow-up, but Issue 1 (error state unreachable + silent failure UX) directly contradicts the acceptance criterion for graceful failure and is a straightforward fix. Issue 3 (OK repeat) is a direct quote from the ticket's remote interaction requirements.
-
-IMPLEMENTATION_FIX_REQUIRED
+IMPLEMENTATION_APPROVED
