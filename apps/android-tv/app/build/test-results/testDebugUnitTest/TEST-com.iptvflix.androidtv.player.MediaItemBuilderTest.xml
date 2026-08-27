@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.iptvflix.androidtv.player.MediaItemBuilderTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-08-27T08:21:48" hostname="Mac.lan" time="0.001">
+  <properties/>
+  <testcase name="invalid DRM scheme UUID results in null scheme" classname="com.iptvflix.androidtv.player.MediaItemBuilderTest" time="0.001"/>
+  <testcase name="plain URI produces spec with no DRM" classname="com.iptvflix.androidtv.player.MediaItemBuilderTest" time="0.0"/>
+  <testcase name="descriptor with no DRM produces MediaItemSpec with null DRM fields" classname="com.iptvflix.androidtv.player.MediaItemBuilderTest" time="0.0"/>
+  <testcase name="descriptor with DRM config produces spec with scheme UUID and license URL" classname="com.iptvflix.androidtv.player.MediaItemBuilderTest" time="0.0"/>
+  <testcase name="descriptor streamUrl is preserved as spec uri" classname="com.iptvflix.androidtv.player.MediaItemBuilderTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.iptvflix.androidtv.progress.ProgressReporterTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-08-27T08:21:48" hostname="Mac.lan" time="0.134">
+  <properties/>
+  <testcase name="progress PUT is skipped while duration is unknown" classname="com.iptvflix.androidtv.progress.ProgressReporterTest" time="0.111"/>
+  <testcase name="progress PUT is called periodically while playing" classname="com.iptvflix.androidtv.progress.ProgressReporterTest" time="0.007"/>
+  <testcase name="reportNow bumps tiny progress to CW seed of 2 seconds" classname="com.iptvflix.androidtv.progress.ProgressReporterTest" time="0.003"/>
+  <testcase name="reportNow calls PUT once immediately" classname="com.iptvflix.androidtv.progress.ProgressReporterTest" time="0.002"/>
+  <testcase name="reportNow skips unreliable short duration" classname="com.iptvflix.androidtv.progress.ProgressReporterTest" time="0.003"/>
+  <testcase name="reportNow skips regressive position below resume floor" classname="com.iptvflix.androidtv.progress.ProgressReporterTest" time="0.004"/>
+  <testcase name="progress PUT uses uppercase MOVIE path" classname="com.iptvflix.androidtv.progress.ProgressReporterTest" time="0.004"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

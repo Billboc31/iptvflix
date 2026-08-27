@@ -13,12 +13,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.iptvflix.androidtv.command.CommandViewModel
 import com.iptvflix.androidtv.home.HomeScreen
+import com.iptvflix.androidtv.livetv.LiveTvHomeScreen
 import com.iptvflix.androidtv.pairing.PairingScreen
 import com.iptvflix.androidtv.player.PlayerScreen
 import com.iptvflix.androidtv.profiles.WhoIsWatchingScreen
 import com.iptvflix.androidtv.storage.SecureStorage
 
-private enum class Screen { Pairing, WhoIsWatching, Home, Player }
+private enum class Screen { Pairing, WhoIsWatching, Home, Player, LiveTvHome }
 
 private fun initialScreen(secureStorage: SecureStorage): Screen = when {
     secureStorage.getDeviceToken() == null -> Screen.Pairing
@@ -88,6 +89,7 @@ fun AppNavGraph() {
                     commandVm.playLocal(cmd)
                     currentScreen = Screen.Player.name
                 },
+                onSwitchToLiveTv = { currentScreen = Screen.LiveTvHome.name },
             )
         }
         Screen.Player -> PlayerScreen(
@@ -96,6 +98,9 @@ fun AppNavGraph() {
                 commandVm.clearCommand()
                 currentScreen = Screen.Home.name
             },
+        )
+        Screen.LiveTvHome -> LiveTvHomeScreen(
+            onBack = { currentScreen = Screen.Home.name },
         )
     }
 }

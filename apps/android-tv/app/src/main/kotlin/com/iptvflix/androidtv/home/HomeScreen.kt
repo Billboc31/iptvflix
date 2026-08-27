@@ -68,6 +68,7 @@ fun HomeScreen(
     onRevoked: () -> Unit,
     onChangeProfile: () -> Unit = {},
     onResumeLastPlayed: (PlaybackCommand) -> Unit = {},
+    onSwitchToLiveTv: () -> Unit = {},
     vm: HomeViewModel = viewModel(),
 ) {
     val state by vm.uiState.collectAsState()
@@ -154,6 +155,9 @@ fun HomeScreen(
                     fontSize = 16.sp,
                 )
             }
+
+            Spacer(Modifier.height(24.dp))
+            ModeToggleBar(onSwitchToLiveTv = onSwitchToLiveTv)
 
             if (state.continueWatching.isNotEmpty()) {
                 Spacer(Modifier.height(36.dp))
@@ -412,6 +416,62 @@ private fun ContinuePosterCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ModeToggleBar(onSwitchToLiveTv: () -> Unit) {
+    Row(
+        modifier = Modifier.padding(horizontal = 56.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        ModeToggleButton(label = "VOD", accent = TvColors.Accent, selected = true, onClick = {})
+        ModeToggleButton(label = "TV", accent = TvColors.LiveTvAccent, selected = false, onClick = onSwitchToLiveTv)
+    }
+}
+
+@Composable
+private fun ModeToggleButton(
+    label: String,
+    accent: Color,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+
+    Surface(
+        onClick = onClick,
+        interactionSource = interactionSource,
+        modifier = Modifier.pointerInput(onClick) { detectTapGestures(onTap = { onClick() }) },
+        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(20.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = if (selected) accent.copy(alpha = 0.2f) else TvColors.Surface,
+            focusedContainerColor = accent.copy(alpha = 0.3f),
+            pressedContainerColor = accent.copy(alpha = 0.3f),
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(
+                border = BorderStroke(
+                    width = if (selected) 2.dp else 1.dp,
+                    color = if (selected) accent else Color(0xFF333333),
+                ),
+                shape = RoundedCornerShape(20.dp),
+            ),
+            focusedBorder = Border(
+                border = BorderStroke(2.dp, accent),
+                shape = RoundedCornerShape(20.dp),
+            ),
+        ),
+    ) {
+        Text(
+            label,
+            color = if (selected || focused) accent else TvColors.TextMuted,
+            fontSize = 16.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
+        )
     }
 }
 

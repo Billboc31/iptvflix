@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.iptvflix.androidtv.livetv.LiveTvHomeViewModelTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-08-27T08:21:47" hostname="Mac.lan" time="0.147">
+  <properties/>
+  <testcase name="retry after error resolves to Ready on second attempt" classname="com.iptvflix.androidtv.livetv.LiveTvHomeViewModelTest" time="0.128"/>
+  <testcase name="all three sections resolve to Ready with correct data" classname="com.iptvflix.androidtv.livetv.LiveTvHomeViewModelTest" time="0.005"/>
+  <testcase name="failed section treated as empty does not block other sections" classname="com.iptvflix.androidtv.livetv.LiveTvHomeViewModelTest" time="0.005"/>
+  <testcase name="all three sections empty resolves to Ready with empty lists, not Error" classname="com.iptvflix.androidtv.livetv.LiveTvHomeViewModelTest" time="0.004"/>
+  <testcase name="unexpected exception from repository results in Error state" classname="com.iptvflix.androidtv.livetv.LiveTvHomeViewModelTest" time="0.005"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

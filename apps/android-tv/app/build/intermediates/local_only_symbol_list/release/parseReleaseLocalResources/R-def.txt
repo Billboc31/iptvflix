@@ -1,0 +1,14 @@
+R_DEF: Internal format may change without notice
+local
+drawable avatar_01
+drawable avatar_02
+drawable avatar_03
+drawable avatar_04
+drawable avatar_05
+drawable avatar_06
+drawable avatar_07
+drawable avatar_08
+id player_view
+layout player_view
+string app_name
+xml network_security_config

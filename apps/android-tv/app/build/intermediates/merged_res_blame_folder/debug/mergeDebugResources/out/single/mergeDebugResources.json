@@ -1,0 +1,42 @@
+[
+    {
+        "merged": "com.iptvflix.androidtv.app-debug-51:/drawable_avatar_06.xml.flat",
+        "source": "com.iptvflix.androidtv.app-main-53:/drawable/avatar_06.xml"
+    },
+    {
+        "merged": "com.iptvflix.androidtv.app-debug-51:/drawable_avatar_02.xml.flat",
+        "source": "com.iptvflix.androidtv.app-main-53:/drawable/avatar_02.xml"
+    },
+    {
+        "merged": "com.iptvflix.androidtv.app-debug-51:/drawable_avatar_05.xml.flat",
+        "source": "com.iptvflix.androidtv.app-main-53:/drawable/avatar_05.xml"
+    },
+    {
+        "merged": "com.iptvflix.androidtv.app-debug-51:/drawable_avatar_03.xml.flat",
+        "source": "com.iptvflix.androidtv.app-main-53:/drawable/avatar_03.xml"
+    },
+    {
+        "merged": "com.iptvflix.androidtv.app-debug-51:/drawable_avatar_08.xml.flat",
+        "source": "com.iptvflix.androidtv.app-main-53:/drawable/avatar_08.xml"
+    },
+    {
+        "merged": "com.iptvflix.androidtv.app-debug-51:/xml_network_security_config.xml.flat",
+        "source": "com.iptvflix.androidtv.app-main-53:/xml/network_security_config.xml"
+    },
+    {
+        "merged": "com.iptvflix.androidtv.app-debug-51:/drawable_avatar_07.xml.flat",
+        "source": "com.iptvflix.androidtv.app-main-53:/drawable/avatar_07.xml"
+    },
+    {
+        "merged": "com.iptvflix.androidtv.app-debug-51:/layout_player_view.xml.flat",
+        "source": "com.iptvflix.androidtv.app-main-53:/layout/player_view.xml"
+    },
+    {
+        "merged": "com.iptvflix.androidtv.app-debug-51:/drawable_avatar_01.xml.flat",
+        "source": "com.iptvflix.androidtv.app-main-53:/drawable/avatar_01.xml"
+    },
+    {
+        "merged": "com.iptvflix.androidtv.app-debug-51:/drawable_avatar_04.xml.flat",
+        "source": "com.iptvflix.androidtv.app-main-53:/drawable/avatar_04.xml"
+    }
+]

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.iptvflix.androidtv.command.CommandParserTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-08-27T08:05:39" hostname="Mac.lan" time="0.035">
+  <properties/>
+  <testcase name="unknown extra fields are ignored" classname="com.iptvflix.androidtv.command.CommandParserTest" time="0.033"/>
+  <testcase name="valid episode command with resume position is parsed correctly" classname="com.iptvflix.androidtv.command.CommandParserTest" time="0.0"/>
+  <testcase name="blank id returns null" classname="com.iptvflix.androidtv.command.CommandParserTest" time="0.001"/>
+  <testcase name="malformed JSON returns null" classname="com.iptvflix.androidtv.command.CommandParserTest" time="0.0"/>
+  <testcase name="missing id returns null" classname="com.iptvflix.androidtv.command.CommandParserTest" time="0.0"/>
+  <testcase name="valid movie command is parsed correctly" classname="com.iptvflix.androidtv.command.CommandParserTest" time="0.001"/>
+  <testcase name="missing mediaId returns null" classname="com.iptvflix.androidtv.command.CommandParserTest" time="0.0"/>
+  <testcase name="empty string returns null" classname="com.iptvflix.androidtv.command.CommandParserTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
