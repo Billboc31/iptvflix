@@ -1,0 +1,14 @@
+[2026-08-27T08:29:46Z] auto-run start: state=INIT
+[2026-08-27T08:29:46Z] auto-run: running step=planner
+[2026-08-27T08:29:53Z] auto-run: pre-planner rebase onto integration ok
+[2026-08-27T08:29:53Z] prompt: resolved=prompts/generic/planner.md source=generic
+[2026-08-27T08:29:53Z] prompt: generic fallback — injecting runs/T135/ticket.md
+[2026-08-27T08:29:53Z] compose: global-context=docs/ai/global-context.md
+[2026-08-27T08:29:53Z] compose: role=ai/roles/planner.md
+[2026-08-27T08:29:53Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-27T08:29:53Z] compose: skill=ai/skills/architecture-discipline.md
+[2026-08-27T08:29:53Z] compose: skill=ai/skills/documentation.md
+[2026-08-27T08:29:53Z] compose: task (canonical prompt)
+[2026-08-27T08:29:53Z] snapshot: runtime-prompt=runs/T135/prompts/planner-attempt-1.md
+[2026-08-27T08:35:52Z] compose: preferring on-disk runs/T135/plan.md over chatty stdout (agent Write beat meta-report)
+[2026-08-27T08:35:52Z] auto-run: step=planner done rc=0
