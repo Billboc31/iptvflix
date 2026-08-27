@@ -1,6 +1,8 @@
 package com.iptvflix.androidtv
 
 import android.app.Application
+import com.iptvflix.androidtv.livetv.ChannelApi
+import com.iptvflix.androidtv.livetv.ChannelRepository
 import com.iptvflix.androidtv.network.ApiClient
 import com.iptvflix.androidtv.network.ProfileApiService
 import com.iptvflix.androidtv.network.SseClient
@@ -13,6 +15,8 @@ class App : Application() {
     val sseClient: SseClient by lazy { SseClient(apiClient) }
     val profileApiService: ProfileApiService by lazy { ProfileApiService(apiClient) }
     val lastAvailabilityStore: LastAvailabilityStore by lazy { LastAvailabilityStore(this) }
+    val channelApi: ChannelApi by lazy { ChannelApi(apiClient) }
+    val channelRepository: ChannelRepository by lazy { ChannelRepository(channelApi) }
 
     override fun onCreate() {
         super.onCreate()

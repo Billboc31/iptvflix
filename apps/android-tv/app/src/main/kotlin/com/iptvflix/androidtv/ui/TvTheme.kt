@@ -12,6 +12,7 @@ object TvColors {
     val Surface = Color(0xFF161622)
     val SurfaceFocused = Color(0xFF252538)
     val Accent = Color(0xFFE50914)
+    val LiveTvAccent = Color(0xFFFF8C00)
     val TextPrimary = Color(0xFFF5F5F5)
     val TextSecondary = Color(0xFFAAAAAA)
     val TextMuted = Color(0xFF777777)
