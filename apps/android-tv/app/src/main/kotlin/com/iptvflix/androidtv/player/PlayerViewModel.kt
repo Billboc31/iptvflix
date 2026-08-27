@@ -540,6 +540,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         playEpisode(episode)
     }
 
+    fun switchChannel(channelId: String, title: String?, logoUrl: String?) {
+        load(buildChannelSwitchCommand(channelId, title, logoUrl))
+    }
+
     fun switchVariant(variantId: String) {
         val cmd = currentCommand ?: return
         if (variantId == _selectedVariantId.value) {
@@ -841,6 +845,19 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         super.onCleared()
     }
 }
+
+internal fun buildChannelSwitchCommand(
+    channelId: String,
+    title: String?,
+    logoUrl: String?,
+): PlaybackCommand = PlaybackCommand(
+    id = "ch-${UUID.randomUUID()}",
+    mediaType = "channel",
+    mediaId = channelId,
+    startPositionMs = 0L,
+    title = title,
+    posterUrl = logoUrl,
+)
 
 private fun formatEpisodeLabel(seasonNumber: Int?, episodeNumber: Int?, title: String?): String? {
     if (seasonNumber == null || episodeNumber == null) {

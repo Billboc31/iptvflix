@@ -12,12 +12,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.iptvflix.androidtv.command.CommandViewModel
+import com.iptvflix.androidtv.command.PlaybackCommand
 import com.iptvflix.androidtv.home.HomeScreen
 import com.iptvflix.androidtv.livetv.LiveTvHomeScreen
 import com.iptvflix.androidtv.pairing.PairingScreen
 import com.iptvflix.androidtv.player.PlayerScreen
 import com.iptvflix.androidtv.profiles.WhoIsWatchingScreen
 import com.iptvflix.androidtv.storage.SecureStorage
+import java.util.UUID
 
 private enum class Screen { Pairing, WhoIsWatching, Home, Player, LiveTvHome }
 
@@ -101,6 +103,19 @@ fun AppNavGraph() {
         )
         Screen.LiveTvHome -> LiveTvHomeScreen(
             onBack = { currentScreen = Screen.Home.name },
+            onChannelSelected = { ch ->
+                commandVm.playLocal(
+                    PlaybackCommand(
+                        id = "ch-${UUID.randomUUID()}",
+                        mediaType = "channel",
+                        mediaId = ch.id,
+                        title = ch.name,
+                        posterUrl = ch.logoUrl,
+                        startPositionMs = 0L,
+                    ),
+                )
+                currentScreen = Screen.Player.name
+            },
         )
     }
 }

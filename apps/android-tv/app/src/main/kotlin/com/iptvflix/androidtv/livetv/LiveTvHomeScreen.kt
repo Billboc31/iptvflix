@@ -60,6 +60,7 @@ fun LiveTvHomeScreen(
         factory = LiveTvHomeViewModel.factory(LocalContext.current.applicationContext as App),
     ),
     onBack: () -> Unit,
+    onChannelSelected: (ChannelResponse) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
 
@@ -75,7 +76,7 @@ fun LiveTvHomeScreen(
             is LiveTvHomeState.Error -> ErrorContent(message = s.message, onRetry = { viewModel.retry() })
             is LiveTvHomeState.Ready -> {
                 val isEmpty = s.recent.isEmpty() && s.favorites.isEmpty() && s.all.isEmpty()
-                if (isEmpty) EmptyContent() else ReadyContent(state = s)
+                if (isEmpty) EmptyContent() else ReadyContent(state = s, onChannelSelected = onChannelSelected)
             }
         }
     }
@@ -147,7 +148,10 @@ private fun EmptyContent() {
 }
 
 @Composable
-private fun ReadyContent(state: LiveTvHomeState.Ready) {
+private fun ReadyContent(
+    state: LiveTvHomeState.Ready,
+    onChannelSelected: (ChannelResponse) -> Unit,
+) {
     // Determine which channel gets initial D-pad focus (first card in first non-empty section).
     val focusTargetId = when {
         state.recent.isNotEmpty() -> state.recent.first().id
@@ -183,6 +187,7 @@ private fun ReadyContent(state: LiveTvHomeState.Ready) {
                         ChannelCard(
                             channel = channel,
                             requestInitialFocus = channel.id == focusTargetId,
+                            onSelected = { onChannelSelected(channel) },
                         )
                     }
                 }
@@ -202,6 +207,7 @@ private fun ReadyContent(state: LiveTvHomeState.Ready) {
                         ChannelCard(
                             channel = channel,
                             requestInitialFocus = channel.id == focusTargetId,
+                            onSelected = { onChannelSelected(channel) },
                         )
                     }
                 }
@@ -218,6 +224,7 @@ private fun ReadyContent(state: LiveTvHomeState.Ready) {
                 ChannelListRow(
                     channel = channel,
                     requestInitialFocus = channel.id == focusTargetId,
+                    onSelected = { onChannelSelected(channel) },
                 )
                 Spacer(Modifier.height(8.dp))
             }
@@ -240,6 +247,7 @@ private fun SectionTitle(title: String) {
 private fun ChannelCard(
     channel: ChannelResponse,
     requestInitialFocus: Boolean = false,
+    onSelected: () -> Unit = {},
 ) {
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(requestInitialFocus) {
@@ -247,7 +255,7 @@ private fun ChannelCard(
     }
 
     Surface(
-        onClick = { /* channel playback deferred to follow-up ticket */ },
+        onClick = onSelected,
         modifier = Modifier
             .width(180.dp)
             .focusRequester(focusRequester),
@@ -334,6 +342,7 @@ private fun ChannelCard(
 private fun ChannelListRow(
     channel: ChannelResponse,
     requestInitialFocus: Boolean = false,
+    onSelected: () -> Unit = {},
 ) {
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(requestInitialFocus) {
@@ -341,7 +350,7 @@ private fun ChannelListRow(
     }
 
     Surface(
-        onClick = { /* channel playback deferred to follow-up ticket */ },
+        onClick = onSelected,
         modifier = Modifier
             .padding(horizontal = 56.dp)
             .focusRequester(focusRequester),
