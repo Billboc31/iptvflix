@@ -1,7 +1,7 @@
 {
   "ticket_id": "T135",
-  "state": "IMPLEMENTATION_FIX_REQUIRED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T135-build-android-tv-live-channel-selector-overlay-wit",
   "issue_number": 287,
-  "updated_at": "2026-08-27T09:02:36Z"
+  "updated_at": "2026-08-27T09:05:58Z"
 }

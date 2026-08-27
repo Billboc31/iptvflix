@@ -396,9 +396,11 @@ fun PlayerScreen(
                         currentChannelId = currentChannelId,
                         loadingChannelId = loadingChannelId,
                         onChannelSelected = { ch ->
-                            loadingChannelId = ch.id
-                            currentChannelId = ch.id
-                            vm.switchChannel(ch.id, ch.name, ch.logoUrl)
+                            if (loadingChannelId == null) {
+                                loadingChannelId = ch.id
+                                currentChannelId = ch.id
+                                vm.switchChannel(ch.id, ch.name, ch.logoUrl)
+                            }
                         },
                         onClose = { isChannelSelectorOpen = false },
                         modifier = Modifier.align(Alignment.TopStart),

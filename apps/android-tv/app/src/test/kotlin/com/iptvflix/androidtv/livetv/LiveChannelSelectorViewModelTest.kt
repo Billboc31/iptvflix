@@ -42,7 +42,7 @@ class LiveChannelSelectorViewModelTest {
     @Test
     fun `Ready state populated on successful load`() = runTest {
         val repo = mockk<ChannelRepository>()
-        coEvery { repo.allChannels() } returns listOf(CHANNEL_NO_EPG, CHANNEL_WITH_EPG)
+        coEvery { repo.allChannelsOrThrow() } returns listOf(CHANNEL_NO_EPG, CHANNEL_WITH_EPG)
 
         val vm = LiveChannelSelectorViewModel(repo)
         val state = vm.state.value
@@ -57,7 +57,7 @@ class LiveChannelSelectorViewModelTest {
     @Test
     fun `Empty channel list produces Ready with empty list, not Error`() = runTest {
         val repo = mockk<ChannelRepository>()
-        coEvery { repo.allChannels() } returns emptyList()
+        coEvery { repo.allChannelsOrThrow() } returns emptyList()
 
         val vm = LiveChannelSelectorViewModel(repo)
         val state = vm.state.value
@@ -70,7 +70,7 @@ class LiveChannelSelectorViewModelTest {
     @Test
     fun `Repository failure surfaces as Error`() = runTest {
         val repo = mockk<ChannelRepository>()
-        coEvery { repo.allChannels() } throws RuntimeException("Network timeout")
+        coEvery { repo.allChannelsOrThrow() } throws RuntimeException("Network timeout")
 
         val vm = LiveChannelSelectorViewModel(repo)
         val state = vm.state.value
@@ -82,7 +82,7 @@ class LiveChannelSelectorViewModelTest {
     @Test
     fun `Channels with and without EPG coexist in the same Ready list`() = runTest {
         val repo = mockk<ChannelRepository>()
-        coEvery { repo.allChannels() } returns listOf(CHANNEL_NO_EPG, CHANNEL_WITH_EPG)
+        coEvery { repo.allChannelsOrThrow() } returns listOf(CHANNEL_NO_EPG, CHANNEL_WITH_EPG)
 
         val vm = LiveChannelSelectorViewModel(repo)
         val state = vm.state.value

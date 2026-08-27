@@ -30,7 +30,7 @@ class LiveChannelSelectorViewModel(private val repo: ChannelRepository) : ViewMo
         viewModelScope.launch {
             _state.value = LiveChannelSelectorState.Loading
             runCatching {
-                repo.allChannels()
+                repo.allChannelsOrThrow()
             }.fold(
                 onSuccess = { channels ->
                     _state.value = LiveChannelSelectorState.Ready(channels)

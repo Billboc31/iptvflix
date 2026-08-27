@@ -106,20 +106,34 @@ fun LiveChannelSelectorOverlay(
                         runCatching { listState.scrollToItem(currentIndex) }
                     }
                 }
-                TvLazyColumn(
-                    state = listState,
-                    contentPadding = PaddingValues(bottom = 16.dp),
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    itemsIndexed(state.channels, key = { _, ch -> ch.id }) { index, channel ->
-                        ChannelSelectorRow(
-                            channel = channel,
-                            isCurrentlyPlaying = channel.id == currentChannelId,
-                            isLoading = channel.id == loadingChannelId,
-                            requestInitialFocus = index == currentIndex,
-                            onSelect = { onChannelSelected(channel) },
+                if (state.channels.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "Aucune chaîne disponible",
+                            color = TvColors.TextMuted,
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center,
                         )
-                        Spacer(Modifier.height(2.dp))
+                    }
+                } else {
+                    TvLazyColumn(
+                        state = listState,
+                        contentPadding = PaddingValues(bottom = 16.dp),
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        itemsIndexed(state.channels, key = { _, ch -> ch.id }) { index, channel ->
+                            ChannelSelectorRow(
+                                channel = channel,
+                                isCurrentlyPlaying = channel.id == currentChannelId,
+                                isLoading = channel.id == loadingChannelId,
+                                requestInitialFocus = index == currentIndex,
+                                onSelect = { onChannelSelected(channel) },
+                            )
+                            Spacer(Modifier.height(2.dp))
+                        }
                     }
                 }
             }
