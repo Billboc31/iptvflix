@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.iptvflix.androidtv.livetv.LiveSearchViewModelTest" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-08-27T14:37:19" hostname="Mac.lan" time="0.046">
+  <properties/>
+  <testcase name="channel-name search without EPG still returns channels in Results" classname="com.iptvflix.androidtv.livetv.LiveSearchViewModelTest" time="0.02"/>
+  <testcase name="program query with future match only returns Results with upcoming, empty liveNow" classname="com.iptvflix.androidtv.livetv.LiveSearchViewModelTest" time="0.003"/>
+  <testcase name="single live match yields isSingleLiveNowResult true" classname="com.iptvflix.androidtv.livetv.LiveSearchViewModelTest" time="0.002"/>
+  <testcase name="onVoiceResult with same text produces same state as onQueryChanged" classname="com.iptvflix.androidtv.livetv.LiveSearchViewModelTest" time="0.002"/>
+  <testcase name="empty query stays Idle and makes no API call" classname="com.iptvflix.androidtv.livetv.LiveSearchViewModelTest" time="0.004"/>
+  <testcase name="clearQuery resets state to Idle" classname="com.iptvflix.androidtv.livetv.LiveSearchViewModelTest" time="0.002"/>
+  <testcase name="multiple live matches yields isSingleLiveNowResult false" classname="com.iptvflix.androidtv.livetv.LiveSearchViewModelTest" time="0.002"/>
+  <testcase name="after clearQuery isSingleLiveNowResult is false" classname="com.iptvflix.androidtv.livetv.LiveSearchViewModelTest" time="0.002"/>
+  <testcase name="API error results in Error state" classname="com.iptvflix.androidtv.livetv.LiveSearchViewModelTest" time="0.004"/>
+  <testcase name="channel-name query returns Results with channels, empty liveNow and upcoming" classname="com.iptvflix.androidtv.livetv.LiveSearchViewModelTest" time="0.002"/>
+  <testcase name="program query with live match returns Results with liveNow, empty upcoming" classname="com.iptvflix.androidtv.livetv.LiveSearchViewModelTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

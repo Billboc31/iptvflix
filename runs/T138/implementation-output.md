@@ -1,0 +1,1 @@
+Fix applied. Both `formatIsoTime` and `formatIsoDateShort` now use `ZonedDateTime.parse` + `withZoneSameInstant(ZoneId.systemDefault())` to convert UTC timestamps to the device's local timezone before formatting. The `runCatching`/`getOrElse` fallback preserves resilience for malformed inputs. No new dependencies — `java.time` has been available since API 26.

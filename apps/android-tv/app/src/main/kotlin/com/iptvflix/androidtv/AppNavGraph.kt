@@ -14,6 +14,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.iptvflix.androidtv.command.CommandViewModel
 import com.iptvflix.androidtv.command.PlaybackCommand
 import com.iptvflix.androidtv.home.HomeScreen
+import com.iptvflix.androidtv.livetv.LiveNowResult
+import com.iptvflix.androidtv.livetv.LiveSearchScreen
 import com.iptvflix.androidtv.livetv.LiveTvHomeScreen
 import com.iptvflix.androidtv.pairing.PairingScreen
 import com.iptvflix.androidtv.player.PlayerScreen
@@ -21,7 +23,7 @@ import com.iptvflix.androidtv.profiles.WhoIsWatchingScreen
 import com.iptvflix.androidtv.storage.SecureStorage
 import java.util.UUID
 
-private enum class Screen { Pairing, WhoIsWatching, Home, Player, LiveTvHome }
+private enum class Screen { Pairing, WhoIsWatching, Home, Player, LiveTvHome, LiveTvSearch }
 
 private fun initialScreen(secureStorage: SecureStorage): Screen = when {
     secureStorage.getDeviceToken() == null -> Screen.Pairing
@@ -111,6 +113,36 @@ fun AppNavGraph() {
                         mediaId = ch.id,
                         title = ch.name,
                         posterUrl = ch.logoUrl,
+                        startPositionMs = 0L,
+                    ),
+                )
+                currentScreen = Screen.Player.name
+            },
+            onOpenSearch = { currentScreen = Screen.LiveTvSearch.name },
+        )
+        Screen.LiveTvSearch -> LiveSearchScreen(
+            onBack = { currentScreen = Screen.LiveTvHome.name },
+            onChannelSelected = { ch ->
+                commandVm.playLocal(
+                    PlaybackCommand(
+                        id = "ch-${UUID.randomUUID()}",
+                        mediaType = "channel",
+                        mediaId = ch.channelId,
+                        title = ch.channelName,
+                        posterUrl = ch.logoUrl,
+                        startPositionMs = 0L,
+                    ),
+                )
+                currentScreen = Screen.Player.name
+            },
+            onLiveNowSelected = { result: LiveNowResult ->
+                commandVm.playLocal(
+                    PlaybackCommand(
+                        id = "ch-${UUID.randomUUID()}",
+                        mediaType = "channel",
+                        mediaId = result.channelId,
+                        title = result.channelName,
+                        posterUrl = result.logoUrl,
                         startPositionMs = 0L,
                     ),
                 )

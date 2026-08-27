@@ -22,4 +22,6 @@ class ChannelRepository(private val api: ChannelApi) {
         .getOrDefault(emptyList())
 
     suspend fun allChannelsOrThrow(): List<ChannelResponse> = api.getChannels()
+
+    suspend fun searchLiveTV(query: String): LiveSearchResponse = api.searchLiveTV(query)
 }
