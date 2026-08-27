@@ -27,8 +27,3 @@ data class ChannelResponse(
     val epg: ChannelEpg? = null,
     val isFavorite: Boolean = false,
 )
-
-@Serializable
-data class ChannelListResponse(
-    val channels: List<ChannelResponse>,
-)

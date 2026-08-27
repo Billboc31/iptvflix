@@ -1,27 +1,14 @@
-`BUILD SUCCESSFUL` — all tests pass. Here's a summary of the implementation:
+`BUILD SUCCESSFUL` — all tests pass. Here's a summary of all changes made:
 
 ---
-
-## Files created
-
-| File | Purpose |
-|---|---|
-| `livetv/ChannelModels.kt` | `ChannelResponse`, `ChannelEpg`, `EpgProgram`, `ChannelListResponse` — matches `api-contracts/channels.ts` |
-| `livetv/ChannelApi.kt` | `GET /channels?recentlyWatched=&favoritesFirst=` via existing `ApiClient` |
-| `livetv/ChannelRepository.kt` | Three suspend fns returning empty list on error (other sections never blocked) |
-| `livetv/LiveTvHomeViewModel.kt` | `sealed class LiveTvHomeState { Loading, Error, Ready }` + parallel coroutines |
-| `livetv/LiveTvHomeScreen.kt` | D-pad-navigable TV screen: spinner → orange-bordered cards in three lazy sections |
-| `test/livetv/ChannelApiParserTest.kt` | 4 JSON deserialization cases (full, no EPG, no logo, minimal) |
-| `test/livetv/LiveTvHomeViewModelTest.kt` | State transitions: all data, all empty, one section failed |
-| `test/livetv/ModeSwitchTest.kt` | Pure state-machine: VOD→TV, TV→VOD, Player only reachable from Home |
 
 ## Files modified
 
 | File | Change |
 |---|---|
-| `ui/TvTheme.kt` | Added `val LiveTvAccent = Color(0xFFFF8C00)` alongside existing red `Accent` |
-| `App.kt` | Wired `channelApi` and `channelRepository` lazy singletons |
-| `AppNavGraph.kt` | Added `Screen.LiveTvHome` enum value + navigation case; passes `onSwitchToLiveTv` to `HomeScreen` |
-| `home/HomeScreen.kt` | Added `onSwitchToLiveTv` parameter + `ModeToggleBar` (VOD/TV pill buttons) above the content |
+| `livetv/LiveTvHomeViewModel.kt` | Changed from `AndroidViewModel` to `ViewModel`; `ChannelRepository` now injected as constructor parameter; `supervisorScope` added around parallel async calls (also fixes a production bug where `async` child failures bypassed the `try/catch`); added `companion object Factory`. |
+| `livetv/LiveTvHomeScreen.kt` | Default `viewModel()` now passes `LiveTvHomeViewModel.factory(...)` so the factory is used; `pointerInput(onRetry)` → `pointerInput(Unit)` to avoid recreating the gesture handler on every recomposition. |
+| `livetv/ChannelModels.kt` | Removed dead `ChannelListResponse` class. |
+| `test/livetv/LiveTvHomeViewModelTest.kt` | Fully rewritten — now instantiates the real `LiveTvHomeViewModel` with a MockK-mocked `ChannelRepository`, sets `UnconfinedTestDispatcher` as Main in `@Before`/`@After`, and tests 5 real state-machine transitions: all-data Ready, all-empty Ready, one-section-empty Ready, unexpected-exception Error, and retry-after-error. |
 
-**One deviation from plan:** `CircularProgressIndicator` from `material3` was not on the compile classpath (no explicit `material3` dependency), so the loading spinner was implemented with `Canvas` + `rememberInfiniteTransition` — functionally equivalent, using already-available Foundation APIs.
+**Bonus production fix**: the `supervisorScope` change also corrects a pre-existing bug where a catastrophic exception from any `async` child (e.g., a JSON parse failure that escaped the repository) would cancel sibling parallel requests and propagate unhandled through the parent job instead of being caught cleanly.

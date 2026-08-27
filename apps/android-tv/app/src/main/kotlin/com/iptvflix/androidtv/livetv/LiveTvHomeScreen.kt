@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.foundation.lazy.list.TvLazyColumn
+import com.iptvflix.androidtv.App
 import androidx.tv.foundation.lazy.list.TvLazyRow
 import androidx.tv.foundation.lazy.list.items
 import androidx.tv.material3.Border
@@ -55,7 +56,9 @@ import com.iptvflix.androidtv.ui.TvColors
 
 @Composable
 fun LiveTvHomeScreen(
-    viewModel: LiveTvHomeViewModel = viewModel(),
+    viewModel: LiveTvHomeViewModel = viewModel(
+        factory = LiveTvHomeViewModel.factory(LocalContext.current.applicationContext as App),
+    ),
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
@@ -116,7 +119,7 @@ private fun ErrorContent(message: String, onRetry: () -> Unit) {
             onClick = onRetry,
             modifier = Modifier
                 .focusRequester(focusRequester)
-                .pointerInput(onRetry) { detectTapGestures(onTap = { onRetry() }) },
+                .pointerInput(Unit) { detectTapGestures(onTap = { onRetry() }) },
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
             colors = ClickableSurfaceDefaults.colors(
                 containerColor = TvColors.LiveTvAccent,

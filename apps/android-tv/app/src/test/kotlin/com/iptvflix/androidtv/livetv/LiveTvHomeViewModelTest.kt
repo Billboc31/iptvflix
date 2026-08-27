@@ -1,9 +1,17 @@
 package com.iptvflix.androidtv.livetv
 
+import io.mockk.coEvery
+import io.mockk.mockk
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 private val CHANNEL_A = ChannelResponse(id = "ch-a", name = "Channel A", categories = emptyList())
@@ -14,32 +22,31 @@ private val CHANNEL_B = ChannelResponse(
     isFavorite = true,
 )
 
-/**
- * Tests for LiveTvHomeState transitions, exercising the same suspend logic used by the ViewModel.
- * Error handling strategy: per-section network errors are treated as empty lists at the repository
- * level, so the overall state always reaches Ready (never Error) unless something catastrophic
- * throws an uncaught exception after the await calls.
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 class LiveTvHomeViewModelTest {
 
-    private suspend fun simulateLoad(
-        recent: List<ChannelResponse>,
-        favorites: List<ChannelResponse>,
-        all: List<ChannelResponse>,
-    ): LiveTvHomeState = LiveTvHomeState.Ready(
-        recent = recent,
-        favorites = favorites,
-        all = all,
-    )
+    private val testDispatcher = UnconfinedTestDispatcher()
+
+    @Before
+    fun setUp() {
+        Dispatchers.setMain(testDispatcher)
+    }
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
 
     @Test
     fun `all three sections resolve to Ready with correct data`() = runTest {
-        val state = simulateLoad(
-            recent = listOf(CHANNEL_A),
-            favorites = listOf(CHANNEL_B),
-            all = listOf(CHANNEL_A, CHANNEL_B),
-        )
+        val repo = mockk<ChannelRepository>()
+        coEvery { repo.recentChannels() } returns listOf(CHANNEL_A)
+        coEvery { repo.favoriteChannels() } returns listOf(CHANNEL_B)
+        coEvery { repo.allChannels() } returns listOf(CHANNEL_A, CHANNEL_B)
+
+        val vm = LiveTvHomeViewModel(repo)
+        val state = vm.state.value
+
         assertTrue(state is LiveTvHomeState.Ready)
         val ready = state as LiveTvHomeState.Ready
         assertEquals(1, ready.recent.size)
@@ -51,11 +58,14 @@ class LiveTvHomeViewModelTest {
 
     @Test
     fun `all three sections empty resolves to Ready with empty lists, not Error`() = runTest {
-        val state = simulateLoad(
-            recent = emptyList(),
-            favorites = emptyList(),
-            all = emptyList(),
-        )
+        val repo = mockk<ChannelRepository>()
+        coEvery { repo.recentChannels() } returns emptyList()
+        coEvery { repo.favoriteChannels() } returns emptyList()
+        coEvery { repo.allChannels() } returns emptyList()
+
+        val vm = LiveTvHomeViewModel(repo)
+        val state = vm.state.value
+
         assertTrue(state is LiveTvHomeState.Ready)
         val ready = state as LiveTvHomeState.Ready
         assertTrue(ready.recent.isEmpty())
@@ -64,14 +74,15 @@ class LiveTvHomeViewModelTest {
     }
 
     @Test
-    fun `network error in one section does not block others (treated as empty)`() = runTest {
-        // Repository swallows per-section network errors and returns emptyList().
-        // Other sections that succeed still appear in Ready state.
-        val state = simulateLoad(
-            recent = emptyList(),    // simulates a failed recent-channels call
-            favorites = listOf(CHANNEL_B),
-            all = listOf(CHANNEL_A, CHANNEL_B),
-        )
+    fun `failed section treated as empty does not block other sections`() = runTest {
+        val repo = mockk<ChannelRepository>()
+        coEvery { repo.recentChannels() } returns emptyList()
+        coEvery { repo.favoriteChannels() } returns listOf(CHANNEL_B)
+        coEvery { repo.allChannels() } returns listOf(CHANNEL_A, CHANNEL_B)
+
+        val vm = LiveTvHomeViewModel(repo)
+        val state = vm.state.value
+
         assertTrue(state is LiveTvHomeState.Ready)
         val ready = state as LiveTvHomeState.Ready
         assertTrue(ready.recent.isEmpty())
@@ -80,8 +91,33 @@ class LiveTvHomeViewModelTest {
     }
 
     @Test
-    fun `Error state carries message`() {
-        val error = LiveTvHomeState.Error("Network unreachable")
-        assertEquals("Network unreachable", error.message)
+    fun `unexpected exception from repository results in Error state`() = runTest {
+        val repo = mockk<ChannelRepository>()
+        coEvery { repo.recentChannels() } throws RuntimeException("Network unreachable")
+        coEvery { repo.favoriteChannels() } returns emptyList()
+        coEvery { repo.allChannels() } returns emptyList()
+
+        val vm = LiveTvHomeViewModel(repo)
+        val state = vm.state.value
+
+        assertTrue(state is LiveTvHomeState.Error)
+        assertEquals("Network unreachable", (state as LiveTvHomeState.Error).message)
+    }
+
+    @Test
+    fun `retry after error resolves to Ready on second attempt`() = runTest {
+        val repo = mockk<ChannelRepository>()
+        coEvery { repo.recentChannels() } throws RuntimeException("timeout") andThen listOf(CHANNEL_A)
+        coEvery { repo.favoriteChannels() } returns emptyList()
+        coEvery { repo.allChannels() } returns listOf(CHANNEL_B)
+
+        val vm = LiveTvHomeViewModel(repo)
+        assertTrue(vm.state.value is LiveTvHomeState.Error)
+
+        vm.retry()
+        assertTrue(vm.state.value is LiveTvHomeState.Ready)
+        val ready = vm.state.value as LiveTvHomeState.Ready
+        assertEquals(1, ready.recent.size)
+        assertEquals("ch-a", ready.recent.first().id)
     }
 }
