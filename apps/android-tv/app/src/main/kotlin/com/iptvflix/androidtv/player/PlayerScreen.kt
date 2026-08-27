@@ -312,6 +312,16 @@ fun PlayerScreen(
                     return@onKeyEvent true
                 }
 
+                // Chrome hidden: DPAD_UP/DOWN zap channels without showing the chrome HUD.
+                // Overlay guard is handled above — this only runs when no overlay is open.
+                if (command?.mediaType.equals("channel", ignoreCase = true)) {
+                    when (event.key) {
+                        Key.DirectionUp -> { vm.zapPrevious(); return@onKeyEvent true }
+                        Key.DirectionDown -> { vm.zapNext(); return@onKeyEvent true }
+                        else -> {}
+                    }
+                }
+
                 // Chrome hidden: any other key shows it; L/R still seek (VOD).
                 bumpInteraction()
                 when (event.key) {
@@ -324,6 +334,8 @@ fun PlayerScreen(
                 }
             },
     ) {
+        val zapHudChannel by vm.zapHudChannel.collectAsState()
+
         PlayerOverlayStack(
             video = {
                 AndroidView(
@@ -457,12 +469,42 @@ fun PlayerScreen(
                 }
             },
         )
+
+        zapHudChannel?.let { channel ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(end = 32.dp, bottom = 40.dp),
+                contentAlignment = Alignment.BottomEnd,
+            ) {
+                ZapChannelHud(channel = channel, onDismissed = { vm.clearZapHud() })
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
         runCatching { rootFocusRequester.requestFocus() }
     }
+
+    // KEYCODE_CHANNEL_UP/DOWN are scoped to full-screen Live TV only (no overlay, mediaType == "channel").
+    LaunchedEffect(command?.id) {
+        ChannelKeyEventBus.events.collect { keyEvent ->
+            if (shouldZapChannel(isChannelSelectorOpen, command?.mediaType)) {
+                when (keyEvent) {
+                    ChannelKeyEvent.Up -> vm.zapNext()
+                    ChannelKeyEvent.Down -> vm.zapPrevious()
+                }
+            }
+        }
+    }
 }
+
+/**
+ * Returns true only when a channel zap should fire: no overlay is open and the
+ * current content is a Live TV channel. Used for both D-pad and CHANNEL key guards.
+ */
+internal fun shouldZapChannel(isOverlayOpen: Boolean, mediaType: String?): Boolean =
+    !isOverlayOpen && mediaType.equals("channel", ignoreCase = true)
 
 @Composable
 private fun NetflixPlayerChrome(

@@ -51,4 +51,17 @@ class LiveChannelSwitchTest {
         val cmd = buildChannelSwitchCommand("ch-99", "Canal+", null)
         assert(cmd.id.startsWith("ch-")) { "Expected id to start with 'ch-' but was '${cmd.id}'" }
     }
+
+    @Test
+    fun `zap path - channel id name and logo all propagate through buildChannelSwitchCommand`() {
+        val channelId = "live-zap-42"
+        val channelName = "Zap Live"
+        val channelLogo = "https://cdn.example.com/zap-live.png"
+        val cmd = buildChannelSwitchCommand(channelId, channelName, channelLogo)
+        assertEquals(channelId, cmd.mediaId)
+        assertEquals(channelName, cmd.title)
+        assertEquals(channelLogo, cmd.posterUrl)
+        assertEquals("channel", cmd.mediaType)
+        assertEquals(0L, cmd.startPositionMs)
+    }
 }

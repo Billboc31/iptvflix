@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.iptvflix.androidtv.player.LiveChannelSwitchTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-08-27T09:14:31" hostname="Mac.lan" time="0.003">
+<testsuite name="com.iptvflix.androidtv.player.LiveChannelSwitchTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-08-27T10:01:34" hostname="Mac.lan" time="0.001">
   <properties/>
-  <testcase name="repeated calls produce commands with different ids" classname="com.iptvflix.androidtv.player.LiveChannelSwitchTest" time="0.001"/>
+  <testcase name="zap path - channel id name and logo all propagate through buildChannelSwitchCommand" classname="com.iptvflix.androidtv.player.LiveChannelSwitchTest" time="0.001"/>
+  <testcase name="repeated calls produce commands with different ids" classname="com.iptvflix.androidtv.player.LiveChannelSwitchTest" time="0.0"/>
   <testcase name="buildChannelSwitchCommand uses supplied channelId as mediaId" classname="com.iptvflix.androidtv.player.LiveChannelSwitchTest" time="0.0"/>
-  <testcase name="buildChannelSwitchCommand propagates title and logoUrl" classname="com.iptvflix.androidtv.player.LiveChannelSwitchTest" time="0.001"/>
+  <testcase name="buildChannelSwitchCommand propagates title and logoUrl" classname="com.iptvflix.androidtv.player.LiveChannelSwitchTest" time="0.0"/>
   <testcase name="buildChannelSwitchCommand sets mediaType to channel" classname="com.iptvflix.androidtv.player.LiveChannelSwitchTest" time="0.0"/>
   <testcase name="command id starts with ch- prefix" classname="com.iptvflix.androidtv.player.LiveChannelSwitchTest" time="0.0"/>
   <testcase name="buildChannelSwitchCommand with null title and logoUrl stores nulls" classname="com.iptvflix.androidtv.player.LiveChannelSwitchTest" time="0.0"/>

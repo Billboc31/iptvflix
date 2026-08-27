@@ -12,6 +12,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import com.iptvflix.androidtv.App
 import com.iptvflix.androidtv.command.PlaybackCommand
+import com.iptvflix.androidtv.livetv.ChannelResponse
 import com.iptvflix.androidtv.network.InteractionEventService
 import com.iptvflix.androidtv.playback.AvailabilityVariant
 import com.iptvflix.androidtv.playback.CatalogApi
@@ -124,6 +125,15 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private val _episodeBrowser = MutableStateFlow(EpisodeBrowserState())
     val episodeBrowser: StateFlow<EpisodeBrowserState> = _episodeBrowser.asStateFlow()
 
+    private val zapper: ChannelZapper by lazy {
+        ChannelZapper(
+            repo = container.channelRepository,
+            scope = viewModelScope,
+            onSwitch = { channel -> switchChannel(channel.id, channel.name, channel.logoUrl) },
+        )
+    }
+    val zapHudChannel: StateFlow<ChannelResponse?> get() = zapper.hudChannel
+
     private var exoTracksMap = mapOf<String, ExoTrackRef>()
 
     private var progressReporter: ProgressReporter? = null
@@ -182,6 +192,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     if (!didResumeSeek) {
                         viewModelScope.launch { progressReporter?.reportNow() }
                     }
+                    if (currentCommand?.mediaType.equals("channel", ignoreCase = true)) {
+                        zapper.notifyPlaybackSuccess()
+                    }
                 }
                 if (state == Player.STATE_ENDED) {
                     sessionEnded = true
@@ -231,6 +244,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 _uiState.value = PlayerUiState.Error(friendlyPlaybackError(error))
                 // Keep Sources reachable so the user can pick a playable stream (e.g. non-4K).
                 _openPanel.value = PlayerPanel.Sources
+                if (currentCommand?.mediaType.equals("channel", ignoreCase = true)) {
+                    zapper.notifyPlaybackError()
+                    zapper.clearHud()
+                }
             }
 
             override fun onTracksChanged(tracks: Tracks) {
@@ -288,6 +305,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun zapNext() { zapper.zapNext() }
+    fun zapPrevious() { zapper.zapPrevious() }
+    fun clearZapHud() { zapper.clearHud() }
+
     fun load(command: PlaybackCommand) {
         if (loadedCommandId == command.id &&
             player.playbackState != Player.STATE_IDLE &&
@@ -311,6 +332,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         _scrub.value = ScrubState()
         _openPanel.value = PlayerPanel.None
         _subtitleMessage.value = null
+        if (command.mediaType.equals("channel", ignoreCase = true)) {
+            viewModelScope.launch(Dispatchers.IO) { zapper.initZapContext(command.mediaId) }
+        }
         _episodeBrowser.value = EpisodeBrowserState(
             seriesId = command.seriesId,
             seasonNumber = command.seasonNumber,
@@ -748,6 +772,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun stop() {
+        zapper.clearHud()
         // Capture before player.stop() — Exo often resets position to 0 and that
         // used to PUT ~1s progress, dropping the title from continue-watching (<5%).
         val positionMs = runCatching { player.currentPosition }.getOrDefault(0L)
