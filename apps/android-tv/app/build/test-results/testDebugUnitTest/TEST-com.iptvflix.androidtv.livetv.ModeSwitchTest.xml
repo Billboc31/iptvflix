@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.iptvflix.androidtv.livetv.ModeSwitchTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-08-27T08:21:47" hostname="Mac.lan" time="0.001">
+  <properties/>
+  <testcase name="pressing back from LiveTvHome returns to Home" classname="com.iptvflix.androidtv.livetv.ModeSwitchTest" time="0.0"/>
+  <testcase name="LiveTvHome does not navigate to Player - back goes to Home" classname="com.iptvflix.androidtv.livetv.ModeSwitchTest" time="0.0"/>
+  <testcase name="starting at Home, activating TV switch moves to LiveTvHome" classname="com.iptvflix.androidtv.livetv.ModeSwitchTest" time="0.0"/>
+  <testcase name="VOD Player is reachable from Home" classname="com.iptvflix.androidtv.livetv.ModeSwitchTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

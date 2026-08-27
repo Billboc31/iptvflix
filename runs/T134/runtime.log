@@ -12,3 +12,25 @@
 [2026-08-27T07:43:45Z] snapshot: runtime-prompt=runs/T134/prompts/planner-attempt-1.md
 [2026-08-27T07:47:55Z] compose: preferring on-disk runs/T134/plan.md over chatty stdout (agent Write beat meta-report)
 [2026-08-27T07:47:55Z] auto-run: step=planner done rc=0
+[2026-08-27T08:26:22Z] auto-run start: state=IMPLEMENTATION_APPROVED
+[2026-08-27T08:26:22Z] auto-run: running step=tester
+[2026-08-27T08:26:23Z] auto-run: pre-tester rebase onto integration ok
+[2026-08-27T08:26:23Z] prompt: resolved=prompts/generic/tester.md source=generic
+[2026-08-27T08:26:23Z] prompt: generic fallback — injecting runs/T134/ticket.md
+[2026-08-27T08:26:23Z] compose: global-context=docs/ai/global-context.md
+[2026-08-27T08:26:23Z] compose: role=ai/roles/tester.md
+[2026-08-27T08:26:23Z] compose: skill=ai/skills/workflow-discipline.md
+[2026-08-27T08:26:23Z] compose: skill=ai/skills/testing.md
+[2026-08-27T08:26:23Z] compose: skill=ai/skills/debugging.md
+[2026-08-27T08:26:23Z] compose: task (canonical prompt)
+[2026-08-27T08:26:23Z] snapshot: runtime-prompt=runs/T134/prompts/tester-attempt-1.md
+[2026-08-27T08:28:57Z] auto-run: step=tester done rc=0
+[2026-08-27T08:28:57Z] auto-run: transition IMPLEMENTATION_APPROVED → TEST_COMPLETE
+[2026-08-27T08:28:57Z] auto-run: auto-commit triggered (step=tester, include_code=True)
+[2026-08-27T08:28:57Z] commit-checkpoint: unstaged runtime garbage: ['runs/T134/daemon.lock', 'runs/T134/runtime.log', 'runs/T134/workflow-status.md']
+[2026-08-27T08:28:57Z] commit-checkpoint: sha=3d3bf744 files=3 title='test(T134/workflow): tester — update 3 file(s)'
+[2026-08-27T08:28:57Z] auto-run: auto-push triggered
+[2026-08-27T08:28:57Z] push: tolerating runtime dirty files (not blocking): ['runs/T134/daemon.lock', 'runs/T134/runtime.log', 'runs/T134/workflow-status.md']
+[2026-08-27T08:28:57Z] push: pushing branch=ticket/T134-add-live-tv-mode-to-android-tv-app-with-orange-vis
+[2026-08-27T08:28:59Z] push: done branch=ticket/T134-add-live-tv-mode-to-android-tv-app-with-orange-vis
+[2026-08-27T08:29:00Z] auto-run: TEST_COMPLETE — running PR lifecycle

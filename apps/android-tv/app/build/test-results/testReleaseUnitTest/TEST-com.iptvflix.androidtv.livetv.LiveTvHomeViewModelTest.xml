@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.iptvflix.androidtv.livetv.LiveTvHomeViewModelTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-08-27T08:05:39" hostname="Mac.lan" time="0.003">
+  <properties/>
+  <testcase name="network error in one section does not block others (treated as empty)" classname="com.iptvflix.androidtv.livetv.LiveTvHomeViewModelTest" time="0.001"/>
+  <testcase name="all three sections resolve to Ready with correct data" classname="com.iptvflix.androidtv.livetv.LiveTvHomeViewModelTest" time="0.001"/>
+  <testcase name="Error state carries message" classname="com.iptvflix.androidtv.livetv.LiveTvHomeViewModelTest" time="0.0"/>
+  <testcase name="all three sections empty resolves to Ready with empty lists, not Error" classname="com.iptvflix.androidtv.livetv.LiveTvHomeViewModelTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

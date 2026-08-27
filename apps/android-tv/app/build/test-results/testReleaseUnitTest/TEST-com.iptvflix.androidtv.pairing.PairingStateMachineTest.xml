@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.iptvflix.androidtv.pairing.PairingStateMachineTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-08-27T08:05:39" hostname="Mac.lan" time="0.051">
+  <properties/>
+  <testcase name="idle to approved stores token" classname="com.iptvflix.androidtv.pairing.PairingStateMachineTest" time="0.043"/>
+  <testcase name="polling code state exposes the received code" classname="com.iptvflix.androidtv.pairing.PairingStateMachineTest" time="0.002"/>
+  <testcase name="expired state does not store token" classname="com.iptvflix.androidtv.pairing.PairingStateMachineTest" time="0.003"/>
+  <testcase name="re-request after expiry results in new Requesting state" classname="com.iptvflix.androidtv.pairing.PairingStateMachineTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
