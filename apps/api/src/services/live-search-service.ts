@@ -4,17 +4,11 @@ import { channels } from '../db/schema/channels.js'
 import { channelSources } from '../db/schema/channel-sources.js'
 import { searchEpgPrograms, type EpgCache } from './epg-service.js'
 import type { LiveSearchResponse, LiveNowResult, UpcomingResult, ChannelResult } from '@iptvflix/api-contracts'
+import { normalizeText } from '../utils/text.js'
 
 type DbClient = typeof globalDb
 
 const MAX_UPCOMING_OCCURRENCES = 3
-
-function normalizeText(text: string): string {
-  return text
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-}
 
 function titleRank(title: string, query: string): number {
   const n = normalizeText(title)
@@ -121,6 +115,8 @@ export async function searchLiveTV(
       endTime: match.endTime,
       progress,
       streamUrl: sourceByChannelId.get(channel.id) ?? '',
+      // Approximation: assumes .m3u8 sources are DIRECT-playable. Clients should
+      // call /channels/:id/playback/resolve for authoritative delivery mode before playback.
       deliveryMode: 'DIRECT',
     })
   }
@@ -177,9 +173,9 @@ export async function searchLiveTV(
       a.rank - b.rank || a.channelName.localeCompare(b.channelName, 'fr', { sensitivity: 'base' }),
   )
 
-  const liveNow = [...liveNowMap.values()].sort(
-    (a, b) => titleRank(a.programTitle, query) - titleRank(b.programTitle, query),
-  )
+  const liveNow = [...liveNowMap.values()]
+    .filter((r) => r.streamUrl !== '')
+    .sort((a, b) => titleRank(a.programTitle, query) - titleRank(b.programTitle, query))
 
   return {
     liveNow,

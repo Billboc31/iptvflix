@@ -1,5 +1,6 @@
 import { gunzipSync } from 'node:zlib'
 import type { EpgProgram } from '@iptvflix/api-contracts'
+import { normalizeText } from '../utils/text.js'
 
 const EPG_URL = 'https://xmltvfr.fr/xmltv/xmltv_fr.xml.gz'
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000
@@ -19,13 +20,6 @@ export type EpgMatch = {
   isLive: boolean
   /** 0 = exact title, 1 = prefix, 2 = substring */
   matchWeight: number
-}
-
-function normalizeText(text: string): string {
-  return text
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
 }
 
 let cached: EpgCache | null = null

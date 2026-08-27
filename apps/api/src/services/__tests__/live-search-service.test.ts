@@ -340,6 +340,18 @@ describe('searchLiveTV', () => {
     expect(r1.channels[0].channelName).toBe(r2.channels[0].channelName)
   })
 
+  it('live match with no available source excluded from liveNow', async () => {
+    const cache = makeEpgCache([
+      { catalogId: 'TF1.fr', title: 'US Open', startTime: t(-30), endTime: t(60) },
+    ])
+    // No source rows → sourceByChannelId will be empty → streamUrl would be ''
+    const db = makeDbMock([CHANNEL_TF1], [])
+
+    const result = await searchLiveTV('us open', cache, db)
+
+    expect(result.liveNow).toHaveLength(0)
+  })
+
   it('empty query returns empty response', async () => {
     const db = makeDbMock([])
     const result = await searchLiveTV('', null, db)
