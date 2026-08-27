@@ -72,6 +72,9 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.iptvflix.androidtv.App
 import com.iptvflix.androidtv.ui.TvColors
+import java.time.ZonedDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun LiveSearchScreen(
@@ -721,13 +724,17 @@ private fun ChannelLogoBox(logoUrl: String?, name: String, size: Int) {
     }
 }
 
-// ISO-8601 "2026-08-27T20:30:00Z" → "20:30"
-private fun formatIsoTime(isoTime: String): String =
-    isoTime.substringAfter('T', isoTime).take(5)
+private fun formatIsoTime(isoTime: String): String = runCatching {
+    ZonedDateTime.parse(isoTime)
+        .withZoneSameInstant(ZoneId.systemDefault())
+        .format(DateTimeFormatter.ofPattern("HH:mm"))
+}.getOrElse { isoTime.substringAfter('T', isoTime).take(5) }
 
-// ISO-8601 "2026-08-27T20:30:00Z" → "27/08"
-private fun formatIsoDateShort(isoTime: String): String {
+private fun formatIsoDateShort(isoTime: String): String = runCatching {
+    val local = ZonedDateTime.parse(isoTime).withZoneSameInstant(ZoneId.systemDefault())
+    "${local.dayOfMonth.toString().padStart(2, '0')}/${local.monthValue.toString().padStart(2, '0')}"
+}.getOrElse {
     val date = isoTime.substringBefore('T', isoTime)
     val parts = date.split('-')
-    return if (parts.size == 3) "${parts[2]}/${parts[1]}" else date
+    if (parts.size == 3) "${parts[2]}/${parts[1]}" else date
 }
