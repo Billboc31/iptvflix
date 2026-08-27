@@ -61,6 +61,7 @@ fun LiveTvHomeScreen(
     ),
     onBack: () -> Unit,
     onChannelSelected: (ChannelResponse) -> Unit = {},
+    onOpenSearch: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
 
@@ -76,7 +77,7 @@ fun LiveTvHomeScreen(
             is LiveTvHomeState.Error -> ErrorContent(message = s.message, onRetry = { viewModel.retry() })
             is LiveTvHomeState.Ready -> {
                 val isEmpty = s.recent.isEmpty() && s.favorites.isEmpty() && s.all.isEmpty()
-                if (isEmpty) EmptyContent() else ReadyContent(state = s, onChannelSelected = onChannelSelected)
+                if (isEmpty) EmptyContent() else ReadyContent(state = s, onChannelSelected = onChannelSelected, onOpenSearch = onOpenSearch)
             }
         }
     }
@@ -151,6 +152,7 @@ private fun EmptyContent() {
 private fun ReadyContent(
     state: LiveTvHomeState.Ready,
     onChannelSelected: (ChannelResponse) -> Unit,
+    onOpenSearch: () -> Unit = {},
 ) {
     // Determine which channel gets initial D-pad focus (first card in first non-empty section).
     val focusTargetId = when {
@@ -165,13 +167,42 @@ private fun ReadyContent(
         contentPadding = PaddingValues(vertical = 40.dp),
     ) {
         item {
-            Text(
-                "TV en direct",
-                color = TvColors.LiveTvAccent,
-                fontSize = 34.sp,
-                fontWeight = FontWeight.Bold,
+            Row(
                 modifier = Modifier.padding(horizontal = 56.dp),
-            )
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "TV en direct",
+                    color = TvColors.LiveTvAccent,
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                Surface(
+                    onClick = onOpenSearch,
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+                    colors = ClickableSurfaceDefaults.colors(
+                        containerColor = TvColors.Surface,
+                        focusedContainerColor = TvColors.LiveTvAccent,
+                        pressedContainerColor = TvColors.LiveTvAccent,
+                    ),
+                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
+                    border = ClickableSurfaceDefaults.border(
+                        focusedBorder = Border(
+                            border = BorderStroke(3.dp, TvColors.LiveTvAccent),
+                            shape = RoundedCornerShape(8.dp),
+                        ),
+                    ),
+                ) {
+                    Text(
+                        "⌕  Rechercher",
+                        color = TvColors.TextPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                    )
+                }
+            }
             Spacer(Modifier.height(28.dp))
         }
 

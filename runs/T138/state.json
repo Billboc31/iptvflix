@@ -1,7 +1,7 @@
 {
   "ticket_id": "T138",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T138-add-android-tv-universal-channel-program-search-wi",
   "issue_number": 293,
-  "updated_at": "2026-08-27T14:21:32Z"
+  "updated_at": "2026-08-27T14:37:39Z"
 }
