@@ -1,7 +1,7 @@
 {
   "ticket_id": "T136",
-  "state": "PLAN_APPROVED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T136-add-android-tv-live-channel-zapping-with-d-pad-and",
   "issue_number": 288,
-  "updated_at": "2026-08-27T09:21:20Z"
+  "updated_at": "2026-08-27T09:41:18Z"
 }
