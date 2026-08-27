@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.iptvflix.androidtv.player.ChannelZappingTest" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-08-27T10:01:34" hostname="Mac.lan" time="0.027">
+  <properties/>
+  <testcase name="initZapContext second call updates index to new channel" classname="com.iptvflix.androidtv.player.ChannelZappingTest" time="0.004"/>
+  <testcase name="initZapContext called twice only fetches channel list once" classname="com.iptvflix.androidtv.player.ChannelZappingTest" time="0.005"/>
+  <testcase name="zapPrevious at first index wraps around to last channel" classname="com.iptvflix.androidtv.player.ChannelZappingTest" time="0.002"/>
+  <testcase name="zapping before initZapContext is a no-op" classname="com.iptvflix.androidtv.player.ChannelZappingTest" time="0.002"/>
+  <testcase name="initZapContext with unknown channelId defaults to index 0" classname="com.iptvflix.androidtv.player.ChannelZappingTest" time="0.003"/>
+  <testcase name="zapNext advances index and calls switchChannel with correct channel" classname="com.iptvflix.androidtv.player.ChannelZappingTest" time="0.001"/>
+  <testcase name="clearHud sets zapHudChannel to null" classname="com.iptvflix.androidtv.player.ChannelZappingTest" time="0.002"/>
+  <testcase name="zapPrevious decrements index and calls switchChannel with correct channel" classname="com.iptvflix.androidtv.player.ChannelZappingTest" time="0.001"/>
+  <testcase name="failed playback reverts zapIndex to last good channel and subsequent zap works" classname="com.iptvflix.androidtv.player.ChannelZappingTest" time="0.002"/>
+  <testcase name="zapHudChannel is set immediately on zap start before debounce completes" classname="com.iptvflix.androidtv.player.ChannelZappingTest" time="0.001"/>
+  <testcase name="zapNext at last index wraps around to first channel" classname="com.iptvflix.androidtv.player.ChannelZappingTest" time="0.002"/>
+  <testcase name="rapid zapNext calls result in exactly one switchChannel call (the last)" classname="com.iptvflix.androidtv.player.ChannelZappingTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

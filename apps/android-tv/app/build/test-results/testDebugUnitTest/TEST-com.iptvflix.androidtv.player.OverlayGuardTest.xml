@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.iptvflix.androidtv.player.OverlayGuardTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-08-27T10:01:34" hostname="Mac.lan" time="0.007">
+  <properties/>
+  <testcase name="shouldZapChannel returns false when overlay is open regardless of mediaType" classname="com.iptvflix.androidtv.player.OverlayGuardTest" time="0.007"/>
+  <testcase name="shouldZapChannel returns false when overlay is open" classname="com.iptvflix.androidtv.player.OverlayGuardTest" time="0.0"/>
+  <testcase name="shouldZapChannel mediaType comparison is case insensitive" classname="com.iptvflix.androidtv.player.OverlayGuardTest" time="0.0"/>
+  <testcase name="shouldZapChannel returns true when overlay is closed and mediaType is channel" classname="com.iptvflix.androidtv.player.OverlayGuardTest" time="0.0"/>
+  <testcase name="shouldZapChannel returns false when overlay is closed but mediaType is not channel" classname="com.iptvflix.androidtv.player.OverlayGuardTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
