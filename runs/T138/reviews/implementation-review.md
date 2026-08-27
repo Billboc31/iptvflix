@@ -1,76 +1,64 @@
-I now have a complete picture of the implementation. Let me compile the review.
+I have a complete view of the implementation. Let me compile the final review.
 
 ---
 
-## Review — T138 Android TV Universal Live Search
+## Review — T138 Android TV Universal Live Search (Attempt 3)
 
-### Périmètre couvert
+### Résumé
 
-L'implémentation couvre l'ensemble des exigences fonctionnelles du ticket :
+Troisième passe après deux cycles de fix requis. Le seul problème bloquant identifié lors des reviews précédentes (formatage UTC sans conversion timezone) a été corrigé. L'implémentation est complète et conforme au ticket.
 
-- `LiveSearchViewModel.kt` — sealed state correct (`Idle | Loading | Results | NoResults | Error`), debounce 400 ms via job cancellation, `onVoiceResult` réentrant sur `onQueryChanged`, `isSingleLiveNowResult` dérivé proprement depuis le state.
-- `LiveSearchScreen.kt` — composable complet : barre de recherche avec orange focus underline, bouton micro conditionnel via `RecognizerIntent` + `PackageManager.resolveActivity`, trois sections résultats dans un `TvLazyColumn`, focus D-pad déterministe sur le premier item de la première section non-vide, états idle/loading/error/no-results.
-- `ChannelRepository.kt` — ajout minimal de `searchLiveTV` propageant les exceptions, conforme au plan.
-- `AppNavGraph.kt` — `LiveTvSearch` dans l'enum, câblage `onOpenSearch` / `onChannelSelected` / `onLiveNowSelected` conforme au pattern existant.
-- `LiveTvHomeScreen.kt` — paramètre `onOpenSearch` ajouté, bouton "Rechercher" D-pad accessible.
-- `LiveSearchViewModelTest.kt` — 11 tests couvrant tous les scénarios du plan.
+### Vérifications effectuées
 
-### Problème bloquant (non corrigé depuis la première review)
+- `LiveSearchScreen.kt` (complet, ~740 lignes)
+- `LiveSearchViewModel.kt`
+- `ChannelRepository.kt`
+- `AppNavGraph.kt`
+- `LiveTvHomeScreen.kt` (signature + bouton Rechercher)
+- `ChannelModels.kt` (modèles `LiveNowResult`, `UpcomingResult`, `ChannelSearchResult`, `LiveSearchResponse`)
+- `LiveSearchViewModelTest.kt` (11 tests)
 
-**`LiveSearchScreen.kt:725-733` — Affichage de l'heure UTC sans conversion timezone**
+### Points validés
 
-```kotlin
-// ISO-8601 "2026-08-27T20:30:00Z" → "20:30"
-private fun formatIsoTime(isoTime: String): String =
-    isoTime.substringAfter('T', isoTime).take(5)
+**Correction du problème bloquant appliquée correctement**
 
-// ISO-8601 "2026-08-27T20:30:00Z" → "27/08"
-private fun formatIsoDateShort(isoTime: String): String {
-    val date = isoTime.substringBefore('T', isoTime)
-    val parts = date.split('-')
-    return if (parts.size == 3) "${parts[2]}/${parts[1]}" else date
-}
-```
+`LiveSearchScreen.kt:727-740` — `formatIsoTime` et `formatIsoDateShort` utilisent maintenant `ZonedDateTime.parse().withZoneSameInstant(ZoneId.systemDefault())` avec fallback `runCatching/getOrElse`. Les imports `java.time.ZonedDateTime`, `ZoneId`, `DateTimeFormatter` sont présents aux lignes 75-77. Conforme exactement à la correction prescrite dans la review précédente.
 
-Le backend retourne des timestamps UTC (suffixe `Z`, confirmé par les fixtures de test : `"2026-08-27T21:00:00Z"`). Ces deux fonctions extraient la composante temporelle brute sans convertir vers la timezone locale du device. Pour un utilisateur en France (UTC+2 en été), `"21:00Z"` s'affiche `"21:00"` au lieu de `"23:00"`.
+**Périmètre fonctionnel complet**
 
-Le ticket exige explicitement **"date + local time prominently"** dans la section "À venir". Ce bug est une violation fonctionnelle directe de cette exigence.
+- `LiveSearchViewModel` : sealed state `Idle|Loading|Results|NoResults|Error`, debounce 400 ms via job annulation, `onVoiceResult` réentrant sur `onQueryChanged`, `isSingleLiveNowResult` dérivé du state — correctement réévalué à chaque recomposition via `collectAsState()`.
+- `LiveSearchScreen` : barre de recherche avec underline orange focus, bouton micro conditionnel (`PackageManager.resolveActivity` + `@Suppress("DEPRECATION")` correct), `TvLazyColumn` avec trois sections optionnelles, focus D-pad déterministe sur le premier item de la première section non-vide, états idle/loading/error/no-results tous couverts.
+- `ChannelRepository` : ajout minimal de `searchLiveTV`, propagation d'exception vers le ViewModel — conforme.
+- `AppNavGraph` : `LiveTvSearch` dans l'enum, câblage `onOpenSearch`/`onChannelSelected`/`onLiveNowSelected` identique au pattern `LiveTvHome → Player` existant.
+- `LiveTvHomeScreen` : paramètre `onOpenSearch: () -> Unit = {}` avec valeur par défaut non-cassante, bouton "Rechercher" D-pad accessible à la ligne 182.
 
-`formatIsoTime` est utilisé également dans `LiveNowRow` (ligne 506) pour afficher les horaires start/end — même défaut, même correctif requis.
+**Tests**
 
-**Correction attendue :**
+11 tests dans `LiveSearchViewModelTest` couvrant tous les scénarios du plan : channel-only, live match, future-only, multiple live, single live (`isSingleLiveNowResult`), voice vs text, clearQuery → Idle, API error, empty query no-op, no-EPG channel fallback.
 
-```kotlin
-import java.time.ZonedDateTime
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
+**Critères d'acceptation**
 
-private fun formatIsoTime(isoTime: String): String = runCatching {
-    ZonedDateTime.parse(isoTime)
-        .withZoneSameInstant(ZoneId.systemDefault())
-        .format(DateTimeFormatter.ofPattern("HH:mm"))
-}.getOrElse { isoTime.substringAfter('T', isoTime).take(5) }
+Tous les critères du ticket sont couverts :
+- Sélection live → `PlaybackCommand(mediaType="channel", mediaId=result.channelId)` → `PlaybackResolver` → Player, zapping disponible.
+- `UpcomingRow` : `onClick = {}` (no-op) — ne lance pas de lecture.
+- Badge `EN DIRECT` / `Lancer · EN DIRECT` (single live) correctement conditionnel.
+- Pas de `ChannelSource`-level duplicates (délégué au backend T137 comme prévu).
+- Orange `LiveTvAccent` 3dp focus border sur toutes les surfaces cliquables.
 
-private fun formatIsoDateShort(isoTime: String): String = runCatching {
-    val local = ZonedDateTime.parse(isoTime).withZoneSameInstant(ZoneId.systemDefault())
-    "${local.dayOfMonth.toString().padStart(2, '0')}/${local.monthValue.toString().padStart(2, '0')}"
-}.getOrElse {
-    val date = isoTime.substringBefore('T', isoTime)
-    val parts = date.split('-')
-    if (parts.size == 3) "${parts[2]}/${parts[1]}" else date
-}
-```
+**Sécurité / qualité**
 
-`java.time.ZonedDateTime` est disponible depuis API 26 (minimum supporté par les projets Android TV modernes) — pas de dépendance nouvelle requise.
+Aucune donnée sensible loggée. Les exceptions réseau sont catchées et propagées proprement. Pas de comportement destructif.
 
-### Observations mineures (non bloquantes)
+### Problèmes détectés
 
-- **Tests de formatage absents** : aucun test unitaire ne vérifie `formatIsoTime`. Après correction, un test de conversion timezone (ex. UTC `"21:00Z"` → `"23:00"` en UTC+2) renforcerait la confiance, mais ce n'est pas dans le scope défini du plan.
-- **`@Suppress("DEPRECATION")` sur `resolveActivity`** : correct pour la compatibilité pre-API 33, annotation appropriée.
-- **`UpcomingRow` focusable sans affordance textuelle** : le focus border orange s'affiche (correct), mais l'absence de toute action sur OK n'est pas communiquée à l'utilisateur. Acceptable pour ce ticket (reminder stub = no-op), mais à noter pour l'évolution future.
+Aucun problème bloquant. Observations mineures (non bloquantes, inchangées depuis review 1) :
 
-### Verdict
+- **Libellé relatif (`ce soir`, `demain`) absent de `UpcomingRow`** : le ticket marque cela explicitement comme optionnel ("only in addition to an absolute time where useful"). Non bloquant.
+- **`UpcomingRow` focusable sans affordance d'action** : le focus border orange s'affiche mais aucune action n'est exécutée sur OK. Acceptable pour ce ticket (stub no-op), à noter pour la future fonctionnalité de rappel.
+- **Absence de test de conversion timezone** : aucun test unitaire ne vérifie `formatIsoTime`. Hors scope du plan défini.
 
-Le problème bloquant de la première review (**formatage d'heure UTC sans conversion locale**) n'a **pas été corrigé**. L'implémentation ne peut pas être approuvée en l'état.
+### Décision
 
-IMPLEMENTATION_FIX_REQUIRED
+Le problème bloquant de la timezone a été corrigé conformément à la prescription de la review précédente. L'ensemble de l'implémentation respecte le ticket, le plan, les conventions de la codebase et les critères d'acceptation.
+
+IMPLEMENTATION_APPROVED
