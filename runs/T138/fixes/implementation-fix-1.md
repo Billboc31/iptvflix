@@ -1,3 +1,11 @@
+# Fix artifact — IMPLEMENTATION_FIX_REQUIRED
+
+- decision: IMPLEMENTATION_FIX_REQUIRED
+- review source: runs/T138/reviews/implementation-review.md
+- generated at: 2026-08-27T14:45:59Z
+
+---
+
 I now have a complete picture of the implementation. Let me compile the review.
 
 ---
