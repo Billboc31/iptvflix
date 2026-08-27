@@ -1,26 +1,20 @@
-All done. Here's a summary of everything implemented:
+Everything is consistent. Here's a summary of the two files changed:
 
 ---
 
-## Summary
+## Changes
 
-### New files
+### `player/PlayerScreen.kt`
 
-| File | Purpose |
-|---|---|
-| `player/ChannelKeyEventBus.kt` | Singleton `object` with a `SharedFlow<ChannelKeyEvent>` — routes `KEYCODE_CHANNEL_UP/DOWN` from `MainActivity` to `PlayerScreen` |
-| `player/ChannelZapper.kt` | Self-contained zapping logic: canonical channel list cache, index tracking, wrap-around, 150ms debounce (last key wins), HUD state, playback success/error notification |
-| `player/ZapChannelHud.kt` | Transient orange-accented HUD composable showing channel logo, name, and current EPG program; auto-dismisses after 3s via `LaunchedEffect` |
-| `player/ChannelZappingTest.kt` | 12 unit tests: next/prev advance, wrap-around at both boundaries, rapid-press debounce, failure revert, list-fetch idempotency, HUD lifecycle, no-op before init |
+- Replaced the explicit `mediaType` early-return + `!isChannelSelectorOpen` guard in the CHANNEL key `LaunchedEffect` with a single call to the new `shouldZapChannel` function.
+- Added `internal fun shouldZapChannel(isOverlayOpen: Boolean, mediaType: String?): Boolean` at package scope — the extracted pure function encoding both guard conditions (overlay closed AND mediaType is "channel", case-insensitive). `internal` makes it accessible from unit tests in the same package without Compose.
+- Added a comment on the `LaunchedEffect` documenting that CHANNEL_UP/DOWN are scoped to full-screen Live TV only.
 
-### Modified files
+### `player/ChannelZappingTest.kt`
 
-**`PlayerViewModel.kt`** — Added lazy `ChannelZapper`, public `zapNext()` / `zapPrevious()` / `clearZapHud()` / `zapHudChannel: StateFlow`, `initZapContext` triggered from `load()` for channel commands, `notifyPlaybackSuccess/Error` wired into the ExoPlayer listener.
-
-**`PlayerScreen.kt`** — DPAD_UP→`zapPrevious()` / DPAD_DOWN→`zapNext()` in the chrome-hidden branch (overlay guard already above it, so overlay-open UP/DOWN are consumed before reaching this code). `LaunchedEffect(command?.id)` collects `ChannelKeyEventBus` for CHANNEL_UP/DOWN with the same overlay guard. `ZapChannelHud` rendered at bottom-end when `zapHudChannel != null`.
-
-**`MainActivity.kt`** — `onKeyDown` override posts to `ChannelKeyEventBus` for `KEYCODE_CHANNEL_UP` and `KEYCODE_CHANNEL_DOWN`.
-
-**`LiveChannelSwitchTest.kt`** — One new test confirming zap-path field propagation through `buildChannelSwitchCommand`.
-
-**Result: 80 tests, 0 failures.**
+- Added imports: `assertFalse`, `assertTrue`.
+- Added `class OverlayGuardTest` with 5 tests covering all branches of `shouldZapChannel`:
+  - overlay open → false (regardless of mediaType)
+  - overlay closed + wrong mediaType → false (episode, null)
+  - overlay closed + `"channel"` → true
+  - case-insensitive: `"CHANNEL"`, `"Channel"` → true

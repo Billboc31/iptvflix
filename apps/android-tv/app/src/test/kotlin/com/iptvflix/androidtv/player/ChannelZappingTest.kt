@@ -15,7 +15,9 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -222,5 +224,36 @@ class ChannelZappingTest {
 
         assertEquals(0, switched.size)
         assertNull(zapper.hudChannel.value)
+    }
+}
+
+class OverlayGuardTest {
+
+    @Test
+    fun `shouldZapChannel returns false when overlay is open`() {
+        assertFalse(shouldZapChannel(isOverlayOpen = true, mediaType = "channel"))
+    }
+
+    @Test
+    fun `shouldZapChannel returns false when overlay is open regardless of mediaType`() {
+        assertFalse(shouldZapChannel(isOverlayOpen = true, mediaType = null))
+        assertFalse(shouldZapChannel(isOverlayOpen = true, mediaType = "episode"))
+    }
+
+    @Test
+    fun `shouldZapChannel returns false when overlay is closed but mediaType is not channel`() {
+        assertFalse(shouldZapChannel(isOverlayOpen = false, mediaType = "episode"))
+        assertFalse(shouldZapChannel(isOverlayOpen = false, mediaType = null))
+    }
+
+    @Test
+    fun `shouldZapChannel returns true when overlay is closed and mediaType is channel`() {
+        assertTrue(shouldZapChannel(isOverlayOpen = false, mediaType = "channel"))
+    }
+
+    @Test
+    fun `shouldZapChannel mediaType comparison is case insensitive`() {
+        assertTrue(shouldZapChannel(isOverlayOpen = false, mediaType = "CHANNEL"))
+        assertTrue(shouldZapChannel(isOverlayOpen = false, mediaType = "Channel"))
     }
 }

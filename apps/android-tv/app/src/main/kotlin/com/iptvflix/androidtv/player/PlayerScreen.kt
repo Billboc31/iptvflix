@@ -486,10 +486,10 @@ fun PlayerScreen(
         runCatching { rootFocusRequester.requestFocus() }
     }
 
+    // KEYCODE_CHANNEL_UP/DOWN are scoped to full-screen Live TV only (no overlay, mediaType == "channel").
     LaunchedEffect(command?.id) {
-        if (command?.mediaType.equals("channel", ignoreCase = true) != true) return@LaunchedEffect
         ChannelKeyEventBus.events.collect { keyEvent ->
-            if (!isChannelSelectorOpen) {
+            if (shouldZapChannel(isChannelSelectorOpen, command?.mediaType)) {
                 when (keyEvent) {
                     ChannelKeyEvent.Up -> vm.zapNext()
                     ChannelKeyEvent.Down -> vm.zapPrevious()
@@ -498,6 +498,13 @@ fun PlayerScreen(
         }
     }
 }
+
+/**
+ * Returns true only when a channel zap should fire: no overlay is open and the
+ * current content is a Live TV channel. Used for both D-pad and CHANNEL key guards.
+ */
+internal fun shouldZapChannel(isOverlayOpen: Boolean, mediaType: String?): Boolean =
+    !isOverlayOpen && mediaType.equals("channel", ignoreCase = true)
 
 @Composable
 private fun NetflixPlayerChrome(
