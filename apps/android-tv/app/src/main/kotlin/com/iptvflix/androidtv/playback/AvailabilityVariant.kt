@@ -16,6 +16,8 @@ data class AvailabilityVariant(
     val hdrFormat: String? = null,
     val releaseHint: String? = null,
     val audioFormat: String? = null,
+    /** Pre-formatted unique label from API for live channel sources. */
+    val displayLabel: String? = null,
 )
 
 /**
@@ -80,6 +82,13 @@ fun AvailabilityVariant.label(
     }
 
     return label
+}
+
+/** Full IPTV stream name for Live TV Sources panel (uses API displayLabel when set). */
+fun AvailabilityVariant.liveSourceLabel(): String {
+    displayLabel?.takeIf { it.isNotBlank() }?.let { return it.trim() }
+    val title = rawTitle?.trim().orEmpty()
+    return title.ifBlank { "Source" }
 }
 
 /** Label without provider suffix — used to detect collisions. */

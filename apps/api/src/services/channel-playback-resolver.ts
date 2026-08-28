@@ -5,7 +5,7 @@ import { channelSources } from '../db/schema/channel-sources.js'
 import { sources } from '../db/schema/sources.js'
 import { selectPreferredSources } from '../channels/source-selector.js'
 import {
-  mapChannelSourceToVariant,
+  mapChannelSourcesToVariants,
   type ChannelSourceVariantInput,
 } from '../channels/channel-source-variant.js'
 import { createSession, patchSession } from './playback-session-store.js'
@@ -216,9 +216,8 @@ export async function resolveChannelPlayback(
     throw new Error('Channel stream unavailable')
   }
 
-  const alternatives = orderedLoaded
-    .filter((s) => s.status === 'AVAILABLE')
-    .map((s) => mapChannelSourceToVariant(s))
+  const available = orderedLoaded.filter((s) => s.status === 'AVAILABLE')
+  const alternatives = mapChannelSourcesToVariants(available)
 
   const session = await buildGatewayForSource(
     profileId,

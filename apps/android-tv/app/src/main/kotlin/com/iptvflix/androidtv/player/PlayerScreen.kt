@@ -92,6 +92,7 @@ import com.iptvflix.androidtv.livetv.LiveChannelSelectorOverlay
 import com.iptvflix.androidtv.livetv.LiveChannelSelectorState
 import com.iptvflix.androidtv.livetv.LiveChannelSelectorViewModel
 import com.iptvflix.androidtv.playback.AvailabilityVariant
+import com.iptvflix.androidtv.playback.liveSourceLabel
 import com.iptvflix.androidtv.playback.EpisodeListItem
 import com.iptvflix.androidtv.playback.SeasonSummary
 import com.iptvflix.androidtv.playback.TrackInfo
@@ -717,6 +718,7 @@ private fun NetflixPlayerChrome(
                 variants = variants,
                 selectedVariantId = selectedVariantId,
                 embeddedAudioTrackCount = audioTracks.size,
+                isLiveChannel = isLive,
                 onSelectVariant = onSelectVariant,
                 onClose = onClosePanel,
                 modifier = Modifier.align(Alignment.Center),
@@ -1524,14 +1526,15 @@ private fun SourcesPanel(
     variants: List<AvailabilityVariant>,
     selectedVariantId: String?,
     embeddedAudioTrackCount: Int = 0,
+    isLiveChannel: Boolean = false,
     onSelectVariant: (String) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
-            .widthIn(max = 480.dp)
-            .fillMaxWidth(0.45f)
+            .widthIn(max = if (isLiveChannel) 720.dp else 480.dp)
+            .fillMaxWidth(if (isLiveChannel) 0.62f else 0.45f)
             .clip(RoundedCornerShape(4.dp))
             .background(PanelScrim)
             .padding(28.dp),
@@ -1549,10 +1552,16 @@ private fun SourcesPanel(
         Spacer(Modifier.height(18.dp))
         variants.forEachIndexed { index, variant ->
             val audioCount = if (variant.id == selectedVariantId) embeddedAudioTrackCount else 0
+            val label = if (isLiveChannel) {
+                variant.liveSourceLabel()
+            } else {
+                variant.label(variants, embeddedAudioTrackCount = audioCount)
+            }
             CheckOption(
-                label = variant.label(variants, embeddedAudioTrackCount = audioCount),
+                label = label,
                 selected = variant.id == selectedVariantId,
                 requestInitialFocus = index == 0,
+                maxLines = if (isLiveChannel) 3 else 1,
                 onClick = { onSelectVariant(variant.id) },
             )
         }
@@ -1565,6 +1574,7 @@ private fun CheckOption(
     selected: Boolean,
     onClick: () -> Unit,
     requestInitialFocus: Boolean = false,
+    maxLines: Int = 1,
 ) {
     val focusRequester = remember { FocusRequester() }
     val interactionSource = remember { MutableInteractionSource() }
@@ -1616,9 +1626,9 @@ private fun CheckOption(
             Spacer(Modifier.width(10.dp))
             Text(
                 label,
-                maxLines = 1,
+                maxLines = maxLines,
                 overflow = TextOverflow.Ellipsis,
-                fontSize = 17.sp,
+                fontSize = if (maxLines > 1) 15.sp else 17.sp,
                 fontWeight = if (focused || selected) FontWeight.Bold else FontWeight.Normal,
                 color = if (focused || selected) HudWhite else HudMuted,
             )

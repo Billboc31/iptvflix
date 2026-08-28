@@ -15,6 +15,8 @@ export type AvailabilityVariantResponse = {
   hdrFormat: string | null
   releaseHint: string | null
   audioFormat: string | null
+  /** Pre-formatted unique label for live channel_sources (full IPTV stream name). */
+  displayLabel?: string | null
 }
 
 export type CastMemberResponse = {

@@ -33,7 +33,103 @@ export type ChannelSourceVariantInput = {
   sourceDisplayName: string | null
 }
 
-export function mapChannelSourceToVariant(row: ChannelSourceVariantInput): AvailabilityVariantResponse {
+function streamUrlTail(url: string): string | null {
+  try {
+    const pathname = new URL(url).pathname
+    const segments = pathname.split('/').filter(Boolean)
+    const last = segments[segments.length - 1]
+    if (!last) return null
+    const stripped = last.replace(/\.[a-z0-9]+$/i, '')
+    if (stripped.length >= 3 && stripped.length <= 24) return stripped
+  } catch {
+    // ignore invalid URLs
+  }
+  return null
+}
+
+function includesInsensitive(haystack: string, needle: string): boolean {
+  return haystack.toUpperCase().includes(needle.toUpperCase())
+}
+
+/** Unique human label for one channel_sources row (full provider name + disambiguation). */
+export function buildChannelSourceDisplayLabel(
+  row: ChannelSourceVariantInput,
+  disambiguators: string[],
+): string {
+  const name = row.providerName.trim()
+  if (disambiguators.length === 0) return name
+  return `${name} · ${disambiguators.join(' · ')}`
+}
+
+function candidateDisambiguators(row: ChannelSourceVariantInput): string[] {
+  const name = row.providerName.trim()
+  const labelParts = [row.providerName, row.groupTitle ?? '', row.streamUrl]
+  const out: string[] = []
+
+  const tail = streamUrlTail(row.streamUrl)
+  if (tail && !includesInsensitive(name, tail)) out.push(tail)
+
+  const codec = inferChannelSourceCodec(labelParts)
+  if (codec && !includesInsensitive(name, codec)) out.push(codec)
+
+  const group = row.groupTitle?.trim()
+  if (group && !includesInsensitive(name, group)) out.push(group)
+
+  const provider = row.sourceDisplayName?.trim()
+  if (provider && !includesInsensitive(name, provider)) out.push(provider)
+
+  return out
+}
+
+export function assignChannelSourceDisplayLabels(
+  rows: ChannelSourceVariantInput[],
+): Map<string, string> {
+  const byName = new Map<string, ChannelSourceVariantInput[]>()
+  for (const row of rows) {
+    const key = row.providerName.trim()
+    const list = byName.get(key) ?? []
+    list.push(row)
+    byName.set(key, list)
+  }
+
+  const labels = new Map<string, string>()
+
+  for (const [name, siblings] of byName) {
+    if (siblings.length === 1) {
+      labels.set(siblings[0]!.id, name)
+      continue
+    }
+
+    const assigned = new Map<string, string>()
+    for (const row of siblings) {
+      const candidates = candidateDisambiguators(row)
+      let disambiguators: string[] = []
+      let label = buildChannelSourceDisplayLabel(row, disambiguators)
+      let guard = 0
+      while (
+        [...assigned.values()].includes(label) &&
+        guard <= candidates.length
+      ) {
+        disambiguators = candidates.slice(0, guard + 1)
+        label = buildChannelSourceDisplayLabel(row, disambiguators)
+        guard++
+      }
+      if ([...assigned.values()].includes(label)) {
+        const idx = siblings.findIndex((s) => s.id === row.id) + 1
+        label = buildChannelSourceDisplayLabel(row, [`#${idx}`])
+      }
+      assigned.set(row.id, label)
+      labels.set(row.id, label)
+    }
+  }
+
+  return labels
+}
+
+export function mapChannelSourceToVariant(
+  row: ChannelSourceVariantInput,
+  displayLabel?: string,
+): AvailabilityVariantResponse {
   const labelParts = [row.providerName, row.groupTitle ?? '', row.streamUrl]
   const videoQuality = inferChannelSourceQuality(labelParts)
   const codecName = inferChannelSourceCodec(labelParts)
@@ -50,5 +146,13 @@ export function mapChannelSourceToVariant(row: ChannelSourceVariantInput): Avail
     hdrFormat: null,
     releaseHint: row.groupTitle,
     audioFormat: null,
+    displayLabel: displayLabel ?? row.providerName.trim(),
   }
+}
+
+export function mapChannelSourcesToVariants(
+  rows: ChannelSourceVariantInput[],
+): AvailabilityVariantResponse[] {
+  const labels = assignChannelSourceDisplayLabels(rows)
+  return rows.map((row) => mapChannelSourceToVariant(row, labels.get(row.id)))
 }

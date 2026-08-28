@@ -34,6 +34,19 @@ class AvailabilityVariantLabelTest {
             videoQuality = "1080p",
             sourceDisplayName = "UNIV",
         )
-        assertEquals("FR · 1080p · UNIV", v.label())
+    @Test
+    fun `live source label uses display label from api`() {
+        val v = AvailabilityVariant(
+            id = "1",
+            rawTitle = "FR| GÉNÉRAL HD/4K",
+            displayLabel = "FR| GÉNÉRAL HD/4K · 1687220",
+        )
+        assertEquals("FR| GÉNÉRAL HD/4K · 1687220", v.liveSourceLabel())
+    }
+
+    @Test
+    fun `live source label falls back to raw title`() {
+        val v = AvailabilityVariant(id = "1", rawTitle = "FR| FRANCE HEVC VIP")
+        assertEquals("FR| FRANCE HEVC VIP", v.liveSourceLabel())
     }
 }
