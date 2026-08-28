@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- TextureView is far more stable than SurfaceView inside Compose on Android TV. -->
+<!-- SurfaceView punches through Compose overlays — TextureView was reporting
+     onRenderedFirstFrame while the user still saw a solid black screen. -->
 <androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/player_view"
@@ -8,7 +9,7 @@
     android:focusable="false"
     android:focusableInTouchMode="false"
     app:use_controller="false"
-    app:resize_mode="fit"
-    app:surface_type="texture_view"
-    app:keep_content_on_player_reset="true"
+    app:resize_mode="zoom"
+    app:surface_type="surface_view"
+    app:keep_content_on_player_reset="false"
     app:shutter_background_color="@android:color/black" />

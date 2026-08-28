@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { channelSources } from '../db/schema/channel-sources.js'
+import { sources } from '../db/schema/sources.js'
 import { selectPreferredSources } from '../channels/source-selector.js'
+import {
+  mapChannelSourceToVariant,
+  type ChannelSourceVariantInput,
+} from '../channels/channel-source-variant.js'
 import { createSession, patchSession } from './playback-session-store.js'
 import { createHlsSession, waitForPlaylist } from './hls-session-store.js'
 import { isFfmpegAvailable } from './ffmpeg-availability.js'
@@ -40,13 +45,13 @@ function needsRelayRemux(ext: string): boolean {
   return e === 'mkv' || e === 'ts' || e === 'm2ts' || e === 'avi' || e === ''
 }
 
-export async function resolveChannelPlayback(
-  profileId: string,
-  channelId: string,
-  correlationId = randomUUID(),
-  opts?: { clientType?: 'web' | 'android-tv' },
-): Promise<ChannelPlaybackResponse> {
-  const nativeClient = opts?.clientType === 'android-tv'
+type LoadedChannelSource = ChannelSourceVariantInput & {
+  channelId: string
+  priority: number
+  lastSeenAt: Date
+}
+
+async function loadChannelSources(channelId: string): Promise<LoadedChannelSource[]> {
   const rows = await db
     .select({
       id: channelSources.id,
@@ -56,22 +61,46 @@ export async function resolveChannelPlayback(
       priority: channelSources.priority,
       status: channelSources.status,
       lastSeenAt: channelSources.lastSeenAt,
+      providerName: channelSources.providerName,
+      groupTitle: channelSources.groupTitle,
+      sourceDisplayName: sources.name,
     })
     .from(channelSources)
+    .innerJoin(sources, eq(channelSources.sourceId, sources.id))
     .where(eq(channelSources.channelId, channelId))
 
-  const ordered = selectPreferredSources(
-    rows.map((r) => ({
-      ...r,
-      status: r.status as 'AVAILABLE' | 'UNAVAILABLE',
-    })),
-  )
+  return rows.map((r) => ({
+    id: r.id,
+    channelId: r.channelId,
+    sourceId: r.sourceId,
+    streamUrl: r.streamUrl,
+    priority: r.priority,
+    status: r.status as 'AVAILABLE' | 'UNAVAILABLE',
+    lastSeenAt: r.lastSeenAt,
+    providerName: r.providerName,
+    groupTitle: r.groupTitle,
+    sourceDisplayName: r.sourceDisplayName,
+  }))
+}
 
-  const primary = ordered.find((s) => s.status === 'AVAILABLE')
-  if (!primary) {
-    throw new Error('Channel stream unavailable')
+function pickPrimarySource(
+  ordered: LoadedChannelSource[],
+  channelSourceId?: string,
+): LoadedChannelSource | undefined {
+  if (channelSourceId) {
+    const explicit = ordered.find((s) => s.id === channelSourceId && s.status === 'AVAILABLE')
+    if (explicit) return explicit
   }
+  return ordered.find((s) => s.status === 'AVAILABLE')
+}
 
+async function buildGatewayForSource(
+  profileId: string,
+  channelId: string,
+  primary: LoadedChannelSource,
+  correlationId: string,
+  nativeClient: boolean,
+): Promise<Omit<ChannelPlaybackResponse, 'availabilityId' | 'alternatives'>> {
   const providerStreamUrl = primary.streamUrl
   const containerExtension = inferContainerFromUrl(providerStreamUrl)
 
@@ -85,7 +114,6 @@ export async function resolveChannelPlayback(
       deliveryMode = extensionFallbackMode(containerExtension)
     }
   } else {
-    // Native ExoPlayer: skip probe — saves ~1–3s per zap; extension fallback is enough.
     deliveryMode = extensionFallbackMode(containerExtension)
   }
 
@@ -155,5 +183,54 @@ export async function resolveChannelPlayback(
     deliveryMode: clientDeliveryMode,
     containerExtension,
     correlationId,
+  }
+}
+
+export async function resolveChannelPlayback(
+  profileId: string,
+  channelId: string,
+  correlationId = randomUUID(),
+  opts?: { clientType?: 'web' | 'android-tv'; channelSourceId?: string },
+): Promise<ChannelPlaybackResponse> {
+  const nativeClient = opts?.clientType === 'android-tv'
+  const loaded = await loadChannelSources(channelId)
+  const ordered = selectPreferredSources(
+    loaded.map((r) => ({
+      id: r.id,
+      channelId: r.channelId,
+      sourceId: r.sourceId,
+      streamUrl: r.streamUrl,
+      priority: r.priority,
+      status: r.status,
+      lastSeenAt: r.lastSeenAt,
+    })),
+  )
+
+  const byId = new Map(loaded.map((r) => [r.id, r]))
+  const orderedLoaded = ordered
+    .map((r) => byId.get(r.id))
+    .filter((r): r is LoadedChannelSource => r != null)
+
+  const primary = pickPrimarySource(orderedLoaded, opts?.channelSourceId)
+  if (!primary) {
+    throw new Error('Channel stream unavailable')
+  }
+
+  const alternatives = orderedLoaded
+    .filter((s) => s.status === 'AVAILABLE')
+    .map((s) => mapChannelSourceToVariant(s))
+
+  const session = await buildGatewayForSource(
+    profileId,
+    channelId,
+    primary,
+    correlationId,
+    nativeClient,
+  )
+
+  return {
+    ...session,
+    availabilityId: primary.id,
+    alternatives,
   }
 }

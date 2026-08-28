@@ -25,13 +25,15 @@ internal class ChannelZapper(
     private var zapIndex: Int = -1
     private var lastGoodIndex: Int = -1
     private var previewIndex: Int = -1
+    /** Target committed via OK but not yet READY — blocks duplicate onSwitch. */
+    private var pendingIndex: Int = -1
 
     private val _preview = MutableStateFlow<ZapPreviewState?>(null)
     val previewState: StateFlow<ZapPreviewState?> = _preview.asStateFlow()
 
     suspend fun initZapContext(channelId: String) {
         if (zapChannels.isEmpty()) {
-            val channels = repo.allChannels()
+            val channels = repo.allChannels().distinctBy { it.id }
             if (channels.isEmpty()) return
             zapChannels = channels
         }
@@ -70,7 +72,8 @@ internal class ChannelZapper(
             return
         }
         _preview.value = null
-        if (targetIndex == lastGoodIndex) return
+        if (targetIndex == lastGoodIndex || targetIndex == pendingIndex) return
+        pendingIndex = targetIndex
         // Do NOT update lastGoodIndex here — wait until the new stream is READY.
         onSwitch(channels[targetIndex])
     }
@@ -86,10 +89,12 @@ internal class ChannelZapper(
     /** Called when Exo reaches READY for [channelId] — only then commit the zap index. */
     fun notifyPlaybackSuccess(channelId: String) {
         syncIndicesToChannel(channelId)
+        pendingIndex = -1
         _preview.value = null
     }
 
     fun notifyPlaybackError() {
+        pendingIndex = -1
         previewIndex = lastGoodIndex
         zapIndex = lastGoodIndex
         _preview.value = null
@@ -105,13 +110,16 @@ internal class ChannelZapper(
 
     private fun buildPreviewState(channels: List<ChannelResponse>, centerIndex: Int): ZapPreviewState {
         val n = channels.size
-        val radius = min(PREVIEW_RADIUS, (n - 1) / 2)
+        // Cap radius so the circular window never wraps onto itself (no duplicate rows).
+        val radius = min(PREVIEW_RADIUS, (n - 1) / 2).coerceAtLeast(0)
         val window = (-radius..radius).map { offset ->
             channels[(centerIndex + offset + n) % n]
-        }
+        }.distinctBy { it.id }
+        val selectedInWindow = window.indexOfFirst { it.id == channels[centerIndex].id }
+            .takeIf { it >= 0 } ?: (window.size / 2)
         return ZapPreviewState(
             window = window,
-            selectedIndex = radius,
+            selectedIndex = selectedInWindow,
             playingChannelId = channels.getOrNull(lastGoodIndex)?.id,
         )
     }

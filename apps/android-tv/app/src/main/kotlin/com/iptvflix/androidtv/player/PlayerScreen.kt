@@ -160,6 +160,8 @@ fun PlayerScreen(
     val isLivePlayback = (nowPlaying?.mediaType ?: command?.mediaType)
         .equals("channel", ignoreCase = true)
     val zapPreview by vm.zapPreview.collectAsState()
+    val surfaceEpoch by vm.surfaceEpoch.collectAsState()
+    var lastBoundSurfaceEpoch by remember { mutableIntStateOf(-1) }
 
     val visibleActions = remember(overlayActions, hud.positionMs, scrub) {
         val pos = if (scrub.active) scrub.previewMs else hud.positionMs
@@ -391,12 +393,28 @@ fun PlayerScreen(
                     modifier = Modifier.fillMaxSize(),
                     factory = { ctx ->
                         (LayoutInflater.from(ctx).inflate(R.layout.player_view, null) as PlayerView).also { view ->
+                            view.setKeepContentOnPlayerReset(false)
+                            view.resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            // Ensure Media3 shutter never sticks on top of a live surface.
+                            view.findViewById<android.view.View>(
+                                androidx.media3.ui.R.id.exo_shutter,
+                            )?.visibility = android.view.View.GONE
                             view.player = vm.player
                             playerViewRef = view
                         }
                     },
                     update = { view ->
-                        if (view.player !== vm.player) view.player = vm.player
+                        if (view.player !== vm.player) {
+                            view.player = vm.player
+                        }
+                        view.findViewById<android.view.View>(
+                            androidx.media3.ui.R.id.exo_shutter,
+                        )?.let { shutter ->
+                            if (shutter.visibility != android.view.View.GONE) {
+                                shutter.visibility = android.view.View.GONE
+                            }
+                        }
+                        lastBoundSurfaceEpoch = surfaceEpoch
                         playerViewRef = view
                     },
                 )

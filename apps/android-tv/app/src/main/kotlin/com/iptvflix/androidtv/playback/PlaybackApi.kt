@@ -56,6 +56,8 @@ private data class ChannelPlaybackResponse(
     val deliveryMode: String = "DIRECT",
     val containerExtension: String? = null,
     val correlationId: String? = null,
+    val availabilityId: String = "",
+    val alternatives: List<AvailabilityVariant> = emptyList(),
 )
 
 class PlaybackApi(private val apiClient: ApiClient) {
@@ -69,7 +71,10 @@ class PlaybackApi(private val apiClient: ApiClient) {
         startPositionMs: Long = 0L,
     ): PlaybackDescriptor {
         if (mediaType.equals("channel", ignoreCase = true)) {
-            return resolveChannelPlayback(mediaId)
+            return resolveChannelPlayback(
+                channelId = mediaId,
+                availabilityId = availabilityId,
+            )
         }
 
         val body = buildJsonObject {
@@ -115,27 +120,39 @@ class PlaybackApi(private val apiClient: ApiClient) {
     }
 
     /** Live TV: POST /channels/{id}/playback/resolve (not the VOD /playback/resolve path). */
-    private suspend fun resolveChannelPlayback(channelId: String): PlaybackDescriptor {
+    private suspend fun resolveChannelPlayback(
+        channelId: String,
+        availabilityId: String? = null,
+        clientType: String = "android-tv",
+    ): PlaybackDescriptor {
         val apiPath = "/channels/$channelId/playback/resolve"
-        val responseBody = apiClient.post(apiPath, "{}", clientType = "android-tv")
+        val body = buildJsonObject {
+            put("clientType", clientType)
+            availabilityId?.takeIf { it.isNotBlank() }?.let { put("availabilityId", it) }
+        }.toString()
+        val responseBody = apiClient.post(apiPath, body, clientType = clientType)
         val session = json.decodeFromString<ChannelPlaybackResponse>(responseBody)
         if (session.gatewayUrl.isBlank()) {
             error("Chaîne indisponible pour le moment.")
         }
 
         val gatewayUrl = resolveGatewayUrl(session.gatewayUrl)
-        // Live TV may return media-relay (/v1/play) — that is a valid delivery path,
-        // unlike VOD where media-relay usually means a mis-deployed gateway.
-        // /v1/play blocks until ffmpeg remux is ready then 302 → .m3u8. Resolve that
-        // here so Exo gets a real playlist instead of hanging forever on /v1/play.
         val streamUrl = resolveGatewayRedirect(gatewayUrl)
         val host = runCatching { java.net.URI(streamUrl).host }.getOrNull() ?: "?"
         val streamPath = runCatching { java.net.URI(streamUrl).path }.getOrNull() ?: streamUrl.takeLast(48)
         Log.i(
             TAG,
-            "Channel $channelId resolved mode=${session.deliveryMode} ext=${session.containerExtension} " +
-                "corr=${session.correlationId} → $host$streamPath",
+            "Channel $channelId resolved client=$clientType source=${session.availabilityId} " +
+                "alt=${session.alternatives.size} mode=${session.deliveryMode} " +
+                "ext=${session.containerExtension} corr=${session.correlationId} → $host$streamPath",
         )
+        val alternatives = session.alternatives.ifEmpty {
+            if (session.availabilityId.isNotBlank()) {
+                listOf(AvailabilityVariant(id = session.availabilityId, rawTitle = "Source actuelle"))
+            } else {
+                emptyList()
+            }
+        }
         return PlaybackDescriptor(
             streamUrl = streamUrl,
             deliveryMode = when {
@@ -145,10 +162,24 @@ class PlaybackApi(private val apiClient: ApiClient) {
             },
             containerExtension = session.containerExtension,
             startPositionMs = 0L,
-            availabilityId = null,
-            alternatives = emptyList(),
+            availabilityId = session.availabilityId.takeIf { it.isNotBlank() },
+            alternatives = alternatives,
         )
     }
+
+    /**
+     * Re-resolve a live channel as a "web" client so the API may remux via media-relay /
+     * HLS when the native direct TS exceeds device decoder caps (e.g. 4K HEVC on emulator).
+     */
+    suspend fun resolveChannelPlaybackCompatible(
+        channelId: String,
+        availabilityId: String? = null,
+    ): PlaybackDescriptor = resolveChannelPlayback(
+        channelId = channelId,
+        availabilityId = availabilityId,
+        clientType = "web",
+    )
+
 
     private suspend fun resolveGatewayRedirect(gatewayUrl: String): String {
         if (isMediaRelayPlayUrl(gatewayUrl)) {

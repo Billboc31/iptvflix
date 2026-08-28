@@ -5,6 +5,7 @@ import type {
   ChannelResponse,
   ChannelStreamResponse,
   ChannelPlaybackResponse,
+  ChannelPlaybackResolveRequest,
   GuideChannelResponse,
   LiveSearchResponse,
 } from '@iptvflix/api-contracts'
@@ -246,7 +247,7 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
 
   app.post<{
     Params: { id: string }
-    Body: { clientType?: 'web' | 'android-tv' }
+    Body: ChannelPlaybackResolveRequest
     Querystring: { clientType?: string }
     Reply: ChannelPlaybackResponse
   }>(
@@ -261,7 +262,10 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
           req.profileId!,
           req.params.id,
           correlationId,
-          { clientType },
+          {
+            clientType,
+            channelSourceId: req.body?.availabilityId,
+          },
         )
         return reply.send(session)
       } catch {
@@ -270,6 +274,8 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
           deliveryMode: 'DIRECT',
           containerExtension: 'ts',
           correlationId,
+          availabilityId: '',
+          alternatives: [],
         } as ChannelPlaybackResponse)
       }
     },

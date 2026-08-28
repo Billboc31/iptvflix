@@ -98,7 +98,8 @@ fun ZapChannelCarousel(
                     verticalArrangement = Arrangement.SpaceEvenly,
                 ) {
                     preview.window.forEachIndexed { index, channel ->
-                        key(channel.id) {
+                        // Index in key avoids Compose collisions if a duplicate id ever slips in.
+                        key("$index-${channel.id}") {
                             ZapCarouselRow(
                                 channel = channel,
                                 isSelected = index == preview.selectedIndex,

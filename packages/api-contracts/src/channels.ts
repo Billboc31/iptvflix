@@ -26,11 +26,23 @@ export type ChannelStreamResponse = {
   streamUrl: string
 }
 
+import type { AvailabilityVariantResponse } from './catalog.js'
+
+export type ChannelPlaybackResolveRequest = {
+  /** Pick a specific channel_sources row (same id as availabilityId in the response). */
+  availabilityId?: string
+  clientType?: 'web' | 'android-tv'
+}
+
 export type ChannelPlaybackResponse = {
   gatewayUrl: string
   deliveryMode: 'DIRECT' | 'HLS_REMUX' | 'HLS_TRANSCODE_AUDIO' | 'HLS_TRANSCODE_FULL'
   containerExtension: string
   correlationId: string
+  /** Selected channel_sources.id used for this session. */
+  availabilityId: string
+  /** All playable sources for this channel (includes the selected one). */
+  alternatives: AvailabilityVariantResponse[]
 }
 
 export type GuideChannelResponse = ChannelResponse & {

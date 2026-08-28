@@ -5,8 +5,10 @@ import android.net.Uri
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.iptvflix.androidtv.BuildConfig
 import com.iptvflix.androidtv.storage.TokenStore
 import okhttp3.Interceptor
@@ -56,7 +58,22 @@ object ExoPlayerFactory {
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
+        // Decoder fallback helps when the primary MediaCodec path attaches to a
+        // dead TextureView surface (audio READY, permanent black shutter).
+        val renderersFactory = DefaultRenderersFactory(context)
+            .setEnableDecoderFallback(true)
+
+        val trackSelector = DefaultTrackSelector(context).apply {
+            setParameters(
+                buildUponParameters()
+                    .setAllowVideoMixedMimeTypeAdaptiveness(true)
+                    .setTunnelingEnabled(false),
+            )
+        }
+
         return ExoPlayer.Builder(context)
+            .setRenderersFactory(renderersFactory)
+            .setTrackSelector(trackSelector)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
             .build()
