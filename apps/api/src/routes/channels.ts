@@ -244,7 +244,12 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
     return reply.send(result)
   })
 
-  app.post<{ Params: { id: string }; Reply: ChannelPlaybackResponse }>(
+  app.post<{
+    Params: { id: string }
+    Body: { clientType?: 'web' | 'android-tv' }
+    Querystring: { clientType?: string }
+    Reply: ChannelPlaybackResponse
+  }>(
     '/channels/:id/playback/resolve',
     { preHandler: requireProfile },
     async (req, reply) => {

@@ -1,11 +1,13 @@
 import type { FastifyRequest } from 'fastify'
-import type { PlaybackResolveRequest } from '@iptvflix/api-contracts'
 
 export type ResolvedClientType = 'web' | 'android-tv'
 
-export function resolveClientType(
-  request: FastifyRequest<{ Body?: PlaybackResolveRequest; Querystring?: { clientType?: string } }>,
-): ResolvedClientType | undefined {
+type ClientTypeRequest = FastifyRequest<{
+  Body?: { clientType?: string }
+  Querystring?: { clientType?: string }
+}>
+
+export function resolveClientType(request: ClientTypeRequest): ResolvedClientType | undefined {
   const fromBody = request.body?.clientType
   if (fromBody === 'android-tv' || fromBody === 'web') return fromBody
 
