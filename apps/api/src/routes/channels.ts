@@ -240,9 +240,14 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
     if (!query) {
       return reply.send({ liveNow: [], upcoming: [], channels: [] })
     }
-    const epgCache = await ensureEpgLoaded()
-    const result = await searchLiveTV(query, epgCache)
-    return reply.send(result)
+    try {
+      const epgCache = await ensureEpgLoaded()
+      const result = await searchLiveTV(query, epgCache)
+      return reply.send(result)
+    } catch (err) {
+      req.log.error({ err, query }, 'Live TV search failed')
+      return reply.send({ liveNow: [], upcoming: [], channels: [] } as LiveSearchResponse)
+    }
   })
 
   app.post<{

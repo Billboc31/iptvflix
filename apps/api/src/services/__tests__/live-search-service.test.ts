@@ -281,7 +281,7 @@ describe('searchLiveTV', () => {
 
   it('accent and case variation matches same canonical channel', async () => {
     const db = makeDbMock([CHANNEL_TF1])
-    // DB mock returns TF1 for any name query (unaccent handled by PostgreSQL in production)
+    // DB mock returns TF1 for any name query (accent folding handled in app code)
     const result = await searchLiveTV('tf1', null, db)
     expect(result.channels[0].channelName).toBe('TF1')
   })

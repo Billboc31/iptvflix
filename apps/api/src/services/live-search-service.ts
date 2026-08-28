@@ -34,11 +34,12 @@ export async function searchLiveTV(
 
   const catalogIds = [...new Set(epgMatches.map((m) => m.catalogId))]
 
-  // 2. Fetch channels matching by name OR referenced by EPG catalog ID (one query)
+  // 2. Fetch channels matching by name OR referenced by EPG catalog ID (one query).
+  // Use lower()+ILIKE — no PostgreSQL unaccent extension required (Railway-safe).
   const namePattern = `%${query}%`
   const nameConditions = [
-    sql`unaccent(lower(${channels.canonicalName})) ILIKE unaccent(lower(${namePattern}))`,
-    sql`unaccent(lower(${channels.normalizedName})) ILIKE unaccent(lower(${namePattern}))`,
+    sql`lower(${channels.canonicalName}) ILIKE ${namePattern}`,
+    sql`lower(coalesce(${channels.normalizedName}, '')) ILIKE ${namePattern}`,
   ]
   const whereClause =
     catalogIds.length > 0
