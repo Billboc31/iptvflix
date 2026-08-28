@@ -55,9 +55,13 @@ class ProfileViewModel(app: Application) : AndroidViewModel(app) {
                 val result = container.profileApiService.selectProfile(profileId)
                 container.secureStorage.saveProfileToken(result.token)
                 container.secureStorage.saveLastUsedProfileId(profileId)
-                result.profile
-            }.onSuccess {
+                result
+            }.onSuccess { result ->
                 _uiState.value = _uiState.value.copy(selectingProfileId = null, error = null)
+                Log.i(
+                    TAG,
+                    "Selected profile ${result.profile.id} name=${result.profile.name} avatar=${result.profile.avatarKey}",
+                )
                 onSuccess()
                 viewModelScope.launch {
                     runCatching {

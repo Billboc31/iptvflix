@@ -35,17 +35,21 @@ class ProgressReporter(
         "episode", "episodes", "series" -> "EPISODE"
         else -> mediaType.trim().uppercase()
     }
+    private val reportsProgress = apiMediaType == "MOVIE" || apiMediaType == "EPISODE"
 
     @Volatile
     private var floorSeconds: Int = initialFloorSeconds.coerceAtLeast(0)
 
     suspend fun start() {
+        if (!reportsProgress) return
         try {
             delay(FIRST_REPORT_MS)
-            reportFromPlayer(force = true)
+            if (player.isPlaying) reportFromPlayer(force = true)
             while (true) {
                 delay(REPORT_INTERVAL_MS)
-                if (player.isPlaying || player.playbackState == Player.STATE_READY) {
+                // Only while playing — PUT during pause competes with the idle stream
+                // socket and makes VOD resume stutter / rebuffer.
+                if (player.isPlaying) {
                     reportFromPlayer(force = false)
                 }
             }
@@ -57,6 +61,7 @@ class ProgressReporter(
     }
 
     suspend fun reportNow() {
+        if (!reportsProgress) return
         reportFromPlayer(force = true)
     }
 
@@ -65,6 +70,7 @@ class ProgressReporter(
      * Always allowed to move the cursor (including scrubbing backwards).
      */
     suspend fun reportAt(positionMs: Long, durationMs: Long) {
+        if (!reportsProgress) return
         report(
             positionMs = positionMs.coerceAtLeast(0L),
             durationMs = durationMs,

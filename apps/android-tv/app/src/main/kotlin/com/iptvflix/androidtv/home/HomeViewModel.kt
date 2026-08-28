@@ -81,6 +81,37 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { fetchContinueWatching() }
     }
 
+    /** Reload name/avatar after a profile switch (or when Home becomes visible again). */
+    fun refreshCurrentProfile() {
+        viewModelScope.launch { fetchCurrentProfile() }
+    }
+
+    /** Soft-remove from Continuer à regarder (API dismissal). Optimistic UI. */
+    fun dismissContinueWatching(item: ContinueWatchingUi) {
+        val mediaType = item.mediaType.uppercase()
+        val previous = _uiState.value.continueWatching
+        _uiState.value = _uiState.value.copy(
+            continueWatching = previous.filterNot {
+                it.mediaId == item.mediaId &&
+                    it.mediaType.equals(item.mediaType, ignoreCase = true)
+            },
+        )
+        viewModelScope.launch {
+            val ok = runCatching {
+                container.apiClient.delete("/continue-watching/$mediaType/${item.mediaId}")
+            }.getOrElse { err ->
+                Log.w(TAG, "Dismiss continue-watching error for $mediaType/${item.mediaId}", err)
+                false
+            }
+            if (!ok) {
+                Log.w(TAG, "Dismiss continue-watching rejected for $mediaType/${item.mediaId}")
+                _uiState.value = _uiState.value.copy(continueWatching = previous)
+            } else {
+                Log.i(TAG, "Dismissed continue-watching $mediaType/${item.mediaId}")
+            }
+        }
+    }
+
     private suspend fun loadInitialData() {
         coroutineScope {
             val continueDeferred = async { fetchContinueWatching() }

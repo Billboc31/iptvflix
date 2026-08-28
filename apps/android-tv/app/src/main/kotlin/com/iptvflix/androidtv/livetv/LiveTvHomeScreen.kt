@@ -52,32 +52,71 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.iptvflix.androidtv.home.HomeViewModel
+import com.iptvflix.androidtv.ui.AppHomeChrome
+import com.iptvflix.androidtv.ui.AppHomeMode
 import com.iptvflix.androidtv.ui.TvColors
 
 @Composable
 fun LiveTvHomeScreen(
-    viewModel: LiveTvHomeViewModel = viewModel(
-        factory = LiveTvHomeViewModel.factory(LocalContext.current.applicationContext as App),
-    ),
     onBack: () -> Unit,
+    onSwitchToVod: () -> Unit = onBack,
+    onChangeProfile: () -> Unit = {},
     onChannelSelected: (ChannelResponse) -> Unit = {},
     onOpenSearch: () -> Unit = {},
 ) {
+    val app = LocalContext.current.applicationContext as App
+    val viewModel: LiveTvHomeViewModel = viewModel(
+        factory = LiveTvHomeViewModel.factory(app),
+    )
+    val profileKey = app.secureStorage.getLastUsedProfileId() ?: "home"
+    val homeViewModel: HomeViewModel = viewModel(key = profileKey)
     val state by viewModel.state.collectAsState()
+    val homeState by homeViewModel.uiState.collectAsState()
+
+    LaunchedEffect(profileKey) {
+        homeViewModel.refreshCurrentProfile()
+    }
 
     BackHandler { onBack() }
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(TvColors.Background),
+            .background(TvColors.Background)
+            .padding(top = 16.dp, bottom = 12.dp),
     ) {
-        when (val s = state) {
-            is LiveTvHomeState.Loading -> LoadingContent()
-            is LiveTvHomeState.Error -> ErrorContent(message = s.message, onRetry = { viewModel.retry() })
-            is LiveTvHomeState.Ready -> {
-                val isEmpty = s.recent.isEmpty() && s.favorites.isEmpty() && s.all.isEmpty()
-                if (isEmpty) EmptyContent() else ReadyContent(state = s, onChannelSelected = onChannelSelected, onOpenSearch = onOpenSearch)
+        AppHomeChrome(
+            mode = AppHomeMode.LiveTv,
+            deviceName = homeState.deviceName,
+            statusLabel = "En direct",
+            connectionStatus = homeState.connectionStatus,
+            profileName = homeState.profileName,
+            profileAvatarKey = homeState.profileAvatarKey,
+            onChangeProfile = onChangeProfile,
+            onSelectVod = onSwitchToVod,
+            onSelectLiveTv = {},
+            requestProfileFocus = false,
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        Box(modifier = Modifier.weight(1f).fillMaxSize()) {
+            when (val s = state) {
+                is LiveTvHomeState.Loading -> LoadingContent()
+                is LiveTvHomeState.Error -> ErrorContent(message = s.message, onRetry = { viewModel.retry() })
+                is LiveTvHomeState.Ready -> {
+                    val isEmpty = s.recent.isEmpty() && s.favorites.isEmpty() && s.all.isEmpty()
+                    if (isEmpty) {
+                        EmptyContent()
+                    } else {
+                        ReadyContent(
+                            state = s,
+                            onChannelSelected = onChannelSelected,
+                            onOpenSearch = onOpenSearch,
+                        )
+                    }
+                }
             }
         }
     }
@@ -164,7 +203,7 @@ private fun ReadyContent(
 
     TvLazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = 40.dp),
+        contentPadding = PaddingValues(top = 4.dp, bottom = 40.dp),
     ) {
         item {
             Row(

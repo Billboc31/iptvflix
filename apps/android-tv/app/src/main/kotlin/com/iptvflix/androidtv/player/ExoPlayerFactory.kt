@@ -40,13 +40,18 @@ object ExoPlayerFactory {
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(dataSourceFactory)
 
-        // Keep buffers modest — large MKV buffers OOM / crash low-end Android TV boxes.
+        // Live-friendly: min buffer must stay under typical HLS live target (~8–15s).
+        // 15s min + locked 1.0× live speed caused perpetual BUFFERING ("jamais play").
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                8_000,
-                25_000,
-                1_000,
-                2_000,
+                /* minBufferMs */ 6_000,
+                /* maxBufferMs */ 30_000,
+                /* bufferForPlaybackMs */ 500,
+                /* bufferForPlaybackAfterRebufferMs */ 1_500,
+            )
+            .setBackBuffer(
+                /* backBufferDurationMs */ 8_000,
+                /* retainBackBufferFromKeyframe */ true,
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
@@ -55,6 +60,7 @@ object ExoPlayerFactory {
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
             .build()
+            .also { it.setForegroundMode(true) }
     }
 }
 

@@ -1,5 +1,6 @@
 package com.iptvflix.androidtv
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -21,6 +22,7 @@ import com.iptvflix.androidtv.pairing.PairingScreen
 import com.iptvflix.androidtv.player.PlayerScreen
 import com.iptvflix.androidtv.profiles.WhoIsWatchingScreen
 import com.iptvflix.androidtv.storage.SecureStorage
+import com.iptvflix.androidtv.ui.PlaybackIntroOverlay
 import java.util.UUID
 
 private enum class Screen { Pairing, WhoIsWatching, Home, Player, LiveTvHome, LiveTvSearch }
@@ -96,15 +98,45 @@ fun AppNavGraph() {
                 onSwitchToLiveTv = { currentScreen = Screen.LiveTvHome.name },
             )
         }
-        Screen.Player -> PlayerScreen(
-            command = commandVm.currentCommand(),
-            onStop = {
-                commandVm.clearCommand()
-                currentScreen = Screen.Home.name
-            },
-        )
+        Screen.Player -> {
+            val command = commandVm.currentCommand()
+            var introDoneForId by remember { mutableStateOf<String?>(null) }
+            val isLiveChannel = command?.mediaType.equals("channel", ignoreCase = true) == true
+            val showIntro = command != null && !isLiveChannel && introDoneForId != command.id
+
+            Box {
+                PlayerScreen(
+                    command = command,
+                    onStop = {
+                        val returnToLiveTv =
+                            commandVm.currentCommand()?.mediaType.equals("channel", ignoreCase = true) == true
+                        commandVm.clearCommand()
+                        introDoneForId = null
+                        currentScreen = if (returnToLiveTv) {
+                            Screen.LiveTvHome.name
+                        } else {
+                            Screen.Home.name
+                        }
+                    },
+                )
+                if (showIntro) {
+                    key(command?.id ?: "intro") {
+                        PlaybackIntroOverlay(
+                            title = command?.title,
+                            onFinished = { introDoneForId = command?.id },
+                        )
+                    }
+                }
+            }
+        }
         Screen.LiveTvHome -> LiveTvHomeScreen(
             onBack = { currentScreen = Screen.Home.name },
+            onSwitchToVod = { currentScreen = Screen.Home.name },
+            onChangeProfile = {
+                secureStorage.clearProfileToken()
+                commandVm.clearCommand()
+                currentScreen = Screen.WhoIsWatching.name
+            },
             onChannelSelected = { ch ->
                 commandVm.playLocal(
                     PlaybackCommand(

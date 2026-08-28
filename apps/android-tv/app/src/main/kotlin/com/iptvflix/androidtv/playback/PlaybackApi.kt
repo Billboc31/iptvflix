@@ -10,6 +10,7 @@ import kotlinx.serialization.json.put
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
+import java.util.concurrent.TimeUnit
 
 private const val TAG = "PlaybackApi"
 
@@ -49,6 +50,14 @@ private data class PlaybackSessionResponse(
     val alternatives: List<AvailabilityVariant> = emptyList(),
 )
 
+@Serializable
+private data class ChannelPlaybackResponse(
+    val gatewayUrl: String,
+    val deliveryMode: String = "DIRECT",
+    val containerExtension: String? = null,
+    val correlationId: String? = null,
+)
+
 class PlaybackApi(private val apiClient: ApiClient) {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -59,6 +68,10 @@ class PlaybackApi(private val apiClient: ApiClient) {
         availabilityId: String?,
         startPositionMs: Long = 0L,
     ): PlaybackDescriptor {
+        if (mediaType.equals("channel", ignoreCase = true)) {
+            return resolveChannelPlayback(mediaId)
+        }
+
         val body = buildJsonObject {
             put("clientType", "android-tv")
             availabilityId?.let { put("availabilityId", it) }
@@ -101,7 +114,46 @@ class PlaybackApi(private val apiClient: ApiClient) {
         )
     }
 
+    /** Live TV: POST /channels/{id}/playback/resolve (not the VOD /playback/resolve path). */
+    private suspend fun resolveChannelPlayback(channelId: String): PlaybackDescriptor {
+        val apiPath = "/channels/$channelId/playback/resolve"
+        val responseBody = apiClient.post(apiPath, "{}", clientType = "android-tv")
+        val session = json.decodeFromString<ChannelPlaybackResponse>(responseBody)
+        if (session.gatewayUrl.isBlank()) {
+            error("Chaîne indisponible pour le moment.")
+        }
+
+        val gatewayUrl = resolveGatewayUrl(session.gatewayUrl)
+        // Live TV may return media-relay (/v1/play) — that is a valid delivery path,
+        // unlike VOD where media-relay usually means a mis-deployed gateway.
+        // /v1/play blocks until ffmpeg remux is ready then 302 → .m3u8. Resolve that
+        // here so Exo gets a real playlist instead of hanging forever on /v1/play.
+        val streamUrl = resolveGatewayRedirect(gatewayUrl)
+        val host = runCatching { java.net.URI(streamUrl).host }.getOrNull() ?: "?"
+        val streamPath = runCatching { java.net.URI(streamUrl).path }.getOrNull() ?: streamUrl.takeLast(48)
+        Log.i(
+            TAG,
+            "Channel $channelId resolved mode=${session.deliveryMode} ext=${session.containerExtension} " +
+                "corr=${session.correlationId} → $host$streamPath",
+        )
+        return PlaybackDescriptor(
+            streamUrl = streamUrl,
+            deliveryMode = when {
+                streamUrl.contains(".m3u8", ignoreCase = true) ||
+                    streamUrl.contains("/v1/hls/") -> "HLS_REMUX"
+                else -> session.deliveryMode
+            },
+            containerExtension = session.containerExtension,
+            startPositionMs = 0L,
+            availabilityId = null,
+            alternatives = emptyList(),
+        )
+    }
+
     private suspend fun resolveGatewayRedirect(gatewayUrl: String): String {
+        if (isMediaRelayPlayUrl(gatewayUrl)) {
+            return resolveMediaRelayPlaylist(gatewayUrl)
+        }
         if (!gatewayUrl.contains("/playback/stream/")) return gatewayUrl
         return withContext(Dispatchers.IO) {
             val client = apiClient.httpClient.newBuilder()
@@ -143,6 +195,71 @@ class PlaybackApi(private val apiClient: ApiClient) {
                 }
             }
         }
+    }
+
+    /**
+     * Media-relay `/v1/play` holds the HTTP response open until remux produces
+     * `index.m3u8`, then 302s. Hand Exo the final playlist URL so playback can start.
+     */
+    private suspend fun resolveMediaRelayPlaylist(playUrl: String): String = withContext(Dispatchers.IO) {
+        // Quick probe: dead localhost.run tunnels return 503 "no tunnel here" immediately.
+        runCatching {
+            val probeClient = apiClient.httpClient.newBuilder()
+                .followRedirects(false)
+                .connectTimeout(5, TimeUnit.SECONDS)
+                .readTimeout(5, TimeUnit.SECONDS)
+                .callTimeout(8, TimeUnit.SECONDS)
+                .build()
+            val base = playUrl.substringBefore("/v1/play").trimEnd('/')
+            if (base.startsWith("http")) {
+                probeClient.newCall(Request.Builder().url("$base/health").get().build()).execute().use { probe ->
+                    val body = probe.body?.string().orEmpty()
+                    if (probe.code == 503 || body.contains("no tunnel", ignoreCase = true)) {
+                        error("Tunnel media-relay hors service — redémarrez le relais maison")
+                    }
+                }
+            }
+        }
+
+        Log.i(TAG, "Media-relay remux starting (may take up to ~35s)…")
+        val client = apiClient.httpClient.newBuilder()
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(35, TimeUnit.SECONDS)
+            .callTimeout(40, TimeUnit.SECONDS)
+            .build()
+        val request = Request.Builder()
+            .url(playUrl)
+            .get()
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            )
+            .build()
+        client.newCall(request).execute().use { response ->
+            val finalUrl = response.request.url.toString()
+            val safe = finalUrl.replace(Regex("ticket=[^&]+"), "ticket=…")
+            Log.i(TAG, "Media-relay done code=${response.code} url=$safe")
+            val errBody = if (!response.isSuccessful) {
+                runCatching { response.body?.string()?.take(180) }.getOrNull()
+            } else null
+            if (!response.isSuccessful) {
+                if (response.code == 503 || errBody.orEmpty().contains("no tunnel", ignoreCase = true)) {
+                    error("Tunnel media-relay hors service — redémarrez le relais maison")
+                }
+                error("Remux relay échoué (${response.code})${errBody?.let { ": $it" } ?: ""}")
+            }
+            if (finalUrl.contains("/v1/play")) {
+                error("Remux relay n'a pas renvoyé de playlist HLS")
+            }
+            finalUrl
+        }
+    }
+
+    private fun isMediaRelayPlayUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains("/v1/play") && lower.contains("ticket=")
     }
 
     private fun isMediaRelayUrl(url: String): Boolean {

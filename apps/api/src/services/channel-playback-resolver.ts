@@ -44,7 +44,9 @@ export async function resolveChannelPlayback(
   profileId: string,
   channelId: string,
   correlationId = randomUUID(),
+  opts?: { clientType?: 'web' | 'android-tv' },
 ): Promise<ChannelPlaybackResponse> {
+  const nativeClient = opts?.clientType === 'android-tv'
   const rows = await db
     .select({
       id: channelSources.id,
@@ -75,10 +77,15 @@ export async function resolveChannelPlayback(
 
   let deliveryMode: DeliveryMode = extensionFallbackMode(containerExtension)
 
-  try {
-    const probe = await probeMedia(providerStreamUrl)
-    deliveryMode = classifyDelivery(probe)
-  } catch {
+  if (!nativeClient) {
+    try {
+      const probe = await probeMedia(providerStreamUrl)
+      deliveryMode = classifyDelivery(probe)
+    } catch {
+      deliveryMode = extensionFallbackMode(containerExtension)
+    }
+  } else {
+    // Native ExoPlayer: skip probe — saves ~1–3s per zap; extension fallback is enough.
     deliveryMode = extensionFallbackMode(containerExtension)
   }
 
@@ -125,7 +132,10 @@ export async function resolveChannelPlayback(
 
   const relayBase = getMediaRelayBaseUrl()
   const relaySecret = MEDIA_RELAY_SECRET
-  const useMediaRelay = mediaRelayEnabled && Boolean(relayBase && relaySecret)
+  const useMediaRelay =
+    !nativeClient &&
+    mediaRelayEnabled &&
+    Boolean(relayBase && relaySecret)
 
   const gatewayUrl = useMediaRelay
     ? buildMediaRelayPlayUrl({

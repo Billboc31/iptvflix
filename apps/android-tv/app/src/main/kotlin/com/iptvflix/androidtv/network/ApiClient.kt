@@ -79,6 +79,12 @@ class ApiClient(private val tokenStore: TokenStore) {
         }
     }
 
+    suspend fun delete(path: String): Boolean = withContext(Dispatchers.IO) {
+        apiHttpClient.newCall(buildRequest(path, "DELETE")).execute().use { response ->
+            response.isSuccessful
+        }
+    }
+
     fun openStream(path: String): Response = streamHttpClient.newCall(buildRequest(path)).execute()
 }
 

@@ -9,7 +9,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -50,95 +49,99 @@ class ChannelZappingTest {
     }
 
     @Test
-    fun `zapNext advances index and calls switchChannel with correct channel`() = runTest {
+    fun `previewNext shows carousel without switching channel`() = runTest {
         val channels = makeChannels(3)
         val switched = mutableListOf<ChannelResponse>()
         val zapper = makeZapper(channels, this) { switched.add(it) }
 
         zapper.initZapContext("ch-1")
-        zapper.zapNext()
-        advanceTimeBy(ChannelZapper.DEBOUNCE_MS + 1)
+        zapper.previewNext()
 
-        assertEquals(1, switched.size)
-        assertEquals("ch-2", switched[0].id)
+        assertEquals(0, switched.size)
+        assertEquals("ch-2", zapper.previewState.value?.selectedChannel?.id)
+        assertEquals(3, zapper.previewState.value?.window?.size)
     }
 
     @Test
-    fun `zapPrevious decrements index and calls switchChannel with correct channel`() = runTest {
+    fun `confirmPreview switches to selected channel`() = runTest {
+        val channels = makeChannels(3)
+        val switched = mutableListOf<ChannelResponse>()
+        val zapper = makeZapper(channels, this) { switched.add(it) }
+
+        zapper.initZapContext("ch-1")
+        zapper.previewNext()
+        zapper.confirmPreview()
+
+        assertEquals(1, switched.size)
+        assertEquals("ch-2", switched[0].id)
+        assertNull(zapper.previewState.value)
+    }
+
+    @Test
+    fun `previewPrevious wraps around to last channel`() = runTest {
+        val channels = makeChannels(3)
+        val zapper = makeZapper(channels, this)
+
+        zapper.initZapContext("ch-1")
+        zapper.previewPrevious()
+
+        assertEquals("ch-3", zapper.previewState.value?.selectedChannel?.id)
+    }
+
+    @Test
+    fun `previewNext at last index wraps around to first channel`() = runTest {
+        val channels = makeChannels(3)
+        val zapper = makeZapper(channels, this)
+
+        zapper.initZapContext("ch-3")
+        zapper.previewNext()
+
+        assertEquals("ch-1", zapper.previewState.value?.selectedChannel?.id)
+    }
+
+    @Test
+    fun `confirmPreview on same channel does not switch`() = runTest {
         val channels = makeChannels(3)
         val switched = mutableListOf<ChannelResponse>()
         val zapper = makeZapper(channels, this) { switched.add(it) }
 
         zapper.initZapContext("ch-2")
-        zapper.zapPrevious()
-        advanceTimeBy(ChannelZapper.DEBOUNCE_MS + 1)
+        zapper.confirmPreview()
 
-        assertEquals(1, switched.size)
-        assertEquals("ch-1", switched[0].id)
+        assertEquals(0, switched.size)
+        assertNull(zapper.previewState.value)
     }
 
     @Test
-    fun `zapNext at last index wraps around to first channel`() = runTest {
-        val channels = makeChannels(3)
-        val switched = mutableListOf<ChannelResponse>()
-        val zapper = makeZapper(channels, this) { switched.add(it) }
-
-        zapper.initZapContext("ch-3")
-        zapper.zapNext()
-        advanceTimeBy(ChannelZapper.DEBOUNCE_MS + 1)
-
-        assertEquals(1, switched.size)
-        assertEquals("ch-1", switched[0].id)
-    }
-
-    @Test
-    fun `zapPrevious at first index wraps around to last channel`() = runTest {
+    fun `cancelPreview clears carousel without switching`() = runTest {
         val channels = makeChannels(3)
         val switched = mutableListOf<ChannelResponse>()
         val zapper = makeZapper(channels, this) { switched.add(it) }
 
         zapper.initZapContext("ch-1")
-        zapper.zapPrevious()
-        advanceTimeBy(ChannelZapper.DEBOUNCE_MS + 1)
+        zapper.previewNext()
+        zapper.cancelPreview()
 
-        assertEquals(1, switched.size)
-        assertEquals("ch-3", switched[0].id)
+        assertEquals(0, switched.size)
+        assertNull(zapper.previewState.value)
     }
 
     @Test
-    fun `rapid zapNext calls result in exactly one switchChannel call (the last)`() = runTest {
-        val channels = makeChannels(5)
-        val switched = mutableListOf<ChannelResponse>()
-        val zapper = makeZapper(channels, this) { switched.add(it) }
-
-        zapper.initZapContext("ch-1")
-        zapper.zapNext() // index → 2 (ch-2), job1 scheduled
-        zapper.zapNext() // index → 3 (ch-3), job1 cancelled, job2 scheduled
-        advanceTimeBy(ChannelZapper.DEBOUNCE_MS + 1)
-
-        assertEquals(1, switched.size)
-        assertEquals("ch-3", switched[0].id)
-    }
-
-    @Test
-    fun `failed playback reverts zapIndex to last good channel and subsequent zap works`() = runTest {
+    fun `failed playback reverts index and subsequent preview works`() = runTest {
         val channels = makeChannels(4)
         val switched = mutableListOf<ChannelResponse>()
         val zapper = makeZapper(channels, this) { switched.add(it) }
 
         zapper.initZapContext("ch-1")
-        zapper.notifyPlaybackSuccess() // ch-1 is the confirmed good position
+        zapper.notifyPlaybackSuccess("ch-1")
 
-        // Zap to ch-2, then simulate failure
-        zapper.zapNext()
-        advanceTimeBy(ChannelZapper.DEBOUNCE_MS + 1)
+        zapper.previewNext()
+        zapper.confirmPreview()
         assertEquals("ch-2", switched[0].id)
-        zapper.notifyPlaybackError() // revert to ch-1
+        zapper.notifyPlaybackError()
 
-        // Subsequent zap must work from the last good index (ch-1)
-        zapper.zapNext()
-        advanceTimeBy(ChannelZapper.DEBOUNCE_MS + 1)
-
+        zapper.previewNext()
+        zapper.confirmPreview()
         assertEquals(2, switched.size)
         assertEquals("ch-2", switched[1].id)
     }
@@ -157,59 +160,52 @@ class ChannelZappingTest {
     }
 
     @Test
-    fun `initZapContext second call updates index to new channel`() = runTest {
+    fun `preview window contains three channels before and after selection`() = runTest {
+        val channels = makeChannels(10)
+        val zapper = makeZapper(channels, this)
+
+        zapper.initZapContext("ch-5")
+        zapper.previewNext()
+
+        val window = zapper.previewState.value?.window.orEmpty()
+        assertEquals(listOf("ch-3", "ch-4", "ch-5", "ch-6", "ch-7", "ch-8", "ch-9"), window.map { it.id })
+        assertEquals("ch-6", zapper.previewState.value?.selectedChannel?.id)
+    }
+
+    @Test
+    fun `confirmPreview does not commit index until playback succeeds`() = runTest {
         val channels = makeChannels(3)
         val switched = mutableListOf<ChannelResponse>()
         val zapper = makeZapper(channels, this) { switched.add(it) }
 
         zapper.initZapContext("ch-1")
-        zapper.initZapContext("ch-3") // update index to ch-3 without refetching list
-        zapper.zapPrevious()
-        advanceTimeBy(ChannelZapper.DEBOUNCE_MS + 1)
+        zapper.notifyPlaybackSuccess("ch-1")
+        zapper.previewNext()
+        zapper.confirmPreview()
 
         assertEquals(1, switched.size)
         assertEquals("ch-2", switched[0].id)
-    }
-
-    @Test
-    fun `initZapContext with unknown channelId defaults to index 0`() = runTest {
-        val channels = makeChannels(3)
-        val switched = mutableListOf<ChannelResponse>()
-        val zapper = makeZapper(channels, this) { switched.add(it) }
-
-        zapper.initZapContext("unknown-channel")
-        zapper.zapNext()
-        advanceTimeBy(ChannelZapper.DEBOUNCE_MS + 1)
-
-        // From index 0 (ch-1), zapNext → ch-2
+        // Still on ch-1 until the new stream reports READY.
+        zapper.previewNext()
+        zapper.confirmPreview()
         assertEquals(1, switched.size)
-        assertEquals("ch-2", switched[0].id)
+        zapper.notifyPlaybackSuccess("ch-2")
+        zapper.previewNext()
+        zapper.confirmPreview()
+        assertEquals(2, switched.size)
     }
 
     @Test
-    fun `zapHudChannel is set immediately on zap start before debounce completes`() = runTest {
-        val channels = makeChannels(3)
+    fun `preview window has no duplicate channels on small lists`() = runTest {
+        val channels = makeChannels(4)
         val zapper = makeZapper(channels, this)
 
         zapper.initZapContext("ch-1")
-        assertNull(zapper.hudChannel.value)
+        zapper.previewNext()
 
-        zapper.zapNext()
-        // HUD is set immediately, before the debounce delay fires
-        assertEquals("ch-2", zapper.hudChannel.value?.id)
-    }
-
-    @Test
-    fun `clearHud sets zapHudChannel to null`() = runTest {
-        val channels = makeChannels(3)
-        val zapper = makeZapper(channels, this)
-
-        zapper.initZapContext("ch-1")
-        zapper.zapNext()
-        assertEquals("ch-2", zapper.hudChannel.value?.id)
-
-        zapper.clearHud()
-        assertNull(zapper.hudChannel.value)
+        val window = zapper.previewState.value?.window.orEmpty()
+        assertEquals(window.size, window.distinctBy { it.id }.size)
+        assertEquals("ch-1", zapper.previewState.value?.playingChannelId)
     }
 
     @Test
@@ -218,12 +214,10 @@ class ChannelZappingTest {
         val switched = mutableListOf<ChannelResponse>()
         val zapper = makeZapper(channels, this) { switched.add(it) }
 
-        // No initZapContext call
-        zapper.zapNext()
-        advanceTimeBy(ChannelZapper.DEBOUNCE_MS + 1)
+        zapper.previewNext()
 
         assertEquals(0, switched.size)
-        assertNull(zapper.hudChannel.value)
+        assertNull(zapper.previewState.value)
     }
 }
 

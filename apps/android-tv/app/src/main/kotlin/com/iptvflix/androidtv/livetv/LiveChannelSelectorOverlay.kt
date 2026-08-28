@@ -23,10 +23,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.focusable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,6 +38,11 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -42,6 +50,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import androidx.tv.foundation.lazy.list.TvLazyColumn
 import androidx.tv.foundation.lazy.list.itemsIndexed
 import androidx.tv.foundation.lazy.list.rememberTvLazyListState
@@ -60,6 +69,7 @@ fun LiveChannelSelectorOverlay(
     loadingChannelId: String?,
     onChannelSelected: (ChannelResponse) -> Unit,
     onClose: () -> Unit,
+    onExitPlayer: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -77,38 +87,98 @@ fun LiveChannelSelectorOverlay(
         )
 
         when (state) {
-            is LiveChannelSelectorState.Loading -> Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                SelectorSpinner()
+            is LiveChannelSelectorState.Loading -> {
+                val loadingFocus = remember { FocusRequester() }
+                LaunchedEffect(Unit) {
+                    delay(40)
+                    runCatching { loadingFocus.requestFocus() }
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .focusRequester(loadingFocus)
+                        .focusable()
+                        .onKeyEvent { event ->
+                            if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                            when (event.key) {
+                                Key.DirectionRight -> { onClose(); true }
+                                Key.Back, Key.Escape -> { onExitPlayer(); true }
+                                else -> false
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    SelectorSpinner()
+                }
             }
-            is LiveChannelSelectorState.Error -> Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    state.message,
-                    color = TvColors.Error,
-                    fontSize = 13.sp,
-                    textAlign = TextAlign.Center,
-                )
+            is LiveChannelSelectorState.Error -> {
+                val errorFocus = remember { FocusRequester() }
+                LaunchedEffect(Unit) {
+                    delay(40)
+                    runCatching { errorFocus.requestFocus() }
+                }
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 8.dp),
+                ) {
+                    ChannelSelectorBackRow(onClick = onExitPlayer, onClose = onClose)
+                    Spacer(Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp)
+                            .focusRequester(errorFocus)
+                            .focusable()
+                            .onKeyEvent { event ->
+                                if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                                when (event.key) {
+                                    Key.DirectionRight -> { onClose(); true }
+                                    Key.Back, Key.Escape -> { onExitPlayer(); true }
+                                    else -> false
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            state.message,
+                            color = TvColors.Error,
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
             }
             is LiveChannelSelectorState.Ready -> {
                 val listState = rememberTvLazyListState()
                 val currentIndex = remember(state.channels, currentChannelId) {
                     state.channels.indexOfFirst { it.id == currentChannelId }.coerceAtLeast(0)
                 }
-                LaunchedEffect(currentChannelId) {
-                    if (state.channels.isNotEmpty()) {
-                        runCatching { listState.scrollToItem(currentIndex) }
+                // +1 because item 0 is the Retour row inside the list.
+                val focusChannelIndex = currentIndex + 1
+                var initialFocusDone by remember { mutableStateOf(false) }
+                var requestFocusIndex by remember { mutableStateOf<Int?>(null) }
+                LaunchedEffect(Unit) {
+                    if (state.channels.isEmpty()) {
+                        delay(40)
+                        requestFocusIndex = 0
+                        return@LaunchedEffect
                     }
+                    runCatching { listState.scrollToItem(focusChannelIndex) }
+                    delay(48)
+                    requestFocusIndex = focusChannelIndex
                 }
                 if (state.channels.isEmpty()) {
+                    ChannelSelectorBackRow(
+                        onClick = onExitPlayer,
+                        onClose = onClose,
+                        requestInitialFocus = requestFocusIndex == 0 && !initialFocusDone,
+                        onInitialFocusHandled = { initialFocusDone = true },
+                    )
                     Box(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
@@ -124,19 +194,113 @@ fun LiveChannelSelectorOverlay(
                         contentPadding = PaddingValues(bottom = 16.dp),
                         modifier = Modifier.fillMaxSize(),
                     ) {
+                        item(key = "__back__") {
+                            ChannelSelectorBackRow(
+                                onClick = onExitPlayer,
+                                onClose = onClose,
+                                requestInitialFocus = !initialFocusDone && requestFocusIndex == 0,
+                                onInitialFocusHandled = { initialFocusDone = true },
+                            )
+                            Spacer(Modifier.height(8.dp))
+                        }
                         itemsIndexed(state.channels, key = { _, ch -> ch.id }) { index, channel ->
+                            val listIndex = index + 1
                             ChannelSelectorRow(
                                 channel = channel,
                                 isCurrentlyPlaying = channel.id == currentChannelId,
                                 isLoading = channel.id == loadingChannelId,
-                                requestInitialFocus = index == currentIndex,
+                                requestInitialFocus = !initialFocusDone &&
+                                    requestFocusIndex != null &&
+                                    listIndex == requestFocusIndex,
+                                onInitialFocusHandled = { initialFocusDone = true },
                                 onSelect = { onChannelSelected(channel) },
+                                onClose = onClose,
+                                onExitPlayer = onExitPlayer,
                             )
                             Spacer(Modifier.height(2.dp))
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ChannelSelectorBackRow(
+    onClick: () -> Unit,
+    onClose: () -> Unit,
+    requestInitialFocus: Boolean = false,
+    onInitialFocusHandled: () -> Unit = {},
+) {
+    val focusRequester = remember { FocusRequester() }
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+
+    LaunchedEffect(requestInitialFocus) {
+        if (!requestInitialFocus) return@LaunchedEffect
+        repeat(4) { attempt ->
+            delay(if (attempt == 0) 16L else 40L)
+            if (runCatching { focusRequester.requestFocus() }.isSuccess) {
+                onInitialFocusHandled()
+                return@LaunchedEffect
+            }
+        }
+        onInitialFocusHandled()
+    }
+
+    Surface(
+        onClick = onClick,
+        interactionSource = interactionSource,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+            .focusRequester(focusRequester)
+            .onKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                when (event.key) {
+                    Key.DirectionRight -> { onClose(); true }
+                    Key.Back, Key.Escape -> { onClick(); true }
+                    else -> false
+                }
+            },
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(6.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = Color.Transparent,
+            focusedContainerColor = Color(0x33FFFFFF),
+            pressedContainerColor = Color(0x44FFFFFF),
+            contentColor = TvColors.TextPrimary,
+            focusedContentColor = Color.White,
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(
+                border = BorderStroke(0.dp, Color.Transparent),
+                shape = RoundedCornerShape(6.dp),
+            ),
+            focusedBorder = Border(
+                border = BorderStroke(2.dp, Color.White),
+                shape = RoundedCornerShape(6.dp),
+            ),
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "←",
+                color = if (focused) Color.White else TvColors.TextMuted,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                "Retour",
+                color = if (focused) Color.White else TvColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
         }
     }
 }
@@ -187,14 +351,27 @@ private fun ChannelSelectorRow(
     isCurrentlyPlaying: Boolean,
     isLoading: Boolean,
     requestInitialFocus: Boolean,
+    onInitialFocusHandled: () -> Unit = {},
     onSelect: () -> Unit,
+    onClose: () -> Unit,
+    onExitPlayer: () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
 
     LaunchedEffect(requestInitialFocus) {
-        if (requestInitialFocus) runCatching { focusRequester.requestFocus() }
+        if (!requestInitialFocus) return@LaunchedEffect
+        // Scroll may compose the row a frame late — retry instead of giving up once.
+        repeat(4) { attempt ->
+            delay(if (attempt == 0) 16L else 40L)
+            val ok = runCatching { focusRequester.requestFocus() }.isSuccess
+            if (ok) {
+                onInitialFocusHandled()
+                return@LaunchedEffect
+            }
+        }
+        onInitialFocusHandled()
     }
 
     Surface(
@@ -203,7 +380,15 @@ private fun ChannelSelectorRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp)
-            .focusRequester(focusRequester),
+            .focusRequester(focusRequester)
+            .onKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                when (event.key) {
+                    Key.DirectionRight -> { onClose(); true }
+                    Key.Back, Key.Escape -> { onExitPlayer(); true }
+                    else -> false
+                }
+            },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(6.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = when {

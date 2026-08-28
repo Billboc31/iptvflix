@@ -153,9 +153,13 @@ fun PlayerScreen(
         factory = LiveChannelSelectorViewModel.factory(LocalContext.current.applicationContext as App),
     )
     val selectorState by selectorVm.state.collectAsState()
+    val nowPlaying by vm.nowPlaying.collectAsState()
     var isChannelSelectorOpen by remember { mutableStateOf(false) }
     var loadingChannelId by remember { mutableStateOf<String?>(null) }
-    var currentChannelId by remember { mutableStateOf(command?.mediaId) }
+    val currentChannelId = nowPlaying?.mediaId ?: command?.mediaId
+    val isLivePlayback = (nowPlaying?.mediaType ?: command?.mediaType)
+        .equals("channel", ignoreCase = true)
+    val zapPreview by vm.zapPreview.collectAsState()
 
     val visibleActions = remember(overlayActions, hud.positionMs, scrub) {
         val pos = if (scrub.active) scrub.previewMs else hud.positionMs
@@ -167,12 +171,17 @@ fun PlayerScreen(
         interactionTick++
     }
 
+    fun openChannelSelector() {
+        showControls = false
+        vm.cancelZapPreview()
+        isChannelSelectorOpen = true
+    }
+
     LaunchedEffect(command?.id) {
         if (command != null) {
             showControls = true
             interactionTick++
             isChannelSelectorOpen = false
-            currentChannelId = command.mediaId
             vm.load(command)
         }
     }
@@ -189,17 +198,25 @@ fun PlayerScreen(
 
     // When chrome first appears, focus Play once — do NOT re-steal focus on every key.
     var chromeFocusGeneration by remember { mutableIntStateOf(0) }
-    LaunchedEffect(showControls, openPanel) {
-        if (!showControls || openPanel != PlayerPanel.None) return@LaunchedEffect
+
+    LaunchedEffect(showControls, scrub.active, isChannelSelectorOpen, openPanel) {
+        val fast = showControls || scrub.active || isChannelSelectorOpen || openPanel != PlayerPanel.None
+        vm.setHudPollingFast(fast)
+    }
+    LaunchedEffect(zapPreview) {
+        if (zapPreview != null) showControls = false
+    }
+    LaunchedEffect(showControls, openPanel, isChannelSelectorOpen) {
+        if (!showControls || openPanel != PlayerPanel.None || isChannelSelectorOpen) return@LaunchedEffect
         chromeFocusGeneration++
         val gen = chromeFocusGeneration
         delay(40)
-        if (gen == chromeFocusGeneration) {
+        if (gen == chromeFocusGeneration && !isChannelSelectorOpen) {
             runCatching { playFocusRequester.requestFocus() }
         }
     }
 
-    LaunchedEffect(interactionTick, uiState, scrub.active, openPanel, isChannelSelectorOpen) {
+    LaunchedEffect(interactionTick, uiState, scrub.active, openPanel, isChannelSelectorOpen, zapPreview) {
         when (uiState) {
             is PlayerUiState.Ended -> {
                 delay(2_000)
@@ -210,9 +227,11 @@ fun PlayerScreen(
                 if (scrub.active) return@LaunchedEffect
                 if (openPanel != PlayerPanel.None) return@LaunchedEffect
                 if (isChannelSelectorOpen) return@LaunchedEffect
+                if (zapPreview != null) return@LaunchedEffect
                 delay(AUTO_HIDE_MS)
                 if (openPanel != PlayerPanel.None) return@LaunchedEffect
                 if (isChannelSelectorOpen) return@LaunchedEffect
+                if (zapPreview != null) return@LaunchedEffect
                 showControls = false
                 runCatching { rootFocusRequester.requestFocus() }
             }
@@ -247,12 +266,25 @@ fun PlayerScreen(
             .onKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
 
-                // Back hierarchy: channel overlay → panel → chrome → exit.
+                // Back hierarchy:
+                // channel menu → exit player
+                // panel → close panel
+                // chrome visible → hide chrome (do NOT open menu)
+                // live + chrome hidden → open channel menu
+                // else → exit player
                 if (event.key == Key.Back || event.key == Key.Escape) {
+                    if (zapPreview != null) {
+                        vm.cancelZapPreview()
+                        return@onKeyEvent true
+                    }
+                    if (vm.isChannelSwitchPending()) {
+                        vm.cancelChannelSwitch()
+                        return@onKeyEvent true
+                    }
                     return@onKeyEvent when {
                         isChannelSelectorOpen -> {
-                            isChannelSelectorOpen = false
-                            runCatching { rootFocusRequester.requestFocus() }
+                            vm.stop()
+                            onStop()
                             true
                         }
                         openPanel != PlayerPanel.None -> {
@@ -260,9 +292,19 @@ fun PlayerScreen(
                             bumpInteraction()
                             true
                         }
-                        showControls -> {
+                        uiState is PlayerUiState.Error && isLivePlayback -> {
+                            // Error after failed zap — leave player, don't trap in chrome.
+                            vm.stop()
+                            onStop()
+                            true
+                        }
+                        showControls || scrub.active -> {
                             showControls = false
                             runCatching { rootFocusRequester.requestFocus() }
+                            true
+                        }
+                        isLivePlayback -> {
+                            openChannelSelector()
                             true
                         }
                         else -> {
@@ -273,20 +315,38 @@ fun PlayerScreen(
                     }
                 }
 
-                // While channel selector is open, RIGHT closes it; all other keys
-                // are consumed to prevent seek/play-pause side-effects from firing.
-                // UP/DOWN are consumed by TvLazyColumn before reaching here.
-                if (isChannelSelectorOpen) {
-                    if (event.key == Key.DirectionRight) {
-                        isChannelSelectorOpen = false
-                        runCatching { rootFocusRequester.requestFocus() }
+                // Zap preview carousel: browse with UP/DOWN, confirm with OK, cancel with Back.
+                if (zapPreview != null) {
+                    return@onKeyEvent when (event.key) {
+                        Key.DirectionUp -> { showControls = false; vm.zapPrevious(); true }
+                        Key.DirectionDown -> { showControls = false; vm.zapNext(); true }
+                        Key.DirectionCenter, Key.Enter -> { vm.confirmZapPreview(); true }
+                        else -> true
                     }
-                    return@onKeyEvent true
+                }
+
+                // Channel guide open: arrows/OK navigate the list; RIGHT closes guide.
+                if (isChannelSelectorOpen) {
+                    return@onKeyEvent when (event.key) {
+                        Key.DirectionRight -> {
+                            isChannelSelectorOpen = false
+                            runCatching { rootFocusRequester.requestFocus() }
+                            true
+                        }
+                        Key.DirectionUp,
+                        Key.DirectionDown,
+                        Key.DirectionLeft,
+                        Key.DirectionCenter,
+                        Key.Enter,
+                        -> false
+                        Key.MediaPlay, Key.MediaPause, Key.MediaPlayPause -> true
+                        else -> true
+                    }
                 }
 
                 val controlsUp = showControls || openPanel != PlayerPanel.None
 
-                // With chrome/panel visible: let D-pad move focus between buttons.
+                // Chrome visible: normal focus navigation (no shortcut to open channel guide).
                 if (controlsUp) {
                     bumpInteraction()
                     return@onKeyEvent when (event.key) {
@@ -304,38 +364,27 @@ fun PlayerScreen(
                     }
                 }
 
-                // Chrome hidden: DPAD_LEFT opens the channel selector for Live TV.
-                if (event.key == Key.DirectionLeft &&
-                    command?.mediaType.equals("channel", ignoreCase = true)
-                ) {
-                    isChannelSelectorOpen = true
-                    return@onKeyEvent true
-                }
-
-                // Chrome hidden: DPAD_UP/DOWN zap channels without showing the chrome HUD.
-                // Overlay guard is handled above — this only runs when no overlay is open.
-                if (command?.mediaType.equals("channel", ignoreCase = true)) {
+                // Chrome hidden + live: UP/DOWN open zap preview carousel (confirm with OK).
+                if (isLivePlayback) {
                     when (event.key) {
-                        Key.DirectionUp -> { vm.zapPrevious(); return@onKeyEvent true }
-                        Key.DirectionDown -> { vm.zapNext(); return@onKeyEvent true }
+                        Key.DirectionUp -> {
+                            showControls = false
+                            vm.zapPrevious()
+                            return@onKeyEvent true
+                        }
+                        Key.DirectionDown -> {
+                            showControls = false
+                            vm.zapNext()
+                            return@onKeyEvent true
+                        }
                         else -> {}
                     }
                 }
 
-                // Chrome hidden: any other key shows it; L/R still seek (VOD).
                 bumpInteraction()
-                when (event.key) {
-                    Key.DirectionCenter, Key.Enter, Key.MediaPlay, Key.MediaPause, Key.MediaPlayPause -> {
-                        vm.togglePlayPause(); true
-                    }
-                    Key.DirectionRight -> { vm.seekForward(); true }
-                    Key.DirectionLeft -> { vm.seekBack(); true }
-                    else -> true
-                }
+                true
             },
     ) {
-        val zapHudChannel by vm.zapHudChannel.collectAsState()
-
         PlayerOverlayStack(
             video = {
                 AndroidView(
@@ -354,7 +403,8 @@ fun PlayerScreen(
             },
             statusContent = {
                 AnimatedVisibility(
-                    visible = showControls || scrub.active || openPanel != PlayerPanel.None,
+                    visible = (showControls || scrub.active || openPanel != PlayerPanel.None) &&
+                        zapPreview == null,
                     enter = fadeIn(),
                     exit = fadeOut(),
                     modifier = Modifier.fillMaxSize(),
@@ -386,12 +436,14 @@ fun PlayerScreen(
                         },
                     )
                     is PlayerUiState.Ended -> CenterStatus("Lecture terminée", "Retour à l'accueil…")
-                    is PlayerUiState.Buffering -> if (!showControls) CenterStatus("Chargement…", "")
+                    is PlayerUiState.Buffering -> if (!showControls && zapPreview == null) CenterStatus("Chargement…", "")
                     else -> Unit
                 }
             },
             actionContent = {
-                if (uiState !is PlayerUiState.Error && visibleActions.isNotEmpty() && openPanel == PlayerPanel.None) {
+                if (zapPreview == null && uiState !is PlayerUiState.Error &&
+                    visibleActions.isNotEmpty() && openPanel == PlayerPanel.None
+                ) {
                     PlayerActionOverlays(
                         actions = visibleActions,
                         onAction = {
@@ -408,30 +460,39 @@ fun PlayerScreen(
                         currentChannelId = currentChannelId,
                         loadingChannelId = loadingChannelId,
                         onChannelSelected = { ch ->
-                            if (loadingChannelId == null) {
-                                loadingChannelId = ch.id
-                                currentChannelId = ch.id
-                                vm.switchChannel(ch.id, ch.name, ch.logoUrl)
-                            }
+                            if (ch.id == currentChannelId && loadingChannelId == null) return@LiveChannelSelectorOverlay
+                            loadingChannelId = ch.id
+                            vm.switchChannel(ch.id, ch.name, ch.logoUrl)
                         },
-                        onClose = { isChannelSelectorOpen = false },
+                        onClose = {
+                            isChannelSelectorOpen = false
+                            runCatching { rootFocusRequester.requestFocus() }
+                        },
+                        onExitPlayer = {
+                            vm.stop()
+                            onStop()
+                        },
                         modifier = Modifier.align(Alignment.TopStart),
                     )
                 }
                 AnimatedVisibility(
-                    visible = showControls || scrub.active || openPanel != PlayerPanel.None ||
-                        uiState is PlayerUiState.Error,
+                    visible = (showControls || scrub.active || openPanel != PlayerPanel.None ||
+                        uiState is PlayerUiState.Error) && zapPreview == null,
                     enter = fadeIn(),
                     exit = fadeOut(),
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     NetflixPlayerChrome(
-                        title = episodeBrowser.episodeLabel ?: command?.title,
+                        title = episodeBrowser.episodeLabel
+                            ?: nowPlaying?.title
+                            ?: command?.title,
                         isPlaying = uiState is PlayerUiState.Playing,
                         isBuffering = uiState is PlayerUiState.Buffering,
                         hud = hud,
                         scrub = scrub,
-                        scrubPosterUrl = episodeBrowser.posterUrl ?: command?.posterUrl,
+                        scrubPosterUrl = episodeBrowser.posterUrl
+                            ?: nowPlaying?.posterUrl
+                            ?: command?.posterUrl,
                         variants = variants,
                         selectedVariantId = selectedVariantId,
                         audioTracks = tracks.filter { it.type == "audio" },
@@ -440,13 +501,15 @@ fun PlayerScreen(
                         openPanel = openPanel,
                         subtitleMessage = subtitleMessage,
                         episodeBrowser = episodeBrowser,
-                        showEpisodesButton = command?.mediaType.equals("episode", ignoreCase = true) == true &&
+                        showEpisodesButton = (nowPlaying?.mediaType ?: command?.mediaType)
+                            .equals("episode", ignoreCase = true) == true &&
                             (episodeBrowser.seriesId != null || episodeBrowser.episodes.isNotEmpty()),
                         playFocusRequester = playFocusRequester,
                         onBack = { vm.stop(); onStop() },
                         onPlayPause = { bumpInteraction(); vm.togglePlayPause() },
                         onSeekBack = { bumpInteraction(); vm.seekBack() },
                         onSeekForward = { bumpInteraction(); vm.seekForward() },
+                        onJumpToLive = { bumpInteraction(); vm.jumpToLiveEdge() },
                         onScrubStart = { bumpInteraction(); vm.beginBarScrub(it) },
                         onScrubUpdate = { bumpInteraction(); vm.updateBarScrub(it) },
                         onScrubEnd = { bumpInteraction(); vm.endBarScrub() },
@@ -470,17 +533,13 @@ fun PlayerScreen(
             },
         )
 
-        zapHudChannel?.let { channel ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(end = 32.dp, bottom = 40.dp),
-                contentAlignment = Alignment.BottomEnd,
-            ) {
-                ZapChannelHud(channel = channel, onDismissed = { vm.clearZapHud() })
-            }
+        zapPreview?.let { preview ->
+            ZapChannelCarousel(
+                preview = preview,
+                onDismissed = { vm.cancelZapPreview() },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
-    }
 
     LaunchedEffect(Unit) {
         runCatching { rootFocusRequester.requestFocus() }
@@ -489,13 +548,15 @@ fun PlayerScreen(
     // KEYCODE_CHANNEL_UP/DOWN are scoped to full-screen Live TV only (no overlay, mediaType == "channel").
     LaunchedEffect(command?.id) {
         ChannelKeyEventBus.events.collect { keyEvent ->
-            if (shouldZapChannel(isChannelSelectorOpen, command?.mediaType)) {
+            if (shouldZapChannel(isChannelSelectorOpen, nowPlaying?.mediaType ?: command?.mediaType)) {
+                showControls = false
                 when (keyEvent) {
                     ChannelKeyEvent.Up -> vm.zapNext()
                     ChannelKeyEvent.Down -> vm.zapPrevious()
                 }
             }
         }
+    }
     }
 }
 
@@ -528,6 +589,7 @@ private fun NetflixPlayerChrome(
     onPlayPause: () -> Unit,
     onSeekBack: () -> Unit,
     onSeekForward: () -> Unit,
+    onJumpToLive: () -> Unit,
     onScrubStart: (Float) -> Unit,
     onScrubUpdate: (Float) -> Unit,
     onScrubEnd: () -> Unit,
@@ -544,13 +606,28 @@ private fun NetflixPlayerChrome(
     onSelectEpisode: (EpisodeListItem) -> Unit,
     onClosePanel: () -> Unit,
 ) {
+    val isLive = hud.isLiveChannel
+    val accent = if (isLive) TvColors.LiveTvAccent else NetflixRed
+    val hasDvrWindow = isLive && hud.durationMs >= 60_000L
     val displayMs = if (scrub.active) scrub.previewMs else hud.positionMs
-    val progress = if (hud.durationMs > 0L) {
-        (displayMs.toFloat() / hud.durationMs.toFloat()).coerceIn(0f, 1f)
-    } else {
-        0f
+    val progress = when {
+        !isLive && hud.durationMs > 0L ->
+            (displayMs.toFloat() / hud.durationMs.toFloat()).coerceIn(0f, 1f)
+        hasDvrWindow ->
+            (displayMs.toFloat() / hud.durationMs.toFloat()).coerceIn(0f, 1f)
+        // Pure live: never invent a scrub position — the live cursor is the truth.
+        else -> 0f
     }
     val remainingMs = (hud.durationMs - displayMs).coerceAtLeast(0L)
+    val remainingLabel = when {
+        isLive && hud.atLiveEdge -> "DIRECT"
+        isLive && hud.liveOffsetMs > 0L -> "-${formatTime(hud.liveOffsetMs)}"
+        isLive -> "DIRECT"
+        hud.durationMs > 0L -> formatTime(remainingMs)
+        else -> "--:--"
+    }
+    val showGoLive = isLive && !hud.atLiveEdge
+    val showLiveSeek = !isLive || hasDvrWindow
     val showLanguages = openPanel == PlayerPanel.Audio || openPanel == PlayerPanel.Subtitles
     val displayTitle = title?.takeIf { it.isNotBlank() }
     val hideBottomChrome = showLanguages ||
@@ -572,10 +649,17 @@ private fun NetflixPlayerChrome(
             Spacer(Modifier.width(10.dp))
             Text(
                 "IPTVFlix",
-                color = NetflixRed,
+                color = accent,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
             )
+            if (isLive) {
+                Spacer(Modifier.width(12.dp))
+                DirectLiveBadge(
+                    atLiveEdge = hud.atLiveEdge,
+                    liveOffsetMs = hud.liveOffsetMs,
+                )
+            }
             if (!displayTitle.isNullOrBlank()) {
                 Text(
                     "  ·  ",
@@ -643,9 +727,15 @@ private fun NetflixPlayerChrome(
                     progress = progress,
                     bufferedPercent = hud.bufferedPercent,
                     displayMs = displayMs,
-                    remainingLabel = if (hud.durationMs > 0L) formatTime(remainingMs) else "--:--",
+                    remainingLabel = remainingLabel,
                     scrubbing = scrub.active,
                     scrubPosterUrl = scrubPosterUrl,
+                    isLive = isLive,
+                    showLiveCursor = isLive,
+                    atLiveEdge = hud.atLiveEdge,
+                    hasDvrWindow = hasDvrWindow,
+                    liveEdgeProgress = 1f,
+                    accent = accent,
                     onScrubStart = onScrubStart,
                     onScrubUpdate = onScrubUpdate,
                     onScrubEnd = onScrubEnd,
@@ -676,11 +766,17 @@ private fun NetflixPlayerChrome(
                                 Glyph.Play(iconMod = Modifier.size(26.dp), color = HudWhite)
                             }
                         }
-                        IconHit(onClick = onSeekBack) {
-                            Glyph.Seek10(iconMod = Modifier.size(30.dp), color = HudWhite, forward = false)
+                        if (showLiveSeek) {
+                            IconHit(onClick = onSeekBack) {
+                                Glyph.Seek10(iconMod = Modifier.size(30.dp), color = HudWhite, forward = false)
+                            }
+                            IconHit(onClick = onSeekForward) {
+                                Glyph.Seek10(iconMod = Modifier.size(30.dp), color = HudWhite, forward = true)
+                            }
                         }
-                        IconHit(onClick = onSeekForward) {
-                            Glyph.Seek10(iconMod = Modifier.size(30.dp), color = HudWhite, forward = true)
+                        if (showGoLive) {
+                            Spacer(Modifier.width(8.dp))
+                            GoLiveButton(onClick = onJumpToLive)
                         }
                     }
 
@@ -706,16 +802,103 @@ private fun NetflixPlayerChrome(
                                 Glyph.Sources(iconMod = Modifier.size(22.dp), color = HudWhite)
                             }
                         }
-                        LabeledIconAction(
-                            label = "Audio & ST",
-                            onClick = onOpenLanguages,
-                        ) {
-                            Glyph.SpeechBubble(iconMod = Modifier.size(22.dp), color = HudWhite)
+                        if (!isLive) {
+                            LabeledIconAction(
+                                label = "Audio & ST",
+                                onClick = onOpenLanguages,
+                            ) {
+                                Glyph.SpeechBubble(iconMod = Modifier.size(22.dp), color = HudWhite)
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DirectLiveBadge(atLiveEdge: Boolean, liveOffsetMs: Long = 0L) {
+    val behind = !atLiveEdge && liveOffsetMs > 0L
+    val label = when {
+        atLiveEdge -> "DIRECT"
+        behind -> "−${formatTime(liveOffsetMs)}"
+        else -> "RETARD"
+    }
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(
+                when {
+                    atLiveEdge -> TvColors.LiveTvAccent.copy(alpha = 0.22f)
+                    behind -> Color(0x66FF8A00)
+                    else -> Color(0x44FFFFFF)
+                },
+            )
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(
+                    when {
+                        atLiveEdge -> TvColors.LiveTvAccent
+                        behind -> Color(0xFFFF8A00)
+                        else -> HudMuted
+                    },
+                ),
+        )
+        Text(
+            label,
+            color = when {
+                atLiveEdge -> TvColors.LiveTvAccent
+                behind -> Color(0xFFFFB74D)
+                else -> HudMuted
+            },
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun GoLiveButton(onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+    Surface(
+        onClick = onClick,
+        interactionSource = interactionSource,
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(20.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = TvColors.LiveTvAccent.copy(alpha = 0.2f),
+            focusedContainerColor = TvColors.LiveTvAccent,
+            pressedContainerColor = TvColors.LiveTvAccent,
+            contentColor = TvColors.LiveTvAccent,
+            focusedContentColor = Color.White,
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(
+                border = BorderStroke(1.5.dp, TvColors.LiveTvAccent),
+                shape = RoundedCornerShape(20.dp),
+            ),
+            focusedBorder = Border(
+                border = BorderStroke(2.dp, Color.White),
+                shape = RoundedCornerShape(20.dp),
+            ),
+        ),
+        modifier = Modifier.pointerInput(onClick) { detectTapGestures(onTap = { onClick() }) },
+    ) {
+        Text(
+            "Retour au direct",
+            color = if (focused) Color.White else TvColors.LiveTvAccent,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
     }
 }
 
@@ -727,6 +910,12 @@ private fun ProgressRail(
     remainingLabel: String,
     scrubbing: Boolean,
     scrubPosterUrl: String?,
+    isLive: Boolean = false,
+    showLiveCursor: Boolean = false,
+    atLiveEdge: Boolean = true,
+    hasDvrWindow: Boolean = false,
+    liveEdgeProgress: Float = 1f,
+    accent: Color = NetflixRed,
     onScrubStart: (Float) -> Unit,
     onScrubUpdate: (Float) -> Unit,
     onScrubEnd: () -> Unit,
@@ -735,11 +924,16 @@ private fun ProgressRail(
     onNudgeForward: () -> Unit,
 ) {
     val safe = progress.coerceIn(0f, 1f)
+    val liveEdge = liveEdgeProgress.coerceIn(0f, 1f)
     val previewWidth = 160.dp
     val timeLabelWidth = 72.dp
     val railHeight = if (scrubbing) 132.dp else 48.dp
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
+    // Pure live: only the live-edge cursor (no VOD fill / dual thumbs).
+    val showFill = !isLive || hasDvrWindow
+    val showPlayhead = !isLive || hasDvrWindow
+    val showTimeUnderThumb = !isLive || hasDvrWindow
 
     Surface(
         onClick = { /* focus only — scrub with D-pad */ },
@@ -791,8 +985,7 @@ private fun ProgressRail(
                 .coerceIn(0.dp, (trackWidth - timeLabelWidth).coerceAtLeast(0.dp))
             val trackTop = if (scrubbing) 102.dp else 12.dp
 
-            if (scrubbing) {
-                // Poster + time card (real film-frame sprites = future pipeline).
+            if (scrubbing && showTimeUnderThumb) {
                 val context = LocalContext.current
                 Column(
                     modifier = Modifier
@@ -835,7 +1028,6 @@ private fun ProgressRail(
                 }
             }
 
-            // Interactive track
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -843,20 +1035,26 @@ private fun ProgressRail(
                     .offset(y = trackTop - 12.dp)
                     .pointerInput(Unit) {
                         detectTapGestures { offset ->
-                            val f = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                            onScrubTap(f)
+                            if (!isLive || hasDvrWindow) {
+                                val f = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                onScrubTap(f)
+                            }
                         }
                     }
                     .pointerInput(Unit) {
                         detectHorizontalDragGestures(
                             onDragStart = { offset ->
-                                val f = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                onScrubStart(f)
+                                if (!isLive || hasDvrWindow) {
+                                    val f = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                    onScrubStart(f)
+                                }
                             },
                             onHorizontalDrag = { change, _ ->
-                                change.consume()
-                                val f = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                onScrubUpdate(f)
+                                if (!isLive || hasDvrWindow) {
+                                    change.consume()
+                                    val f = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                    onScrubUpdate(f)
+                                }
                             },
                             onDragEnd = { onScrubEnd() },
                             onDragCancel = { onScrubEnd() },
@@ -871,7 +1069,7 @@ private fun ProgressRail(
                         .clip(RoundedCornerShape(2.dp))
                         .background(if (focused) Color(0x88FFFFFF) else Color(0x55FFFFFF)),
                 ) {
-                    if (bufferedPercent > 0) {
+                    if (bufferedPercent > 0 && (!isLive || hasDvrWindow)) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth((bufferedPercent / 100f).coerceIn(0f, 1f))
@@ -879,53 +1077,88 @@ private fun ProgressRail(
                                 .background(Color(0x66FFFFFF)),
                         )
                     }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(safe.coerceAtLeast(0.004f))
-                            .fillMaxHeight()
-                            .background(NetflixRed),
-                    )
+                    if (showFill) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(safe.coerceAtLeast(0.004f))
+                                .fillMaxHeight()
+                                .background(accent),
+                        )
+                    }
                 }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(safe)
-                        .height(28.dp),
-                    contentAlignment = Alignment.CenterEnd,
-                ) {
+                // Live-edge cursor — always at the right for live channels.
+                if (showLiveCursor) {
                     Box(
                         modifier = Modifier
-                            .size(14.dp)
-                            .offset(x = 7.dp)
-                            .clip(CircleShape)
-                            .background(NetflixRed)
-                            .then(
-                                if (focused || scrubbing) {
-                                    Modifier.border(2.dp, Color.White, CircleShape)
-                                } else {
-                                    Modifier
-                                },
-                            ),
-                    )
+                            .fillMaxWidth(liveEdge)
+                            .height(28.dp),
+                        contentAlignment = Alignment.CenterEnd,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(3.dp)
+                                .height(16.dp)
+                                .offset(x = 1.5.dp)
+                                .clip(RoundedCornerShape(1.dp))
+                                .background(TvColors.LiveTvAccent),
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(if (atLiveEdge) 12.dp else 10.dp)
+                                .offset(x = 6.dp)
+                                .clip(CircleShape)
+                                .background(TvColors.LiveTvAccent)
+                                .border(1.5.dp, Color.White, CircleShape),
+                        )
+                    }
+                }
+                if (showPlayhead) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(safe)
+                            .height(28.dp),
+                        contentAlignment = Alignment.CenterEnd,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(14.dp)
+                                .offset(x = 7.dp)
+                                .clip(CircleShape)
+                                .background(accent)
+                                .then(
+                                    if (focused || scrubbing) {
+                                        Modifier.border(2.dp, Color.White, CircleShape)
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
+                        )
+                    }
                 }
             }
 
-            // Current time under the thumb
-            Text(
-                text = formatTime(displayMs),
-                color = HudWhite,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .offset(x = timeX, y = trackTop + 18.dp)
-                    .width(timeLabelWidth),
-            )
+            if (showTimeUnderThumb) {
+                Text(
+                    text = formatTime(displayMs),
+                    color = HudWhite,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .offset(x = timeX, y = trackTop + 18.dp)
+                        .width(timeLabelWidth),
+                )
+            }
         }
 
         Spacer(Modifier.width(14.dp))
         Text(
             remainingLabel,
-            color = if (focused) HudWhite else HudMuted,
+            color = when {
+                isLive && remainingLabel == "DIRECT" -> TvColors.LiveTvAccent
+                focused -> HudWhite
+                else -> HudMuted
+            },
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
             modifier = Modifier.padding(bottom = 4.dp),

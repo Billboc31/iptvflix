@@ -23,6 +23,7 @@ import { languageToPreferredCountry } from '../channels/iptv-org-matcher.js'
 import { lcnRank } from '../channels/lcn-order.js'
 import { ensureEpgLoaded, getEpgNowNext, getEpgProgramsInWindow } from '../services/epg-service.js'
 import { resolveChannelPlayback } from '../services/channel-playback-resolver.js'
+import { resolveClientType } from './resolve-client-type.js'
 import { requireProfile } from '../plugins/auth.js'
 import { normalizeQuery } from '../services/live-search-normalizer.js'
 import { searchLiveTV } from '../services/live-search-service.js'
@@ -250,7 +251,13 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
       const correlationId = randomUUID()
       reply.header('X-Correlation-ID', correlationId)
       try {
-        const session = await resolveChannelPlayback(req.profileId!, req.params.id, correlationId)
+        const clientType = resolveClientType(req)
+        const session = await resolveChannelPlayback(
+          req.profileId!,
+          req.params.id,
+          correlationId,
+          { clientType },
+        )
         return reply.send(session)
       } catch {
         return reply.status(404).send({

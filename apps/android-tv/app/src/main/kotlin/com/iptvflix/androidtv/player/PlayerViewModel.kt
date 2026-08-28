@@ -1,6 +1,7 @@
 package com.iptvflix.androidtv.player
 
 import android.app.Application
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -26,6 +27,7 @@ import com.iptvflix.androidtv.playback.StreamExtensionFallback
 import com.iptvflix.androidtv.playback.TrackInfo
 import com.iptvflix.androidtv.progress.ProgressReporter
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -40,6 +42,10 @@ private const val TAG = "PlayerViewModel"
 private const val SEEK_STEP_MS = 10_000L
 private const val SCRUB_STEP_MS = 10_000L
 private const val SCRUB_FAST_STEP_MS = 30_000L
+/** Slack for "at live edge" — keep tight so a short pause doesn't still read as DIRECT. */
+private const val LIVE_EDGE_TOLERANCE_MS = 5_000L
+/** Ignore tiny fake durations (HLS fragment windows) as DVR length. */
+private const val MIN_LIVE_DVR_WINDOW_MS = 60_000L
 
 sealed class PlayerUiState {
     object Idle : PlayerUiState()
@@ -79,11 +85,25 @@ data class PlayerHudState(
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
     val bufferedPercent: Int = 0,
+    /** Live TV channel currently loaded. */
+    val isLiveChannel: Boolean = false,
+    /** True when playhead is at (or very near) the live edge and playing. */
+    val atLiveEdge: Boolean = true,
+    /** How far behind the live edge, when known. */
+    val liveOffsetMs: Long = 0L,
 )
 
 data class ScrubState(
     val active: Boolean = false,
     val previewMs: Long = 0L,
+)
+
+/** What the chrome should show — updated on every load/switch (parent command may be stale). */
+data class NowPlayingInfo(
+    val mediaId: String,
+    val mediaType: String,
+    val title: String? = null,
+    val posterUrl: String? = null,
 )
 
 class PlayerViewModel(app: Application) : AndroidViewModel(app) {
@@ -100,6 +120,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _scrub = MutableStateFlow(ScrubState())
     val scrub: StateFlow<ScrubState> = _scrub.asStateFlow()
+
+    private val _nowPlaying = MutableStateFlow<NowPlayingInfo?>(null)
+    val nowPlaying: StateFlow<NowPlayingInfo?> = _nowPlaying.asStateFlow()
 
     private val _overlayActions = MutableStateFlow<List<PlayerOverlayAction>>(emptyList())
     val overlayActions: StateFlow<List<PlayerOverlayAction>> = _overlayActions.asStateFlow()
@@ -132,26 +155,50 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             onSwitch = { channel -> switchChannel(channel.id, channel.name, channel.logoUrl) },
         )
     }
-    val zapHudChannel: StateFlow<ChannelResponse?> get() = zapper.hudChannel
+    val zapPreview: StateFlow<ZapPreviewState?> get() = zapper.previewState
+
+    private val channelPrefetch: ChannelStreamPrefetcher by lazy {
+        ChannelStreamPrefetcher(viewModelScope) { channelId ->
+            PlaybackResolver(
+                PlaybackApi(container.apiClient),
+                container.lastAvailabilityStore,
+            ).resolve(buildChannelSwitchCommand(channelId, null, null))
+        }
+    }
 
     private var exoTracksMap = mapOf<String, ExoTrackRef>()
 
     private var progressReporter: ProgressReporter? = null
     private var reporterJob: Job? = null
+    private var loadJob: Job? = null
     private var hudJob: Job? = null
     private var scrubCommitJob: Job? = null
     private var episodeNavJob: Job? = null
     private var nearEndNextShown = false
+    /** When false (chrome hidden), poll HUD slowly to avoid Compose jank on the video surface. */
+    @Volatile
+    private var hudPollingFast: Boolean = false
 
     private val interactionEvents: InteractionEventService by lazy {
         InteractionEventService(container.apiClient)
     }
     private var currentCommand: PlaybackCommand? = null
+    /** Previous live channel while a zap remux is resolving — restored on timeout/cancel. */
+    private var channelSwitchFallback: PlaybackCommand? = null
     private var sessionId: String? = null
     private var hasEmittedPlay = false
     private var sessionEnded = false
     private var loadedCommandId: String? = null
     private var pendingResumeMs: Long = 0L
+    /** ElapsedRealtime when user last paused — used to soften post-pause recovery. */
+    private var lastPausedAtElapsedMs: Long = 0L
+    /**
+     * Live TV: wall-clock pause debt. Remux HLS often reports liveOffset≈0 after resume
+     * (no real DVR), so without this the UI falsely shows DIRECT.
+     */
+    private var livePauseStartedElapsedMs: Long = 0L
+    private var livePauseDebtMs: Long = 0L
+    private var sameUrlResumeRetryDone: Boolean = false
     private var scrubHoldTicks: Int = 0
     private var contentPosterUrl: String? = null
     private var currentStreamUrl: String? = null
@@ -177,23 +224,32 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        runCatching { player.setForegroundMode(true) }
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
+                val stateName = when (state) {
+                    Player.STATE_IDLE -> "IDLE"
+                    Player.STATE_BUFFERING -> "BUFFERING"
+                    Player.STATE_READY -> "READY"
+                    Player.STATE_ENDED -> "ENDED"
+                    else -> "OTHER($state)"
+                }
+                Log.i(TAG, "playbackState=$stateName playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying}")
                 _uiState.value = when {
                     state == Player.STATE_ENDED -> PlayerUiState.Ended
+                    // Background fill while paused must not flash "Chargement…"
+                    state == Player.STATE_BUFFERING && !player.playWhenReady -> PlayerUiState.Paused
                     state == Player.STATE_BUFFERING -> PlayerUiState.Buffering
                     state == Player.STATE_READY && player.playWhenReady -> PlayerUiState.Playing
                     state == Player.STATE_READY -> PlayerUiState.Paused
                     else -> _uiState.value
                 }
                 if (state == Player.STATE_READY) {
-                    val didResumeSeek = maybeApplyResumeSeek()
-                    // Avoid PUT at t≈0 before resume seek lands — that wiped CW (<5%).
-                    if (!didResumeSeek) {
-                        viewModelScope.launch { progressReporter?.reportNow() }
-                    }
+                    maybeApplyResumeSeek()
+                    // Do NOT PUT progress on every READY — pause→resume rebuffers fire READY
+                    // and the network call contends with the stream reconnect (VOD lag).
                     if (currentCommand?.mediaType.equals("channel", ignoreCase = true)) {
-                        zapper.notifyPlaybackSuccess()
+                        currentCommand?.mediaId?.let { zapper.notifyPlaybackSuccess(it) }
                     }
                 }
                 if (state == Player.STATE_ENDED) {
@@ -231,15 +287,23 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                             }.onFailure { Log.w(TAG, "PLAY_STARTED failed: ${it.message}") }
                         }
                     } else if (isPlaying && hasEmittedPlay) {
-                        emitEvent("PLAY_RESUMED")
+                        // Defer analytics so resume bandwidth stays with the media socket.
+                        viewModelScope.launch(Dispatchers.IO) {
+                            delay(750)
+                            emitEvent("PLAY_RESUMED")
+                        }
                     } else if (!isPlaying) {
-                        emitEvent("PLAY_PAUSED")
+                        viewModelScope.launch(Dispatchers.IO) {
+                            delay(250)
+                            emitEvent("PLAY_PAUSED")
+                        }
                     }
                 }
             }
 
             override fun onPlayerError(error: PlaybackException) {
                 Log.e(TAG, "Playback error: ${error.errorCodeName} ${error.message}", error)
+                if (retrySameUrlAfterPause(error)) return
                 if (tryExtensionFallback(error)) return
                 _uiState.value = PlayerUiState.Error(friendlyPlaybackError(error))
                 // Keep Sources reachable so the user can pick a playable stream (e.g. non-4K).
@@ -278,10 +342,24 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         })
         hudJob = viewModelScope.launch {
             while (true) {
-                delay(500)
+                val live = currentCommand?.mediaType.equals("channel", ignoreCase = true) == true
+                // Fast only while chrome/scrub needs a smooth scrubber; otherwise stay out
+                // of the UI thread (was 250ms live → ~70% janky frames on emulator).
+                val period = when {
+                    hudPollingFast -> 400L
+                    live -> 2_000L
+                    else -> 1_000L
+                }
+                delay(period)
                 if (!_scrub.value.active) refreshHud()
             }
         }
+    }
+
+    /** Call from PlayerScreen when controls / scrub / guide visibility changes. */
+    fun setHudPollingFast(enabled: Boolean) {
+        hudPollingFast = enabled
+        if (enabled) refreshHud()
     }
 
     private fun refreshHud() {
@@ -289,8 +367,121 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val dur = runCatching { player.duration }.getOrDefault(C.TIME_UNSET)
         val durationMs = if (dur == C.TIME_UNSET || dur < 0L) 0L else dur
         val buffered = runCatching { player.bufferedPercentage }.getOrDefault(0)
-        _hud.value = PlayerHudState(positionMs = pos, durationMs = durationMs, bufferedPercent = buffered)
+        val isLiveChannel = currentCommand?.mediaType.equals("channel", ignoreCase = true) == true
+        val (atLiveEdge, liveOffsetMs) = computeLiveEdgeState(
+            isLiveChannel = isLiveChannel,
+            positionMs = pos,
+            durationMs = durationMs,
+        )
+        val next = PlayerHudState(
+            positionMs = pos,
+            durationMs = durationMs,
+            bufferedPercent = buffered,
+            isLiveChannel = isLiveChannel,
+            atLiveEdge = atLiveEdge,
+            liveOffsetMs = liveOffsetMs,
+        )
+        val prev = _hud.value
+        val changed = if (hudPollingFast || _scrub.value.active) {
+            next != prev
+        } else {
+            // Chrome hidden: ignore playhead tick — it was recomposing the player ~4×/s.
+            prev.isLiveChannel != next.isLiveChannel ||
+                prev.atLiveEdge != next.atLiveEdge ||
+                kotlin.math.abs(prev.liveOffsetMs - next.liveOffsetMs) > 2_000L ||
+                kotlin.math.abs(prev.bufferedPercent - next.bufferedPercent) >= 8 ||
+                prev.durationMs != next.durationMs
+        }
+        if (changed) {
+            _hud.value = next
+        }
         maybeShowNearEndNextEpisode(pos, durationMs)
+    }
+
+    private fun computeLiveEdgeState(
+        isLiveChannel: Boolean,
+        positionMs: Long,
+        durationMs: Long,
+    ): Pair<Boolean, Long> {
+        if (!isLiveChannel) return true to 0L
+        val behind = liveBehindMs(positionMs, durationMs)
+        // Paused live is never "DIRECT" — delay keeps growing with wall clock.
+        if (!player.playWhenReady) {
+            return false to behind
+        }
+        return (behind <= LIVE_EDGE_TOLERANCE_MS) to behind
+    }
+
+    /**
+     * How far the playhead is behind the live head.
+     * Combines Exo currentLiveOffset (when meaningful) with wall-clock pause debt,
+     * because media-relay remux playlists often don't expose a real DVR offset.
+     */
+    private fun liveBehindMs(positionMs: Long, durationMs: Long): Long {
+        val raw = rawLiveBehindMs(positionMs, durationMs)
+        val debt = livePauseDebtMs + activeLivePauseMs()
+        return maxOf(raw, debt)
+    }
+
+    private fun rawLiveBehindMs(positionMs: Long, durationMs: Long): Long {
+        val liveOffset = runCatching { player.currentLiveOffset }.getOrDefault(C.TIME_UNSET)
+        if (liveOffset != C.TIME_UNSET && liveOffset >= 0L) {
+            // Cap absurd offsets from broken playlists / progressive mis-detect.
+            return liveOffset.coerceAtMost(30 * 60_000L)
+        }
+        // Only treat (duration − position) as live delay for a real Exo live window.
+        // Progressive mkv/ts fallbacks report a long VOD-like duration — using that
+        // as "behind live" produced −1:15 after a bad resume seek.
+        val isLiveItem = runCatching { player.isCurrentMediaItemLive }.getOrDefault(false)
+        if (isLiveItem && durationMs >= MIN_LIVE_DVR_WINDOW_MS) {
+            return (durationMs - positionMs).coerceIn(0L, 30 * 60_000L)
+        }
+        return 0L
+    }
+
+    private fun activeLivePauseMs(): Long {
+        if (livePauseStartedElapsedMs <= 0L) return 0L
+        return (SystemClock.elapsedRealtime() - livePauseStartedElapsedMs).coerceAtLeast(0L)
+    }
+
+    private fun clearLivePauseDebt() {
+        livePauseStartedElapsedMs = 0L
+        livePauseDebtMs = 0L
+    }
+
+    private fun beginLivePauseDebt() {
+        if (!currentCommand?.mediaType.equals("channel", ignoreCase = true)) return
+        if (livePauseStartedElapsedMs > 0L) return
+        livePauseStartedElapsedMs = SystemClock.elapsedRealtime()
+    }
+
+    private fun endLivePauseDebtSegment() {
+        if (livePauseStartedElapsedMs <= 0L) return
+        livePauseDebtMs += activeLivePauseMs()
+        livePauseStartedElapsedMs = 0L
+    }
+
+    /** Jump playhead back to the configured live edge (stable HLS default). */
+    fun jumpToLiveEdge() {
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            if (!currentCommand?.mediaType.equals("channel", ignoreCase = true)) return@launch
+            _scrub.value = ScrubState()
+            clearLivePauseDebt()
+            runCatching {
+                // Always use Exo's live default — seeking to duration−N overshoots the
+                // available segments on many HLS feeds and freezes playback ("ça marche plus").
+                if (player.isCurrentMediaItemLive) {
+                    player.seekToDefaultPosition()
+                } else {
+                    val dur = player.duration
+                    if (dur != C.TIME_UNSET && dur >= MIN_LIVE_DVR_WINDOW_MS) {
+                        player.seekTo((dur - 3_000L).coerceAtLeast(0L))
+                    }
+                }
+            }.onFailure { Log.w(TAG, "jumpToLiveEdge failed: ${it.message}") }
+            player.playWhenReady = true
+            refreshHud()
+        }
     }
 
     private fun maybeShowNearEndNextEpisode(positionMs: Long, durationMs: Long) {
@@ -305,11 +496,25 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun zapNext() { zapper.zapNext() }
-    fun zapPrevious() { zapper.zapPrevious() }
-    fun clearZapHud() { zapper.clearHud() }
+    fun zapNext() {
+        zapper.previewNext()
+        prefetchZapTarget()
+    }
 
-    fun load(command: PlaybackCommand) {
+    fun zapPrevious() {
+        zapper.previewPrevious()
+        prefetchZapTarget()
+    }
+
+    private fun prefetchZapTarget() {
+        zapper.previewState.value?.selectedChannel?.id?.let { channelPrefetch.prefetch(it) }
+    }
+
+    fun confirmZapPreview() { zapper.confirmPreview() }
+    fun cancelZapPreview() { zapper.cancelPreview() }
+    fun clearZapHud() { zapper.cancelPreview() }
+
+    fun load(command: PlaybackCommand, prefetched: PlaybackDescriptor? = null) {
         if (loadedCommandId == command.id &&
             player.playbackState != Player.STATE_IDLE &&
             player.playbackState != Player.STATE_ENDED
@@ -317,22 +522,40 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             Log.d(TAG, "Skipping duplicate load for command ${command.id}")
             return
         }
+        val softLiveSwitch = command.mediaType.equals("channel", ignoreCase = true) &&
+            channelSwitchFallback != null &&
+            channelSwitchFallback?.mediaId != command.mediaId &&
+            prefetched == null
         loadedCommandId = command.id
         currentCommand = command
+        // Soft zap: keep previous title on screen until the new stream is READY.
+        if (!softLiveSwitch) {
+            _nowPlaying.value = NowPlayingInfo(
+                mediaId = command.mediaId,
+                mediaType = command.mediaType,
+                title = command.title,
+                posterUrl = command.posterUrl,
+            )
+        }
         hasEmittedPlay = false
         sessionId = null
         sessionEnded = false
         pendingResumeMs = 0L
+        lastPausedAtElapsedMs = 0L
+        clearLivePauseDebt()
+        sameUrlResumeRetryDone = false
         scrubHoldTicks = 0
         nearEndNextShown = false
         contentPosterUrl = command.posterUrl
-        currentStreamUrl = null
-        currentDeliveryMode = "DIRECT"
-        triedStreamExtensions.clear()
+        if (!softLiveSwitch) {
+            currentStreamUrl = null
+            currentDeliveryMode = "DIRECT"
+            triedStreamExtensions.clear()
+        }
         _scrub.value = ScrubState()
         _openPanel.value = PlayerPanel.None
         _subtitleMessage.value = null
-        if (command.mediaType.equals("channel", ignoreCase = true)) {
+        if (command.mediaType.equals("channel", ignoreCase = true) && !softLiveSwitch) {
             viewModelScope.launch(Dispatchers.IO) { zapper.initZapContext(command.mediaId) }
         }
         _episodeBrowser.value = EpisodeBrowserState(
@@ -343,17 +566,37 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             },
             posterUrl = command.posterUrl,
         )
-        viewModelScope.launch {
-            _uiState.value = PlayerUiState.Buffering
+        loadJob?.cancel()
+        reporterJob?.cancel()
+        loadJob = viewModelScope.launch {
+            val isChannel = command.mediaType.equals("channel", ignoreCase = true)
+            val softLiveSwitch = isChannel && channelSwitchFallback != null && prefetched == null
+            if (prefetched != null) {
+                _uiState.value = PlayerUiState.Buffering
+                withContext(Dispatchers.Main) {
+                    player.stop()
+                    player.clearMediaItems()
+                }
+            } else if (!softLiveSwitch) {
+                _uiState.value = PlayerUiState.Buffering
+            }
             runCatching {
-                val descriptor = withContext(Dispatchers.IO) {
+                val descriptor = prefetched ?: withContext(Dispatchers.IO) {
                     PlaybackResolver(
                         PlaybackApi(container.apiClient),
                         container.lastAvailabilityStore,
                     ).resolve(command)
                 }
-                val desiredStartMs = maxOf(command.startPositionMs, descriptor.startPositionMs)
-                pendingResumeMs = if (desiredStartMs > 30_000L) desiredStartMs else 0L
+                // A newer load superseded this one.
+                if (loadedCommandId != command.id) return@launch
+                // Live TV must never resume mid-window — that seeks into a fake DVR and
+                // shows −1h "retard" while the playhead is nowhere near live.
+                val desiredStartMs = if (isChannel) {
+                    0L
+                } else {
+                    maxOf(command.startPositionMs, descriptor.startPositionMs)
+                }
+                pendingResumeMs = if (!isChannel && desiredStartMs > 30_000L) desiredStartMs else 0L
 
                 _variants.value = descriptor.alternatives
                 _selectedVariantId.value = descriptor.availabilityId ?: command.availabilityId
@@ -364,12 +607,28 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 }
 
                 withContext(Dispatchers.Main) {
+                    if (loadedCommandId != command.id) return@withContext
                     player.stop()
                     player.clearMediaItems()
-                    player.setMediaItem(buildMediaItem(descriptor.toMediaItemSpec()))
-                    player.prepare()
+                    player.setMediaItem(
+                        buildMediaItem(
+                            descriptor.toMediaItemSpec(
+                                isLive = isChannel,
+                            ),
+                        ),
+                    )
                     player.playWhenReady = true
+                    player.prepare()
+                    player.play()
                 }
+                if (loadedCommandId != command.id) return@launch
+                channelSwitchFallback = null
+                _nowPlaying.value = NowPlayingInfo(
+                    mediaId = command.mediaId,
+                    mediaType = command.mediaType,
+                    title = command.title,
+                    posterUrl = command.posterUrl,
+                )
 
                 _overlayActions.value = if (command.mediaType.equals("episode", ignoreCase = true)) {
                     withContext(Dispatchers.IO) {
@@ -408,7 +667,41 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     loadEpisodeNavigation(command)
                 }
             }.onFailure { e ->
+                if (e is CancellationException) return@onFailure
+                if (loadedCommandId != command.id) return@onFailure
                 Log.e(TAG, "Failed to load: ${e.message}", e)
+                if (isChannel) {
+                    zapper.notifyPlaybackError()
+                    val fallback = channelSwitchFallback
+                    channelSwitchFallback = null
+                    if (fallback != null && fallback.id != command.id) {
+                        Log.w(TAG, "Zap failed — restoring ${fallback.title ?: fallback.mediaId}")
+                        // Player may still be on the previous stream (soft switch).
+                        val stillOnFallback = runCatching {
+                            player.playbackState == Player.STATE_READY ||
+                                player.playbackState == Player.STATE_BUFFERING
+                        }.getOrDefault(false) && currentStreamUrl != null
+                        if (stillOnFallback) {
+                            loadedCommandId = fallback.id
+                            currentCommand = fallback
+                            _nowPlaying.value = NowPlayingInfo(
+                                mediaId = fallback.mediaId,
+                                mediaType = fallback.mediaType,
+                                title = fallback.title,
+                                posterUrl = fallback.posterUrl,
+                            )
+                            _uiState.value = if (player.isPlaying) {
+                                PlayerUiState.Playing
+                            } else {
+                                PlayerUiState.Paused
+                            }
+                            _openPanel.value = PlayerPanel.None
+                            return@onFailure
+                        }
+                        load(fallback)
+                        return@onFailure
+                    }
+                }
                 _uiState.value = PlayerUiState.Error(e.message ?: "Impossible de charger le média")
             }
         }
@@ -565,8 +858,50 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun switchChannel(channelId: String, title: String?, logoUrl: String?) {
-        load(buildChannelSwitchCommand(channelId, title, logoUrl))
+        val cmd = buildChannelSwitchCommand(channelId, title, logoUrl)
+        val prefetched = channelPrefetch.take(channelId)
+        if (prefetched != null) {
+            channelSwitchFallback = null
+            load(cmd, prefetched = prefetched)
+            return
+        }
+        val previous = currentCommand
+        if (previous != null &&
+            previous.mediaType.equals("channel", ignoreCase = true) &&
+            previous.mediaId != channelId
+        ) {
+            channelSwitchFallback = previous
+        }
+        load(cmd)
     }
+
+    fun cancelChannelSwitch() {
+        val fallback = channelSwitchFallback ?: return
+        loadJob?.cancel()
+        channelSwitchFallback = null
+        zapper.notifyPlaybackError()
+        loadedCommandId = fallback.id
+        currentCommand = fallback
+        _nowPlaying.value = NowPlayingInfo(
+            mediaId = fallback.mediaId,
+            mediaType = fallback.mediaType,
+            title = fallback.title,
+            posterUrl = fallback.posterUrl,
+        )
+        _openPanel.value = PlayerPanel.None
+        val playing = runCatching { player.isPlaying }.getOrDefault(false)
+        val ready = runCatching { player.playbackState == Player.STATE_READY }.getOrDefault(false)
+        _uiState.value = when {
+            playing -> PlayerUiState.Playing
+            ready -> PlayerUiState.Paused
+            else -> {
+                load(fallback)
+                return
+            }
+        }
+    }
+
+    fun isChannelSwitchPending(): Boolean = channelSwitchFallback != null
 
     fun switchVariant(variantId: String) {
         val cmd = currentCommand ?: return
@@ -589,6 +924,51 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * After a pause, Xtream often drops the idle HTTP socket; the first Range reopen
+     * can 551/timeout. Retry the same URL once at the current position before flipping
+     * container extensions (which remounts the pipeline and feels like a long lag).
+     */
+    private fun retrySameUrlAfterPause(error: PlaybackException): Boolean {
+        if (sameUrlResumeRetryDone) return false
+        if (currentCommand?.mediaType.equals("channel", ignoreCase = true) == true) return false
+        val sincePause = SystemClock.elapsedRealtime() - lastPausedAtElapsedMs
+        if (lastPausedAtElapsedMs <= 0L || sincePause > 120_000L) return false
+        if (!isTransientStreamIo(error)) return false
+        val url = currentStreamUrl ?: return false
+        val positionMs = runCatching { player.currentPosition }.getOrDefault(0L).coerceAtLeast(0L)
+        sameUrlResumeRetryDone = true
+        if (positionMs > 5_000L) pendingResumeMs = positionMs
+        Log.w(TAG, "Post-pause IO error — retrying same URL at ${positionMs}ms")
+        _uiState.value = PlayerUiState.Buffering
+        return runCatching {
+            player.stop()
+            player.clearMediaItems()
+            player.setMediaItem(
+                buildMediaItem(
+                    PlaybackDescriptor(
+                        streamUrl = url,
+                        deliveryMode = currentDeliveryMode,
+                        containerExtension = StreamExtensionFallback.extractExtension(url),
+                    ).toMediaItemSpec(isLive = false),
+                ),
+            )
+            player.prepare()
+            player.playWhenReady = true
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun isTransientStreamIo(error: PlaybackException): Boolean {
+        if (error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+            error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
+        ) {
+            return true
+        }
+        return isProviderContainerRefusal(error)
+    }
+
+    /**
      * Xtream HTTP 551 often means "this container extension is refused".
      * Silently try mkv → mp4 → ts → m3u8 before showing the Sources panel.
      */
@@ -599,14 +979,18 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val (nextUrl, ext) = next
         triedStreamExtensions.add(ext)
         currentStreamUrl = nextUrl
-        Log.w(TAG, "Provider refused stream — retrying with .$ext")
+        val isChannel = currentCommand?.mediaType.equals("channel", ignoreCase = true) == true
+        val positionMs = runCatching { player.currentPosition }.getOrDefault(0L).coerceAtLeast(0L)
+        // Never carry VOD-style resume into a live channel after a 551/extension flip.
+        if (!isChannel && positionMs > 5_000L) pendingResumeMs = positionMs
+        Log.w(TAG, "Provider refused stream — retrying with .$ext (keep pos=${if (isChannel) 0L else positionMs}ms)")
         _uiState.value = PlayerUiState.Buffering
         _openPanel.value = PlayerPanel.None
         val spec = PlaybackDescriptor(
             streamUrl = nextUrl,
             deliveryMode = if (ext == "m3u8") "HLS" else currentDeliveryMode,
             containerExtension = ext,
-        ).toMediaItemSpec()
+        ).toMediaItemSpec(isLive = isChannel)
         return runCatching {
             player.stop()
             player.clearMediaItems()
@@ -640,9 +1024,23 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 commitScrub()
                 return@launch
             }
-            player.playWhenReady = !player.playWhenReady
-            if (!player.playWhenReady) {
-                progressReporter?.reportNow()
+            val pausing = player.playWhenReady
+            if (pausing) {
+                lastPausedAtElapsedMs = SystemClock.elapsedRealtime()
+                sameUrlResumeRetryDone = false
+                beginLivePauseDebt()
+                player.playWhenReady = false
+                refreshHud()
+                // Flush CW off the playback critical path so resume isn't stalled.
+                val reporter = progressReporter
+                viewModelScope.launch(Dispatchers.IO) {
+                    delay(400)
+                    reporter?.reportNow()
+                }
+            } else {
+                endLivePauseDebtSegment()
+                player.playWhenReady = true
+                refreshHud()
             }
         }
     }
@@ -773,6 +1171,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun stop() {
         zapper.clearHud()
+        channelSwitchFallback = null
+        channelPrefetch.clear()
         // Capture before player.stop() — Exo often resets position to 0 and that
         // used to PUT ~1s progress, dropping the title from continue-watching (<5%).
         val positionMs = runCatching { player.currentPosition }.getOrDefault(0L)
@@ -787,9 +1187,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             emitAbandonIfNeeded(positionMs)
         }
         reporterJob?.cancel()
+        loadJob?.cancel()
         scrubCommitJob?.cancel()
         episodeNavJob?.cancel()
         loadedCommandId = null
+        _nowPlaying.value = null
         viewModelScope.launch(Dispatchers.Main.immediate) {
             runCatching { player.stop() }
             _uiState.value = PlayerUiState.Idle

@@ -25,18 +25,33 @@ data class SubtitleSidecar(
 
 fun PlaybackDescriptor.toMediaItemSpec(
     subtitleUris: List<SubtitleSidecar> = emptyList(),
+    /** Live TV only — never apply live edge offsets to VOD HLS. */
+    isLive: Boolean = false,
 ): MediaItemSpec = MediaItemSpec(
     uri = streamUrl,
     drmSchemeUuid = drmConfig?.let { parseDrmScheme(it) },
     drmLicenseUrl = drmConfig?.licenseUrl,
-    useLiveOffset = deliveryMode.contains("HLS", ignoreCase = true),
+    // Do NOT attach MediaItem.LiveConfiguration for channel HLS remux:
+    // targetOffset (8–15s) makes Exo wait for a live cushion that ffmpeg
+    // remux playlists don't have yet → perpetual BUFFERING, never PLAYING.
+    useLiveOffset = false,
     // Let ExoPlayer sniff progressive MKV/MP4 from bytes — forced Matroska MIME
     // can fail when the provider serves application/octet-stream after redirects.
-    mimeType = containerMimeType(containerExtension, deliveryMode),
+    mimeType = containerMimeType(streamUrl, containerExtension, deliveryMode),
     subtitleUris = subtitleUris,
 )
 
-private fun containerMimeType(containerExtension: String?, deliveryMode: String): String? {
+private fun containerMimeType(
+    streamUrl: String,
+    containerExtension: String?,
+    deliveryMode: String,
+): String? {
+    val url = streamUrl.lowercase()
+    // Final HLS playlists only — never force M3U8 on media-relay /v1/play tickets.
+    if (url.contains(".m3u8") || url.contains("/v1/hls/") || url.contains("/master.m3u8")) {
+        return MimeTypes.APPLICATION_M3U8
+    }
+    if (url.contains("/v1/play")) return null
     if (deliveryMode.contains("HLS", ignoreCase = true)) return MimeTypes.APPLICATION_M3U8
     val ext = containerExtension?.lowercase()?.removePrefix(".") ?: return null
     return when (ext) {
@@ -64,11 +79,13 @@ fun buildMediaItem(spec: MediaItemSpec): MediaItem {
     if (spec.useLiveOffset) {
         builder.setLiveConfiguration(
             MediaItem.LiveConfiguration.Builder()
-                .setTargetOffsetMs(45_000)
-                .setMinOffsetMs(20_000)
-                .setMaxOffsetMs(90_000)
-                .setMinPlaybackSpeed(0.94f)
-                .setMaxPlaybackSpeed(1.0f)
+                // Target only — do NOT lock playback speed to 1.0: Exo needs a tiny
+                // catch-up range or many Xtream HLS feeds stay forever BUFFERING.
+                .setTargetOffsetMs(12_000)
+                .setMinOffsetMs(6_000)
+                .setMaxOffsetMs(35_000)
+                .setMinPlaybackSpeed(0.97f)
+                .setMaxPlaybackSpeed(1.03f)
                 .build(),
         )
     }

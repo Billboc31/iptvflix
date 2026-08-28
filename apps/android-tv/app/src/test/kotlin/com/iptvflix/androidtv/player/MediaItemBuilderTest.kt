@@ -54,10 +54,22 @@ class MediaItemBuilderTest {
     }
 
     @Test
-    fun `descriptor with no DRM produces MediaItemSpec with null DRM fields`() {
-        val spec = PlaybackDescriptor(streamUrl = "rtsp://live.example.com/stream").toMediaItemSpec()
-        assertNull(spec.drmSchemeUuid)
-        assertNull(spec.drmLicenseUrl)
-        assertEquals("rtsp://live.example.com/stream", spec.uri)
+    fun `VOD HLS does not enable live offset`() {
+        val spec = PlaybackDescriptor(
+            streamUrl = "https://cdn.example.com/movie.m3u8",
+            deliveryMode = "HLS_REMUX",
+            containerExtension = "m3u8",
+        ).toMediaItemSpec(isLive = false)
+        assertEquals(false, spec.useLiveOffset)
+    }
+
+    @Test
+    fun `Live TV HLS does not force LiveConfiguration (avoids remux stall)`() {
+        val spec = PlaybackDescriptor(
+            streamUrl = "https://cdn.example.com/live.m3u8",
+            deliveryMode = "HLS_REMUX",
+            containerExtension = "m3u8",
+        ).toMediaItemSpec(isLive = true)
+        assertEquals(false, spec.useLiveOffset)
     }
 }

@@ -3,86 +3,121 @@ package com.iptvflix.androidtv.player
 import com.iptvflix.androidtv.livetv.ChannelRepository
 import com.iptvflix.androidtv.livetv.ChannelResponse
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
+import kotlin.math.min
+
+data class ZapPreviewState(
+    val window: List<ChannelResponse>,
+    val selectedIndex: Int,
+    val playingChannelId: String?,
+) {
+    val selectedChannel: ChannelResponse get() = window[selectedIndex]
+}
 
 internal class ChannelZapper(
     private val repo: ChannelRepository,
-    private val scope: CoroutineScope,
+    @Suppress("unused") private val scope: CoroutineScope,
     private val onSwitch: (ChannelResponse) -> Unit,
 ) {
     private var zapChannels: List<ChannelResponse> = emptyList()
     private var zapIndex: Int = -1
     private var lastGoodIndex: Int = -1
-    private var zapJob: Job? = null
+    private var previewIndex: Int = -1
 
-    private val _hudChannel = MutableStateFlow<ChannelResponse?>(null)
-    val hudChannel: StateFlow<ChannelResponse?> = _hudChannel.asStateFlow()
+    private val _preview = MutableStateFlow<ZapPreviewState?>(null)
+    val previewState: StateFlow<ZapPreviewState?> = _preview.asStateFlow()
 
-    /**
-     * Loads the canonical channel list once (cached for the session) and sets
-     * the current position to [channelId]. Safe to call on every channel load —
-     * the list fetch is skipped on subsequent calls; the index is always updated.
-     */
     suspend fun initZapContext(channelId: String) {
         if (zapChannels.isEmpty()) {
             val channels = repo.allChannels()
             if (channels.isEmpty()) return
             zapChannels = channels
         }
-        val idx = zapChannels.indexOfFirst { it.id == channelId }
-        zapIndex = if (idx >= 0) idx else 0
-        lastGoodIndex = zapIndex
+        syncIndicesToChannel(channelId)
     }
 
-    /**
-     * DPAD_DOWN / KEYCODE_CHANNEL_UP → next channel (forward in the canonical list).
-     * Wrap-around: last index → index 0.
-     */
-    fun zapNext() = enqueueZap(forward = true)
+    fun previewNext() = movePreview(forward = true)
 
-    /**
-     * DPAD_UP / KEYCODE_CHANNEL_DOWN → previous channel.
-     * Wrap-around: index 0 → last index.
-     */
-    fun zapPrevious() = enqueueZap(forward = false)
+    fun previewPrevious() = movePreview(forward = false)
 
-    private fun enqueueZap(forward: Boolean) {
+    fun zapNext() = previewNext()
+
+    fun zapPrevious() = previewPrevious()
+
+    private fun movePreview(forward: Boolean) {
         val channels = zapChannels
         if (channels.isEmpty()) return
-        val nextIndex = if (forward) {
-            (zapIndex + 1) % channels.size
+        if (_preview.value == null) {
+            previewIndex = lastGoodIndex
+        }
+        previewIndex = if (forward) {
+            (previewIndex + 1) % channels.size
         } else {
-            (zapIndex - 1 + channels.size) % channels.size
+            (previewIndex - 1 + channels.size) % channels.size
         }
-        zapIndex = nextIndex
-        val target = channels[nextIndex]
-        _hudChannel.value = target
-        zapJob?.cancel()
-        zapJob = scope.launch {
-            // Debounce: last key press wins; rapid presses cancel each other.
-            delay(DEBOUNCE_MS)
-            onSwitch(target)
-        }
+        _preview.value = buildPreviewState(channels, previewIndex)
     }
 
-    fun clearHud() {
-        _hudChannel.value = null
+    fun confirmPreview() {
+        val channels = zapChannels
+        val preview = _preview.value ?: return
+        if (channels.isEmpty()) return
+        val targetIndex = channels.indexOfFirst { it.id == preview.selectedChannel.id }
+        if (targetIndex < 0) {
+            cancelPreview()
+            return
+        }
+        _preview.value = null
+        if (targetIndex == lastGoodIndex) return
+        // Do NOT update lastGoodIndex here — wait until the new stream is READY.
+        onSwitch(channels[targetIndex])
     }
 
-    fun notifyPlaybackSuccess() {
-        lastGoodIndex = zapIndex
+    fun cancelPreview() {
+        previewIndex = lastGoodIndex
+        zapIndex = lastGoodIndex
+        _preview.value = null
+    }
+
+    fun clearHud() = cancelPreview()
+
+    /** Called when Exo reaches READY for [channelId] — only then commit the zap index. */
+    fun notifyPlaybackSuccess(channelId: String) {
+        syncIndicesToChannel(channelId)
+        _preview.value = null
     }
 
     fun notifyPlaybackError() {
+        previewIndex = lastGoodIndex
         zapIndex = lastGoodIndex
+        _preview.value = null
+    }
+
+    private fun syncIndicesToChannel(channelId: String) {
+        val idx = zapChannels.indexOfFirst { it.id == channelId }
+        if (idx < 0) return
+        zapIndex = idx
+        lastGoodIndex = idx
+        previewIndex = idx
+    }
+
+    private fun buildPreviewState(channels: List<ChannelResponse>, centerIndex: Int): ZapPreviewState {
+        val n = channels.size
+        val radius = min(PREVIEW_RADIUS, (n - 1) / 2)
+        val window = (-radius..radius).map { offset ->
+            channels[(centerIndex + offset + n) % n]
+        }
+        return ZapPreviewState(
+            window = window,
+            selectedIndex = radius,
+            playingChannelId = channels.getOrNull(lastGoodIndex)?.id,
+        )
     }
 
     companion object {
-        const val DEBOUNCE_MS = 150L
+        const val PREVIEW_RADIUS = 3
+        const val PREVIEW_IDLE_MS = 5_000L
     }
 }

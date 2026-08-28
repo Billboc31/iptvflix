@@ -26,6 +26,16 @@ class ModeSwitchTest {
     }
 
     @Test
+    fun `starting at LiveTvHome, activating VOD switch moves to Home`() {
+        var currentScreen = LIVE_TV_HOME
+        val onSwitchToVod = { currentScreen = HOME }
+
+        onSwitchToVod()
+
+        assertEquals(HOME, currentScreen)
+    }
+
+    @Test
     fun `pressing back from LiveTvHome returns to Home`() {
         var currentScreen = LIVE_TV_HOME
         val onBack = { currentScreen = HOME }
@@ -43,6 +53,40 @@ class ModeSwitchTest {
         onPlay()
 
         assertEquals(PLAYER, currentScreen)
+    }
+
+    @Test
+    fun `back from Live TV player returns to LiveTvHome not VOD Home`() {
+        var currentScreen = PLAYER
+        val mediaType = "channel"
+        val onStop = {
+            currentScreen = if (mediaType.equals("channel", ignoreCase = true)) {
+                LIVE_TV_HOME
+            } else {
+                HOME
+            }
+        }
+
+        onStop()
+
+        assertEquals(LIVE_TV_HOME, currentScreen)
+    }
+
+    @Test
+    fun `back from VOD player returns to Home`() {
+        var currentScreen = PLAYER
+        val mediaType = "movie"
+        val onStop = {
+            currentScreen = if (mediaType.equals("channel", ignoreCase = true)) {
+                LIVE_TV_HOME
+            } else {
+                HOME
+            }
+        }
+
+        onStop()
+
+        assertEquals(HOME, currentScreen)
     }
 
     @Test
