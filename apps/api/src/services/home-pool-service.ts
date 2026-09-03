@@ -17,7 +17,10 @@ import {
   HOME_ITEMS_PER_SHELF,
   HOME_POOL_TARGET,
   HOME_SESSION_TTL_HOURS,
+  NOUVEAUTES_MIN_ITEMS,
 } from '../config/env.js'
+import { buildNouveautesItems } from './nouveautes-service.js'
+import type { NouveautesItem } from './nouveautes-service.js'
 import { ShelfInstanceService } from './shelf-instance-service.js'
 import { ShelfFatigueService } from './shelf-fatigue-service.js'
 import { rankRecommendations } from './recommendation-ranking-service.js'
@@ -566,6 +569,40 @@ export async function buildDeclaredRails(
     }
   } catch (err) {
     console.error('[home-pool] declared rail 2 "Pour toi" failed:', err)
+  }
+
+  // ── Rail 2.5: "Nouveautés" — non-personalized fresh content ─────────────
+  try {
+    const t0 = Date.now()
+    const nouveautesItems = await buildNouveautesItems({ excludeIds: excludedMediaIds, limit: HOME_ITEMS_PER_SHELF })
+    if (nouveautesItems.length >= NOUVEAUTES_MIN_ITEMS) {
+      const toCandidate = (item: NouveautesItem): ShelfCandidateItem => ({
+        mediaId: item.mediaId,
+        mediaType: item.mediaType,
+        semanticScore: 0,
+        profileScore: 0,
+        finalScore: item.score,
+        reasons: ['NOUVEAUTES'],
+        available: true,
+        qualityPrior: 0,
+        languageAffinity: 0,
+      })
+      pendingRails.push({
+        title: 'Nouveautés',
+        candidates: nouveautesItems.map(toCandidate),
+        conceptId: null,
+        semanticIntent: null,
+        queryPlannerVersion: MODEL_VERSION,
+        embeddingModelVersion: 'none',
+        rankerVersion: MODEL_VERSION,
+        candidateCount: nouveautesItems.length,
+        latencyMs: Date.now() - t0,
+        verticalPosition: nextPosition++,
+      })
+      for (const item of nouveautesItems) excludedMediaIds.add(item.mediaId)
+    }
+  } catch (err) {
+    console.error('[home-pool] declared rail 2.5 "Nouveautés" failed:', err)
   }
 
   // ── Rail 3: "Nouveautés pour toi" ──────────────────────────────────────────

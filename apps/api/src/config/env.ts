@@ -182,3 +182,12 @@ export const SEGMENT_REFRESH_CADENCE_HOURS = Number(process.env.SEGMENT_REFRESH_
 export const SEGMENT_REFRESH_RECENT_DAYS = Number(process.env.SEGMENT_REFRESH_RECENT_DAYS ?? 30)
 export const INTRODB_BASE_URL: string | undefined = process.env.INTRODB_BASE_URL || undefined
 export const THEINTRODB_BASE_URL: string | undefined = process.env.THEINTRODB_BASE_URL || undefined
+
+/** Days back for "genuine release" tier of Nouveautés shelf. */
+export const NOUVEAUTES_RELEASE_WINDOW_DAYS = Number(process.env.NOUVEAUTES_RELEASE_WINDOW_DAYS ?? 180)
+/** Max age (years) of a title's actual release when using catalog-arrival as the freshness signal. */
+export const NOUVEAUTES_CATALOG_MAX_AGE_YEARS = Number(process.env.NOUVEAUTES_CATALOG_MAX_AGE_YEARS ?? 3)
+/** Minimum items required to emit a Nouveautés shelf (suppressed when below threshold). */
+export const NOUVEAUTES_MIN_ITEMS = Number(process.env.NOUVEAUTES_MIN_ITEMS ?? 5)
+/** Maximum items returned by buildNouveautesItems. */
+export const NOUVEAUTES_ITEMS_PER_SHELF = Number(process.env.NOUVEAUTES_ITEMS_PER_SHELF ?? 20)
