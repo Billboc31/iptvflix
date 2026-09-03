@@ -1,8 +1,7 @@
 {
   "ticket_id": "T139",
-  "state": "CODED",
+  "state": "IMPLEMENTATION_REVIEW_NEEDED",
   "branch": "ticket/T139-add-mandatory-new-releases-shelves-to-home-movies",
   "issue_number": 296,
-  "updated_at": "2026-09-03T10:08:00Z",
-  "implementation_commit": "a141f6c2"
+  "updated_at": "2026-09-03T08:08:44Z"
 }
