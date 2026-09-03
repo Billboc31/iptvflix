@@ -11,6 +11,12 @@ vi.mock('../../config/env.js', () => ({
   SERIES_POOL_TARGET: 25,
   SERIES_SESSION_TTL_HOURS: 24,
   SERIES_FRESH_DAYS: 90,
+  NOUVEAUTES_MIN_ITEMS: 5,
+  NOUVEAUTES_ITEMS_PER_SHELF: 20,
+}))
+
+vi.mock('../nouveautes-service.js', () => ({
+  buildNouveautesItems: vi.fn().mockResolvedValue([]),
 }))
 
 const mockPersistShelfInstance = vi.hoisted(() => vi.fn())

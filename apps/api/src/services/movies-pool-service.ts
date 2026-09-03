@@ -17,7 +17,9 @@ import {
   MOVIES_POOL_TARGET,
   MOVIES_SESSION_TTL_HOURS,
   MOVIES_EXPLORATION_RATIO,
+  NOUVEAUTES_MIN_ITEMS,
 } from '../config/env.js'
+import { buildNouveautesItems } from './nouveautes-service.js'
 import { ShelfInstanceService } from './shelf-instance-service.js'
 import { ShelfFatigueService } from './shelf-fatigue-service.js'
 import { RecommendationEngineClient } from '../client/recommendation-engine-client.js'
@@ -538,6 +540,40 @@ export async function buildMoviesDeclaredRails(
   const servedAt = new Date()
   let nextPosition = startPosition
   const pendingRails: PendingMovieRail[] = []
+
+  // ── Rail 0: "Nouveautés" — non-personalized fresh movies ──────────────────
+  try {
+    const t0 = Date.now()
+    const nouveautesItems = await buildNouveautesItems({ mediaType: 'MOVIE', excludeIds: excludedMediaIds, limit: MOVIES_ITEMS_PER_SHELF })
+    if (nouveautesItems.length >= NOUVEAUTES_MIN_ITEMS) {
+      pendingRails.push({
+        title: 'Nouveautés',
+        candidates: nouveautesItems.map((item) => ({
+          mediaId: item.mediaId,
+          mediaType: item.mediaType,
+          semanticScore: 0,
+          profileScore: 0,
+          finalScore: item.score,
+          reasons: ['NOUVEAUTES'],
+          available: true,
+          qualityPrior: 0,
+          languageAffinity: 0,
+        })),
+        conceptId: null,
+        generationType: 'SYSTEM_DECLARED',
+        semanticIntent: null,
+        queryPlannerVersion: MODEL_VERSION,
+        embeddingModelVersion: 'none',
+        rankerVersion: MODEL_VERSION,
+        candidateCount: nouveautesItems.length,
+        latencyMs: Date.now() - t0,
+        verticalPosition: nextPosition++,
+      })
+      for (const item of nouveautesItems) excludedMediaIds.add(item.mediaId)
+    }
+  } catch (err) {
+    console.error('[movies-pool] declared rail 0 "Nouveautés" failed:', err)
+  }
 
   // ── Rail 1: "Pour toi" — movie-only general recommendations ───────────────
   try {
