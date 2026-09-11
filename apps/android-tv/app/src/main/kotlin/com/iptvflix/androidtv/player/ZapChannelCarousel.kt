@@ -37,6 +37,7 @@ import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.iptvflix.androidtv.livetv.ChannelResponse
+import com.iptvflix.androidtv.livetv.formatEpgRange
 import com.iptvflix.androidtv.ui.TvColors
 import kotlinx.coroutines.delay
 
@@ -73,7 +74,7 @@ fun ZapChannelCarousel(
             Column(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .width(380.dp)
+                    .width(420.dp)
                     .background(Color(0xF0101018))
                     .padding(start = 20.dp, end = 28.dp, top = 28.dp, bottom = 24.dp),
             ) {
@@ -89,7 +90,7 @@ fun ZapChannelCarousel(
                     color = Color(0x88FFFFFF),
                     fontSize = 12.sp,
                 )
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(16.dp))
 
                 Column(
                     modifier = Modifier
@@ -120,7 +121,9 @@ private fun ZapCarouselRow(
     isPlaying: Boolean,
 ) {
     val scale = if (isSelected) 1f else 0.82f
-    val alpha = if (isSelected) 1f else 0.5f
+    val alpha = if (isSelected) 1f else 0.55f
+    val logoSize = if (isSelected) 72.dp else 54.dp
+    val innerLogoSize = if (isSelected) 58.dp else 42.dp
 
     Row(
         modifier = Modifier
@@ -148,12 +151,12 @@ private fun ZapCarouselRow(
                 },
                 shape = RoundedCornerShape(14.dp),
             )
-            .padding(horizontal = 12.dp, vertical = if (isSelected) 12.dp else 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 12.dp, vertical = if (isSelected) 10.dp else 6.dp),
+        verticalAlignment = Alignment.Top,
     ) {
         Box(
             modifier = Modifier
-                .size(if (isSelected) 72.dp else 54.dp)
+                .size(logoSize)
                 .clip(RoundedCornerShape(12.dp))
                 .background(
                     Brush.verticalGradient(
@@ -179,7 +182,7 @@ private fun ZapCarouselRow(
                     contentDescription = channel.name,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
-                        .size(if (isSelected) 58.dp else 42.dp)
+                        .size(innerLogoSize)
                         .padding(4.dp),
                 )
             } else {
@@ -193,47 +196,115 @@ private fun ZapCarouselRow(
             }
         }
 
-        Spacer(Modifier.width(14.dp))
+        Spacer(Modifier.width(12.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                channel.name,
-                color = Color.White,
-                fontSize = if (isSelected) 18.sp else 14.sp,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            when {
-                isSelected -> {
-                    val programTitle = channel.epg?.now?.title
-                    if (!programTitle.isNullOrBlank()) {
-                        Spacer(Modifier.height(3.dp))
-                        Text(
-                            programTitle,
-                            color = Color(0xB3FFFFFF),
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    channel.name,
+                    color = Color.White,
+                    fontSize = if (isSelected) 17.sp else 13.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (isPlaying) {
+                    Spacer(Modifier.width(6.dp))
                     Text(
-                        "OK pour zapper",
-                        color = TvColors.LiveTvAccent,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-                isPlaying -> {
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        "En cours",
-                        color = Color(0x88FFFFFF),
-                        fontSize = 11.sp,
+                        "▶",
+                        color = if (isSelected) TvColors.LiveTvAccent else Color(0x88FFFFFF),
+                        fontSize = 10.sp,
                     )
                 }
             }
+
+            ZapCarouselEpg(
+                channel = channel,
+                isSelected = isSelected,
+            )
+
+            if (isSelected) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "OK pour zapper",
+                    color = TvColors.LiveTvAccent,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun ZapCarouselEpg(
+    channel: ChannelResponse,
+    isSelected: Boolean,
+) {
+    val now = channel.epg?.now
+    val next = channel.epg?.next
+    if (now == null && next == null) return
+
+    val nowTitleSize = if (isSelected) 12.sp else 10.sp
+    val nowMetaSize = if (isSelected) 10.sp else 9.sp
+    val nextTitleSize = if (isSelected) 11.sp else 9.sp
+    val nextMetaSize = if (isSelected) 9.sp else 8.sp
+    val nowTitleColor = if (isSelected) Color(0xEEFFFFFF) else Color(0xAAFFFFFF)
+    val nowMetaColor = if (isSelected) Color(0x99FFFFFF) else Color(0x66FFFFFF)
+    val nextTitleColor = if (isSelected) Color(0xCCFFFFFF) else Color(0x77FFFFFF)
+    val nextMetaColor = if (isSelected) Color(0x77FFFFFF) else Color(0x55FFFFFF)
+    val labelColor = if (isSelected) TvColors.LiveTvAccent else Color(0x66FFFFFF)
+
+    if (now != null) {
+        Spacer(Modifier.height(3.dp))
+        if (isSelected) {
+            Text(
+                "Maintenant",
+                color = labelColor,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(1.dp))
+        }
+        Text(
+            now.title,
+            color = nowTitleColor,
+            fontSize = nowTitleSize,
+            fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
+            maxLines = if (isSelected) 2 else 1,
+            overflow = TextOverflow.Ellipsis,
+            lineHeight = if (isSelected) 14.sp else 12.sp,
+        )
+        Text(
+            formatEpgRange(now.startTime, now.endTime),
+            color = nowMetaColor,
+            fontSize = nowMetaSize,
+        )
+    }
+
+    if (next != null) {
+        Spacer(Modifier.height(if (isSelected) 5.dp else 3.dp))
+        if (isSelected) {
+            Text(
+                "Ensuite",
+                color = labelColor,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(1.dp))
+        }
+        Text(
+            text = if (isSelected) next.title else "→ ${next.title}",
+            color = nextTitleColor,
+            fontSize = nextTitleSize,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            formatEpgRange(next.startTime, next.endTime),
+            color = nextMetaColor,
+            fontSize = nextMetaSize,
+        )
     }
 }

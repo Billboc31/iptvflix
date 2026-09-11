@@ -250,7 +250,7 @@ private fun ChannelSelectorBackRow(
     }
 
     Surface(
-        onClick = onClick,
+        onClick = onClose,
         interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
@@ -260,7 +260,7 @@ private fun ChannelSelectorBackRow(
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                 when (event.key) {
                     Key.DirectionRight -> { onClose(); true }
-                    Key.Back, Key.Escape -> { onClick(); true }
+                    Key.Back, Key.Escape -> { onClose(); true }
                     else -> false
                 }
             },
@@ -385,7 +385,7 @@ private fun ChannelSelectorRow(
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                 when (event.key) {
                     Key.DirectionRight -> { onClose(); true }
-                    Key.Back, Key.Escape -> { onExitPlayer(); true }
+                    Key.Back, Key.Escape -> { onClose(); true }
                     else -> false
                 }
             },
@@ -466,7 +466,7 @@ private fun ChannelSelectorRow(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    val timeRange = "${formatEpgTime(epg.startTime)}–${formatEpgTime(epg.endTime)}"
+                    val timeRange = formatEpgRange(epg.startTime, epg.endTime)
                     Text(
                         timeRange,
                         color = if (focused) Color(0x99FFFFFF) else Color(0xFF555555),
@@ -494,9 +494,4 @@ private fun ChannelSelectorRow(
             }
         }
     }
-}
-
-private fun formatEpgTime(rawTime: String): String {
-    val timePart = rawTime.substringAfter('T', rawTime)
-    return timePart.take(5)
 }

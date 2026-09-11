@@ -9,7 +9,7 @@
     android:focusable="false"
     android:focusableInTouchMode="false"
     app:use_controller="false"
-    app:resize_mode="zoom"
+    app:resize_mode="fit"
     app:surface_type="surface_view"
     app:keep_content_on_player_reset="false"
     app:shutter_background_color="@android:color/black" />

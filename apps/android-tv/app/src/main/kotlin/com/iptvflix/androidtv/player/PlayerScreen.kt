@@ -85,12 +85,8 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import com.iptvflix.androidtv.App
 import com.iptvflix.androidtv.R
 import com.iptvflix.androidtv.command.PlaybackCommand
-import com.iptvflix.androidtv.livetv.LiveChannelSelectorOverlay
-import com.iptvflix.androidtv.livetv.LiveChannelSelectorState
-import com.iptvflix.androidtv.livetv.LiveChannelSelectorViewModel
 import com.iptvflix.androidtv.playback.AvailabilityVariant
 import com.iptvflix.androidtv.playback.liveSourceLabel
 import com.iptvflix.androidtv.playback.EpisodeListItem
@@ -150,14 +146,7 @@ fun PlayerScreen(
     val playFocusRequester = remember { FocusRequester() }
     var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
 
-    val selectorVm: LiveChannelSelectorViewModel = viewModel(
-        factory = LiveChannelSelectorViewModel.factory(LocalContext.current.applicationContext as App),
-    )
-    val selectorState by selectorVm.state.collectAsState()
     val nowPlaying by vm.nowPlaying.collectAsState()
-    var isChannelSelectorOpen by remember { mutableStateOf(false) }
-    var loadingChannelId by remember { mutableStateOf<String?>(null) }
-    val currentChannelId = nowPlaying?.mediaId ?: command?.mediaId
     val isLivePlayback = (nowPlaying?.mediaType ?: command?.mediaType)
         .equals("channel", ignoreCase = true)
     val zapPreview by vm.zapPreview.collectAsState()
@@ -174,17 +163,15 @@ fun PlayerScreen(
         interactionTick++
     }
 
-    fun openChannelSelector() {
+    fun openZapPreview() {
         showControls = false
-        vm.cancelZapPreview()
-        isChannelSelectorOpen = true
+        vm.openZapPreview()
     }
 
     LaunchedEffect(command?.id) {
         if (command != null) {
             showControls = true
             interactionTick++
-            isChannelSelectorOpen = false
             vm.load(command)
         }
     }
@@ -194,32 +181,29 @@ fun PlayerScreen(
             showControls = true
             interactionTick++
         }
-        if (uiState is PlayerUiState.Playing || uiState is PlayerUiState.Error) {
-            loadingChannelId = null
-        }
     }
 
     // When chrome first appears, focus Play once — do NOT re-steal focus on every key.
     var chromeFocusGeneration by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(showControls, scrub.active, isChannelSelectorOpen, openPanel) {
-        val fast = showControls || scrub.active || isChannelSelectorOpen || openPanel != PlayerPanel.None
+    LaunchedEffect(showControls, scrub.active, zapPreview, openPanel) {
+        val fast = showControls || scrub.active || zapPreview != null || openPanel != PlayerPanel.None
         vm.setHudPollingFast(fast)
     }
     LaunchedEffect(zapPreview) {
         if (zapPreview != null) showControls = false
     }
-    LaunchedEffect(showControls, openPanel, isChannelSelectorOpen) {
-        if (!showControls || openPanel != PlayerPanel.None || isChannelSelectorOpen) return@LaunchedEffect
+    LaunchedEffect(showControls, openPanel, zapPreview) {
+        if (!showControls || openPanel != PlayerPanel.None || zapPreview != null) return@LaunchedEffect
         chromeFocusGeneration++
         val gen = chromeFocusGeneration
         delay(40)
-        if (gen == chromeFocusGeneration && !isChannelSelectorOpen) {
+        if (gen == chromeFocusGeneration && zapPreview == null) {
             runCatching { playFocusRequester.requestFocus() }
         }
     }
 
-    LaunchedEffect(interactionTick, uiState, scrub.active, openPanel, isChannelSelectorOpen, zapPreview) {
+    LaunchedEffect(interactionTick, uiState, scrub.active, openPanel, zapPreview) {
         when (uiState) {
             is PlayerUiState.Ended -> {
                 delay(2_000)
@@ -229,17 +213,31 @@ fun PlayerScreen(
             is PlayerUiState.Playing -> {
                 if (scrub.active) return@LaunchedEffect
                 if (openPanel != PlayerPanel.None) return@LaunchedEffect
-                if (isChannelSelectorOpen) return@LaunchedEffect
                 if (zapPreview != null) return@LaunchedEffect
                 delay(AUTO_HIDE_MS)
                 if (openPanel != PlayerPanel.None) return@LaunchedEffect
-                if (isChannelSelectorOpen) return@LaunchedEffect
                 if (zapPreview != null) return@LaunchedEffect
                 showControls = false
                 runCatching { rootFocusRequester.requestFocus() }
             }
             is PlayerUiState.Error -> Unit
             else -> Unit
+        }
+    }
+
+    LaunchedEffect(surfaceEpoch) {
+        playerViewRef?.let { view ->
+            if (view.player !== vm.player) {
+                view.player = vm.player
+            } else {
+                // Force SurfaceView ↔ decoder rebind after live source swaps.
+                view.player = null
+                view.player = vm.player
+            }
+            view.findViewById<android.view.View>(
+                androidx.media3.ui.R.id.exo_shutter,
+            )?.visibility = android.view.View.GONE
+            lastBoundSurfaceEpoch = surfaceEpoch
         }
     }
 
@@ -270,10 +268,10 @@ fun PlayerScreen(
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
 
                 // Back hierarchy:
-                // channel menu → exit player
+                // zap carousel → dismiss carousel
                 // panel → close panel
-                // chrome visible → hide chrome (do NOT open menu)
-                // live + chrome hidden → open channel menu
+                // chrome visible → hide chrome
+                // live + chrome hidden → open right channel carousel
                 // else → exit player
                 if (event.key == Key.Back || event.key == Key.Escape) {
                     if (zapPreview != null) {
@@ -285,11 +283,6 @@ fun PlayerScreen(
                         return@onKeyEvent true
                     }
                     return@onKeyEvent when {
-                        isChannelSelectorOpen -> {
-                            vm.stop()
-                            onStop()
-                            true
-                        }
                         openPanel != PlayerPanel.None -> {
                             vm.closePanel()
                             bumpInteraction()
@@ -307,7 +300,7 @@ fun PlayerScreen(
                             true
                         }
                         isLivePlayback -> {
-                            openChannelSelector()
+                            openZapPreview()
                             true
                         }
                         else -> {
@@ -318,38 +311,20 @@ fun PlayerScreen(
                     }
                 }
 
-                // Zap preview carousel: browse with UP/DOWN, confirm with OK, cancel with Back.
+                // Right-side zap carousel: UP/DOWN browse, OK confirms, Back/Right dismiss.
                 if (zapPreview != null) {
                     return@onKeyEvent when (event.key) {
                         Key.DirectionUp -> { showControls = false; vm.zapPrevious(); true }
                         Key.DirectionDown -> { showControls = false; vm.zapNext(); true }
                         Key.DirectionCenter, Key.Enter -> { vm.confirmZapPreview(); true }
-                        else -> true
-                    }
-                }
-
-                // Channel guide open: arrows/OK navigate the list; RIGHT closes guide.
-                if (isChannelSelectorOpen) {
-                    return@onKeyEvent when (event.key) {
-                        Key.DirectionRight -> {
-                            isChannelSelectorOpen = false
-                            runCatching { rootFocusRequester.requestFocus() }
-                            true
-                        }
-                        Key.DirectionUp,
-                        Key.DirectionDown,
-                        Key.DirectionLeft,
-                        Key.DirectionCenter,
-                        Key.Enter,
-                        -> false
-                        Key.MediaPlay, Key.MediaPause, Key.MediaPlayPause -> true
+                        Key.DirectionRight -> { vm.cancelZapPreview(); true }
                         else -> true
                     }
                 }
 
                 val controlsUp = showControls || openPanel != PlayerPanel.None
 
-                // Chrome visible: normal focus navigation (no shortcut to open channel guide).
+                // Chrome visible: normal focus navigation.
                 if (controlsUp) {
                     bumpInteraction()
                     return@onKeyEvent when (event.key) {
@@ -367,9 +342,13 @@ fun PlayerScreen(
                     }
                 }
 
-                // Chrome hidden + live: UP/DOWN open zap preview carousel (confirm with OK).
+                // Chrome hidden + live: LEFT opens carousel; UP/DOWN browse channels.
                 if (isLivePlayback) {
                     when (event.key) {
+                        Key.DirectionLeft -> {
+                            openZapPreview()
+                            return@onKeyEvent true
+                        }
                         Key.DirectionUp -> {
                             showControls = false
                             vm.zapPrevious()
@@ -382,6 +361,16 @@ fun PlayerScreen(
                         }
                         else -> {}
                     }
+                }
+
+                // Media keys always toggle play/pause, even with chrome hidden.
+                when (event.key) {
+                    Key.MediaPlay, Key.MediaPause, Key.MediaPlayPause -> {
+                        bumpInteraction()
+                        vm.togglePlayPause()
+                        return@onKeyEvent true
+                    }
+                    else -> {}
                 }
 
                 bumpInteraction()
@@ -405,8 +394,9 @@ fun PlayerScreen(
                         }
                     },
                     update = { view ->
-                        if (view.player !== vm.player) {
+                        if (view.player !== vm.player || lastBoundSurfaceEpoch != surfaceEpoch) {
                             view.player = vm.player
+                            lastBoundSurfaceEpoch = surfaceEpoch
                         }
                         view.findViewById<android.view.View>(
                             androidx.media3.ui.R.id.exo_shutter,
@@ -415,7 +405,6 @@ fun PlayerScreen(
                                 shutter.visibility = android.view.View.GONE
                             }
                         }
-                        lastBoundSurfaceEpoch = surfaceEpoch
                         playerViewRef = view
                     },
                 )
@@ -473,27 +462,6 @@ fun PlayerScreen(
                 }
             },
             chromeContent = {
-                if (isChannelSelectorOpen) {
-                    LiveChannelSelectorOverlay(
-                        state = selectorState,
-                        currentChannelId = currentChannelId,
-                        loadingChannelId = loadingChannelId,
-                        onChannelSelected = { ch ->
-                            if (ch.id == currentChannelId && loadingChannelId == null) return@LiveChannelSelectorOverlay
-                            loadingChannelId = ch.id
-                            vm.switchChannel(ch.id, ch.name, ch.logoUrl)
-                        },
-                        onClose = {
-                            isChannelSelectorOpen = false
-                            runCatching { rootFocusRequester.requestFocus() }
-                        },
-                        onExitPlayer = {
-                            vm.stop()
-                            onStop()
-                        },
-                        modifier = Modifier.align(Alignment.TopStart),
-                    )
-                }
                 AnimatedVisibility(
                     visible = (showControls || scrub.active || openPanel != PlayerPanel.None ||
                         uiState is PlayerUiState.Error) && zapPreview == null,
@@ -502,53 +470,53 @@ fun PlayerScreen(
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     NetflixPlayerChrome(
-                        title = episodeBrowser.episodeLabel
-                            ?: nowPlaying?.title
-                            ?: command?.title,
-                        isPlaying = uiState is PlayerUiState.Playing,
-                        isBuffering = uiState is PlayerUiState.Buffering,
-                        hud = hud,
-                        scrub = scrub,
-                        scrubPosterUrl = episodeBrowser.posterUrl
-                            ?: nowPlaying?.posterUrl
-                            ?: command?.posterUrl,
-                        variants = variants,
-                        selectedVariantId = selectedVariantId,
-                        audioTracks = tracks.filter { it.type == "audio" },
-                        subtitleTracks = tracks.filter { it.type == "subtitle" },
-                        selectedTrackIds = selectedTrackIds,
-                        openPanel = openPanel,
-                        subtitleMessage = subtitleMessage,
-                        episodeBrowser = episodeBrowser,
-                        showEpisodesButton = (nowPlaying?.mediaType ?: command?.mediaType)
-                            .equals("episode", ignoreCase = true) == true &&
-                            (episodeBrowser.seriesId != null || episodeBrowser.episodes.isNotEmpty()),
-                        playFocusRequester = playFocusRequester,
-                        onBack = { vm.stop(); onStop() },
-                        onPlayPause = { bumpInteraction(); vm.togglePlayPause() },
-                        onSeekBack = { bumpInteraction(); vm.seekBack() },
-                        onSeekForward = { bumpInteraction(); vm.seekForward() },
-                        onJumpToLive = { bumpInteraction(); vm.jumpToLiveEdge() },
-                        onScrubStart = { bumpInteraction(); vm.beginBarScrub(it) },
-                        onScrubUpdate = { bumpInteraction(); vm.updateBarScrub(it) },
-                        onScrubEnd = { bumpInteraction(); vm.endBarScrub() },
-                        onScrubTap = { bumpInteraction(); vm.seekToFraction(it) },
-                        onOpenLanguages = {
-                            bumpInteraction()
-                            vm.openPanel(PlayerPanel.Subtitles)
-                        },
-                        onOpenSources = { bumpInteraction(); vm.openPanel(PlayerPanel.Sources) },
-                        onOpenEpisodes = { bumpInteraction(); vm.openPanel(PlayerPanel.Episodes) },
-                        onSelectVariant = { bumpInteraction(); vm.switchVariant(it) },
-                        onSelectTrack = { bumpInteraction(); vm.enableSubtitlesAndSelect(it) },
-                        onSelectAudio = { bumpInteraction(); vm.selectTrack(it) },
-                        onDisableSubtitles = { bumpInteraction(); vm.disableSubtitles() },
-                        onSearchOnlineSubtitles = { bumpInteraction(); vm.searchOnlineSubtitles() },
-                        onSelectSeason = { bumpInteraction(); vm.selectSeason(it) },
-                        onSelectEpisode = { bumpInteraction(); vm.playEpisode(it) },
-                        onClosePanel = { bumpInteraction(); vm.closePanel() },
-                    )
-                }
+                            title = episodeBrowser.episodeLabel
+                                ?: nowPlaying?.title
+                                ?: command?.title,
+                            isPlaying = uiState is PlayerUiState.Playing,
+                            isBuffering = uiState is PlayerUiState.Buffering,
+                            hud = hud,
+                            scrub = scrub,
+                            scrubPosterUrl = episodeBrowser.posterUrl
+                                ?: nowPlaying?.posterUrl
+                                ?: command?.posterUrl,
+                            variants = variants,
+                            selectedVariantId = selectedVariantId,
+                            audioTracks = tracks.filter { it.type == "audio" },
+                            subtitleTracks = tracks.filter { it.type == "subtitle" },
+                            selectedTrackIds = selectedTrackIds,
+                            openPanel = openPanel,
+                            subtitleMessage = subtitleMessage,
+                            episodeBrowser = episodeBrowser,
+                            showEpisodesButton = (nowPlaying?.mediaType ?: command?.mediaType)
+                                .equals("episode", ignoreCase = true) == true &&
+                                (episodeBrowser.seriesId != null || episodeBrowser.episodes.isNotEmpty()),
+                            playFocusRequester = playFocusRequester,
+                            onBack = { vm.stop(); onStop() },
+                            onPlayPause = { bumpInteraction(); vm.togglePlayPause() },
+                            onSeekBack = { bumpInteraction(); vm.seekBack() },
+                            onSeekForward = { bumpInteraction(); vm.seekForward() },
+                            onJumpToLive = { bumpInteraction(); vm.jumpToLiveEdge() },
+                            onScrubStart = { bumpInteraction(); vm.beginBarScrub(it) },
+                            onScrubUpdate = { bumpInteraction(); vm.updateBarScrub(it) },
+                            onScrubEnd = { bumpInteraction(); vm.endBarScrub() },
+                            onScrubTap = { bumpInteraction(); vm.seekToFraction(it) },
+                            onOpenLanguages = {
+                                bumpInteraction()
+                                vm.openPanel(PlayerPanel.Subtitles)
+                            },
+                            onOpenSources = { bumpInteraction(); vm.openPanel(PlayerPanel.Sources) },
+                            onOpenEpisodes = { bumpInteraction(); vm.openPanel(PlayerPanel.Episodes) },
+                            onSelectVariant = { bumpInteraction(); vm.switchVariant(it) },
+                            onSelectTrack = { bumpInteraction(); vm.enableSubtitlesAndSelect(it) },
+                            onSelectAudio = { bumpInteraction(); vm.selectTrack(it) },
+                            onDisableSubtitles = { bumpInteraction(); vm.disableSubtitles() },
+                            onSearchOnlineSubtitles = { bumpInteraction(); vm.searchOnlineSubtitles() },
+                            onSelectSeason = { bumpInteraction(); vm.selectSeason(it) },
+                            onSelectEpisode = { bumpInteraction(); vm.playEpisode(it) },
+                            onClosePanel = { bumpInteraction(); vm.closePanel() },
+                        )
+                    }
             },
         )
 
@@ -567,7 +535,10 @@ fun PlayerScreen(
     // KEYCODE_CHANNEL_UP/DOWN are scoped to full-screen Live TV only (no overlay, mediaType == "channel").
     LaunchedEffect(command?.id) {
         ChannelKeyEventBus.events.collect { keyEvent ->
-            if (shouldZapChannel(isChannelSelectorOpen, nowPlaying?.mediaType ?: command?.mediaType)) {
+            if (shouldZapChannel(
+                    zapPreview != null || openPanel != PlayerPanel.None,
+                    nowPlaying?.mediaType ?: command?.mediaType,
+                )) {
                 showControls = false
                 when (keyEvent) {
                     ChannelKeyEvent.Up -> vm.zapNext()

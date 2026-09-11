@@ -44,6 +44,14 @@ internal class ChannelZapper(
 
     fun previewPrevious() = movePreview(forward = false)
 
+    /** Opens the right-side carousel on the channel currently playing (no zap yet). */
+    fun showPreviewAtCurrent() {
+        val channels = zapChannels
+        if (channels.isEmpty() || lastGoodIndex < 0) return
+        previewIndex = lastGoodIndex
+        _preview.value = buildPreviewState(channels, previewIndex)
+    }
+
     fun zapNext() = previewNext()
 
     fun zapPrevious() = previewPrevious()

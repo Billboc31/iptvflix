@@ -541,6 +541,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun cancelZapPreview() { zapper.cancelPreview() }
     fun clearZapHud() { zapper.cancelPreview() }
 
+    fun openZapPreview() {
+        zapper.showPreviewAtCurrent()
+        prefetchZapTarget()
+    }
+
     fun load(command: PlaybackCommand, prefetched: PlaybackDescriptor? = null) {
         if (loadedCommandId == command.id &&
             player.playbackState != Player.STATE_IDLE &&
@@ -629,11 +634,6 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.Main) {
                     if (loadedCommandId != command.id) return@withContext
                     awaitingFirstFrame = true
-                    // Keep audio audible — blank-video recovery must not silence the user.
-                    // setMediaItem alone replaces the playlist. With
-                    // keep_content_on_player_reset=false the shutter goes black
-                    // (no ghost). Avoid stop()/clear() and avoid tearing down the
-                    // PlayerView binding before prepare (that caused permanent black).
                     player.volume = 1f
                     player.setMediaItem(
                         buildMediaItem(
@@ -739,7 +739,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
             Log.w(TAG, "No first video frame yet — asking PlayerView to refresh surface")
             withContext(Dispatchers.Main) {
-                if (loadedCommandId != watchCommandId) return@withContext
+                // User may have paused while we waited — never force-resume.
+                if (loadedCommandId != watchCommandId || !awaitingFirstFrame || !player.playWhenReady) {
+                    return@withContext
+                }
                 _surfaceEpoch.value = _surfaceEpoch.value + 1
                 player.playWhenReady = true
                 player.play()
@@ -750,7 +753,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
             Log.w(TAG, "Still no first frame — remounting MediaItem without detaching surface")
             withContext(Dispatchers.Main) {
-                if (loadedCommandId != watchCommandId) return@withContext
+                if (loadedCommandId != watchCommandId || !awaitingFirstFrame || !player.playWhenReady) {
+                    return@withContext
+                }
                 val item = player.currentMediaItem ?: return@withContext
                 player.setMediaItem(item)
                 player.prepare()
@@ -760,9 +765,69 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
             delay(2_000)
             if (!awaitingFirstFrame || loadedCommandId != watchCommandId) return@launch
-            Log.w(TAG, "Giving up on first-frame wait")
             awaitingFirstFrame = false
+            recoverBlankVideo(watchCommandId)
         }
+    }
+
+    /**
+     * Audio plays but no frame painted — typical with HEVC/4K on TV or a detached SurfaceView.
+     * Rebind the surface, then try HLS remux, then prompt for another source.
+     */
+    private fun recoverBlankVideo(watchCommandId: String?) {
+        val cmd = currentCommand ?: return
+        if (loadedCommandId != watchCommandId) return
+        val isChannel = cmd.mediaType.equals("channel", ignoreCase = true)
+        Log.w(TAG, "No video frame rendered — recovering (channel=$isChannel)")
+
+        viewModelScope.launch(Dispatchers.Main) {
+            // Respect an intentional pause — blank-frame recovery must not un-pause.
+            if (loadedCommandId != watchCommandId || !player.playWhenReady) return@launch
+            _surfaceEpoch.value = _surfaceEpoch.value + 1
+            player.playWhenReady = true
+            player.play()
+        }
+
+        if (!isChannel) return
+
+        if (!triedCompatibleRemux) {
+            triedCompatibleRemux = true
+            Log.w(TAG, "Blank live video — retrying with compatible remux path")
+            _uiState.value = PlayerUiState.Buffering
+            viewModelScope.launch {
+                runCatching {
+                    val descriptor = withContext(Dispatchers.IO) {
+                        PlaybackApi(container.apiClient).resolveChannelPlaybackCompatible(
+                            channelId = cmd.mediaId,
+                            availabilityId = cmd.availabilityId,
+                        )
+                    }
+                    if (loadedCommandId != watchCommandId && currentCommand?.mediaId != cmd.mediaId) return@launch
+                    load(cmd, prefetched = descriptor)
+                }.onFailure { e ->
+                    Log.e(TAG, "Blank-video remux failed: ${e.message}", e)
+                    promptAlternateLiveSource()
+                }
+            }
+            return
+        }
+
+        promptAlternateLiveSource()
+    }
+
+    private fun promptAlternateLiveSource() {
+        _uiState.value = PlayerUiState.Error(
+            if (_variants.value.size > 1) {
+                "Image noire — essayez une source 1080p (bouton Sources)."
+            } else {
+                "Image noire sur ce flux live."
+            },
+        )
+        if (_variants.value.size > 1) {
+            _openPanel.value = PlayerPanel.Sources
+        }
+        zapper.notifyPlaybackError()
+        zapper.clearHud()
     }
 
     private fun loadEpisodeNavigation(command: PlaybackCommand) {
@@ -1105,10 +1170,15 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             }
             val pausing = player.playWhenReady
             if (pausing) {
+                // Cancel blank-frame recovery so it cannot force-resume after pause
+                // (looked like slow-mo / stuttering live instead of a true freeze).
+                firstFrameWatchJob?.cancel()
+                awaitingFirstFrame = false
+
                 lastPausedAtElapsedMs = SystemClock.elapsedRealtime()
                 sameUrlResumeRetryDone = false
                 beginLivePauseDebt()
-                player.playWhenReady = false
+                player.pause()
                 refreshHud()
                 // Flush CW off the playback critical path so resume isn't stalled.
                 val reporter = progressReporter
