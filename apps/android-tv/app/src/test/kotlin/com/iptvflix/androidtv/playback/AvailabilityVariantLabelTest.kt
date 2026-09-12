@@ -34,6 +34,10 @@ class AvailabilityVariantLabelTest {
             videoQuality = "1080p",
             sourceDisplayName = "UNIV",
         )
+        assertTrue(v.label().contains("UNIV"))
+        assertTrue(v.label().contains("1080p"))
+    }
+
     @Test
     fun `live source label uses display label from api`() {
         val v = AvailabilityVariant(
