@@ -13,6 +13,6 @@ export type UsePlaybackState = {
     switchVariant: (id: string) => void;
     restartPlayback: () => void;
 };
-export declare function usePlayback(mediaType: 'movie' | 'episode', mediaId: string, initialAvailabilityId?: string): UsePlaybackState;
+export declare function usePlayback(mediaType: 'movie' | 'episode', mediaId: string, initialAvailabilityId?: string, startFresh?: boolean): UsePlaybackState;
 export {};
 //# sourceMappingURL=usePlayback.d.ts.map

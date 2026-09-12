@@ -132,6 +132,9 @@ fun PlayerScreen(
     }
     val hud by vm.hud.collectAsState()
     val scrub by vm.scrub.collectAsState()
+    val neverStop by vm.neverStop.collectAsState()
+    var announceEpisode by remember { mutableStateOf(false) }
+    var announcedMediaId by remember { mutableStateOf<String?>(null) }
     val overlayActions by vm.overlayActions.collectAsState()
     val variants by vm.variants.collectAsState()
     val selectedVariantId by vm.selectedVariantId.collectAsState()
@@ -147,6 +150,14 @@ fun PlayerScreen(
     var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
 
     val nowPlaying by vm.nowPlaying.collectAsState()
+    LaunchedEffect(nowPlaying?.mediaId, uiState is PlayerUiState.Playing, neverStop) {
+        if (neverStop && uiState is PlayerUiState.Playing && announcedMediaId != nowPlaying?.mediaId) {
+            announcedMediaId = nowPlaying?.mediaId
+            announceEpisode = true
+            delay(4000)
+        }
+        announceEpisode = false
+    }
     val isLivePlayback = (nowPlaying?.mediaType ?: command?.mediaType)
         .equals("channel", ignoreCase = true)
     val zapPreview by vm.zapPreview.collectAsState()
@@ -449,6 +460,17 @@ fun PlayerScreen(
                 }
             },
             actionContent = {
+                if (announceEpisode && episodeBrowser.episodeLabel != null) {
+                    Text(text = episodeBrowser.episodeLabel!!, color = Color.White,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 32.dp))
+                }
+                if (showControls && nowPlaying?.mediaType.equals("episode", true)) {
+                    PlayerActionOverlays(
+                        actions = listOf(PlayerOverlayAction.Custom("never_stop", "Never Stop : ${if (neverStop) "activé" else "désactivé"}")),
+                        onAction = { vm.toggleNeverStop() },
+                        modifier = Modifier.padding(bottom = 70.dp),
+                    )
+                }
                 if (zapPreview == null && uiState !is PlayerUiState.Error &&
                     visibleActions.isNotEmpty() && openPanel == PlayerPanel.None
                 ) {

@@ -1,6 +1,9 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useEpisodeSegments, usePlaybackPreferences } from '../hooks/useEpisodeSegments.js';
+import { useNeverStop } from '../hooks/useNeverStop.js';
+import { segmentLabel } from '../lib/skip-policy.js';
 import { usePlayback } from '../hooks/usePlayback.js';
 import { useProgressSync } from '../hooks/useProgressSync.js';
 import { useEpisodeNavigation } from '../hooks/useEpisodeNavigation.js';
@@ -60,7 +63,7 @@ export default function PlayerPage() {
     const [currentAudioTrack, setCurrentAudioTrack] = useState(0);
     const [subtitleTracks, setSubtitleTracks] = useState([]);
     const [currentSubtitleTrack, setCurrentSubtitleTrack] = useState(null);
-    const { gatewayUrl, deliveryMode, containerExtension, startPositionSeconds, alternatives, availabilityId, probeDurationSeconds, status, error, switchVariant, restartPlayback } = usePlayback(resolvedMediaType, mediaId, initialAvailabilityId);
+    const { gatewayUrl, deliveryMode, containerExtension, startPositionSeconds, alternatives, availabilityId, probeDurationSeconds, status, error, switchVariant, restartPlayback } = usePlayback(resolvedMediaType, mediaId, initialAvailabilityId, searchParams.get('source') === 'autoplay');
     // stableDurationSeconds: set from probe on session resolve, then updated via onStableDuration
     // callback when PlayerControls discovers the duration from the video element.
     const [stableDurationSeconds, setStableDurationSeconds] = useState(null);
@@ -200,28 +203,50 @@ export default function PlayerPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mediaId]);
     // Episode navigation
-    const { episodeLabel, nextEpisode } = useEpisodeNavigation(resolvedMediaType === 'episode' ? (mediaId ?? null) : null, seriesId, seasonNumber);
-    function handleNextEpisode() {
-        if (!nextEpisode)
-            return;
-        emitEvent({
-            eventType: 'NEXT_EPISODE_MANUAL',
-            mediaType: interactionMediaType,
-            mediaId: mediaId ?? undefined,
-            sessionId: sessionIdRef.current ?? undefined,
-            clientType: 'web',
-        });
+    const { episodeLabel, nextEpisode, nextSeasonNumber, resolvedSeriesId } = useEpisodeNavigation(resolvedMediaType === 'episode' ? (mediaId ?? null) : null, seriesId, seasonNumber);
+    const advancedRef = useRef(null);
+    useEffect(() => { advancedRef.current = null; }, [mediaId]);
+    function handleNextEpisode(automatic = false) {
+        if (!nextEpisode || advancedRef.current === mediaId)
+            return false;
+        advancedRef.current = mediaId ?? null;
+        if (!automatic)
+            emitEvent({
+                eventType: 'NEXT_EPISODE_MANUAL',
+                mediaType: interactionMediaType,
+                mediaId: mediaId ?? undefined,
+                sessionId: sessionIdRef.current ?? undefined,
+                clientType: 'web',
+            });
         flushProgress();
         const params = new URLSearchParams();
         if (nextEpisode.selectedVariantId)
             params.set('availabilityId', nextEpisode.selectedVariantId);
-        if (seriesId)
-            params.set('seriesId', seriesId);
-        if (seasonNumber != null)
-            params.set('seasonNumber', String(seasonNumber));
+        if (resolvedSeriesId)
+            params.set('seriesId', resolvedSeriesId);
+        if (nextSeasonNumber != null)
+            params.set('seasonNumber', String(nextSeasonNumber));
+        if (automatic)
+            params.set('source', 'autoplay');
         const qs = params.toString();
-        navigate(`/player/episode/${nextEpisode.id}${qs ? `?${qs}` : ''}`);
+        navigate(`/player/episode/${nextEpisode.id}${qs ? `?${qs}` : ''}`, { replace: automatic });
+        return true;
     }
+    const { preferences, toggleNeverStop, saving, preferenceError } = usePlaybackPreferences(resolvedMediaType === 'episode' ? mediaId : null);
+    const verifiedDuration = probeDurationSeconds ?? (deliveryMode === 'DIRECT' ? stableDurationSeconds : null);
+    const segments = useEpisodeSegments(resolvedMediaType === 'episode' ? mediaId : null, verifiedDuration, availabilityId);
+    const { active: activeSkip, skip: skipSegment } = useNeverStop(videoRef, segments, preferences, status === 'ready' && progressSyncReady && !showResumeDialog && !videoError, deliveryMode != null && deliveryMode !== 'DIRECT' && startPositionSeconds > 30 ? startPositionSeconds : 0, `${mediaId}:${availabilityId}:${gatewayUrl}`, () => handleNextEpisode(true), verifiedDuration);
+    const [announcement, setAnnouncement] = useState(false);
+    useEffect(() => {
+        setAnnouncement(false);
+        const video = videoRef.current;
+        if (!video || status !== 'ready' || !preferences.neverStopMode)
+            return;
+        let timer;
+        const announce = () => { setAnnouncement(true); timer = setTimeout(() => setAnnouncement(false), 4000); };
+        video.addEventListener('playing', announce, { once: true });
+        return () => { video.removeEventListener('playing', announce); clearTimeout(timer); };
+    }, [mediaId, status, preferences.neverStopMode]);
     const handleVariantSwitch = useCallback((id) => {
         emitEvent({
             eventType: 'SOURCE_SELECTED',
@@ -579,6 +604,6 @@ export default function PlayerPage() {
                         if (availabilityId) {
                             switchVariant(availabilityId);
                         }
-                    } }) })), showResumeDialog && !videoError && (_jsx("div", { className: "absolute inset-0 flex items-center justify-center z-50 bg-black/60", children: _jsxs("div", { role: "dialog", "aria-modal": "true", "aria-labelledby": "resume-dialog-title", "aria-describedby": "resume-dialog-desc", className: "bg-[#1a1a24] border border-white/10 rounded-lg p-6 max-w-sm w-full mx-4 text-center", children: [_jsx("h2", { id: "resume-dialog-title", className: "text-white text-base font-medium mb-2", children: resolvedMediaType === 'episode' && episodeLabel ? episodeLabel : 'Reprendre la lecture ?' }), _jsxs("p", { id: "resume-dialog-desc", className: "text-white/70 text-sm mb-5", children: ["Vous vous \u00EAtes arr\u00EAt\u00E9 \u00E0 ", formatTime(startPositionSeconds), "."] }), _jsxs("div", { className: "flex gap-3 justify-center", children: [_jsxs("button", { type: "button", onClick: handleResumeConfirm, autoFocus: true, "aria-label": `Reprendre à ${formatTime(startPositionSeconds)}`, className: "px-5 py-2 bg-white text-black text-sm font-semibold rounded hover:bg-white/90 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white", children: ["Reprendre \u00E0 ", formatTime(startPositionSeconds)] }), _jsx("button", { type: "button", onClick: handleRestart, className: "px-5 py-2 bg-white/10 text-white text-sm font-medium rounded hover:bg-white/20 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white", children: resolvedMediaType === 'episode' ? "Recommencer l'épisode" : 'Recommencer' })] })] }) })), !videoError && (status === 'ready' || status === 'idle') && (_jsx(PlayerControls, { videoRef: videoRef, alternatives: alternatives, onVariantSwitch: handleVariantSwitch, onClose: handleBack, currentVariantId: availabilityId, audioTracks: audioTracks, currentAudioTrack: currentAudioTrack, onAudioTrack: handleAudioTrack, subtitleTracks: subtitleTracks, currentSubtitleTrack: currentSubtitleTrack, onSubtitleTrack: handleSubtitleTrack, episodeLabel: episodeLabel, nextEpisode: nextEpisode, onNextEpisode: handleNextEpisode, markers: [], deliveryMode: deliveryMode, containerExtension: containerExtension, hintDurationSeconds: stableDurationSeconds, onStableDuration: handleStableDuration }))] }));
+                    } }) })), showResumeDialog && !videoError && (_jsx("div", { className: "absolute inset-0 flex items-center justify-center z-50 bg-black/60", children: _jsxs("div", { role: "dialog", "aria-modal": "true", "aria-labelledby": "resume-dialog-title", "aria-describedby": "resume-dialog-desc", className: "bg-[#1a1a24] border border-white/10 rounded-lg p-6 max-w-sm w-full mx-4 text-center", children: [_jsx("h2", { id: "resume-dialog-title", className: "text-white text-base font-medium mb-2", children: resolvedMediaType === 'episode' && episodeLabel ? episodeLabel : 'Reprendre la lecture ?' }), _jsxs("p", { id: "resume-dialog-desc", className: "text-white/70 text-sm mb-5", children: ["Vous vous \u00EAtes arr\u00EAt\u00E9 \u00E0 ", formatTime(startPositionSeconds), "."] }), _jsxs("div", { className: "flex gap-3 justify-center", children: [_jsxs("button", { type: "button", onClick: handleResumeConfirm, autoFocus: true, "aria-label": `Reprendre à ${formatTime(startPositionSeconds)}`, className: "px-5 py-2 bg-white text-black text-sm font-semibold rounded hover:bg-white/90 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white", children: ["Reprendre \u00E0 ", formatTime(startPositionSeconds)] }), _jsx("button", { type: "button", onClick: handleRestart, className: "px-5 py-2 bg-white/10 text-white text-sm font-medium rounded hover:bg-white/20 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white", children: resolvedMediaType === 'episode' ? "Recommencer l'épisode" : 'Recommencer' })] })] }) })), announcement && episodeLabel && _jsx("div", { role: "status", className: "absolute top-8 inset-x-0 text-center pointer-events-none text-white", children: episodeLabel }), activeSkip && !showResumeDialog && !videoError && _jsxs("div", { className: "absolute bottom-32 right-8 z-40", children: [_jsx("button", { className: "bg-white text-black rounded px-4 py-2", onClick: () => skipSegment(activeSkip), children: segmentLabel(activeSkip.type) }), _jsxs("div", { className: "text-xs text-white/70", children: ["Rep\u00E8res : ", activeSkip.source ?? 'Catalogue'] })] }), preferenceError && _jsx("div", { role: "alert", className: "absolute top-20 inset-x-0 text-center text-white", children: preferenceError }), !videoError && (status === 'ready' || status === 'idle') && (_jsx(PlayerControls, { neverStopMode: !!preferences.neverStopMode, onNeverStopToggle: resolvedMediaType === 'episode' ? toggleNeverStop : undefined, neverStopSaving: saving, videoRef: videoRef, alternatives: alternatives, onVariantSwitch: handleVariantSwitch, onClose: handleBack, currentVariantId: availabilityId, audioTracks: audioTracks, currentAudioTrack: currentAudioTrack, onAudioTrack: handleAudioTrack, subtitleTracks: subtitleTracks, currentSubtitleTrack: currentSubtitleTrack, onSubtitleTrack: handleSubtitleTrack, episodeLabel: episodeLabel, nextEpisode: nextEpisode, onNextEpisode: () => handleNextEpisode(), markers: [], deliveryMode: deliveryMode, containerExtension: containerExtension, hintDurationSeconds: stableDurationSeconds, onStableDuration: handleStableDuration }, `${mediaId}:${availabilityId}`))] }));
 }
 //# sourceMappingURL=PlayerPage.js.map

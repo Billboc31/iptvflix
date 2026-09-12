@@ -23,6 +23,9 @@ interface WebkitHTMLVideoElement extends HTMLVideoElement {
 }
 
 type Props = {
+  neverStopMode?: boolean
+  onNeverStopToggle?: () => void
+  neverStopSaving?: boolean
   videoRef: RefObject<HTMLVideoElement | null>
   alternatives: AvailabilityVariantResponse[]
   onVariantSwitch: (id: string) => void
@@ -51,6 +54,9 @@ type Props = {
 }
 
 export default function PlayerControls({
+  neverStopMode = false,
+  onNeverStopToggle,
+  neverStopSaving = false,
   videoRef,
   alternatives,
   onVariantSwitch,
@@ -363,7 +369,7 @@ export default function PlayerControls({
     nextEpisode != null &&
     stableDuration !== null &&
     stableDuration > 0 &&
-    currentTime >= stableDuration - NEAR_END_THRESHOLD_S
+    !neverStopMode && currentTime >= stableDuration - NEAR_END_THRESHOLD_S
 
   // PiP support detection
   const pipSupported =
@@ -446,6 +452,7 @@ export default function PlayerControls({
             >
               ← Retour
             </button>
+            {onNeverStopToggle && <button type="button" aria-pressed={neverStopMode} disabled={neverStopSaving} onClick={onNeverStopToggle} className="text-white bg-white/10 rounded px-3 py-2">Never Stop : {neverStopMode ? 'activé' : 'désactivé'}</button>}
             {episodeLabel && (
               <span className="text-white/80 text-sm font-medium truncate max-w-xs">{episodeLabel}</span>
             )}

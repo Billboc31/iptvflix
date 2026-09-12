@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify'
-import { eq } from 'drizzle-orm'
+import { eq, lt, and } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { episodes } from '../db/schema/episodes.js'
 import { seasons } from '../db/schema/seasons.js'
 import { series as seriesTable } from '../db/schema/series.js'
 import { segmentSelections } from '../db/schema/segment-selections.js'
+import { getPlaybackSegments, validSegment } from '../services/playback-segments.js'
 import { resolveMediaImageUrl } from '../lib/tmdb-image.js'
 import type { EpisodeContextResponse, EpisodeSegmentsResponse } from '@iptvflix/api-contracts'
 
@@ -52,9 +53,26 @@ export async function episodeSegmentsRoutes(app: FastifyInstance): Promise<void>
     return reply.send(response)
   })
 
-  app.get<{ Params: { id: string } }>('/episodes/:id/segments', async (request, reply) => {
+  app.get<{ Params: { id: string }; Querystring: { durationSeconds?: string } }>('/episodes/:id/segments', async (request, reply) => {
     const { id } = request.params
 
+    const durationSeconds = request.query.durationSeconds == null ? undefined : Number(request.query.durationSeconds)
+    if (durationSeconds !== undefined && (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 86400)) {
+      return reply.status(400).send({ error: 'Invalid durationSeconds' })
+    }
+    const [episode] = await db.select({
+      episodeId: episodes.id, seriesTmdbId: seriesTable.tmdbId, seriesImdbId: seriesTable.imdbId,
+      seasonNumber: seasons.seasonNumber, episodeNumber: episodes.episodeNumber, seriesId: episodes.seriesId,
+    }).from(episodes).innerJoin(seasons, eq(seasons.id, episodes.seasonId))
+      .innerJoin(seriesTable, eq(seriesTable.id, episodes.seriesId)).where(eq(episodes.id, id)).limit(1)
+    if (!episode) return reply.status(404).send({ error: 'Episode not found' })
+    const prior = await db.select({ number: seasons.seasonNumber, count: seasons.episodeCount }).from(seasons)
+      .where(and(eq(seasons.seriesId, episode.seriesId), lt(seasons.seasonNumber, episode.seasonNumber)))
+    const regular = prior.filter((s) => s.number > 0).sort((a, b) => a.number - b.number)
+    const complete = regular.length === episode.seasonNumber - 1 && regular.every((s, i) => s.number === i + 1 && s.count != null && s.count > 0)
+    const online = await getPlaybackSegments({ ...episode, durationSeconds,
+      absoluteEpisodeNumber: complete ? regular.reduce((sum, s) => sum + s.count!, episode.episodeNumber) : undefined,
+    })
     const rows = await db
       .select({
         type: segmentSelections.type,
@@ -67,7 +85,9 @@ export async function episodeSegmentsRoutes(app: FastifyInstance): Promise<void>
 
     const response: EpisodeSegmentsResponse = {
       episodeId: id,
-      segments: rows.map((r) => ({ type: r.type, startMs: r.startMs, endMs: r.endMs })),
+      segments: [...online, ...rows.filter((r) => validSegment(r, durationSeconds) && !online.some((s) => (s.type === 'OUTRO' ? 'CREDITS' : s.type) === (r.type === 'OUTRO' ? 'CREDITS' : r.type)))
+        .map((r) => ({ type: r.type, startMs: r.startMs, endMs: r.endMs, autoSkipSafe: false, source: 'Catalogue' }))]
+        .sort((a, b) => a.startMs - b.startMs),
     }
 
     return reply.send(response)

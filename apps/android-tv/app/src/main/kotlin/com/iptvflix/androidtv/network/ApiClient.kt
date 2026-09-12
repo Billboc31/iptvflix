@@ -72,6 +72,14 @@ class ApiClient(private val tokenStore: TokenStore) {
             }
         }
 
+    suspend fun patch(path: String, jsonBody: String): String = withContext(Dispatchers.IO) {
+        val body = jsonBody.toRequestBody("application/json".toMediaType())
+        apiHttpClient.newCall(buildRequest(path, "PATCH", body)).execute().use { response ->
+            if (!response.isSuccessful) throw ApiException(response.code)
+            response.body?.string() ?: ""
+        }
+    }
+
     suspend fun put(path: String, jsonBody: String): Boolean = withContext(Dispatchers.IO) {
         val body = jsonBody.toRequestBody("application/json".toMediaType())
         apiHttpClient.newCall(buildRequest(path, "PUT", body)).execute().use { response ->

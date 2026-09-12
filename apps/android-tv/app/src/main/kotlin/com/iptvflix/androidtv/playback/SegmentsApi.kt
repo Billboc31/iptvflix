@@ -9,6 +9,8 @@ data class EpisodeSegmentItem(
     val type: String,
     val startMs: Long,
     val endMs: Long,
+    val autoSkipSafe: Boolean = false,
+    val source: String? = null,
 )
 
 @Serializable
@@ -21,9 +23,10 @@ class SegmentsApi(private val apiClient: ApiClient) {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun fetchEpisodeSegments(episodeId: String): List<EpisodeSegmentItem> =
+    suspend fun fetchEpisodeSegments(episodeId: String, durationSeconds: Double? = null): List<EpisodeSegmentItem> =
         runCatching {
-            val body = apiClient.get("/episodes/$episodeId/segments")
+            val query = durationSeconds?.takeIf { it.isFinite() && it > 0 }?.let { "?durationSeconds=$it" } ?: ""
+            val body = apiClient.get("/episodes/$episodeId/segments$query")
             json.decodeFromString<EpisodeSegmentsResponse>(body).segments
         }.getOrDefault(emptyList())
 }

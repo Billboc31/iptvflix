@@ -3,6 +3,8 @@ type EpisodeNav = {
     episodeLabel: string | null;
     nextEpisode: EpisodeResponse | null;
     previousEpisode: EpisodeResponse | null;
+    nextSeasonNumber?: number | null;
+    resolvedSeriesId?: string | null;
 };
 export declare function useEpisodeNavigation(mediaId: string | null, seriesId: string | null, seasonNumber: number | null): EpisodeNav;
 export {};

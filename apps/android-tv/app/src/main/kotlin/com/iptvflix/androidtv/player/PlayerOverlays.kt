@@ -35,6 +35,7 @@ sealed class PlayerOverlayAction {
         /** Exclusive end of the intro window (ms). Hidden once playback passes this. */
         val untilMs: Long,
         val seekToMs: Long,
+        val fromMs: Long = 0L,
     ) : PlayerOverlayAction()
 
     data class SkipRecap(
@@ -42,6 +43,7 @@ sealed class PlayerOverlayAction {
         val label: String = "Passer le résumé",
         val untilMs: Long,
         val seekToMs: Long,
+        val fromMs: Long = 0L,
     ) : PlayerOverlayAction()
 
     data class NextEpisode(
@@ -58,8 +60,8 @@ sealed class PlayerOverlayAction {
 fun List<PlayerOverlayAction>.visibleAt(positionMs: Long): List<PlayerOverlayAction> =
     filter { action ->
         when (action) {
-            is PlayerOverlayAction.SkipIntro -> positionMs in 0L until action.untilMs
-            is PlayerOverlayAction.SkipRecap -> positionMs in 0L until action.untilMs
+            is PlayerOverlayAction.SkipIntro -> positionMs in action.fromMs until action.untilMs
+            is PlayerOverlayAction.SkipRecap -> positionMs in action.fromMs until action.untilMs
             is PlayerOverlayAction.NextEpisode,
             is PlayerOverlayAction.Custom,
             -> true

@@ -124,6 +124,17 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private val _nowPlaying = MutableStateFlow<NowPlayingInfo?>(null)
     val nowPlaying: StateFlow<NowPlayingInfo?> = _nowPlaying.asStateFlow()
 
+    private var segmentJob: Job? = null
+    private var episodeSegments = emptyList<com.iptvflix.androidtv.playback.EpisodeSegmentItem>()
+    private var segmentDuration = 0L
+    private val skippedSegments = mutableSetOf<String>()
+    private var playbackPreferences: com.iptvflix.androidtv.network.ProfileResponse? = null
+    private var automaticNext: Pair<EpisodeListItem, Int>? = null
+    private var autoAdvanced = false
+    private var preferenceSaving = false
+    private val _neverStop = MutableStateFlow(false)
+    val neverStop: StateFlow<Boolean> = _neverStop.asStateFlow()
+
     private val _overlayActions = MutableStateFlow<List<PlayerOverlayAction>>(emptyList())
     val overlayActions: StateFlow<List<PlayerOverlayAction>> = _overlayActions.asStateFlow()
 
@@ -281,6 +292,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     }
                 }
+                if (state == Player.STATE_ENDED && playbackPreferences?.let { it.neverStopMode || it.autoplayNextEpisode } == true) advanceAutomatically()
                 refreshHud()
             }
 
@@ -422,6 +434,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         if (changed) {
             _hud.value = next
         }
+        updateSegments(pos, durationMs)
         maybeShowNearEndNextEpisode(pos, durationMs)
     }
 
@@ -512,7 +525,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun maybeShowNearEndNextEpisode(positionMs: Long, durationMs: Long) {
-        if (nearEndNextShown || durationMs <= 0L) return
+        if (_neverStop.value || nearEndNextShown || durationMs <= 0L) return
         val nextId = _episodeBrowser.value.nextEpisodeId ?: return
         if (nextId.isBlank()) return
         if (positionMs < (durationMs * 0.90).toLong()) return
@@ -554,6 +567,15 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             Log.d(TAG, "Skipping duplicate load for command ${command.id}")
             return
         }
+        segmentJob?.cancel()
+        episodeSegments = emptyList()
+        segmentDuration = 0L
+        skippedSegments.clear()
+        automaticNext = null
+        autoAdvanced = false
+        _overlayActions.value = emptyList()
+        playbackPreferences = null
+        _neverStop.value = false
         loadedCommandId = command.id
         val previousMediaId = currentCommand?.mediaId
         currentCommand = command
@@ -656,26 +678,14 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 watchForFirstVideoFrame()
 
-                _overlayActions.value = if (command.mediaType.equals("episode", ignoreCase = true)) {
-                    withContext(Dispatchers.IO) {
-                        SegmentsApi(container.apiClient)
-                            .fetchEpisodeSegments(command.mediaId)
-                            .mapNotNull { segment ->
-                                when (segment.type.uppercase()) {
-                                    "INTRO" -> PlayerOverlayAction.SkipIntro(
-                                        untilMs = segment.endMs,
-                                        seekToMs = segment.endMs,
-                                    )
-                                    "RECAP" -> PlayerOverlayAction.SkipRecap(
-                                        untilMs = segment.endMs,
-                                        seekToMs = segment.endMs,
-                                    )
-                                    else -> null
-                                }
-                            }
+                if (command.mediaType.equals("episode", ignoreCase = true)) {
+                    viewModelScope.launch {
+                        val prefs = runCatching { com.iptvflix.androidtv.network.ProfileApiService(container.apiClient).getCurrentProfile() }.getOrNull()
+                        if (loadedCommandId == command.id) {
+                            playbackPreferences = prefs
+                            _neverStop.value = prefs?.neverStopMode == true
+                        }
                     }
-                } else {
-                    emptyList()
                 }
 
                 val floorSeconds = (desiredStartMs / 1000L).toInt().coerceAtLeast(0)
@@ -864,7 +874,17 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 val idx = episodes.indexOfFirst { it.id == command.mediaId }
                 val current = episodes.getOrNull(idx)
-                val next = episodes.getOrNull(idx + 1)
+                var next = if (idx >= 0) episodes.getOrNull(idx + 1) else null
+                var nextSeason = season
+                if (idx >= 0 && next == null) {
+                    val followingSeason = seasons.filter { it.seasonNumber == season + 1 }.firstOrNull()
+                    if (followingSeason != null) {
+                        nextSeason = followingSeason.seasonNumber
+                        next = withContext(Dispatchers.IO) { catalog.getSeasonEpisodes(sid, nextSeason, profileId) }.minByOrNull { it.episodeNumber }
+                    }
+                }
+                if (loadedCommandId != command.id) return@launch
+                automaticNext = next?.takeIf { !it.availabilityStatus.equals("UNAVAILABLE", true) && (if (nextSeason == season) it.episodeNumber == (current?.episodeNumber ?: -2) + 1 else it.episodeNumber == 1) }?.let { it to nextSeason }
                 if (episodeLabel == null && current != null) {
                     episodeLabel = formatEpisodeLabel(season, current.episodeNumber, current.title)
                 }
@@ -924,7 +944,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun playEpisode(episode: EpisodeListItem) {
+    fun playEpisode(episode: EpisodeListItem, automatic: Boolean = false, targetSeason: Int? = null) {
         val browser = _episodeBrowser.value
         val seriesId = browser.seriesId ?: return
         if (episode.id == currentCommand?.mediaId) {
@@ -936,14 +956,14 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         ) {
             return
         }
-        emitEvent("NEXT_EPISODE_MANUAL", mapOf("targetMediaId" to episode.id))
+        if (!automatic) emitEvent("NEXT_EPISODE_MANUAL", mapOf("targetMediaId" to episode.id))
         viewModelScope.launch {
             // Flush current episode, then seed the next so CW keeps the series
             // even if the user quits before ExoPlayer reports a duration.
             progressReporter?.reportNow()
             seedEpisodeStarted(episode)
         }
-        val season = browser.seasonNumber
+        val season = targetSeason ?: browser.seasonNumber
         val title = formatEpisodeLabel(season, episode.episodeNumber, episode.title)
             ?: episode.title
             ?: currentCommand?.title
@@ -955,6 +975,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 availabilityId = episode.selectedVariantId
                     ?: container.lastAvailabilityStore.get("episode", episode.id),
                 startPositionMs = 0L,
+                restart = automatic,
                 title = title,
                 seriesId = seriesId,
                 seasonNumber = season,
@@ -975,9 +996,78 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun playNextEpisode() {
-        val nextId = _episodeBrowser.value.nextEpisodeId ?: return
-        val episode = _episodeBrowser.value.episodes.find { it.id == nextId } ?: return
-        playEpisode(episode)
+        val target = automaticNext ?: return
+        playEpisode(target.first, targetSeason = target.second)
+    }
+
+    fun toggleNeverStop() {
+        if (preferenceSaving) return
+        val prefs = playbackPreferences ?: return
+        preferenceSaving = true
+        val requestingCommand = loadedCommandId
+        viewModelScope.launch {
+            try {
+                container.apiClient.patch("/profile/preferences", """{"neverStopMode":${!prefs.neverStopMode}}""")
+                if (requestingCommand != loadedCommandId) return@launch
+                playbackPreferences = prefs.copy(neverStopMode = !prefs.neverStopMode)
+                _neverStop.value = !prefs.neverStopMode
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _subtitleMessage.value = "Impossible d’enregistrer Never Stop."
+            } finally { preferenceSaving = false }
+        }
+    }
+
+    private fun advanceAutomatically() {
+        val target = automaticNext ?: return
+        if (autoAdvanced) return
+        autoAdvanced = true
+        val departingCommand = loadedCommandId
+        _uiState.value = PlayerUiState.Buffering
+        viewModelScope.launch {
+            runCatching { progressReporter?.reportNow() }
+            if (departingCommand != loadedCommandId) return@launch
+            playEpisode(target.first, automatic = true, targetSeason = target.second)
+        }
+    }
+
+    private fun updateSegments(positionMs: Long, durationMs: Long) {
+        val command = currentCommand ?: return
+        if (!command.mediaType.equals("episode", true)) return
+        // Native Android VOD uses the original full timeline; remux duration is not trustworthy.
+        if (durationMs > 0 && segmentDuration == 0L && currentDeliveryMode == "DIRECT") {
+            segmentDuration = durationMs
+            segmentJob = viewModelScope.launch {
+                val result = SegmentsApi(container.apiClient).fetchEpisodeSegments(command.mediaId, durationMs / 1000.0)
+                if (loadedCommandId != command.id) return@launch
+                episodeSegments = result.filter { it.startMs >= 0 && it.endMs > it.startMs && it.endMs <= durationMs }
+            }
+        }
+        val active = episodeSegments.firstOrNull { positionMs >= it.startMs && positionMs < it.endMs }
+        val prefs = playbackPreferences
+        if (active != null && prefs != null && player.isPlaying && !_scrub.value.active && player.isCurrentMediaItemSeekable &&
+            shouldSkipSegment(active, positionMs, durationMs, player.isPlaying, _scrub.value.active, prefs.neverStopMode, prefs.autoSkipIntro, prefs.autoSkipRecap)) {
+            val key = "${active.type}:${active.startMs}:${active.endMs}"
+            if (skippedSegments.add(key)) {
+                if (prefs.neverStopMode && segmentReachesEnd(active, durationMs) && automaticNext != null) advanceAutomatically()
+                else player.seekTo(active.endMs)
+            }
+        }
+        val actions = active?.let {
+            listOf(PlayerOverlayAction.SkipIntro(
+                id = "segment:${it.type}:${it.startMs}",
+                label = when (it.type) {
+                    "INTRO" -> "Passer l’introduction"
+                    "RECAP" -> "Passer le récapitulatif"
+                    "PREVIEW" -> "Passer l’annonce"
+                    else -> "Passer le générique"
+                } + (it.source?.let { source -> " · $source" } ?: ""),
+                fromMs = it.startMs, untilMs = it.endMs, seekToMs = it.endMs,
+            ))
+        } ?: emptyList()
+        val next = if (_neverStop.value) emptyList() else _overlayActions.value.filterIsInstance<PlayerOverlayAction.NextEpisode>()
+        _overlayActions.value = actions + next
+        if (active != null) _hud.value = _hud.value.copy(positionMs = positionMs)
     }
 
     fun switchChannel(channelId: String, title: String?, logoUrl: String?) {

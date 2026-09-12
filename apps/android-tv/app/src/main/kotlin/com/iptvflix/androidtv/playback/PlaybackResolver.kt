@@ -16,6 +16,7 @@ class PlaybackResolver(
             mediaId = command.mediaId,
             availabilityId = preferredId,
             startPositionMs = command.startPositionMs,
+            restart = command.restart,
         )
 
         // No remembered source: avoid auto-picking UHD/4K which often fails on TV/emu.
@@ -27,6 +28,7 @@ class PlaybackResolver(
                     mediaId = command.mediaId,
                     availabilityId = safer,
                     startPositionMs = command.startPositionMs,
+            restart = command.restart,
                 )
             }
         }

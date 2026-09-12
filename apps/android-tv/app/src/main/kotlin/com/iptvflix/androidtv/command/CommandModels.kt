@@ -9,6 +9,7 @@ data class PlaybackCommand(
     val mediaId: String,
     val availabilityId: String? = null,
     val startPositionMs: Long = 0L,
+    val restart: Boolean = false,
     /** Optional display title (local resume / future SSE). */
     val title: String? = null,
     /** Episode context when known (continue-watching / local switch). */

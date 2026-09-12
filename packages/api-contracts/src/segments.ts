@@ -4,6 +4,10 @@ export interface EpisodeSegmentItem {
   type: SegmentType
   startMs: number
   endMs: number
+  /** True only when timestamps match this stream duration and are unambiguous. */
+  autoSkipSafe?: boolean
+  source?: string
+  sourceUrl?: string
 }
 
 export interface EpisodeSegmentsResponse {

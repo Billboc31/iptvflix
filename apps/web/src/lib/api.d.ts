@@ -83,4 +83,6 @@ export declare function previewShelfConcept(id: string, body: {
 }): Promise<import('@iptvflix/api-contracts').ShelfConceptPreviewResponse>;
 export declare function recordInteractionEvent(event: InteractionEventBody): Promise<void>;
 export declare function batchRecordInteractionEvents(events: InteractionEventBody[]): Promise<BatchEventResponse>;
+export declare function getEpisodeSegments(id: string, durationSeconds?: number): Promise<import('@iptvflix/api-contracts').EpisodeSegmentsResponse>;
+export declare function getEpisodeContext(id: string): Promise<import('@iptvflix/api-contracts').EpisodeContextResponse>;
 //# sourceMappingURL=api.d.ts.map

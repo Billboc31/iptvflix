@@ -16,6 +16,9 @@ export type Marker = {
     endSeconds: number;
 };
 type Props = {
+    neverStopMode?: boolean;
+    onNeverStopToggle?: () => void;
+    neverStopSaving?: boolean;
     videoRef: RefObject<HTMLVideoElement | null>;
     alternatives: AvailabilityVariantResponse[];
     onVariantSwitch: (id: string) => void;
@@ -36,6 +39,6 @@ type Props = {
     hintDurationSeconds?: number | null;
     onStableDuration?: (seconds: number) => void;
 };
-export default function PlayerControls({ videoRef, alternatives, onVariantSwitch, onClose, currentVariantId, audioTracks, currentAudioTrack, onAudioTrack, subtitleTracks, currentSubtitleTrack, onSubtitleTrack, episodeLabel, nextEpisode, onNextEpisode, markers, deliveryMode, containerExtension, hintDurationSeconds, onStableDuration, }: Props): import("react").JSX.Element;
+export default function PlayerControls({ neverStopMode, onNeverStopToggle, neverStopSaving, videoRef, alternatives, onVariantSwitch, onClose, currentVariantId, audioTracks, currentAudioTrack, onAudioTrack, subtitleTracks, currentSubtitleTrack, onSubtitleTrack, episodeLabel, nextEpisode, onNextEpisode, markers, deliveryMode, containerExtension, hintDurationSeconds, onStableDuration, }: Props): import("react").JSX.Element;
 export {};
 //# sourceMappingURL=PlayerControls.d.ts.map

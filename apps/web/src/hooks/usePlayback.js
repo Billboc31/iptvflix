@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { resolvePlayback, ApiError } from '../lib/api.js';
-export function usePlayback(mediaType, mediaId, initialAvailabilityId) {
+export function usePlayback(mediaType, mediaId, initialAvailabilityId, startFresh = false) {
+    const requestId = useRef(0);
     const [gatewayUrl, setGatewayUrl] = useState(null);
     const [deliveryMode, setDeliveryMode] = useState(null);
     const [containerExtension, setContainerExtension] = useState(null);
@@ -11,6 +12,7 @@ export function usePlayback(mediaType, mediaId, initialAvailabilityId) {
     const [status, setStatus] = useState('idle');
     const [error, setError] = useState(null);
     const resolve = useCallback(async (explicitId, restart = false) => {
+        const currentRequest = ++requestId.current;
         setStatus('loading');
         setError(null);
         try {
@@ -18,6 +20,8 @@ export function usePlayback(mediaType, mediaId, initialAvailabilityId) {
                 ...(explicitId ? { availabilityId: explicitId } : {}),
                 ...(restart ? { restart: true } : {}),
             });
+            if (currentRequest !== requestId.current)
+                return;
             setGatewayUrl(session.gatewayUrl);
             setDeliveryMode(session.deliveryMode);
             setContainerExtension(session.containerExtension);
@@ -28,14 +32,17 @@ export function usePlayback(mediaType, mediaId, initialAvailabilityId) {
             setStatus('ready');
         }
         catch (err) {
+            if (currentRequest !== requestId.current)
+                return;
             const message = err instanceof ApiError ? err.message : 'Impossible de démarrer la lecture.';
             setError(message);
             setStatus('error');
         }
     }, [mediaType, mediaId]);
     useEffect(() => {
-        resolve(initialAvailabilityId);
-    }, [resolve, initialAvailabilityId]);
+        resolve(initialAvailabilityId, startFresh);
+        return () => { requestId.current++; };
+    }, [resolve, initialAvailabilityId, startFresh]);
     const switchVariant = useCallback((id) => {
         resolve(id);
     }, [resolve]);

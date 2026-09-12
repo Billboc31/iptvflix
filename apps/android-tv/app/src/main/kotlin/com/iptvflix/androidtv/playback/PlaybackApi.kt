@@ -69,6 +69,7 @@ class PlaybackApi(private val apiClient: ApiClient) {
         mediaId: String,
         availabilityId: String?,
         startPositionMs: Long = 0L,
+        restart: Boolean = false,
     ): PlaybackDescriptor {
         if (mediaType.equals("channel", ignoreCase = true)) {
             return resolveChannelPlayback(
@@ -79,6 +80,7 @@ class PlaybackApi(private val apiClient: ApiClient) {
 
         val body = buildJsonObject {
             put("clientType", "android-tv")
+            if (restart) put("restart", true)
             availabilityId?.let { put("availabilityId", it) }
         }.toString()
 

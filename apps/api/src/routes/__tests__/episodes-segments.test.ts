@@ -58,6 +58,8 @@ vi.mock('../../lib/tmdb-image.js', () => ({
   resolveMediaImageUrl: (path: string | null | undefined) => (path ? `https://img.test${path}` : null),
 }))
 
+vi.mock('../../services/playback-segments.js', () => ({ getPlaybackSegments: vi.fn().mockResolvedValue([]), validSegment: (s: { startMs: number; endMs: number }) => s.startMs >= 0 && s.endMs > s.startMs }))
+
 import { episodeSegmentsRoutes } from '../episodes.js'
 
 const EPISODE_ID = 'aaaaaaaa-0000-0000-0000-000000000001'
@@ -87,6 +89,8 @@ describe('GET /episodes/:id/segments', () => {
     app = Fastify({ logger: false })
     await app.register(episodeSegmentsRoutes)
     await app.ready()
+    mockSelect.mockReturnValueOnce(buildQueryChain([{ episodeId: EPISODE_ID, seriesId: SERIES_ID, seasonNumber: 1, episodeNumber: 1 }]))
+    mockSelect.mockReturnValueOnce({ from: vi.fn().mockReturnThis(), where: vi.fn().mockResolvedValue([]) })
   })
 
   it('returns 200 with episodeId and segments array', async () => {
@@ -123,7 +127,7 @@ describe('GET /episodes/:id/segments', () => {
 
     expect(res.json()).toEqual({
       episodeId: EPISODE_ID,
-      segments: [{ type: 'INTRO', startMs: 60000, endMs: 120000 }],
+      segments: [{ type: 'INTRO', startMs: 60000, endMs: 120000, autoSkipSafe: false, source: 'Catalogue' }],
     })
   })
 })

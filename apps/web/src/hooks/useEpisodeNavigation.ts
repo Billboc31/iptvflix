@@ -1,48 +1,50 @@
 import { useState, useEffect } from 'react'
 import type { EpisodeResponse } from '@iptvflix/api-contracts'
-import { getSeriesSeasonEpisodes } from '../lib/api.js'
+import { getSeriesSeasonEpisodes, getEpisodeContext, getSeries } from '../lib/api.js'
 
 type EpisodeNav = {
   episodeLabel: string | null
   nextEpisode: EpisodeResponse | null
   previousEpisode: EpisodeResponse | null
+  nextSeasonNumber?: number | null
+  resolvedSeriesId?: string | null
 }
+const EMPTY: EpisodeNav = { episodeLabel: null, nextEpisode: null, previousEpisode: null }
 
-export function useEpisodeNavigation(
-  mediaId: string | null,
-  seriesId: string | null,
-  seasonNumber: number | null,
-): EpisodeNav {
-  const [episodes, setEpisodes] = useState<EpisodeResponse[]>([])
-
+export function useEpisodeNavigation(mediaId: string | null, seriesId: string | null, seasonNumber: number | null): EpisodeNav {
+  const [state, setState] = useState<{ key: string; nav: EpisodeNav }>({ key: '', nav: EMPTY })
+  const key = `${mediaId}:${seriesId}:${seasonNumber}`
   useEffect(() => {
-    if (!seriesId || seasonNumber === null) return
+    if (!mediaId) return
     let cancelled = false
-    getSeriesSeasonEpisodes(seriesId, seasonNumber)
-      .then((eps) => {
-        if (!cancelled) setEpisodes(eps)
-      })
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
+    async function load() {
+      const context = !seriesId || seasonNumber == null ? await getEpisodeContext(mediaId!) : null
+      const sid = seriesId ?? context!.seriesId
+      const season = seasonNumber ?? context!.seasonNumber
+      const episodes = (await getSeriesSeasonEpisodes(sid, season)).sort((a, b) => a.episodeNumber - b.episodeNumber)
+      const idx = episodes.findIndex((e) => e.id === mediaId)
+      if (idx < 0) return
+      const current = episodes[idx]
+      let nextEpisode: EpisodeResponse | null = episodes[idx + 1] ?? null
+      let nextSeasonNumber = season
+      if (!nextEpisode) {
+        const detail = await getSeries(sid).catch(() => null)
+        const nextSeason = detail?.seasons.filter((s) => s.seasonNumber === season + 1).sort((a, b) => a.seasonNumber - b.seasonNumber)[0]
+        if (nextSeason) {
+          const following = await getSeriesSeasonEpisodes(sid, nextSeason.seasonNumber)
+          nextEpisode = following.sort((a, b) => a.episodeNumber - b.episodeNumber)[0] ?? null
+          nextSeasonNumber = nextSeason.seasonNumber
+        }
+      }
+      // Do not silently skip a missing episode in the story.
+      if (nextEpisode && (nextEpisode.availabilityStatus === 'UNAVAILABLE' || (nextSeasonNumber === season ? nextEpisode.episodeNumber !== current.episodeNumber + 1 : nextEpisode.episodeNumber !== 1))) nextEpisode = null
+      if (!cancelled) setState({ key, nav: {
+        episodeLabel: `S${String(season).padStart(2, '0')}E${String(current.episodeNumber).padStart(2, '0')}${current.title ? ` · ${current.title}` : ''}`,
+        nextEpisode, previousEpisode: episodes[idx - 1] ?? null, nextSeasonNumber, resolvedSeriesId: sid,
+      } })
     }
-  }, [seriesId, seasonNumber])
-
-  if (!mediaId || episodes.length === 0) {
-    return { episodeLabel: null, nextEpisode: null, previousEpisode: null }
-  }
-
-  const idx = episodes.findIndex((e) => e.id === mediaId)
-  if (idx === -1) {
-    return { episodeLabel: null, nextEpisode: null, previousEpisode: null }
-  }
-
-  const current = episodes[idx]
-  const sLabel = seasonNumber != null ? `S${String(seasonNumber).padStart(2, '0')}` : ''
-  const eLabel = `E${String(current.episodeNumber).padStart(2, '0')}`
-  const episodeLabel = `${sLabel}${eLabel}${current.title ? ` · ${current.title}` : ''}`
-  const nextEpisode = idx < episodes.length - 1 ? (episodes[idx + 1] ?? null) : null
-  const previousEpisode = idx > 0 ? (episodes[idx - 1] ?? null) : null
-
-  return { episodeLabel, nextEpisode, previousEpisode }
+    load().catch(() => { if (!cancelled) setState({ key, nav: EMPTY }) })
+    return () => { cancelled = true }
+  }, [mediaId, seriesId, seasonNumber, key])
+  return state.key === key ? state.nav : EMPTY
 }

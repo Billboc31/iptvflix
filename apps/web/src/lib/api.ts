@@ -454,3 +454,11 @@ export function recordInteractionEvent(event: InteractionEventBody): Promise<voi
 export function batchRecordInteractionEvents(events: InteractionEventBody[]): Promise<BatchEventResponse> {
   return request('/interaction-events/batch', { method: 'POST', body: JSON.stringify({ events }) })
 }
+
+export function getEpisodeSegments(id: string, durationSeconds?: number): Promise<import('@iptvflix/api-contracts').EpisodeSegmentsResponse> {
+  return request(`/episodes/${id}/segments${toQuery({ durationSeconds })}`)
+}
+
+export function getEpisodeContext(id: string): Promise<import('@iptvflix/api-contracts').EpisodeContextResponse> {
+  return request(`/episodes/${id}`)
+}

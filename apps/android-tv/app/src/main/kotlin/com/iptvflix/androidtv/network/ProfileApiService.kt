@@ -12,6 +12,10 @@ data class ProfileResponse(
     val accountId: String? = null,
     val maturityLevel: String? = null,
     val lastUsedAt: String? = null,
+    val neverStopMode: Boolean = false,
+    val autoSkipIntro: Boolean = false,
+    val autoSkipRecap: Boolean = false,
+    val autoplayNextEpisode: Boolean = false,
 )
 
 @Serializable

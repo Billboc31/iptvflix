@@ -351,6 +351,22 @@ export default function ProfileSettingsPage() {
           </p>
         </div>
 
+        <fieldset className="mb-6 space-y-3">
+          <legend className="text-white font-medium mb-3">Enchaînement des épisodes</legend>
+          {([
+            ['autoplayNextEpisode', 'Lire automatiquement l’épisode suivant'],
+            ['autoSkipIntro', 'Passer automatiquement les introductions'],
+            ['autoSkipRecap', 'Passer automatiquement les récapitulatifs'],
+            ['neverStopMode', 'Never Stop : sauter les segments et enchaîner les épisodes'],
+          ] as const).map(([key, label]) => (
+            <label key={key} className="flex items-center gap-3 text-sm text-gray-300">
+              <input type="checkbox" checked={!!prefs[key]} onChange={(e) => setPrefs((p) => ({ ...p, [key]: e.target.checked }))} />
+              {label}
+            </label>
+          ))}
+          <p className="text-xs text-gray-400">Les sauts automatiques utilisent uniquement les repères compatibles avec la vidéo. Les scènes après le générique sont conservées. Sans repères fiables, l’épisode continue normalement.</p>
+        </fieldset>
+
         {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
 
         <div className="flex items-center gap-3">

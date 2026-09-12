@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import type { ProgressMediaType } from '@iptvflix/api-contracts'
+import { useEpisodeSegments, usePlaybackPreferences } from '../hooks/useEpisodeSegments.js'
+import { useNeverStop } from '../hooks/useNeverStop.js'
+import { segmentLabel } from '../lib/skip-policy.js'
 import { usePlayback } from '../hooks/usePlayback.js'
 import { useProgressSync } from '../hooks/useProgressSync.js'
 import { useEpisodeNavigation } from '../hooks/useEpisodeNavigation.js'
@@ -75,6 +78,7 @@ export default function PlayerPage() {
     resolvedMediaType as 'movie' | 'episode',
     mediaId!,
     initialAvailabilityId,
+    searchParams.get('source') === 'autoplay',
   )
 
   // stableDurationSeconds: set from probe on session resolve, then updated via onStableDuration
@@ -231,15 +235,18 @@ export default function PlayerPage() {
   }, [mediaId])
 
   // Episode navigation
-  const { episodeLabel, nextEpisode } = useEpisodeNavigation(
+  const { episodeLabel, nextEpisode, nextSeasonNumber, resolvedSeriesId } = useEpisodeNavigation(
     resolvedMediaType === 'episode' ? (mediaId ?? null) : null,
     seriesId,
     seasonNumber,
   )
 
-  function handleNextEpisode() {
-    if (!nextEpisode) return
-    emitEvent({
+  const advancedRef = useRef<string | null>(null)
+  useEffect(() => { advancedRef.current = null }, [mediaId])
+  function handleNextEpisode(automatic = false) {
+    if (!nextEpisode || advancedRef.current === mediaId) return false
+    advancedRef.current = mediaId ?? null
+    if (!automatic) emitEvent({
       eventType: 'NEXT_EPISODE_MANUAL',
       mediaType: interactionMediaType,
       mediaId: mediaId ?? undefined,
@@ -249,11 +256,31 @@ export default function PlayerPage() {
     flushProgress()
     const params = new URLSearchParams()
     if (nextEpisode.selectedVariantId) params.set('availabilityId', nextEpisode.selectedVariantId)
-    if (seriesId) params.set('seriesId', seriesId)
-    if (seasonNumber != null) params.set('seasonNumber', String(seasonNumber))
+    if (resolvedSeriesId) params.set('seriesId', resolvedSeriesId)
+    if (nextSeasonNumber != null) params.set('seasonNumber', String(nextSeasonNumber))
+    if (automatic) params.set('source', 'autoplay')
     const qs = params.toString()
-    navigate(`/player/episode/${nextEpisode.id}${qs ? `?${qs}` : ''}`)
+    navigate(`/player/episode/${nextEpisode.id}${qs ? `?${qs}` : ''}`, { replace: automatic })
+    return true
   }
+
+  const { preferences, toggleNeverStop, saving, preferenceError } = usePlaybackPreferences(resolvedMediaType === 'episode' ? mediaId! : null)
+  const verifiedDuration = probeDurationSeconds ?? (deliveryMode === 'DIRECT' ? stableDurationSeconds : null)
+  const segments = useEpisodeSegments(resolvedMediaType === 'episode' ? mediaId! : null, verifiedDuration, availabilityId)
+  const { active: activeSkip, skip: skipSegment } = useNeverStop(videoRef, segments, preferences,
+    status === 'ready' && progressSyncReady && !showResumeDialog && !videoError,
+    deliveryMode != null && deliveryMode !== 'DIRECT' && startPositionSeconds > 30 ? startPositionSeconds : 0,
+    `${mediaId}:${availabilityId}:${gatewayUrl}`, () => handleNextEpisode(true), verifiedDuration)
+  const [announcement, setAnnouncement] = useState(false)
+  useEffect(() => {
+    setAnnouncement(false)
+    const video = videoRef.current
+    if (!video || status !== 'ready' || !preferences.neverStopMode) return
+    let timer: ReturnType<typeof setTimeout>
+    const announce = () => { setAnnouncement(true); timer = setTimeout(() => setAnnouncement(false), 4000) }
+    video.addEventListener('playing', announce, { once: true })
+    return () => { video.removeEventListener('playing', announce); clearTimeout(timer) }
+  }, [mediaId, status, preferences.neverStopMode])
 
   const handleVariantSwitch = useCallback((id: string) => {
     emitEvent({
@@ -708,9 +735,19 @@ export default function PlayerPage() {
         </div>
       )}
 
+      {announcement && episodeLabel && <div role="status" className="absolute top-8 inset-x-0 text-center pointer-events-none text-white">{episodeLabel}</div>}
+      {activeSkip && !showResumeDialog && !videoError && <div className="absolute bottom-32 right-8 z-40">
+        <button className="bg-white text-black rounded px-4 py-2" onClick={() => skipSegment(activeSkip)}>{segmentLabel(activeSkip.type)}</button>
+        <div className="text-xs text-white/70">Repères : {activeSkip.source ?? 'Catalogue'}</div>
+      </div>}
+      {preferenceError && <div role="alert" className="absolute top-20 inset-x-0 text-center text-white">{preferenceError}</div>}
       {/* Custom controls overlay — only when URL is loaded */}
       {!videoError && (status === 'ready' || status === 'idle') && (
         <PlayerControls
+          key={`${mediaId}:${availabilityId}`}
+          neverStopMode={!!preferences.neverStopMode}
+          onNeverStopToggle={resolvedMediaType === 'episode' ? toggleNeverStop : undefined}
+          neverStopSaving={saving}
           videoRef={videoRef}
           alternatives={alternatives}
           onVariantSwitch={handleVariantSwitch}
@@ -724,7 +761,7 @@ export default function PlayerPage() {
           onSubtitleTrack={handleSubtitleTrack}
           episodeLabel={episodeLabel}
           nextEpisode={nextEpisode}
-          onNextEpisode={handleNextEpisode}
+          onNextEpisode={() => handleNextEpisode()}
           markers={[]}
           deliveryMode={deliveryMode}
           containerExtension={containerExtension}
