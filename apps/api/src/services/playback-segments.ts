@@ -49,8 +49,9 @@ async function json(url: string): Promise<unknown> {
   upstreamRequests.set(host, recent)
   requestCount++
   const response = await fetch(url, { signal: AbortSignal.timeout(url === 'https://skipdb.tv/api/dump' ? 30000 : 5000), headers: { Accept: 'application/json' } })
-  if (!response.ok) throw new Error(`Segment metadata HTTP ${response.status}`)
   const payload: unknown = await response.json()
+  const missingAniSkip = host === 'api.aniskip.com' && response.status === 404 && payload != null && typeof payload === 'object' && 'found' in payload && payload.found === false
+  if (!response.ok && !missingAniSkip) throw new Error(`Segment metadata HTTP ${response.status}`)
   if (persistent && responseCache) await responseCache.set(url, payload).catch(() => undefined)
   return payload
 }

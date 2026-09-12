@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { indexSkipDbDump, mapAniSkip, mapSkipDb, resolveAnimeEpisode, validSegment } from './playback-segments.js'
+import { describe, expect, it, vi } from 'vitest'
+import { lookupPlaybackSegments, indexSkipDbDump, mapAniSkip, mapSkipDb, resolveAnimeEpisode, validSegment } from './playback-segments.js'
 const ref = { episodeId: 'ep', seriesTmdbId: 42, seriesImdbId: null, seasonNumber: 1, episodeNumber: 3 }
 describe('playback segment metadata', () => {
   it('maps seconds and accepts only a matching cut for automatic skips', () => {
@@ -48,4 +48,13 @@ it('indexes the public dump by movie or canonical episode without asserting a ma
   expect(index.get('tt1:movie')?.[0]).toMatchObject({ type: 'CREDITS', autoSkipSafe: false })
   expect(index.get('tt2:2:1')).toHaveLength(1)
   expect(index.has('tt3:movie')).toBe(false)
+})
+
+it('treats AniSkip HTTP 404 found:false as confirmed absence, not a provider outage', async () => {
+  const fetchMock = vi.fn(async (url: string) => url.includes('raw.githubusercontent.com')
+    ? new Response(JSON.stringify([{ type: 'TV', mal_id: 21, themoviedb_id: { tv: 42 } }]), { status: 200 })
+    : new Response(JSON.stringify({ found: false, results: [], statusCode: 404 }), { status: 404 }))
+  vi.stubGlobal('fetch', fetchMock)
+  try { expect(await lookupPlaybackSegments(ref)).toEqual([]) }
+  finally { vi.unstubAllGlobals() }
 })
