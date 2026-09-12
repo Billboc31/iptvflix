@@ -1033,12 +1033,12 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun updateSegments(positionMs: Long, durationMs: Long) {
         val command = currentCommand ?: return
-        if (!command.mediaType.equals("episode", true)) return
+        if (!command.mediaType.equals("episode", true) && !command.mediaType.equals("movie", true)) return
         // Native Android VOD uses the original full timeline; remux duration is not trustworthy.
         if (durationMs > 0 && segmentDuration == 0L && currentDeliveryMode == "DIRECT") {
             segmentDuration = durationMs
             segmentJob = viewModelScope.launch {
-                val result = SegmentsApi(container.apiClient).fetchEpisodeSegments(command.mediaId, durationMs / 1000.0)
+                val result = SegmentsApi(container.apiClient).fetchEpisodeSegments(command.mediaId, durationMs / 1000.0, command.mediaType)
                 if (loadedCommandId != command.id) return@launch
                 episodeSegments = result.filter { it.startMs >= 0 && it.endMs > it.startMs && it.endMs <= durationMs }
             }

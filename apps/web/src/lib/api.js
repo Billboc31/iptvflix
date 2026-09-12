@@ -308,4 +308,7 @@ export function getEpisodeSegments(id, durationSeconds) {
 export function getEpisodeContext(id) {
     return request(`/episodes/${id}`);
 }
+export function getMovieSegments(id, durationSeconds) {
+    return request(`/movies/${id}/segments${toQuery({ durationSeconds })}`);
+}
 //# sourceMappingURL=api.js.map

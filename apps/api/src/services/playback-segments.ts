@@ -2,6 +2,8 @@ import type { EpisodeSegmentItem, SegmentType } from '@iptvflix/api-contracts'
 
 /** Public metadata only. Never send provider URLs, tokens or account data upstream. */
 export interface SegmentLookup {
+  catalog?: boolean
+  mediaType?: 'movie' | 'episode'
   episodeId: string
   seriesTmdbId: number | null
   seriesImdbId: string | null
@@ -24,19 +26,33 @@ const MAX_ENTRIES = 1000
 const cache = new Map<string, { expires: number; result: EpisodeSegmentItem[] }>()
 const pending = new Map<string, Promise<EpisodeSegmentItem[]>>()
 let mappings: { expires: number; rows: AnimeMapping[] } | undefined
+let animeIndex = new Map<number, AnimeMapping[]>()
 let mappingsRequest: Promise<AnimeMapping[]> | undefined
 
+type ResponseCache = { get(url: string): Promise<unknown | undefined>; set(url: string, payload: unknown): Promise<void> }
+let responseCache: ResponseCache | undefined
+export function configureSegmentResponseCache(store: ResponseCache): void { responseCache = store }
+let requestCount = 0
+export function segmentRequestCount(): number { return requestCount }
 const upstreamRequests = new Map<string, number[]>()
 async function json(url: string): Promise<unknown> {
   const host = new URL(url).host
+  const persistent = host === 'api.aniskip.com' || host === 'api.skipdb.tv' || url === 'https://skipdb.tv/api/dump'
+  if (persistent && responseCache) {
+    const cached = await responseCache.get(url).catch(() => undefined)
+    if (cached !== undefined) return cached
+  }
   const now = Date.now()
   const recent = (upstreamRequests.get(host) ?? []).filter(t => t > now - 60_000)
   if (recent.length >= 100) throw new Error('Segment metadata request budget exceeded')
   recent.push(now)
   upstreamRequests.set(host, recent)
-  const response = await fetch(url, { signal: AbortSignal.timeout(5000), headers: { Accept: 'application/json' } })
+  requestCount++
+  const response = await fetch(url, { signal: AbortSignal.timeout(url === 'https://skipdb.tv/api/dump' ? 30000 : 5000), headers: { Accept: 'application/json' } })
   if (!response.ok) throw new Error(`Segment metadata HTTP ${response.status}`)
-  return response.json()
+  const payload: unknown = await response.json()
+  if (persistent && responseCache) await responseCache.set(url, payload).catch(() => undefined)
+  return payload
 }
 
 async function animeMappings(): Promise<AnimeMapping[]> {
@@ -45,6 +61,11 @@ async function animeMappings(): Promise<AnimeMapping[]> {
     mappingsRequest = json(MAPPINGS_URL).then((data) => {
       if (!Array.isArray(data)) throw new Error('Invalid anime mapping data')
       const rows = data.filter((row) => row && typeof row === 'object') as AnimeMapping[]
+      animeIndex = new Map()
+      for (const row of rows) {
+        const id = row.themoviedb_id?.tv
+        if (id) { const group = animeIndex.get(id) ?? []; group.push(row); animeIndex.set(id, group) }
+      }
       mappings = { rows, expires: Date.now() + 24 * 3600_000 }
       return rows
     }).catch(() => { mappings = { rows: [], expires: Date.now() + 300_000 }; return [] }).finally(() => { mappingsRequest = undefined })
@@ -54,7 +75,7 @@ async function animeMappings(): Promise<AnimeMapping[]> {
 
 /** No title matching: use explicit TMDB seasons/offsets or an unambiguous whole-series mapping. */
 export function resolveAnimeEpisode(rows: AnimeMapping[], ref: SegmentLookup): { malId: number; episode: number } | null {
-  if (!ref.seriesTmdbId || ref.seasonNumber <= 0) return null
+  if (!ref.seriesTmdbId || (ref.mediaType !== 'movie' && ref.seasonNumber <= 0)) return null
   const matches = rows.filter((r) => r.type === 'TV' && r.themoviedb_id?.tv === ref.seriesTmdbId && Number.isSafeInteger(r.mal_id) && r.mal_id! > 0)
   const seasonal = matches.filter((r) => r.season?.tmdb === ref.seasonNumber)
   if (seasonal.length) {
@@ -79,7 +100,8 @@ export function mapAniSkip(data: unknown, durationSeconds?: number): EpisodeSegm
   if (!response?.found || !Array.isArray(response.results)) return []
   const types: Record<string, SegmentType> = { op: 'INTRO', ed: 'CREDITS', recap: 'RECAP' }
   const result: EpisodeSegmentItem[] = []
-  for (const row of response.results) {
+  const matching = durationSeconds == null ? [] : response.results.filter(r => typeof r?.episodeLength === 'number' && Math.abs(r.episodeLength - durationSeconds) <= 2)
+  for (const row of matching.length ? matching : response.results) {
     const type = types[row?.skipType ?? '']
     if (!type || !row.interval || typeof row.interval.startTime !== 'number' || typeof row.interval.endTime !== 'number') continue // Mixed openings/endings may contain story: never cut them.
     const segment: EpisodeSegmentItem = {
@@ -109,24 +131,59 @@ export function mapSkipDb(data: unknown, durationSeconds?: number): EpisodeSegme
   })
 }
 
-async function lookup(ref: SegmentLookup): Promise<EpisodeSegmentItem[]> {
+type DumpRow = { imdb_id?: string; media_type?: string; season?: number; episode?: number; segment_type?: string; status?: string; start_ms: number; end_ms: number }
+let dumpIndex: { expires: number; rows: Map<string, EpisodeSegmentItem[]> } | undefined
+let dumpRequest: Promise<Map<string, EpisodeSegmentItem[]>> | undefined
+export function indexSkipDbDump(data: unknown): Map<string, EpisodeSegmentItem[]> {
+  const dump = data as { segments?: DumpRow[] }
+  if (!Array.isArray(dump?.segments)) throw new Error('Invalid SkipDB dump')
+  const index = new Map<string, EpisodeSegmentItem[]>()
+  const types: Record<string, SegmentType> = { intro: 'INTRO', recap: 'RECAP', outro: 'CREDITS', preview: 'PREVIEW' }
+  for (const r of dump.segments) {
+    if (!r || r.status !== 'approved' || !r.imdb_id || !types[r.segment_type ?? '']) continue
+    const segment: EpisodeSegmentItem = { type: types[r.segment_type!], startMs: r.start_ms, endMs: r.end_ms, autoSkipSafe: false, source: 'SkipDB', sourceUrl: 'https://skipdb.tv' }
+    if (!validSegment(segment)) continue
+    const key = r.media_type === 'movie' ? `${r.imdb_id}:movie` : `${r.imdb_id}:${r.season}:${r.episode}`
+    const group = index.get(key) ?? []
+    group.push(segment); index.set(key, group)
+  }
+  return index
+}
+async function skipDbCatalogSegments(ref: SegmentLookup): Promise<EpisodeSegmentItem[]> {
+  if (!dumpIndex || dumpIndex.expires <= Date.now()) {
+    if (!dumpRequest) dumpRequest = json('https://skipdb.tv/api/dump').then(data => {
+      const rows = indexSkipDbDump(data)
+      dumpIndex = { rows, expires: Date.now() + 86400_000 }
+      return rows
+    }).finally(() => { dumpRequest = undefined })
+    await dumpRequest
+  }
+  const key = ref.mediaType === 'movie' ? `${ref.seriesImdbId}:movie` : `${ref.seriesImdbId}:${ref.seasonNumber}:${ref.episodeNumber}`
+  return dumpIndex!.rows.get(key) ?? []
+}
+
+export async function lookupPlaybackSegments(ref: SegmentLookup): Promise<EpisodeSegmentItem[]> {
   const tasks: Array<Promise<EpisodeSegmentItem[]>> = []
   if (ref.seriesImdbId && /^tt\d+$/.test(ref.seriesImdbId)) {
-    const qs = new URLSearchParams({ imdb_id: ref.seriesImdbId, season: String(ref.seasonNumber), episode: String(ref.episodeNumber), adjust: 'none' })
+    const qs = new URLSearchParams({ imdb_id: ref.seriesImdbId, adjust: 'none' })
+    if (ref.mediaType !== 'movie') { qs.set('season', String(ref.seasonNumber)); qs.set('episode', String(ref.episodeNumber)) }
     if (ref.durationSeconds) qs.set('duration', String(ref.durationSeconds))
-    tasks.push(json(`https://api.skipdb.tv/api/segments?${qs}`).then((data) => mapSkipDb(data, ref.durationSeconds)))
+    tasks.push(ref.catalog ? skipDbCatalogSegments(ref) : json(`https://api.skipdb.tv/api/segments?${qs}`).then((data) => mapSkipDb(data, ref.durationSeconds)))
   }
-  if (ref.seriesTmdbId) {
+  if (ref.seriesTmdbId && ref.mediaType !== 'movie') {
     tasks.push((async () => {
-      const match = resolveAnimeEpisode(await animeMappings(), ref)
+      await animeMappings()
+      const match = resolveAnimeEpisode(animeIndex.get(ref.seriesTmdbId!) ?? [], ref)
       if (!match) return []
-      const qs = new URLSearchParams({ episodeLength: String(ref.durationSeconds ?? 0) })
+      const qs = new URLSearchParams({ episodeLength: '0' })
       for (const type of ['op', 'ed', 'recap']) qs.append('types', type)
       return mapAniSkip(await json(`https://api.aniskip.com/v2/skip-times/${match.malId}/${match.episode}?${qs}`), ref.durationSeconds)
     })())
   }
   const responses = await Promise.allSettled(tasks)
+  if (responses.length && responses.every(r => r.status === 'rejected')) throw new Error('All segment providers failed')
   const result = responses.flatMap((r) => r.status === 'fulfilled' ? r.value : [])
+  if (!result.length && responses.some(r => r.status === 'rejected')) throw new Error('Segment lookup incomplete')
   // Prefer duration-verified cuts; preserve disagreement as manual only.
   const selected: EpisodeSegmentItem[] = []
   for (const type of ['INTRO', 'RECAP', 'OUTRO', 'CREDITS', 'PREVIEW'] as const) {
@@ -140,18 +197,18 @@ async function lookup(ref: SegmentLookup): Promise<EpisodeSegmentItem[]> {
 }
 
 export async function getPlaybackSegments(ref: SegmentLookup): Promise<EpisodeSegmentItem[]> {
-  if (process.env.PLAYBACK_SEGMENTS_ENABLED === 'false' || ref.seasonNumber <= 0) return []
-  const key = `${ref.episodeId}:${ref.durationSeconds ?? 0}`
+  if (process.env.PLAYBACK_SEGMENTS_ENABLED === 'false' || (ref.mediaType !== 'movie' && ref.seasonNumber <= 0)) return []
+  const key = `${ref.mediaType ?? 'episode'}:${ref.episodeId}:${ref.durationSeconds ?? 0}`
   const existing = cache.get(key)
   if (existing && existing.expires > Date.now()) return existing.result
   const running = pending.get(key)
   if (running) return running
   if (pending.size >= 20) return [] // Never let metadata traffic starve playback.
-  const promise = lookup(ref).then((result) => {
+  const promise = lookupPlaybackSegments(ref).then((result) => {
     if (cache.size >= MAX_ENTRIES) cache.delete(cache.keys().next().value!)
     cache.set(key, { result, expires: Date.now() + (result.length ? 3600_000 : 300_000) })
     return result
-  }).finally(() => pending.delete(key))
+  }).catch(() => [] as EpisodeSegmentItem[]).finally(() => pending.delete(key))
   pending.set(key, promise)
   return promise
 }

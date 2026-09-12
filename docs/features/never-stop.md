@@ -58,3 +58,15 @@ Web : le saut attend que sa destination soit dans la plage réellement seekable.
 Pas de test visuel sur appareil physique ni de lecture réelle avec le nouveau backend ; aucun déploiement, aucune installation d’APK, aucune modification de la base de production. Avant mise en service, vérifier en environnement de recette avec une source connue : introduction, recap, ending avec scène après générique, absence de repères, variante de durée différente, passage de saison, dernier épisode, pause, déplacement manuel et coupure réseau. Vérifier également focus télécommande, sous-titres, audio et temps de transition.
 
 Le projet original `/Users/pierrebocquet/iptvflix` n’a pas été modifié. Aucun ticket GitHub créé, aucun push ni message envoyé à une autre conversation.
+
+## Déploiement et remplissage persistant (extension du 12 septembre)
+
+Ajout de la migration additive `0057_playback_segment_cache` : réponses publiques mises en cache 24 h et résultat de couverture par film/épisode, avec date de contrôle et date de prochaine tentative. Les erreurs conservent les segments connus et sont réessayées après une heure ; succès et absences de repères après 24 h. Le traitement démarre automatiquement avec l’API, reprend après redémarrage et utilise un verrou PostgreSQL contre les doublons entre instances. Il fonctionne indépendamment de la synchronisation des sources IPTV ; les nouveaux titres sont découverts automatiquement.
+
+Le catalogue de production est volumineux : environ 61 923 films et 1 141 276 épisodes lors du contrôle initial. Le remplissage exploite donc l’export public de SkipDB (`https://skipdb.tv/api/dump`, 102 137 entrées lors du contrôle), indexé par IMDb/saison/épisode. Les identifiants IMDb déjà présents dans `external_ids` sont réutilisés ; il n’est pas nécessaire de reconstituer toute la métadonnée TMDB. AniSkip utilise un index TMDB→MAL et son résultat complet par épisode, conservant les variantes de durée avant sélection lors du visionnage. Les requêtes réseau individuelles sont espacées ; les correspondances en mémoire ne sont pas artificiellement ralenties.
+
+Le remplissage parcourt l’ensemble du catalogue de façon progressive, par lots. La cadence de contrôle est de 24 h après chaque titre traité, et non une promesse de terminer 1,2 million de titres à une heure fixe. Le premier passage peut durer longtemps selon la couverture AniSkip et la charge serveur. Les repères génériques stockés ne sont pas automatiquement déclarés sûrs : la durée réelle reste vérifiée pendant la lecture.
+
+Nouveaux endpoints : `GET /movies/:id/segments`, et `GET /admin/segments/catalog-status` authentifié pour les totaux, erreurs et dates de traitement. Les films disposent de repères manuels sur le web et Android. Never Stop et l’enchaînement restent des fonctions du lecteur d’épisodes.
+
+Variables opérationnelles : `PLAYBACK_SEGMENT_CATALOG_ENABLED=false` arrête le remplissage, sans couper les recherches à la demande ; `PLAYBACK_SEGMENTS_ENABLED=false` coupe les recherches externes et le remplissage. Aucun appel de probe vidéo de masse, aucune suppression de catalogue ni réécriture de progression utilisateur.

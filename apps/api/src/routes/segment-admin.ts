@@ -6,6 +6,14 @@ import { segmentSelections } from '../db/schema/segment-selections.js'
 import { episodes } from '../db/schema/episodes.js'
 
 export async function segmentAdminRoutes(app: FastifyInstance): Promise<void> {
+  app.get('/admin/segments/catalog-status', async () => {
+    const rows = await db.execute(sql`select media_type, count(*)::int as checked,
+      count(*) filter (where jsonb_array_length(segments)>0)::int as with_segments,
+      count(*) filter (where last_error is not null)::int as errors,
+      min(checked_at) as oldest_check, max(checked_at) as latest_check from playback_segment_catalog group by media_type`)
+    const totals = await db.execute(sql`select (select count(*)::int from movies) as movies, (select count(*)::int from episodes) as episodes`)
+    return { enabled: process.env.PLAYBACK_SEGMENT_CATALOG_ENABLED !== 'false' && process.env.PLAYBACK_SEGMENTS_ENABLED !== 'false', refreshHours: 24, totals: totals[0], coverage: rows }
+  })
   app.get('/admin/segments/coverage', async () => {
     const [totalEpisodesRow] = await db.select({ total: count() }).from(episodes)
     const totalEpisodes = Number(totalEpisodesRow?.total ?? 0)

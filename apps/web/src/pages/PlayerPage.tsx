@@ -266,7 +266,7 @@ export default function PlayerPage() {
 
   const { preferences, toggleNeverStop, saving, preferenceError } = usePlaybackPreferences(resolvedMediaType === 'episode' ? mediaId! : null)
   const verifiedDuration = probeDurationSeconds ?? (deliveryMode === 'DIRECT' ? stableDurationSeconds : null)
-  const segments = useEpisodeSegments(resolvedMediaType === 'episode' ? mediaId! : null, verifiedDuration, availabilityId)
+  const segments = useEpisodeSegments(mediaId!, verifiedDuration, availabilityId, resolvedMediaType)
   const { active: activeSkip, skip: skipSegment } = useNeverStop(videoRef, segments, preferences,
     status === 'ready' && progressSyncReady && !showResumeDialog && !videoError,
     deliveryMode != null && deliveryMode !== 'DIRECT' && startPositionSeconds > 30 ? startPositionSeconds : 0,

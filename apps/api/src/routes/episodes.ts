@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
-import { eq, lt, and } from 'drizzle-orm'
+import { eq, lt, and, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
+import { movies } from '../db/schema/movies.js'
 import { episodes } from '../db/schema/episodes.js'
 import { seasons } from '../db/schema/seasons.js'
 import { series as seriesTable } from '../db/schema/series.js'
@@ -18,6 +19,14 @@ function displayEpisodeTitle(title: string | null | undefined): string | null {
 }
 
 export async function episodeSegmentsRoutes(app: FastifyInstance): Promise<void> {
+  app.get<{ Params: { id: string }; Querystring: { durationSeconds?: string } }>('/movies/:id/segments', async (request, reply) => {
+    const durationSeconds = request.query.durationSeconds == null ? undefined : Number(request.query.durationSeconds)
+    if (durationSeconds !== undefined && (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 86400)) return reply.status(400).send({ error: 'Invalid durationSeconds' })
+    const [movie] = await db.select({ id: movies.id, imdbId: sql<string | null>`coalesce(${movies.imdbId}, ${movies.externalIds}->>'imdb_id')` }).from(movies).where(eq(movies.id, request.params.id)).limit(1)
+    if (!movie) return reply.status(404).send({ error: 'Movie not found' })
+    const segments = await getPlaybackSegments({ mediaType: 'movie', episodeId: movie.id, seriesTmdbId: null, seriesImdbId: movie.imdbId, seasonNumber: 0, episodeNumber: 0, durationSeconds })
+    return { mediaId: movie.id, segments }
+  })
   app.get<{ Params: { id: string } }>('/episodes/:id', async (request, reply) => {
     const { id } = request.params
 
@@ -61,7 +70,7 @@ export async function episodeSegmentsRoutes(app: FastifyInstance): Promise<void>
       return reply.status(400).send({ error: 'Invalid durationSeconds' })
     }
     const [episode] = await db.select({
-      episodeId: episodes.id, seriesTmdbId: seriesTable.tmdbId, seriesImdbId: seriesTable.imdbId,
+      episodeId: episodes.id, seriesTmdbId: seriesTable.tmdbId, seriesImdbId: sql<string | null>`coalesce(${seriesTable.imdbId}, ${seriesTable.externalIds}->>'imdb_id')`,
       seasonNumber: seasons.seasonNumber, episodeNumber: episodes.episodeNumber, seriesId: episodes.seriesId,
     }).from(episodes).innerJoin(seasons, eq(seasons.id, episodes.seasonId))
       .innerJoin(seriesTable, eq(seriesTable.id, episodes.seriesId)).where(eq(episodes.id, id)).limit(1)

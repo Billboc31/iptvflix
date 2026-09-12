@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react'
 import type { EpisodeSegmentItem, ProfilePreferences } from '@iptvflix/api-contracts'
-import { getEpisodeSegments, getProfile, updateProfilePreferences } from '../lib/api.js'
+import { getEpisodeSegments, getMovieSegments, getProfile, updateProfilePreferences } from '../lib/api.js'
 
-export function useEpisodeSegments(episodeId: string | null, durationSeconds: number | null, sourceKey: string | null) {
+export function useEpisodeSegments(episodeId: string | null, durationSeconds: number | null, sourceKey: string | null, mediaType: 'movie' | 'episode' = 'episode') {
   const [state, setState] = useState<{ key: string; segments: EpisodeSegmentItem[] }>({ key: '', segments: [] })
-  const key = `${episodeId}:${sourceKey}:${durationSeconds}`
+  const key = `${mediaType}:${episodeId}:${sourceKey}:${durationSeconds}`
   useEffect(() => {
     if (!episodeId) return
     let cancelled = false
-    getEpisodeSegments(episodeId, durationSeconds ?? undefined).then((response) => {
+    const fetchSegments = mediaType === 'movie' ? getMovieSegments : getEpisodeSegments
+    fetchSegments(episodeId, durationSeconds ?? undefined).then((response) => {
       if (!cancelled) setState({ key, segments: response.segments })
     }).catch(() => { if (!cancelled) setState({ key, segments: [] }) })
     return () => { cancelled = true }
-  }, [episodeId, key, durationSeconds])
+  }, [episodeId, key, durationSeconds, mediaType])
   return state.key === key ? state.segments : []
 }
 

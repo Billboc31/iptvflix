@@ -1,3 +1,4 @@
+import { configurePersistentSegmentCache, startPlaybackSegmentRefresh, stopPlaybackSegmentRefresh } from './services/playback-segment-catalog.js'
 import 'dotenv/config'
 import { spawn } from 'node:child_process'
 import { writeFile, unlink } from 'node:fs/promises'
@@ -340,6 +341,8 @@ async function checkBinary(binary: string): Promise<void> {
   })
 }
 
+app.addHook('onClose', async () => { stopPlaybackSegmentRefresh() })
+
 async function prepareForListen(): Promise<void> {
   try {
     await runMigrateSafe()
@@ -365,6 +368,9 @@ async function prepareForListen(): Promise<void> {
 }
 
 async function bootBackground(): Promise<void> {
+  configurePersistentSegmentCache()
+  startPlaybackSegmentRefresh()
+
   try {
     await runSeed()
     app.log.info('startup: account/profile seed completed')

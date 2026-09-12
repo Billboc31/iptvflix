@@ -462,3 +462,7 @@ export function getEpisodeSegments(id: string, durationSeconds?: number): Promis
 export function getEpisodeContext(id: string): Promise<import('@iptvflix/api-contracts').EpisodeContextResponse> {
   return request(`/episodes/${id}`)
 }
+
+export function getMovieSegments(id: string, durationSeconds?: number): Promise<{ mediaId: string; segments: import('@iptvflix/api-contracts').EpisodeSegmentItem[] }> {
+  return request(`/movies/${id}/segments${toQuery({ durationSeconds })}`)
+}

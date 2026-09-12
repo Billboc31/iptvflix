@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mapAniSkip, mapSkipDb, resolveAnimeEpisode, validSegment } from './playback-segments.js'
+import { indexSkipDbDump, mapAniSkip, mapSkipDb, resolveAnimeEpisode, validSegment } from './playback-segments.js'
 const ref = { episodeId: 'ep', seriesTmdbId: 42, seriesImdbId: null, seasonNumber: 1, episodeNumber: 3 }
 describe('playback segment metadata', () => {
   it('maps seconds and accepts only a matching cut for automatic skips', () => {
@@ -28,4 +28,24 @@ describe('playback segment metadata', () => {
   it('marks competing cuts manual', () => {
     expect(mapAniSkip({ found: true, results: [10, 20].map(start => ({ skipType: 'op', interval: { startTime: start, endTime: start + 90 }, episodeLength: 1440 })) }, 1440).every(s => !s.autoSkipSafe)).toBe(true)
   })
+})
+
+describe('cached provider variants', () => {
+  it('uses the matching cut from a catalog response containing multiple durations', () => {
+    const data = { found: true, results: [1440, 1500].map((duration, i) => ({ skipType: 'op', episodeLength: duration, interval: { startTime: 10 + i * 15, endTime: 100 + i * 15 } })) }
+    expect(mapAniSkip(data, 1440)).toHaveLength(1)
+    expect(mapAniSkip(data, 1440)[0]).toMatchObject({ autoSkipSafe: true, startMs: 10000 })
+    expect(mapAniSkip(data, 1500)[0]).toMatchObject({ autoSkipSafe: true, startMs: 25000 })
+  })
+})
+
+it('indexes the public dump by movie or canonical episode without asserting a matching cut', () => {
+  const index = indexSkipDbDump({ segments: [
+    { imdb_id: 'tt1', media_type: 'movie', segment_type: 'outro', status: 'approved', start_ms: 1000, end_ms: 5000 },
+    { imdb_id: 'tt2', media_type: 'series', season: 2, episode: 1, segment_type: 'intro', status: 'approved', start_ms: 0, end_ms: 90000 },
+    { imdb_id: 'tt3', media_type: 'movie', segment_type: 'intro', status: 'pending', start_ms: 0, end_ms: 90000 },
+  ] })
+  expect(index.get('tt1:movie')?.[0]).toMatchObject({ type: 'CREDITS', autoSkipSafe: false })
+  expect(index.get('tt2:2:1')).toHaveLength(1)
+  expect(index.has('tt3:movie')).toBe(false)
 })

@@ -85,4 +85,8 @@ export declare function recordInteractionEvent(event: InteractionEventBody): Pro
 export declare function batchRecordInteractionEvents(events: InteractionEventBody[]): Promise<BatchEventResponse>;
 export declare function getEpisodeSegments(id: string, durationSeconds?: number): Promise<import('@iptvflix/api-contracts').EpisodeSegmentsResponse>;
 export declare function getEpisodeContext(id: string): Promise<import('@iptvflix/api-contracts').EpisodeContextResponse>;
+export declare function getMovieSegments(id: string, durationSeconds?: number): Promise<{
+    mediaId: string;
+    segments: import('@iptvflix/api-contracts').EpisodeSegmentItem[];
+}>;
 //# sourceMappingURL=api.d.ts.map
