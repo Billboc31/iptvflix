@@ -33,17 +33,22 @@ export async function refreshPlaybackSegmentBatch(): Promise<number> {
             count(*) filter (where coalesce(episode_count,0)<=0) over w as invalid
           from seasons where season_number>0
           window w as (partition by series_id order by season_number rows between unbounded preceding and 1 preceding)
-        ), catalog as (
-          select 'movie'::text as media_type, m.id, m.tmdb_id, coalesce(m.imdb_id,m.external_ids->>'imdb_id') as imdb_id, 0 as season_number, 0 as episode_number, null::bigint as absolute_episode_number
-          from movies m
-          union all
-          select 'episode'::text, e.id, s.tmdb_id, coalesce(s.imdb_id,s.external_ids->>'imdb_id'), sn.season_number, e.episode_number,
-            case when o.prior_seasons=sn.season_number-1 and o.invalid=0 then coalesce(o.prior_episodes,0)+e.episode_number end
-          from episodes e join series s on s.id=e.series_id join seasons sn on sn.id=e.season_id left join season_offsets o on o.id=sn.id
         )
-        select c.* from catalog c left join playback_segment_catalog p on p.media_type=c.media_type and p.media_id=c.id
-        where p.media_id is null or p.retry_at <= now()
-        order by p.checked_at asc nulls first, c.media_type, c.id limit 100`)
+        (select 'movie'::text as media_type, m.id, m.tmdb_id,
+          coalesce(m.imdb_id,m.external_ids->>'imdb_id') as imdb_id, 0 as season_number, 0 as episode_number,
+          null::bigint as absolute_episode_number
+          from movies m left join playback_segment_catalog p on p.media_type='movie' and p.media_id=m.id
+          where p.media_id is null or p.retry_at <= now()
+          order by p.checked_at asc nulls first, m.id limit 50)
+        union all
+        (select 'episode'::text as media_type, e.id, s.tmdb_id,
+          coalesce(s.imdb_id,s.external_ids->>'imdb_id') as imdb_id, sn.season_number, e.episode_number,
+          case when o.prior_seasons=sn.season_number-1 and o.invalid=0 then coalesce(o.prior_episodes,0)+e.episode_number end as absolute_episode_number
+          from episodes e join series s on s.id=e.series_id join seasons sn on sn.id=e.season_id
+          left join season_offsets o on o.id=sn.id
+          left join playback_segment_catalog p on p.media_type='episode' and p.media_id=e.id
+          where p.media_id is null or p.retry_at <= now()
+          order by p.checked_at asc nulls first, e.id limit 50)`)
       for (const row of rows) {
         if (stopped) break
         const mediaType = row.media_type as 'movie' | 'episode'
