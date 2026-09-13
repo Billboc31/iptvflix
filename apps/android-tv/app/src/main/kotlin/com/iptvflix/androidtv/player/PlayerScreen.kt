@@ -460,7 +460,7 @@ fun PlayerScreen(
                 }
             },
             actionContent = {
-                if (announceEpisode && episodeBrowser.episodeLabel != null) {
+                if (announceEpisode && !showControls && openPanel == PlayerPanel.None && episodeBrowser.episodeLabel != null) {
                     Text(text = episodeBrowser.episodeLabel!!, color = Color.White,
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 32.dp))
                 }

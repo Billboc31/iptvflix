@@ -58,3 +58,16 @@ it('treats AniSkip HTTP 404 found:false as confirmed absence, not a provider out
   try { expect(await lookupPlaybackSegments(ref)).toEqual([]) }
   finally { vi.unstubAllGlobals() }
 })
+
+it('keeps DBZ 71 intro and recap but rejects the ending from a longer edition', () => {
+  const data = { found: true, results: [
+    { skipType: 'op', episodeLength: 1453.5, interval: { startTime: 0.643, endTime: 110.643 } },
+    { skipType: 'ed', episodeLength: 1468.658, interval: { startTime: 1370.174, endTime: 1468 } },
+    { skipType: 'recap', episodeLength: 1453.5, interval: { startTime: 111.385, endTime: 172.759 } },
+  ] }
+  expect(mapAniSkip(data, 1452)).toMatchObject([
+    { type: 'INTRO', endMs: 110643, autoSkipSafe: true },
+    { type: 'RECAP', endMs: 172759, autoSkipSafe: true },
+  ])
+  expect(mapAniSkip(data, 1452)).toHaveLength(2)
+})

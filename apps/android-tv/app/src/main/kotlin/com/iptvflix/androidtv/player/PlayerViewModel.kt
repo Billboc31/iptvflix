@@ -1041,6 +1041,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 val result = SegmentsApi(container.apiClient).fetchEpisodeSegments(command.mediaId, durationMs / 1000.0, command.mediaType)
                 if (loadedCommandId != command.id) return@launch
                 episodeSegments = result.filter { it.startMs >= 0 && it.endMs > it.startMs && it.endMs <= durationMs }
+                Log.i(TAG, "Segment metadata: durationMs=$durationMs segments=${episodeSegments.map { "${it.type}:${it.startMs}-${it.endMs}:safe=${it.autoSkipSafe}" }}")
             }
         }
         val active = episodeSegments.firstOrNull { positionMs >= it.startMs && positionMs < it.endMs }
@@ -1049,6 +1050,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             shouldSkipSegment(active, positionMs, durationMs, player.isPlaying, _scrub.value.active, prefs.neverStopMode, prefs.autoSkipIntro, prefs.autoSkipRecap)) {
             val key = "${active.type}:${active.startMs}:${active.endMs}"
             if (skippedSegments.add(key)) {
+                Log.i(TAG, "Automatic segment skip: type=${active.type} fromMs=$positionMs toMs=${active.endMs}")
                 if (prefs.neverStopMode && segmentReachesEnd(active, durationMs) && automaticNext != null) advanceAutomatically()
                 else player.seekTo(active.endMs)
             }
