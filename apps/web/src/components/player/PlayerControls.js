@@ -283,7 +283,7 @@ export default function PlayerControls({ neverStopMode = false, onNeverStopToggl
     const showNextEpisodeCard = nextEpisode != null &&
         stableDuration !== null &&
         stableDuration > 0 &&
-        !neverStopMode && currentTime >= stableDuration - NEAR_END_THRESHOLD_S;
+        currentTime >= stableDuration - NEAR_END_THRESHOLD_S;
     // PiP support detection
     const pipSupported = typeof document !== 'undefined' &&
         'pictureInPictureEnabled' in document &&

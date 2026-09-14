@@ -80,6 +80,7 @@ type WrapperProps = {
   markers?: Marker[]
   episodeLabel?: string | null
   nextEpisode?: EpisodeResponse | null
+  neverStopMode?: boolean
   onNextEpisode?: () => void
   onClose?: () => void
   onVariantSwitch?: (id: string) => void
@@ -98,6 +99,7 @@ function Wrapper({
   markers = [],
   episodeLabel = null,
   nextEpisode = null,
+  neverStopMode = false,
   onNextEpisode = vi.fn(),
   onClose = vi.fn(),
   onVariantSwitch = vi.fn(),
@@ -121,6 +123,7 @@ function Wrapper({
       markers={markers}
       episodeLabel={episodeLabel}
       nextEpisode={nextEpisode}
+      neverStopMode={neverStopMode}
       onNextEpisode={onNextEpisode}
       deliveryMode={deliveryMode}
       containerExtension={containerExtension}
@@ -293,6 +296,18 @@ describe('PlayerControls', () => {
     const ep: EpisodeResponse = { id: 'ep-2', title: 'Ep 2', episodeNumber: 2, synopsis: null, durationMinutes: null, airDate: null, availabilityCount: 1, availabilityStatus: 'AVAILABLE', selectedVariantId: null, variants: [], watchState: null, posterUrl: null }
     render(<Wrapper video={video} nextEpisode={ep} />)
     expect(screen.getAllByText(/Épisode suivant/)[0]).toBeInTheDocument()
+  })
+
+  it('keeps the near-end next episode action when Never Stop is enabled', () => {
+    const ep: EpisodeResponse = { id: 'ep-2', title: 'Ep 2', episodeNumber: 2, synopsis: null, durationMinutes: null, airDate: null, availabilityCount: 1, availabilityStatus: 'AVAILABLE', selectedVariantId: null, variants: [], watchState: null, posterUrl: null }
+    render(<Wrapper video={video} nextEpisode={ep} neverStopMode />)
+    act(() => {
+      Object.defineProperty(video, 'duration', { value: 1500, configurable: true })
+      Object.defineProperty(video, 'currentTime', { value: 1490, configurable: true })
+      video.dispatchEvent(new Event('durationchange'))
+      video.dispatchEvent(new Event('timeupdate'))
+    })
+    expect(screen.getAllByText(/Épisode suivant/).length).toBeGreaterThan(1)
   })
 
   it('calls onNextEpisode when next episode button clicked', () => {

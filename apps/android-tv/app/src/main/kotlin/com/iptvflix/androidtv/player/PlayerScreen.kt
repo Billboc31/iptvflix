@@ -464,7 +464,7 @@ fun PlayerScreen(
                     Text(text = episodeBrowser.episodeLabel!!, color = Color.White,
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 32.dp))
                 }
-                if (showControls && nowPlaying?.mediaType.equals("episode", true)) {
+                if (showControls && openPanel == PlayerPanel.None && nowPlaying?.mediaType.equals("episode", true)) {
                     PlayerActionOverlays(
                         actions = listOf(PlayerOverlayAction.Custom("never_stop", "Never Stop : ${if (neverStop) "activé" else "désactivé"}")),
                         onAction = { vm.toggleNeverStop() },
@@ -514,6 +514,7 @@ fun PlayerScreen(
                                 .equals("episode", ignoreCase = true) == true &&
                                 (episodeBrowser.seriesId != null || episodeBrowser.episodes.isNotEmpty()),
                             playFocusRequester = playFocusRequester,
+                            onNextEpisode = { bumpInteraction(); vm.playNextEpisode() },
                             onBack = { vm.stop(); onStop() },
                             onPlayPause = { bumpInteraction(); vm.togglePlayPause() },
                             onSeekBack = { bumpInteraction(); vm.seekBack() },
@@ -596,6 +597,7 @@ private fun NetflixPlayerChrome(
     subtitleMessage: String?,
     episodeBrowser: EpisodeBrowserState,
     showEpisodesButton: Boolean,
+    onNextEpisode: () -> Unit,
     playFocusRequester: FocusRequester,
     onBack: () -> Unit,
     onPlayPause: () -> Unit,
@@ -799,6 +801,11 @@ private fun NetflixPlayerChrome(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        if (showEpisodesButton && episodeBrowser.nextEpisodeId != null) {
+                            LabeledIconAction(label = "Suivant", onClick = onNextEpisode) {
+                                Text("▶|", color = HudWhite, fontSize = 20.sp)
+                            }
+                        }
                         if (showEpisodesButton) {
                             LabeledIconAction(
                                 label = "Épisodes",
@@ -1313,16 +1320,11 @@ private fun EpisodesPanel(
 
         if (browser.seasons.size > 1) {
             Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                browser.seasons
-                    .sortedBy { it.seasonNumber }
-                    .forEach { season ->
-                        SeasonChip(
-                            season = season,
-                            selected = season.seasonNumber == browser.seasonNumber,
-                            onClick = { onSelectSeason(season.seasonNumber) },
-                        )
-                    }
+            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(browser.seasons.size) { seasonIndex ->
+                    val season = browser.seasons.sortedBy { it.seasonNumber }[seasonIndex]
+                    SeasonChip(season = season, selected = season.seasonNumber == browser.seasonNumber, onClick = { onSelectSeason(season.seasonNumber) })
+                }
             }
         }
 

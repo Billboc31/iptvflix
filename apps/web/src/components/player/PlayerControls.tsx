@@ -369,7 +369,7 @@ export default function PlayerControls({
     nextEpisode != null &&
     stableDuration !== null &&
     stableDuration > 0 &&
-    !neverStopMode && currentTime >= stableDuration - NEAR_END_THRESHOLD_S
+    currentTime >= stableDuration - NEAR_END_THRESHOLD_S
 
   // PiP support detection
   const pipSupported =

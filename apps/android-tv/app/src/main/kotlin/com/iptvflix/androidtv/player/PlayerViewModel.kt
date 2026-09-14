@@ -525,7 +525,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun maybeShowNearEndNextEpisode(positionMs: Long, durationMs: Long) {
-        if (_neverStop.value || nearEndNextShown || durationMs <= 0L) return
+        if (nearEndNextShown || durationMs <= 0L) return
         val nextId = _episodeBrowser.value.nextEpisodeId ?: return
         if (nextId.isBlank()) return
         if (positionMs < (durationMs * 0.90).toLong()) return
@@ -901,7 +901,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     },
                     episodes = episodes,
                     currentEpisodeId = command.mediaId,
-                    nextEpisodeId = next?.id,
+                    nextEpisodeId = automaticNext?.first?.id,
                     loading = false,
                     posterUrl = scrubPoster,
                     episodeLabel = episodeLabel,
@@ -934,7 +934,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 _episodeBrowser.value = _episodeBrowser.value.copy(
                     seasonNumber = seasonNumber,
                     episodes = episodes,
-                    nextEpisodeId = next?.id,
+                    nextEpisodeId = automaticNext?.first?.id,
                     loading = false,
                 )
             }.onFailure { e ->
@@ -1067,7 +1067,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 fromMs = it.startMs, untilMs = it.endMs, seekToMs = it.endMs,
             ))
         } ?: emptyList()
-        val next = if (_neverStop.value) emptyList() else _overlayActions.value.filterIsInstance<PlayerOverlayAction.NextEpisode>()
+        val next = _overlayActions.value.filterIsInstance<PlayerOverlayAction.NextEpisode>()
         _overlayActions.value = actions + next
         if (active != null) _hud.value = _hud.value.copy(positionMs = positionMs)
     }
