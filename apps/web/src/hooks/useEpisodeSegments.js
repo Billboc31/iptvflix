@@ -7,8 +7,9 @@ export function useEpisodeSegments(episodeId, durationSeconds, sourceKey, mediaT
         if (!episodeId)
             return;
         let cancelled = false;
-        const fetchSegments = mediaType === 'movie' ? getMovieSegments : getEpisodeSegments;
-        fetchSegments(episodeId, durationSeconds ?? undefined).then((response) => {
+        const responsePromise = mediaType === 'movie' ? getMovieSegments(episodeId, durationSeconds ?? undefined)
+            : getEpisodeSegments(episodeId, durationSeconds ?? undefined, sourceKey ?? undefined);
+        responsePromise.then((response) => {
             if (!cancelled)
                 setState({ key, segments: response.segments });
         }).catch(() => { if (!cancelled)

@@ -1,3 +1,4 @@
+import { getVerifiedEpisodeSegments, mergeVerifiedSegments } from '../services/verified-playback-segments.js'
 import type { FastifyInstance } from 'fastify'
 import { eq, lt, and, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
@@ -62,8 +63,10 @@ export async function episodeSegmentsRoutes(app: FastifyInstance): Promise<void>
     return reply.send(response)
   })
 
-  app.get<{ Params: { id: string }; Querystring: { durationSeconds?: string } }>('/episodes/:id/segments', async (request, reply) => {
+  app.get<{ Params: { id: string }; Querystring: { durationSeconds?: string; availabilityId?: string } }>('/episodes/:id/segments', async (request, reply) => {
     const { id } = request.params
+    const { availabilityId } = request.query
+    if (availabilityId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(availabilityId)) return reply.status(400).send({ error: 'Invalid availabilityId' })
 
     const durationSeconds = request.query.durationSeconds == null ? undefined : Number(request.query.durationSeconds)
     if (durationSeconds !== undefined && (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 86400)) {
@@ -79,9 +82,11 @@ export async function episodeSegmentsRoutes(app: FastifyInstance): Promise<void>
       .where(and(eq(seasons.seriesId, episode.seriesId), lt(seasons.seasonNumber, episode.seasonNumber)))
     const regular = prior.filter((s) => s.number > 0).sort((a, b) => a.number - b.number)
     const complete = regular.length === episode.seasonNumber - 1 && regular.every((s, i) => s.number === i + 1 && s.count != null && s.count > 0)
-    const online = await getPlaybackSegments({ ...episode, durationSeconds,
+    const upstream = await getPlaybackSegments({ ...episode, durationSeconds,
       absoluteEpisodeNumber: complete ? regular.reduce((sum, s) => sum + s.count!, episode.episodeNumber) : undefined,
     })
+    const verified = await getVerifiedEpisodeSegments(id, availabilityId, durationSeconds)
+    const online = mergeVerifiedSegments(upstream, verified)
     const rows = await db
       .select({
         type: segmentSelections.type,

@@ -23,9 +23,12 @@ class SegmentsApi(private val apiClient: ApiClient) {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun fetchEpisodeSegments(episodeId: String, durationSeconds: Double? = null, mediaType: String = "episode"): List<EpisodeSegmentItem> =
+    suspend fun fetchEpisodeSegments(episodeId: String, durationSeconds: Double? = null, mediaType: String = "episode", availabilityId: String? = null): List<EpisodeSegmentItem> =
         runCatching {
-            val query = durationSeconds?.takeIf { it.isFinite() && it > 0 }?.let { "?durationSeconds=$it" } ?: ""
+            val params = mutableListOf<String>()
+            durationSeconds?.takeIf { it.isFinite() && it > 0 }?.let { params.add("durationSeconds=$it") }
+            availabilityId?.takeIf { it.matches(Regex("[0-9a-fA-F-]{36}")) }?.let { params.add("availabilityId=$it") }
+            val query = if (params.isEmpty()) "" else "?" + params.joinToString("&")
             val collection = if (mediaType.equals("movie", true)) "movies" else "episodes"
             val body = apiClient.get("/$collection/$episodeId/segments$query")
             json.decodeFromString<EpisodeSegmentsResponse>(body).segments

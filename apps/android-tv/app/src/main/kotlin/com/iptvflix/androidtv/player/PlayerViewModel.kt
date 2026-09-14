@@ -1038,7 +1038,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         if (durationMs > 0 && segmentDuration == 0L && currentDeliveryMode == "DIRECT") {
             segmentDuration = durationMs
             segmentJob = viewModelScope.launch {
-                val result = SegmentsApi(container.apiClient).fetchEpisodeSegments(command.mediaId, durationMs / 1000.0, command.mediaType)
+                val result = SegmentsApi(container.apiClient).fetchEpisodeSegments(command.mediaId, durationMs / 1000.0, command.mediaType, _selectedVariantId.value)
                 if (loadedCommandId != command.id) return@launch
                 episodeSegments = result.filter { it.startMs >= 0 && it.endMs > it.startMs && it.endMs <= durationMs }
                 Log.i(TAG, "Segment metadata: durationMs=$durationMs segments=${episodeSegments.map { "${it.type}:${it.startMs}-${it.endMs}:safe=${it.autoSkipSafe}" }}")

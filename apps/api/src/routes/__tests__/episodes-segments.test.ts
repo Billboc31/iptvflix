@@ -60,6 +60,8 @@ vi.mock('../../lib/tmdb-image.js', () => ({
 
 vi.mock('../../services/playback-segments.js', () => ({ getPlaybackSegments: vi.fn().mockResolvedValue([]), validSegment: (s: { startMs: number; endMs: number }) => s.startMs >= 0 && s.endMs > s.startMs }))
 
+vi.mock('../../services/verified-playback-segments.js', () => ({ getVerifiedEpisodeSegments: vi.fn().mockResolvedValue([]), mergeVerifiedSegments: (online: unknown[]) => online }))
+
 import { episodeSegmentsRoutes } from '../episodes.js'
 
 const EPISODE_ID = 'aaaaaaaa-0000-0000-0000-000000000001'

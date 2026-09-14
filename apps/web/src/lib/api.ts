@@ -455,8 +455,8 @@ export function batchRecordInteractionEvents(events: InteractionEventBody[]): Pr
   return request('/interaction-events/batch', { method: 'POST', body: JSON.stringify({ events }) })
 }
 
-export function getEpisodeSegments(id: string, durationSeconds?: number): Promise<import('@iptvflix/api-contracts').EpisodeSegmentsResponse> {
-  return request(`/episodes/${id}/segments${toQuery({ durationSeconds })}`)
+export function getEpisodeSegments(id: string, durationSeconds?: number, availabilityId?: string): Promise<import('@iptvflix/api-contracts').EpisodeSegmentsResponse> {
+  return request(`/episodes/${id}/segments${toQuery({ durationSeconds, availabilityId })}`)
 }
 
 export function getEpisodeContext(id: string): Promise<import('@iptvflix/api-contracts').EpisodeContextResponse> {

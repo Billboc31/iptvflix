@@ -407,6 +407,13 @@
             "when": 1789203300798,
             "tag": "0057_playback_segment_cache",
             "breakpoints": true
+        },
+        {
+            "idx": 58,
+            "version": "7",
+            "when": 1789370656675,
+            "tag": "0058_verified_playback_segments",
+            "breakpoints": true
         }
     ]
 }

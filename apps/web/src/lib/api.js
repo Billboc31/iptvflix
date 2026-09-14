@@ -302,8 +302,8 @@ export function recordInteractionEvent(event) {
 export function batchRecordInteractionEvents(events) {
     return request('/interaction-events/batch', { method: 'POST', body: JSON.stringify({ events }) });
 }
-export function getEpisodeSegments(id, durationSeconds) {
-    return request(`/episodes/${id}/segments${toQuery({ durationSeconds })}`);
+export function getEpisodeSegments(id, durationSeconds, availabilityId) {
+    return request(`/episodes/${id}/segments${toQuery({ durationSeconds, availabilityId })}`);
 }
 export function getEpisodeContext(id) {
     return request(`/episodes/${id}`);
