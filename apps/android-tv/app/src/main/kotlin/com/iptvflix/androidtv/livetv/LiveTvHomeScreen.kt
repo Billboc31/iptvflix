@@ -540,7 +540,8 @@ private fun ChannelCard(
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(channel.logoUrl)
-                            .crossfade(true)
+                            .size(96)
+                            .crossfade(false)
                             .build(),
                         contentDescription = channel.name,
                         contentScale = ContentScale.Fit,
@@ -639,7 +640,8 @@ private fun ChannelListRow(
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(channel.logoUrl)
-                            .crossfade(true)
+                            .size(80)
+                            .crossfade(false)
                             .build(),
                         contentDescription = channel.name,
                         contentScale = ContentScale.Fit,

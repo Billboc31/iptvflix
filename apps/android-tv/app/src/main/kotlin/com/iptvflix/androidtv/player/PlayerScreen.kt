@@ -41,6 +41,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -162,7 +163,6 @@ fun PlayerScreen(
         .equals("channel", ignoreCase = true)
     val zapPreview by vm.zapPreview.collectAsState()
     val surfaceEpoch by vm.surfaceEpoch.collectAsState()
-    var lastBoundSurfaceEpoch by remember { mutableIntStateOf(-1) }
 
     val visibleActions = remember(overlayActions, hud.positionMs, scrub) {
         val pos = if (scrub.active) scrub.previewMs else hud.positionMs
@@ -197,8 +197,9 @@ fun PlayerScreen(
     // When chrome first appears, focus Play once — do NOT re-steal focus on every key.
     var chromeFocusGeneration by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(showControls, scrub.active, zapPreview, openPanel) {
-        val fast = showControls || scrub.active || zapPreview != null || openPanel != PlayerPanel.None
+    LaunchedEffect(showControls, scrub.active, openPanel) {
+        // Zap carousel alone must NOT enable fast HUD — it recomposed the whole player.
+        val fast = showControls || scrub.active || openPanel != PlayerPanel.None
         vm.setHudPollingFast(fast)
     }
     LaunchedEffect(zapPreview) {
@@ -236,21 +237,8 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(surfaceEpoch) {
-        playerViewRef?.let { view ->
-            if (view.player !== vm.player) {
-                view.player = vm.player
-            } else {
-                // Force SurfaceView ↔ decoder rebind after live source swaps.
-                view.player = null
-                view.player = vm.player
-            }
-            view.findViewById<android.view.View>(
-                androidx.media3.ui.R.id.exo_shutter,
-            )?.visibility = android.view.View.GONE
-            lastBoundSurfaceEpoch = surfaceEpoch
-        }
-    }
+    // Recovery bumps surfaceEpoch → key() remounts PlayerVideoSurface.
+    // Do not null/rebind here on every epoch (was double work + jank).
 
     DisposableEffect(Unit) {
         onDispose { playerViewRef?.player = null }
@@ -390,35 +378,14 @@ fun PlayerScreen(
     ) {
         PlayerOverlayStack(
             video = {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { ctx ->
-                        (LayoutInflater.from(ctx).inflate(R.layout.player_view, null) as PlayerView).also { view ->
-                            view.setKeepContentOnPlayerReset(false)
-                            view.resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                            // Ensure Media3 shutter never sticks on top of a live surface.
-                            view.findViewById<android.view.View>(
-                                androidx.media3.ui.R.id.exo_shutter,
-                            )?.visibility = android.view.View.GONE
-                            view.player = vm.player
-                            playerViewRef = view
-                        }
-                    },
-                    update = { view ->
-                        if (view.player !== vm.player || lastBoundSurfaceEpoch != surfaceEpoch) {
-                            view.player = vm.player
-                            lastBoundSurfaceEpoch = surfaceEpoch
-                        }
-                        view.findViewById<android.view.View>(
-                            androidx.media3.ui.R.id.exo_shutter,
-                        )?.let { shutter ->
-                            if (shutter.visibility != android.view.View.GONE) {
-                                shutter.visibility = android.view.View.GONE
-                            }
-                        }
-                        playerViewRef = view
-                    },
-                )
+                // Keyed only on surfaceEpoch so recovery remounts the View; HUD ticks
+                // must not recreate the SurfaceView.
+                key(surfaceEpoch) {
+                    PlayerVideoSurface(
+                        player = vm.player,
+                        onPlayerViewReady = { playerViewRef = it },
+                    )
+                }
             },
             statusContent = {
                 AnimatedVisibility(
@@ -579,6 +546,44 @@ fun PlayerScreen(
  */
 internal fun shouldZapChannel(isOverlayOpen: Boolean, mediaType: String?): Boolean =
     !isOverlayOpen && mediaType.equals("channel", ignoreCase = true)
+
+/**
+ * Isolated video surface so HUD/chrome recompositions do not thrash AndroidView.update
+ * on weak TV / projector SoCs.
+ */
+@Composable
+private fun PlayerVideoSurface(
+    player: androidx.media3.common.Player,
+    onPlayerViewReady: (PlayerView) -> Unit,
+) {
+    AndroidView(
+        modifier = Modifier.fillMaxSize(),
+        factory = { ctx ->
+            (LayoutInflater.from(ctx).inflate(R.layout.player_view, null) as PlayerView).also { view ->
+                view.setKeepContentOnPlayerReset(false)
+                // FIT is cheaper than ZOOM and matches most projector 16:9 output.
+                view.resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                view.findViewById<android.view.View>(
+                    androidx.media3.ui.R.id.exo_shutter,
+                )?.visibility = android.view.View.GONE
+                view.player = player
+                onPlayerViewReady(view)
+            }
+        },
+        update = { view ->
+            if (view.player !== player) {
+                view.player = player
+            }
+            view.findViewById<android.view.View>(
+                androidx.media3.ui.R.id.exo_shutter,
+            )?.let { shutter ->
+                if (shutter.visibility != android.view.View.GONE) {
+                    shutter.visibility = android.view.View.GONE
+                }
+            }
+        },
+    )
+}
 
 @Composable
 private fun NetflixPlayerChrome(

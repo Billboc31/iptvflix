@@ -352,8 +352,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 awaitingFirstFrame = false
                 firstFrameWatchJob?.cancel()
                 Log.i(TAG, "First video frame rendered")
-                // Hide Media3 shutter if it stuck above the SurfaceView.
-                _surfaceEpoch.value = _surfaceEpoch.value + 1
+                // Do NOT bump surfaceEpoch here — rebinding SurfaceView on every first
+                // frame caused decoder thrash / permanent jank on weak TV SoCs.
             }
 
             override fun onTracksChanged(tracks: Tracks) {
@@ -388,9 +388,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 // Fast only while chrome/scrub needs a smooth scrubber; otherwise stay out
                 // of the UI thread (was 250ms live → ~70% janky frames on emulator).
                 val period = when {
-                    hudPollingFast -> 400L
-                    live -> 2_000L
-                    else -> 1_000L
+                    hudPollingFast -> 800L
+                    live -> 2_500L
+                    else -> 1_500L
                 }
                 delay(period)
                 if (!_scrub.value.active) refreshHud()
