@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -43,7 +44,8 @@ object ExoPlayerFactory {
             .setDataSourceFactory(dataSourceFactory)
 
         // Live-friendly: min buffer must stay under typical HLS live target (~8–15s).
-        // 15s min + locked 1.0× live speed caused perpetual BUFFERING ("jamais play").
+        // Keep live speed locked at 1.0× — otherwise Exo slows to ~0.97 when slightly
+        // ahead of the live edge, which users perceive as "pause that only slows down".
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 /* minBufferMs */ 6_000,
@@ -56,6 +58,11 @@ object ExoPlayerFactory {
                 /* retainBackBufferFromKeyframe */ true,
             )
             .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+
+        val liveSpeedControl = DefaultLivePlaybackSpeedControl.Builder()
+            .setFallbackMinPlaybackSpeed(1f)
+            .setFallbackMaxPlaybackSpeed(1f)
             .build()
 
         // Decoder fallback helps when the primary MediaCodec path attaches to a
@@ -76,11 +83,11 @@ object ExoPlayerFactory {
             .setTrackSelector(trackSelector)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
+            .setLivePlaybackSpeedControl(liveSpeedControl)
             .build()
             .also { it.setForegroundMode(true) }
     }
 }
-
 private class XtreamHeaderInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()

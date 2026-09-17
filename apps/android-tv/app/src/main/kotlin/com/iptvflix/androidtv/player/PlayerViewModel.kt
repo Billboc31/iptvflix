@@ -165,6 +165,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     private var awaitingFirstFrame = false
     private var firstFrameWatchJob: Job? = null
+    /** When true, blank-frame recovery / load races must not force playWhenReady back on. */
+    @Volatile
+    private var userPaused = false
 
     private val zapper: ChannelZapper by lazy {
         ChannelZapper(
@@ -519,6 +522,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             }.onFailure { Log.w(TAG, "jumpToLiveEdge failed: ${it.message}") }
+            userPaused = false
             player.playWhenReady = true
             refreshHud()
         }
@@ -590,6 +594,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         sessionEnded = false
         pendingResumeMs = 0L
         lastPausedAtElapsedMs = 0L
+        userPaused = false
         clearLivePauseDebt()
         sameUrlResumeRetryDone = false
         scrubHoldTicks = 0
@@ -655,7 +660,24 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
                 withContext(Dispatchers.Main) {
                     if (loadedCommandId != command.id) return@withContext
+                    // A pause pressed while resolve was in-flight must stick.
+                    if (userPaused) {
+                        Log.i(TAG, "Load finished but userPaused — keeping playWhenReady=false")
+                        awaitingFirstFrame = false
+                        player.volume = 1f
+                        player.setMediaItem(
+                            buildMediaItem(
+                                descriptor.toMediaItemSpec(
+                                    isLive = isChannel,
+                                ),
+                            ),
+                        )
+                        player.playWhenReady = false
+                        player.prepare()
+                        return@withContext
+                    }
                     awaitingFirstFrame = true
+                    userPaused = false
                     player.volume = 1f
                     player.setMediaItem(
                         buildMediaItem(
@@ -676,8 +698,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     title = command.title,
                     posterUrl = command.posterUrl,
                 )
-                watchForFirstVideoFrame()
-
+                if (!userPaused) {
+                    watchForFirstVideoFrame()
+                }
                 if (command.mediaType.equals("episode", ignoreCase = true)) {
                     viewModelScope.launch {
                         val prefs = runCatching { com.iptvflix.androidtv.network.ProfileApiService(container.apiClient).getCurrentProfile() }.getOrNull()
@@ -750,7 +773,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             Log.w(TAG, "No first video frame yet — asking PlayerView to refresh surface")
             withContext(Dispatchers.Main) {
                 // User may have paused while we waited — never force-resume.
-                if (loadedCommandId != watchCommandId || !awaitingFirstFrame || !player.playWhenReady) {
+                if (userPaused || loadedCommandId != watchCommandId || !awaitingFirstFrame || !player.playWhenReady) {
                     return@withContext
                 }
                 _surfaceEpoch.value = _surfaceEpoch.value + 1
@@ -759,11 +782,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             delay(1_200)
-            if (!awaitingFirstFrame || loadedCommandId != watchCommandId) return@launch
+            if (userPaused || !awaitingFirstFrame || loadedCommandId != watchCommandId) return@launch
 
             Log.w(TAG, "Still no first frame — remounting MediaItem without detaching surface")
             withContext(Dispatchers.Main) {
-                if (loadedCommandId != watchCommandId || !awaitingFirstFrame || !player.playWhenReady) {
+                if (userPaused || loadedCommandId != watchCommandId || !awaitingFirstFrame || !player.playWhenReady) {
                     return@withContext
                 }
                 val item = player.currentMediaItem ?: return@withContext
@@ -792,7 +815,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
         viewModelScope.launch(Dispatchers.Main) {
             // Respect an intentional pause — blank-frame recovery must not un-pause.
-            if (loadedCommandId != watchCommandId || !player.playWhenReady) return@launch
+            if (userPaused || loadedCommandId != watchCommandId || !player.playWhenReady) return@launch
             _surfaceEpoch.value = _surfaceEpoch.value + 1
             player.playWhenReady = true
             player.play()
@@ -1260,17 +1283,25 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 commitScrub()
                 return@launch
             }
-            val pausing = player.playWhenReady
-            if (pausing) {
+            if (player.playWhenReady) {
                 // Cancel blank-frame recovery so it cannot force-resume after pause
                 // (looked like slow-mo / stuttering live instead of a true freeze).
                 firstFrameWatchJob?.cancel()
                 awaitingFirstFrame = false
+                userPaused = true
 
                 lastPausedAtElapsedMs = SystemClock.elapsedRealtime()
                 sameUrlResumeRetryDone = false
                 beginLivePauseDebt()
+                // Hard stop: explicit playWhenReady=false + lock 1.0× speed so live
+                // speed control cannot keep advancing frames slowly.
+                runCatching {
+                    player.playbackParameters =
+                        androidx.media3.common.PlaybackParameters(/* speed = */ 1f)
+                }
+                player.playWhenReady = false
                 player.pause()
+                Log.i(TAG, "user pause — playWhenReady=${player.playWhenReady} isPlaying=${player.isPlaying}")
                 refreshHud()
                 // Flush CW off the playback critical path so resume isn't stalled.
                 val reporter = progressReporter
@@ -1279,8 +1310,15 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     reporter?.reportNow()
                 }
             } else {
+                userPaused = false
                 endLivePauseDebtSegment()
+                runCatching {
+                    player.playbackParameters =
+                        androidx.media3.common.PlaybackParameters(/* speed = */ 1f)
+                }
                 player.playWhenReady = true
+                player.play()
+                Log.i(TAG, "user resume — playWhenReady=${player.playWhenReady}")
                 refreshHud()
             }
         }
